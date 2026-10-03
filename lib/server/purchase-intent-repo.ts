@@ -206,6 +206,23 @@ export async function listUnsettledPurchaseIntentsForUser(admin: SupabaseClient,
   return ((data ?? []) as PurchaseIntentRow[]).map(fromRow);
 }
 
+/**
+ * All users' purchases with a transaction on chain that are not final yet (SUBMITTED/CONFIRMING), oldest first,
+ * last touched before `olderThanIso` (so a purchase the buyer's own window is still verifying is left alone).
+ * For the scheduled reconciler only.
+ */
+export async function listUnsettledPurchaseIntents(admin: SupabaseClient, olderThanIso: string, limit: number): Promise<PurchaseIntent[]> {
+  const { data, error } = await admin
+    .from('purchase_intents')
+    .select()
+    .in('status', ['SUBMITTED', 'CONFIRMING'])
+    .lt('updated_at', olderThanIso)
+    .order('updated_at', { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as PurchaseIntentRow[]).map(fromRow);
+}
+
 export async function findActivePurchaseIntentForBag(
   admin: SupabaseClient,
   userId: string,
@@ -332,4 +349,13 @@ export async function listPurchaseIntentsForUserBag(
     .limit(limit);
   if (error) throw new Error(error.message);
   return ((data ?? []) as PurchaseIntentRow[]).map(fromRow);
+}
+
+/**
+ * Marks a still-unsettled intent as just checked (updated_at = now) so the reconciler's oldest-first batch moves
+ * on to others instead of re-checking the same never-mined transactions forever. Only touches SUBMITTED/CONFIRMING.
+ */
+export async function touchUnsettledPurchaseIntent(admin: SupabaseClient, id: string): Promise<void> {
+  const { error } = await admin.from('purchase_intents').update({ updated_at: new Date().toISOString() }).eq('id', id).in('status', ['SUBMITTED', 'CONFIRMING']);
+  if (error) throw new Error(error.message);
 }

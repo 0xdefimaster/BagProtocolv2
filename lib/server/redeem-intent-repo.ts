@@ -129,6 +129,19 @@ export async function getRedeemIntentForUser(
   return { ok: true, intent };
 }
 
+/** Same as `listUnsettledPurchaseIntents()` for redemptions (SUBMITTED/CONFIRMING, oldest first). Scheduled reconciler only. */
+export async function listUnsettledRedeemIntents(admin: SupabaseClient, olderThanIso: string, limit: number): Promise<RedeemIntent[]> {
+  const { data, error } = await admin
+    .from('redeem_intents')
+    .select()
+    .in('status', ['SUBMITTED', 'CONFIRMING'])
+    .lt('updated_at', olderThanIso)
+    .order('updated_at', { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as RedeemIntentRow[]).map(fromRow);
+}
+
 /** Finds any non-terminal redeem intent this user already has open for this bag — same "don't let two redemptions race" guard `findActivePurchaseIntentForBag()` gives deposits. */
 export async function findActiveRedeemIntentForBag(admin: SupabaseClient, userId: string, bagId: string): Promise<RedeemIntent | null> {
   const { data, error } = await admin
@@ -234,4 +247,13 @@ export async function listRedeemIntentsForUserBag(
     .limit(limit);
   if (error) throw new Error(error.message);
   return ((data ?? []) as RedeemIntentRow[]).map(fromRow);
+}
+
+/**
+ * Marks a still-unsettled intent as just checked (updated_at = now) so the reconciler's oldest-first batch moves
+ * on to others instead of re-checking the same never-mined transactions forever. Only touches SUBMITTED/CONFIRMING.
+ */
+export async function touchUnsettledRedeemIntent(admin: SupabaseClient, id: string): Promise<void> {
+  const { error } = await admin.from('redeem_intents').update({ updated_at: new Date().toISOString() }).eq('id', id).in('status', ['SUBMITTED', 'CONFIRMING']);
+  if (error) throw new Error(error.message);
 }
