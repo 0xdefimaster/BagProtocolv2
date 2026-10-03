@@ -332,6 +332,13 @@ export type UnroutablePolicy = (typeof UNROUTABLE_POLICIES)[number];
 export const DEFAULT_UNROUTABLE_POLICY: UnroutablePolicy = 'BLOCK';
 export const MAX_UNROUTABLE_WEIGHT_BPS = 3000;
 
+/** Weight bounds and asset-count rule every new Bag gets (create API, validate_bag). */
+export const DEFAULT_MIN_WEIGHT_BPS = 100; // 1%
+export const DEFAULT_MAX_WEIGHT_BPS = 7000; // 70% — no single asset can dominate a basket
+export function defaultMaxAssets(assetCount: number): number {
+  return Math.max(assetCount, 10);
+}
+
 export interface BasketRecipe {
   id: string;
   /** The Bag this recipe belongs to — foreign key back into the existing `Bag.id`. */

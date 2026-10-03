@@ -68,6 +68,6 @@ describe('buildVersionTimeline', () => {
 
   it('an unknown author is shown without a name rather than failing', () => {
     const t = buildVersionTimeline([version(1, '2026-09-01T00:00:00Z', [asset('NVDA', NVDA, 10000)])], null, [], new Map());
-    expect(t[0]).toMatchObject({ isCurrent: true, createdBy: { id: 'alice', name: null }, performance: null });
+    expect(t[0]).toMatchObject({ isCurrent: true, createdBy: { name: null, address: null }, performance: null });
   });
 });

@@ -19,13 +19,14 @@ export interface VersionPerformance {
   returnPct: number;
 }
 
+export const VERSION_TIMELINE_SCHEMA_VERSION = 1;
+
 export interface VersionTimelineEntry {
-  versionId: string;
   version: number;
   createdAt: string;
   reason: string;
-  compositionHash: string;
-  createdBy: { id: string; name: string | null; address: string | null };
+  /** Identified by wallet, never by internal user id. */
+  createdBy: { name: string | null; address: string | null };
   isCurrent: boolean;
   assets: RecipeAsset[];
   /** Against the previous version; the first version lists every asset as ADDED. */
@@ -79,12 +80,10 @@ export function buildVersionTimeline(
     const creator = creators.get(v.createdBy);
     const isCurrent = currentVersionId ? v.id === currentVersionId : next === null;
     return {
-      versionId: v.id,
       version: v.version,
       createdAt: v.createdAt,
       reason: v.reason,
-      compositionHash: v.compositionHash,
-      createdBy: { id: v.createdBy, name: creator?.name ?? null, address: creator?.address ?? null },
+      createdBy: { name: creator?.name ?? null, address: creator?.address ?? null },
       isCurrent,
       assets: v.recipe.assets,
       diff: diffRecipes(previous?.recipe ?? null, v.recipe),

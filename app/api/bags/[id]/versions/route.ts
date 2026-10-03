@@ -4,7 +4,7 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
 import { getBagById, getBagVersions } from '@/lib/server/bag-repo';
 import { loadCreatorProfiles } from '@/lib/server/user-profile-repo';
 import { getNavSnapshots } from '@/lib/server/bag-nav-snapshots';
-import { buildVersionTimeline } from '@/lib/server/bag-version-timeline';
+import { VERSION_TIMELINE_SCHEMA_VERSION, buildVersionTimeline } from '@/lib/server/bag-version-timeline';
 
 // GET /api/bags/:id/versions — the Bag's Version Timeline (newest first): each
 // version's reason, author, composition, Strategy Diff from the version before,
@@ -33,7 +33,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       loadCreatorProfiles(admin, Array.from(new Set(versions.map((v) => v.createdBy)))),
       getNavSnapshots(admin, bag.id).catch(() => []),
     ]);
-    return NextResponse.json({ versions: buildVersionTimeline(versions, bag.currentVersionId ?? null, snapshots, creators) });
+    return NextResponse.json({ schemaVersion: VERSION_TIMELINE_SCHEMA_VERSION, versions: buildVersionTimeline(versions, bag.currentVersionId ?? null, snapshots, creators) });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }

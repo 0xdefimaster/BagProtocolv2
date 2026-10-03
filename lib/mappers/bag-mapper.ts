@@ -4,6 +4,8 @@ import {
   BagVersionRecord,
   CanonicalAsset,
   ChainId,
+  DEFAULT_MAX_WEIGHT_BPS,
+  DEFAULT_MIN_WEIGHT_BPS,
   DEFAULT_STRATEGY_TYPE,
   DEFAULT_UNROUTABLE_POLICY,
   RebalanceFrequency,
@@ -11,6 +13,7 @@ import {
   SUPPORTED_CHAINS,
   UNROUTABLE_POLICIES,
   UnroutablePolicy,
+  defaultMaxAssets,
 } from '@/types/basket-protocol';
 import { recipeAssetsToBagPositions } from '@/lib/domain/basket-protocol/recipe';
 import { assetIdentityKey } from '@/lib/domain/basket-protocol/asset-identity';
@@ -174,9 +177,9 @@ export function mapCreateBagRequestToRecipeInput(
         maxSlippageBps: clampSlippageBps(body.slippageBps),
       },
       minInvestment: sanitizeMinInvestment(body.minInvestment),
-      maxAssets: Math.max(assets.length, 10),
-      minWeightBps: 100,
-      maxWeightBps: 7000,
+      maxAssets: defaultMaxAssets(assets.length),
+      minWeightBps: DEFAULT_MIN_WEIGHT_BPS,
+      maxWeightBps: DEFAULT_MAX_WEIGHT_BPS,
       mutability: body.mutability ?? 'MUTABLE',
       performanceFeeBps: body.performanceFeeBps ?? 0,
       unroutablePolicy: parseUnroutablePolicy(body.unroutablePolicy),
