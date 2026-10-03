@@ -1,42 +1,33 @@
 import type { BagMutability, BagStatus, ChainId, StrategyType } from './basket-protocol';
 import type { BagPerformance } from './index';
+import type { DataSource, StrategyPolicy } from './strategy-policy';
 
 // -----------------------------------------------------------------------------
-// Strategy Passport — the ONE canonical description of a Bag as a strategy:
-// identity, current version, composition, creator, performance, policy and
-// lineage. Served by GET /api/bags/:id/passport, rendered on the Bag page, and
-// meant to be returned as-is by the future MCP `get_strategy()` tool.
+// Strategy Passport — the ONE canonical, public description of a Bag as a
+// strategy: identity, on-chain record, creator, current version, composition,
+// performance, policy and lineage. Served by GET /api/bags/:id/passport,
+// rendered on the Bag page, and returned as-is by the future MCP
+// get_strategy() tool. Field names are stable; additive changes keep
+// `schemaVersion`, breaking ones bump it.
 //
-// Every section states where its data comes from (`Provenance`), and every
-// policy rule states who enforces it (`Enforcement`), so a reader — human or
-// agent — never mistakes a database value or a BAG computation for something
-// the chain guarantees.
+// No internal identifiers (user ids, row ids, BAG's internal fingerprints)
+// are exposed: people are identified by wallet address, versions by number.
 // -----------------------------------------------------------------------------
 
 export const STRATEGY_PASSPORT_SCHEMA_VERSION = 1;
 
-/**
- * - `ONCHAIN_RECORDED`: copied from a confirmed transaction / event when it was
- *   confirmed (deployment, on-chain version). Verifiable on-chain via the tx
- *   hash; this endpoint does not re-read the chain on every request.
- * - `DATABASE`: BAG's database (Supabase) is the source of truth.
- * - `BAG_COMPUTED`: computed by BAG's server at request time or by its jobs
- *   (NAV, TVL, returns from recorded snapshots, prices from BAG's price providers).
- */
-export type Provenance = 'ONCHAIN_RECORDED' | 'DATABASE' | 'BAG_COMPUTED';
+/** Where a section's data comes from and how fresh it is. */
+export interface SourceInfo {
+  source: DataSource;
+  /** When the value was recorded (on-chain: when BAG recorded the confirmed tx) or computed. */
+  asOf: string | null;
+  /** How a reader can check it: by a transaction hash, by recomputing from public inputs, or not at all. */
+  verifiableBy: 'TX_HASH' | 'NONE';
+  /** Whether this response re-read the chain. Always false today: on-chain values are served from BAG's record of the confirmed transaction. */
+  readFromChainThisRequest: boolean;
+}
 
-/**
- * Who makes a rule hold:
- * - `ONCHAIN`: a contract or the executed transaction itself reverts otherwise.
- * - `DATABASE`: a Postgres constraint/trigger rejects the write.
- * - `BAG_SERVER`: BAG's server checks it before building a transaction (an attestation, not a chain guarantee).
- * - `PROVIDER`: the routing provider (LI.FI) refuses to compile otherwise.
- * - `DECLARED`: stated by the creator; nothing executes it automatically today.
- */
-export type Enforcement = 'ONCHAIN' | 'DATABASE' | 'BAG_SERVER' | 'PROVIDER' | 'DECLARED';
-
-export interface PassportCreator {
-  userId: string;
+export interface PassportPerson {
   name: string | null;
   walletAddress: string | null;
   avatarUrl: string | null;
@@ -50,42 +41,30 @@ export interface PassportAsset {
   assetType: string | null;
   decimals: number;
   weightBps: number;
-  /** Background route check from the asset registry; null until checked. Display only. */
+  /** BAG's background route check (BAG_ATTESTED, may be stale; purchases re-quote live). Null until checked. */
   routeStatus: 'ROUTABLE' | 'NO_ROUTE' | null;
   routeCheckedAt: string | null;
 }
 
-export interface PassportPolicyRule {
-  key: string;
-  label: string;
-  /** Machine value (number, string or boolean); `display` is the human form. */
-  value: number | string | boolean | null;
-  display: string;
-  enforcement: Enforcement;
-  note?: string;
-}
-
 export interface PassportVersionNode {
-  versionId: string;
   version: number;
-  /** The version this one replaced (version − 1); null for v1. */
+  /** The version this one replaced; null for v1. */
   parentVersion: number | null;
   createdAt: string;
   reason: string;
-  compositionHash: string;
   isCurrent: boolean;
   /** Present when this version was recorded on-chain (deployed Bags only). */
-  onchain: { txHash: string; onchainVersion: number; compositionHash: string; metadataUri: string | null } | null;
+  onchain: { txHash: string; onchainVersion: number; compositionHash: string; metadataUri: string | null; sourceInfo: SourceInfo } | null;
 }
 
 export interface PassportForkNode {
   bagId: string;
-  /** False when the Bag is not public (DRAFT/ARCHIVED) and the viewer is not its creator: no details are disclosed. */
+  /** False when the Bag is not public and the viewer is not its creator: nothing else is disclosed. */
   visible: boolean;
   name: string | null;
   symbol: string | null;
   status: BagStatus | null;
-  creator: PassportCreator | null;
+  creator: PassportPerson | null;
   createdAt: string | null;
 }
 
@@ -94,7 +73,7 @@ export interface StrategyPassport {
   generatedAt: string;
 
   identity: {
-    provenance: 'DATABASE';
+    sourceInfo: SourceInfo;
     bagId: string;
     slug: string;
     name: string;
@@ -109,7 +88,7 @@ export interface StrategyPassport {
 
   /** Null until the Bag is deployed on-chain. */
   onchain: {
-    provenance: 'ONCHAIN_RECORDED';
+    sourceInfo: SourceInfo;
     chain: ChainId;
     chainId: number | null;
     onChainBagId: string | null;
@@ -122,61 +101,53 @@ export interface StrategyPassport {
     explorerUrl: string | null;
   } | null;
 
-  creator: PassportCreator & { provenance: 'DATABASE' };
+  creator: PassportPerson & { sourceInfo: SourceInfo };
 
   currentVersion: {
-    provenance: 'DATABASE';
-    versionId: string;
+    sourceInfo: SourceInfo;
     version: number;
     createdAt: string;
     reason: string;
-    /** BAG's off-chain fingerprint of the composition. */
-    compositionHash: string;
-    /** The bytes32 committed on-chain for this version; null if this version was never recorded on-chain. */
+    /** The bytes32 committed on-chain for this version; null if it was never recorded on-chain. */
     onchainCompositionHash: string | null;
   } | null;
 
   composition: {
-    provenance: 'DATABASE';
+    sourceInfo: SourceInfo;
     assets: PassportAsset[];
     totalWeightBps: number;
   };
 
   performance: {
-    provenance: 'BAG_COMPUTED';
+    sourceInfo: SourceInfo;
+    /** Decimal USD string. */
     tvlUsd: string | null;
     navPerShare: string | null;
-    navAsOf: string | null;
     returns: BagPerformance | null;
     holders: number | null;
   };
 
-  policy: {
-    rules: PassportPolicyRule[];
-  };
+  /** Same object validate_bag returns; each rule carries its value source and enforcement. Null when the Bag has no version. */
+  policy: StrategyPolicy | null;
 
   lineage: {
-    /** The chain of versions of THIS Bag (v1 → current). Same strategy, edited over time. */
-    versions: { provenance: 'DATABASE'; nodes: PassportVersionNode[] };
-    /** Other Bags this one was copied from, and Bags copied from it. Different strategies sharing an origin. */
+    /** THIS Bag over time (v1 → current). Same strategy identity. */
+    versions: { sourceInfo: SourceInfo; nodes: PassportVersionNode[] };
+    /** Other Bags this one was copied from, and Bags copied from it. Separate strategies. */
     forks: {
-      provenance: 'DATABASE';
+      sourceInfo: SourceInfo;
       /** Nearest first: parent, grandparent, …, root. Empty for an original Bag. */
       ancestors: PassportForkNode[];
       rootBagId: string;
       isOriginal: boolean;
-      /** Direct forks of this Bag (public ones, plus the viewer's own). */
+      /** Direct forks visible to this viewer (public ones, plus the viewer's own). */
       children: PassportForkNode[];
-      /** All direct forks, public or not. */
+      /** All direct forks, public or not (a count only). */
       childCount: number;
       /** Royalty a fork pays the root creator on every deposit, in bps. */
       forkRoyaltyBps: number;
-      /** Fork records do not store which parent version was copied. */
+      /** Fork records do not store which parent version was copied, so this is always null. */
       forkedFromVersion: null;
     };
   };
-
-  /** Shorthand for clients: section → provenance. */
-  provenance: Record<string, Provenance>;
 }
-

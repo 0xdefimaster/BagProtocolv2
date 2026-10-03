@@ -7,6 +7,7 @@ vi.mock('@/lib/server/purchase-execution', () => ({
 vi.mock('@/lib/server/price-provider', () => ({ getDisplayPriceProvider: () => ({}) }));
 
 import { buildStrategyPassport, StrategyPassportInput } from '../strategy-passport';
+import { deriveStrategyPolicy } from '../strategy-policy';
 import { BagRecord, BagVersionRecord, BasketRecipe, CanonicalAsset } from '@/types/basket-protocol';
 import type { CreatorProfile } from '@/types';
 import type { BagDeployment } from '../bag-deployment-repo';
@@ -59,43 +60,54 @@ function input(over: Partial<StrategyPassportInput> = {}): StrategyPassportInput
 }
 
 describe('buildStrategyPassport', () => {
-  it('puts identity, on-chain record, creator, current version, composition and performance in one response, each with its provenance', () => {
+  it('puts identity, on-chain record, creator, current version, composition and performance in one response, each with its source', () => {
     const p = buildStrategyPassport(input());
     expect(p.schemaVersion).toBe(1);
-    expect(p.identity).toMatchObject({ provenance: 'DATABASE', bagId: 'bag-2', name: 'AI Infrastructure', status: 'ACTIVE' });
-    expect(p.onchain).toMatchObject({ provenance: 'ONCHAIN_RECORDED', chainId: 4663, contractAddress: '0xcontract', onChainVersion: 2, deploymentBlock: 123 });
+    expect(p.identity).toMatchObject({ bagId: 'bag-2', name: 'AI Infrastructure', status: 'ACTIVE' });
+    expect(p.identity.sourceInfo).toEqual({ source: 'DATABASE', asOf: '2026-09-08T00:00:00Z', verifiableBy: 'NONE', readFromChainThisRequest: false });
+    expect(p.onchain).toMatchObject({ chainId: 4663, contractAddress: '0xcontract', onChainVersion: 2, deploymentBlock: 123 });
+    // An on-chain record is verifiable by tx hash, but this response did NOT re-read the chain.
+    expect(p.onchain!.sourceInfo).toMatchObject({ source: 'ONCHAIN', verifiableBy: 'TX_HASH', readFromChainThisRequest: false });
     expect(p.onchain!.explorerUrl).toContain('/tx/0x2222');
-    expect(p.creator).toMatchObject({ provenance: 'DATABASE', name: 'Alice', walletAddress: '0xalice' });
-    expect(p.currentVersion).toMatchObject({ version: 2, reason: 'Lower NVDA', compositionHash: 'h2', onchainCompositionHash: HASH });
+    expect(p.creator).toMatchObject({ name: 'Alice', walletAddress: '0xalice' });
+    expect(p.currentVersion).toMatchObject({ version: 2, reason: 'Lower NVDA', onchainCompositionHash: HASH });
     expect(p.composition.totalWeightBps).toBe(10000);
     expect(p.composition.assets[0]).toMatchObject({ symbol: 'NVDA', name: 'NVIDIA', assetType: 'stock', routeStatus: 'ROUTABLE' });
     expect(p.composition.assets[1]).toMatchObject({ symbol: 'AMD', name: null, routeStatus: null });
-    expect(p.performance).toMatchObject({ provenance: 'BAG_COMPUTED', tvlUsd: '1234.5', navPerShare: '1.05', holders: 3 });
+    expect(p.performance).toMatchObject({ tvlUsd: '1234.5', navPerShare: '1.05', holders: 3 });
+    expect(p.performance.sourceInfo.source).toBe('BAG_DERIVED');
   });
 
-  it('says who enforces each policy rule', () => {
-    const rules = Object.fromEntries(buildStrategyPassport(input()).policy.rules.map((r) => [r.key, r]));
-    expect(rules.composition_changes).toMatchObject({ value: 'ONCHAIN_VERSION_ONLY', enforcement: 'DATABASE' });
-    expect(rules.max_weight_per_asset).toMatchObject({ value: 7000, display: '70%', enforcement: 'BAG_SERVER' });
-    expect(rules.performance_fee).toMatchObject({ value: 1000, enforcement: 'BAG_SERVER' });
-    expect(rules.max_slippage_per_swap).toMatchObject({ value: 150, display: '1.5%', enforcement: 'ONCHAIN' });
-    expect(rules.max_price_impact).toMatchObject({ value: 500, enforcement: 'PROVIDER' });
-    expect(rules.unroutable_policy).toMatchObject({ value: 'HOLD_INPUT', enforcement: 'BAG_SERVER' });
-    expect(rules.rebalance).toMatchObject({ value: 'MONTHLY', enforcement: 'DECLARED' });
+  it('exposes no internal identifiers (user ids, row ids, internal fingerprints)', () => {
+    const json = JSON.stringify(buildStrategyPassport(input({ bag: bag({ parentBagId: 'bag-1' }), ancestors: [bag({ id: 'bag-1', creatorId: 'bob' })] })));
+    expect(json).not.toMatch(/"userId"|"versionId"|"creatorId"|"createdBy"/);
+    expect(json).not.toContain('"alice"'); // creator user id
+    expect(json).not.toContain('"bob"');
+    expect(json).not.toContain('"h2"'); // BAG's internal composition fingerprint
+    expect(json).not.toContain('"v2"'); // version row id
   });
 
-  it('a locked fee is reported at the locked value, enforced by the database; immutable and undeployed Bags say so', () => {
-    const locked = Object.fromEntries(
-      buildStrategyPassport(input({ bag: bag({ performanceFeeBpsLocked: 500, performanceFeeLockedAt: '2026-09-10T00:00:00Z' }) })).policy.rules.map((r) => [r.key, r])
-    );
-    expect(locked.performance_fee).toMatchObject({ value: 500, enforcement: 'DATABASE' });
+  it('keeps a stable top-level shape (schema stability)', () => {
+    const p = buildStrategyPassport(input());
+    expect(Object.keys(p).sort()).toEqual(['composition', 'creator', 'currentVersion', 'generatedAt', 'identity', 'lineage', 'onchain', 'performance', 'policy', 'schemaVersion']);
+    expect(Object.keys(p.lineage).sort()).toEqual(['forks', 'versions']);
+    expect(Object.keys(p.lineage.forks).sort()).toEqual(['ancestors', 'childCount', 'children', 'forkRoyaltyBps', 'forkedFromVersion', 'isOriginal', 'rootBagId', 'sourceInfo']);
+  });
 
-    const immutable = buildStrategyPassport(input({ bag: bag({ mutability: 'IMMUTABLE' }) })).policy.rules.find((r) => r.key === 'composition_changes');
-    expect(immutable).toMatchObject({ value: 'NEVER', enforcement: 'DATABASE' });
+  it('uses the canonical StrategyPolicy, derived exactly as validate_bag derives it', () => {
+    const p = buildStrategyPassport(input());
+    expect(p.policy).toEqual(deriveStrategyPolicy(recipe, { mutability: 'MUTABLE', deployed: true, performanceFeeBpsLocked: null }));
+    expect(p.policy!.maxSlippageBps).toMatchObject({ value: 150, enforcement: 'ONCHAIN_ENFORCED', source: 'CREATOR_RECIPE' });
+    expect(p.policy!.compositionChanges).toMatchObject({ value: 'ONCHAIN_VERSION_ONLY', enforcement: 'DATABASE_TRIGGER' });
+    expect(buildStrategyPassport(input({ currentVersion: null })).policy).toBeNull();
+  });
 
+  it('a locked fee and an undeployed Bag are reflected in the policy and on-chain section', () => {
+    const locked = buildStrategyPassport(input({ bag: bag({ performanceFeeBpsLocked: 500, performanceFeeLockedAt: '2026-09-10T00:00:00Z' }) }));
+    expect(locked.policy!.performanceFeeBps).toMatchObject({ value: 500, status: 'LOCKED', enforcement: 'DATABASE_TRIGGER' });
     const draft = buildStrategyPassport(input({ deployment: null }));
     expect(draft.onchain).toBeNull();
-    expect(draft.policy.rules.find((r) => r.key === 'composition_changes')).toMatchObject({ value: 'CREATOR_EDITS' });
+    expect(draft.policy!.compositionChanges.value).toBe('CREATOR_EDITABLE');
   });
 
   it('keeps version lineage (same Bag over time) separate from fork lineage (other Bags)', () => {
@@ -107,7 +119,7 @@ describe('buildStrategyPassport', () => {
       [2, 1, true],
     ]);
     expect(p.lineage.versions.nodes[0].onchain).toBeNull();
-    expect(p.lineage.versions.nodes[1].onchain).toMatchObject({ onchainVersion: 2, compositionHash: HASH });
+    expect(p.lineage.versions.nodes[1].onchain).toMatchObject({ onchainVersion: 2, compositionHash: HASH, sourceInfo: { source: 'ONCHAIN', readFromChainThisRequest: false } });
 
     expect(p.lineage.forks.isOriginal).toBe(false);
     expect(p.lineage.forks.rootBagId).toBe('bag-0');
@@ -127,7 +139,9 @@ describe('buildStrategyPassport', () => {
     const anon = buildStrategyPassport(input({ bag: bag({ parentBagId: 'bag-1' }), ancestors: [privateParent], children: [publicFork, draftFork], childCount: 2 }));
     expect(anon.lineage.forks.children.map((c) => c.name)).toEqual(['Public fork']);
     expect(anon.lineage.forks.childCount).toBe(2);
-    expect(anon.lineage.forks.ancestors[0]).toMatchObject({ visible: false, name: null, creator: null });
+    expect(anon.lineage.forks.ancestors[0]).toEqual({ bagId: 'bag-1', visible: false, name: null, symbol: null, status: null, creator: null, createdAt: null });
+    expect(JSON.stringify(anon)).not.toContain('Secret draft');
+    expect(JSON.stringify(anon)).not.toContain('Hidden parent');
 
     const carol = buildStrategyPassport(input({ bag: bag({ parentBagId: 'bag-1' }), ancestors: [privateParent], children: [publicFork, draftFork], childCount: 2, viewerUserId: 'carol' }));
     expect(carol.lineage.forks.children.map((c) => c.name)).toEqual(['Public fork', 'Secret draft']);

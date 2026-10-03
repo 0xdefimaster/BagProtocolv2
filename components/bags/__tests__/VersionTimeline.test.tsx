@@ -11,14 +11,14 @@ const v2 = [asset('NVDA', 1, 2500), asset('AMD', 2, 2500), asset('BTC', 3, 5000)
 
 const versions = [
   {
-    versionId: 'b', version: 2, createdAt: '2026-09-08T00:00:00Z', reason: 'Reduced single-asset concentration', compositionHash: 'h2',
-    createdBy: { id: 'u', name: 'Alice', address: '0xalice' }, isCurrent: true, assets: v2,
+    version: 2, createdAt: '2026-09-08T00:00:00Z', reason: 'Reduced single-asset concentration',
+    createdBy: { name: 'Alice', address: '0xalice' }, isCurrent: true, assets: v2,
     diff: diffRecipes({ assets: v1, performanceFeeBps: 1000 }, { assets: v2, performanceFeeBps: 1500 }),
     performance: { fromAt: '2026-09-08T00:00:00Z', toAt: '2026-09-20T00:00:00Z', fromNavPerShare: '1.1', toNavPerShare: '1.21', returnPct: 10 },
   },
   {
-    versionId: 'a', version: 1, createdAt: '2026-09-01T00:00:00Z', reason: '', compositionHash: 'h1',
-    createdBy: { id: 'u', name: null, address: '0x1234567890abcdef1234567890abcdef12345678' }, isCurrent: false, assets: v1,
+    version: 1, createdAt: '2026-09-01T00:00:00Z', reason: '',
+    createdBy: { name: null, address: '0x1234567890abcdef1234567890abcdef12345678' }, isCurrent: false, assets: v1,
     diff: diffRecipes(null, { assets: v1 }), performance: null,
   },
 ];

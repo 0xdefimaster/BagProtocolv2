@@ -1,16 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { BagRecord, BagVersionRecord, CanonicalAsset } from '@/types/basket-protocol';
 import type { BagPerformance, CreatorProfile } from '@/types';
-import {
-  Enforcement,
-  PassportCreator,
-  PassportForkNode,
-  PassportPolicyRule,
-  PassportVersionNode,
-  STRATEGY_PASSPORT_SCHEMA_VERSION,
-  StrategyPassport,
-} from '@/types/strategy-passport';
-import { MAX_ACCEPTABLE_PRICE_IMPACT_BPS } from '@/types/purchase-intent';
+import { PassportForkNode, PassportPerson, PassportVersionNode, STRATEGY_PASSPORT_SCHEMA_VERSION, SourceInfo, StrategyPassport } from '@/types/strategy-passport';
 import { assetIdentityKey } from '@/lib/domain/basket-protocol/asset-identity';
 import { FORK_ROYALTY_BPS } from '@/lib/config/rewards';
 import { BAG_CHAINS, BagChain } from '@/lib/config/chains';
@@ -22,16 +13,16 @@ import { getBagNavSafe } from '@/lib/server/bag-nav';
 import { getDisplayPriceProvider } from '@/lib/server/price-provider';
 import { computeBagPerformance, getNavSnapshots } from '@/lib/server/bag-nav-snapshots';
 import { getBagSocialCounts } from '@/lib/server/bag-social-counts';
-import { bagSlippageBps } from '@/lib/server/purchase-execution';
+import { deriveStrategyPolicy } from '@/lib/server/strategy-policy';
 
 // -----------------------------------------------------------------------------
 // Builds the Strategy Passport (types/strategy-passport.ts) from data BAG
 // already stores — no new tables. `buildStrategyPassport` is pure (tested on
 // its own); `loadStrategyPassport` gathers the inputs with the existing repos.
+// The policy section is `deriveStrategyPolicy()`, the same object validate_bag
+// returns.
 // -----------------------------------------------------------------------------
 
-/** Composer's own default whole-transaction price-impact limit (lifi-composer-adapter.ts). */
-const COMPOSER_DEFAULT_MAX_PRICE_IMPACT_BPS = 500;
 /** How far up the fork chain the passport walks (guards against a corrupted parent cycle). */
 const MAX_FORK_DEPTH = 16;
 
@@ -67,108 +58,35 @@ export interface StrategyPassportInput {
   now: Date;
 }
 
-const pct = (bps: number) => `${(bps / 100).toFixed(2).replace(/\.?0+$/, '')}%`;
+const db = (asOf: string | null): SourceInfo => ({ source: 'DATABASE', asOf, verifiableBy: 'NONE', readFromChainThisRequest: false });
+const onchainRecord = (asOf: string | null): SourceInfo => ({ source: 'ONCHAIN', asOf, verifiableBy: 'TX_HASH', readFromChainThisRequest: false });
+const derived = (asOf: string | null): SourceInfo => ({ source: 'BAG_DERIVED', asOf, verifiableBy: 'NONE', readFromChainThisRequest: false });
 
-function creatorOf(userId: string, creators: Map<string, CreatorProfile>): PassportCreator {
+function personOf(userId: string, creators: Map<string, CreatorProfile>): PassportPerson {
   const p = creators.get(userId);
-  return { userId, name: p?.name ?? null, walletAddress: p?.address ?? null, avatarUrl: p?.avatarUrl ?? null };
+  return { name: p?.name ?? null, walletAddress: p?.address ?? null, avatarUrl: p?.avatarUrl ?? null };
+}
+
+function hiddenNode(bagId: string): PassportForkNode {
+  return { bagId, visible: false, name: null, symbol: null, status: null, creator: null, createdAt: null };
 }
 
 function forkNode(bag: BagRecord, viewerUserId: string | null, creators: Map<string, CreatorProfile>): PassportForkNode {
   const visible = bag.status === 'ACTIVE' || (viewerUserId !== null && bag.creatorId === viewerUserId);
-  if (!visible) return { bagId: bag.id, visible: false, name: null, symbol: null, status: null, creator: null, createdAt: null };
-  return { bagId: bag.id, visible: true, name: bag.name, symbol: bag.symbol, status: bag.status, creator: creatorOf(bag.creatorId, creators), createdAt: bag.createdAt };
-}
-
-export function buildPolicyRules(bag: BagRecord, version: BagVersionRecord | null, deployment: BagDeployment | null): PassportPolicyRule[] {
-  const recipe = version?.recipe;
-  const deployed = deployment?.status === 'DEPLOYED';
-  const rules: PassportPolicyRule[] = [];
-  const push = (key: string, label: string, value: PassportPolicyRule['value'], display: string, enforcement: Enforcement, note?: string) =>
-    rules.push({ key, label, value, display, enforcement, ...(note ? { note } : {}) });
-
-  if (bag.mutability === 'IMMUTABLE') {
-    push('composition_changes', 'Composition changes', 'NEVER', 'Never — immutable', 'DATABASE', 'The database rejects any new version of an immutable Bag.');
-  } else if (deployed) {
-    push(
-      'composition_changes',
-      'Composition changes',
-      'ONCHAIN_VERSION_ONLY',
-      'Only through an on-chain version',
-      'DATABASE',
-      "The database refuses off-chain edits of a deployed Bag; each new version's composition hash is recorded on-chain by the creator's own transaction."
-    );
-  } else {
-    push('composition_changes', 'Composition changes', 'CREATOR_EDITS', 'Creator can edit (not deployed yet)', 'DATABASE');
-  }
-
-  if (recipe) {
-    push('max_weight_per_asset', 'Max weight per asset', recipe.maxWeightBps, pct(recipe.maxWeightBps), 'BAG_SERVER', 'Checked when a version is created.');
-    push('min_weight_per_asset', 'Min weight per asset', recipe.minWeightBps, pct(recipe.minWeightBps), 'BAG_SERVER', 'Checked when a version is created.');
-    push('max_assets', 'Max assets', recipe.maxAssets, String(recipe.maxAssets), 'BAG_SERVER', 'Checked when a version is created.');
-    push('min_investment', 'Min investment', recipe.minInvestment, `$${recipe.minInvestment}`, 'BAG_SERVER', 'Checked when a purchase is previewed and created.');
-  }
-
-  const locked = bag.performanceFeeBpsLocked ?? null;
-  const fee = locked ?? recipe?.performanceFeeBps ?? 0;
-  push(
-    'performance_fee',
-    'Performance fee (on realized profit)',
-    fee,
-    pct(fee),
-    locked !== null ? 'DATABASE' : 'BAG_SERVER',
-    locked !== null
-      ? `Locked since ${bag.performanceFeeLockedAt ?? 'the first external investment'}; the database rejects any change.`
-      : 'The creator can change it until the first external investor; it then locks permanently.'
-  );
-
-  if (version) {
-    const slip = bagSlippageBps(version);
-    push(
-      'max_slippage_per_swap',
-      'Max slippage per swap',
-      slip,
-      pct(slip),
-      'ONCHAIN',
-      'Each swap in the purchase transaction carries its minimum output and reverts below it. BAG sets the value from the recipe, clamped to 0.1%–3%.'
-    );
-  }
-
-  push(
-    'max_price_impact',
-    'Max price impact per purchase',
-    COMPOSER_DEFAULT_MAX_PRICE_IMPACT_BPS,
-    `${pct(COMPOSER_DEFAULT_MAX_PRICE_IMPACT_BPS)} (up to ${pct(MAX_ACCEPTABLE_PRICE_IMPACT_BPS)} with buyer consent)`,
-    'PROVIDER',
-    'LI.FI Composer refuses to compile above the limit; BAG never lets a buyer accept more than the cap.'
-  );
-
-  if (recipe) {
-    const unroutable = recipe.unroutablePolicy ?? 'BLOCK';
-    push('unroutable_policy', 'If an asset has no route', unroutable, unroutable, 'BAG_SERVER', 'Applied when a purchase is created.');
-    push(
-      'rebalance',
-      'Rebalance rule',
-      recipe.rebalanceRule.frequency,
-      `${recipe.rebalanceRule.frequency}, drift ${pct(recipe.rebalanceRule.driftThresholdBps)}`,
-      'DECLARED',
-      'No automatic rebalancing runs today.'
-    );
-  }
-  return rules;
+  if (!visible) return hiddenNode(bag.id);
+  return { bagId: bag.id, visible: true, name: bag.name, symbol: bag.symbol, status: bag.status, creator: personOf(bag.creatorId, creators), createdAt: bag.createdAt };
 }
 
 function onchainSection(bag: BagRecord, deployment: BagDeployment | null): StrategyPassport['onchain'] {
   if (!deployment || deployment.status !== 'DEPLOYED') return null;
   const cfg = (BAG_CHAINS as Partial<Record<string, (typeof BAG_CHAINS)[BagChain]>>)[deployment.chain];
-  const contract = deployment.contractAddress ?? bag.contractAddress;
   return {
-    provenance: 'ONCHAIN_RECORDED',
+    sourceInfo: onchainRecord(deployment.updatedAt || null),
     chain: deployment.chain,
     chainId: cfg?.chainId ?? null,
     onChainBagId: deployment.onChainBagId,
     onChainCreator: deployment.onChainCreator,
-    contractAddress: contract,
+    contractAddress: deployment.contractAddress ?? bag.contractAddress,
     factoryAddress: deployment.factoryAddress,
     deploymentTxHash: deployment.txHash,
     deploymentBlock: deployment.blockNumber,
@@ -181,18 +99,17 @@ export function buildStrategyPassport(input: StrategyPassportInput): StrategyPas
   const { bag, currentVersion, creators } = input;
   const ascending = [...input.versions].sort((a, b) => a.version - b.version);
   const currentRow = currentVersion ? ascending.find((v) => v.id === currentVersion.id) : undefined;
+  const latestVersionAt = ascending.length ? ascending[ascending.length - 1].created_at : null;
 
   const versionNodes: PassportVersionNode[] = ascending.map((v) => ({
-    versionId: v.id,
     version: v.version,
     parentVersion: v.version > 1 ? v.version - 1 : null,
     createdAt: v.created_at,
     reason: v.reason,
-    compositionHash: v.composition_hash,
     isCurrent: currentVersion ? v.id === currentVersion.id : false,
     onchain:
       v.onchain_tx_hash && v.onchain_version !== null && v.onchain_composition_hash
-        ? { txHash: v.onchain_tx_hash, onchainVersion: v.onchain_version, compositionHash: v.onchain_composition_hash, metadataUri: v.metadata_uri }
+        ? { txHash: v.onchain_tx_hash, onchainVersion: v.onchain_version, compositionHash: v.onchain_composition_hash, metadataUri: v.metadata_uri, sourceInfo: onchainRecord(v.created_at) }
         : null,
   }));
 
@@ -211,16 +128,16 @@ export function buildStrategyPassport(input: StrategyPassportInput): StrategyPas
     };
   });
 
-  const ancestors: PassportForkNode[] = [
-    ...input.ancestors.map((b) => forkNode(b, input.viewerUserId, creators)),
-    ...input.missingAncestorIds.map((id) => ({ bagId: id, visible: false, name: null, symbol: null, status: null, creator: null, createdAt: null })),
-  ];
+  const deployed = input.deployment?.status === 'DEPLOYED';
+  const policy = currentVersion
+    ? deriveStrategyPolicy(currentVersion.recipe, { mutability: bag.mutability, deployed, performanceFeeBpsLocked: bag.performanceFeeBpsLocked ?? null })
+    : null;
 
   return {
     schemaVersion: STRATEGY_PASSPORT_SCHEMA_VERSION,
     generatedAt: input.now.toISOString(),
     identity: {
-      provenance: 'DATABASE',
+      sourceInfo: db(bag.updatedAt),
       bagId: bag.id,
       slug: bag.slug,
       name: bag.name,
@@ -233,33 +150,30 @@ export function buildStrategyPassport(input: StrategyPassportInput): StrategyPas
       createdAt: bag.createdAt,
     },
     onchain: onchainSection(bag, input.deployment),
-    creator: { provenance: 'DATABASE', ...creatorOf(bag.creatorId, creators) },
+    creator: { sourceInfo: db(null), ...personOf(bag.creatorId, creators) },
     currentVersion: currentVersion
       ? {
-          provenance: 'DATABASE',
-          versionId: currentVersion.id,
+          sourceInfo: db(currentVersion.createdAt),
           version: currentVersion.version,
           createdAt: currentVersion.createdAt,
           reason: currentVersion.reason,
-          compositionHash: currentVersion.compositionHash,
           onchainCompositionHash: currentRow?.onchain_composition_hash ?? null,
         }
       : null,
-    composition: { provenance: 'DATABASE', assets, totalWeightBps: assets.reduce((s, a) => s + a.weightBps, 0) },
+    composition: { sourceInfo: db(currentVersion?.createdAt ?? null), assets, totalWeightBps: assets.reduce((s, a) => s + a.weightBps, 0) },
     performance: {
-      provenance: 'BAG_COMPUTED',
+      sourceInfo: derived(input.nav.asOf),
       tvlUsd: input.nav.tvlUsd,
       navPerShare: input.nav.navPerShare,
-      navAsOf: input.nav.asOf,
       returns: input.returns,
       holders: input.holders,
     },
-    policy: { rules: buildPolicyRules(bag, currentVersion, input.deployment) },
+    policy,
     lineage: {
-      versions: { provenance: 'DATABASE', nodes: versionNodes },
+      versions: { sourceInfo: db(latestVersionAt), nodes: versionNodes },
       forks: {
-        provenance: 'DATABASE',
-        ancestors,
+        sourceInfo: db(null),
+        ancestors: [...input.ancestors.map((b) => forkNode(b, input.viewerUserId, creators)), ...input.missingAncestorIds.map(hiddenNode)],
         rootBagId: bag.rootBagId ?? bag.id,
         isOriginal: bag.parentBagId === null,
         children: input.children.map((b) => forkNode(b, input.viewerUserId, creators)).filter((n) => n.visible),
@@ -267,16 +181,6 @@ export function buildStrategyPassport(input: StrategyPassportInput): StrategyPas
         forkRoyaltyBps: FORK_ROYALTY_BPS,
         forkedFromVersion: null,
       },
-    },
-    provenance: {
-      identity: 'DATABASE',
-      onchain: 'ONCHAIN_RECORDED',
-      creator: 'DATABASE',
-      currentVersion: 'DATABASE',
-      composition: 'DATABASE',
-      performance: 'BAG_COMPUTED',
-      'lineage.versions': 'DATABASE',
-      'lineage.forks': 'DATABASE',
     },
   };
 }

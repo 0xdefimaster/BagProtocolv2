@@ -133,7 +133,7 @@ export function VersionTimeline({ bagId }: { bagId: string }) {
       </p>
       <ol className="space-y-4">
         {entries.map((e) => (
-          <Entry key={e.versionId} entry={e} isFirst={e.version === oldest} />
+          <Entry key={e.version} entry={e} isFirst={e.version === oldest} />
         ))}
       </ol>
     </div>
