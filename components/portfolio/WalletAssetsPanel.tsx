@@ -39,6 +39,7 @@ type Phase =
 const MAX_SWEEP_TOKENS = 12;
 const PROGRESS_LABEL: Record<SweepProgress, string> = {
   approving: 'Approve each token in your wallet…',
+  batching: 'Confirm the approvals and the sale in your wallet (one confirmation)…',
   simulating: 'Checking the transaction…',
   signing: 'Confirm the sale in your wallet…',
   confirming: 'Confirming on-chain…',
@@ -267,7 +268,8 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
                 )}
                 {phase.quote.approvals.length > 0 && (
                   <div style={{ color: 'var(--ink-soft)' }}>
-                    {phase.quote.approvals.length} token approval{phase.quote.approvals.length === 1 ? '' : 's'} first, then one sale transaction.
+                    {phase.quote.approvals.length} token approval{phase.quote.approvals.length === 1 ? '' : 's'} first, then one sale transaction. Wallets
+                    that support batching (e.g. Rabby) ask for a single confirmation.
                   </div>
                 )}
               </div>
