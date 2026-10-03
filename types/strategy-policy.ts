@@ -9,7 +9,10 @@ import type { RebalanceFrequency, UnroutablePolicy } from './basket-protocol';
 // Shared enums for data provenance live here too.
 // -----------------------------------------------------------------------------
 
-export const STRATEGY_POLICY_SCHEMA_VERSION = 1;
+// 2: rules carry `scope`; the price-impact consent ceiling is its own rule
+// (`priceImpactConsentCeilingBps`, SERVER_ENFORCED) instead of a field on the
+// Composer-enforced `maxPriceImpactBps`.
+export const STRATEGY_POLICY_SCHEMA_VERSION = 2;
 
 /**
  * Where a piece of data comes from:
@@ -25,7 +28,8 @@ export type DataSource = 'ONCHAIN' | 'DATABASE' | 'BAG_DERIVED' | 'BAG_ATTESTED'
  * - `ONCHAIN_ENFORCED`: the executed transaction reverts otherwise.
  * - `COMPOSER_ENFORCED`: LI.FI Composer refuses to compile the transaction otherwise.
  * - `DATABASE_TRIGGER`: a Postgres constraint/trigger rejects the write.
- * - `SERVER_ENFORCED`: BAG's server refuses before building anything (not a chain guarantee).
+ * - `SERVER_ENFORCED`: BAG's backend refuses before it writes or builds a transaction. Not on-chain, not
+ *   immutable (a BAG release can change it) and not binding on a direct database write by an operator.
  * - `ATTESTED_ONLY`: BAG states it; nothing blocks on it.
  * - `DECLARED_ONLY`: the creator states it; nothing executes it today.
  */
@@ -40,8 +44,21 @@ export type RuleStatus = 'ACTIVE' | 'LOCKED' | 'NOT_EXECUTED';
 /** Where in BAG's flow the rule is checked. */
 export type EnforcementPoint = 'VERSION_CREATE' | 'PURCHASE_CREATE' | 'PURCHASE_TRANSACTION' | 'COMPOSER_COMPILE' | 'DATABASE_WRITE';
 
+/** Which flows a rule applies to. */
+export type PolicyFlow = 'VERSION' | 'PURCHASE' | 'REDEEM';
+
+/** Execution providers BAG can record. Unknown values from future providers map to `UNKNOWN`. */
+export type ExecutionProviderKind = 'BAG_ROUTER' | 'LIFI_COMPOSER' | 'LIFI_SEQUENTIAL' | 'UNKNOWN';
+
+export interface PolicyScope {
+  flows: PolicyFlow[];
+  /** Null: applies whichever provider executes. Otherwise only these providers apply the rule. */
+  providers: ExecutionProviderKind[] | null;
+}
+
 export interface PolicyRule<T> {
   value: T;
+  scope: PolicyScope;
   source: RuleValueSource;
   enforcement: Enforcement;
   enforcedAt: EnforcementPoint[];
@@ -55,12 +72,17 @@ export interface StrategyPolicy {
   maxSingleAssetWeightBps: PolicyRule<number>;
   minSingleAssetWeightBps: PolicyRule<number>;
   maxAssets: PolicyRule<number>;
-  /** USD; 0 means no minimum. */
-  minInvestmentUsd: PolicyRule<number>;
-  /** Per swap; each swap's minimum output is in the transaction. */
+  /**
+   * 0 means no minimum. Compared against the payment-token amount of a purchase (USDG, counted 1:1 as
+   * USD — no price conversion), at purchase time only; validate_bag checks the value itself, not a deposit.
+   */
+  minInvestmentUsd: PolicyRule<number> & { measuredAs: 'PAYMENT_TOKEN_AMOUNT' };
+  /** Per swap of a purchase; each swap's minimum output is in the transaction. Redeem swaps use the routing provider's own slippage. */
   maxSlippageBps: PolicyRule<number>;
-  /** Whole purchase. A buyer may accept more, up to `consentCeilingBps` (enforced by BAG's server). */
-  maxPriceImpactBps: PolicyRule<number> & { consentCeilingBps: number };
+  /** Whole purchase, LI.FI Composer only: Composer refuses to compile above it. Nothing checks it on-chain. */
+  maxPriceImpactBps: PolicyRule<number>;
+  /** The most a buyer may accept when Composer reports a higher impact; BAG's backend refuses more. */
+  priceImpactConsentCeilingBps: PolicyRule<number>;
   /** On realized profit at redemption. Capped by the database at `maxBps`. */
   performanceFeeBps: PolicyRule<number> & { maxBps: number };
   /** What a purchase does with assets that have no route; skipped assets may total at most `maxUnroutableWeightBps`. */

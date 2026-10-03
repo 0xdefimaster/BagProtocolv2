@@ -9,16 +9,17 @@ import type { StrategyPassport } from '@/types/strategy-passport';
 import type { Enforcement, StrategyPolicy } from '@/types/strategy-policy';
 
 const src = (source: 'ONCHAIN' | 'DATABASE' | 'BAG_DERIVED' | 'BAG_ATTESTED', verifiableBy: 'TX_HASH' | 'NONE' = 'NONE') => ({ source, asOf: '2026-10-01T00:00:00Z', verifiableBy, readFromChainThisRequest: false });
-const rule = <T,>(value: T, enforcement: Enforcement, extra: object = {}) => ({ value, source: 'CREATOR_RECIPE' as const, enforcement, enforcedAt: [], status: 'ACTIVE' as const, ...extra });
+const rule = <T,>(value: T, enforcement: Enforcement, extra: object = {}) => ({ value, scope: { flows: ['PURCHASE' as const], providers: null }, source: 'CREATOR_RECIPE' as const, enforcement, enforcedAt: [], status: 'ACTIVE' as const, ...extra });
 
 const policy: StrategyPolicy = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   maxSingleAssetWeightBps: rule(3000, 'SERVER_ENFORCED'),
   minSingleAssetWeightBps: rule(100, 'SERVER_ENFORCED'),
   maxAssets: rule(10, 'SERVER_ENFORCED'),
-  minInvestmentUsd: rule(0, 'SERVER_ENFORCED'),
+  minInvestmentUsd: { ...rule(0, 'SERVER_ENFORCED'), measuredAs: 'PAYMENT_TOKEN_AMOUNT' },
   maxSlippageBps: rule(100, 'ONCHAIN_ENFORCED'),
-  maxPriceImpactBps: { ...rule(500, 'COMPOSER_ENFORCED'), source: 'LIFI_COMPOSER', consentCeilingBps: 1500 },
+  maxPriceImpactBps: { ...rule(500, 'COMPOSER_ENFORCED'), source: 'LIFI_COMPOSER', scope: { flows: ['PURCHASE'], providers: ['LIFI_COMPOSER'] } },
+  priceImpactConsentCeilingBps: { ...rule(1500, 'SERVER_ENFORCED'), source: 'BAG_PROTOCOL', scope: { flows: ['PURCHASE'], providers: ['LIFI_COMPOSER'] } },
   performanceFeeBps: { ...rule(1000, 'DATABASE_TRIGGER'), maxBps: 3000 },
   noRouteAssetPolicy: { ...rule('BLOCK' as const, 'SERVER_ENFORCED'), maxUnroutableWeightBps: 3000 },
   rebalanceRule: { ...rule({ frequency: 'MONTHLY' as const, driftThresholdBps: 500 }, 'DECLARED_ONLY'), status: 'NOT_EXECUTED' },
@@ -85,6 +86,10 @@ describe('StrategyPassportView', () => {
     expect(within(offchain).getByText('Max single asset')).toBeTruthy();
     expect(within(offchain).getAllByText('BAG validated').length).toBeGreaterThan(0);
     expect(within(offchain).getByText('LI.FI Composer enforced')).toBeTruthy();
+    // Price impact is Composer's limit, scoped to Composer purchases — never shown as an on-chain guarantee.
+    expect(within(offchain).getByText('Max price impact (LI.FI Composer purchases)')).toBeTruthy();
+    expect(within(offchain).getByText('Most a buyer may accept')).toBeTruthy();
+    expect(within(guaranteed).queryByText(/price impact/i)).toBeNull();
     expect(within(offchain).getAllByText('Database enforced').length).toBe(2);
     expect(within(offchain).getByText('Declared only')).toBeTruthy();
     expect(within(offchain).queryByText('On-chain guaranteed')).toBeNull();
