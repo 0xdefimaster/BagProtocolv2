@@ -29,7 +29,7 @@ const intent = (id: string, userId: string, bagId: string, txHash: string | null
   composerTransaction: { to: '', data: '', value: '0', chainId: 4663, userProxy: '' }, bagRouterTransaction: null, providerId: null, executionPlanHash: null, fallback: null,
   status: 'COMPLETED', createdAt: '2026-10-01T00:00:00Z', executedAt: null,
 });
-const call = (id = 'bag-1') => GET({} as never, { params: Promise.resolve({ id }) });
+const call = (id = 'bag-1', query = '') => GET({ nextUrl: new URL(`http://x/api/bags/${id}/executions${query}`) } as never, { params: Promise.resolve({ id }) });
 
 beforeEach(() => {
   [getBagById, requireSession, listPurchase, listRedeem].forEach((m) => m.mockReset());
@@ -50,7 +50,9 @@ describe('GET /api/bags/:id/executions', () => {
     const res = await call();
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toMatchObject({ schemaVersion: 1, bagId: 'bag-1', scope: 'VIEWER_OWN_EXECUTIONS' });
+    expect(body).toMatchObject({ schemaVersion: 2, bagId: 'bag-1', scope: 'VIEWER_OWN_EXECUTIONS', hasMore: false, nextCursor: null });
+    expect(body.executions[0]).toMatchObject({ outcome: 'SUCCEEDED', isFinal: true });
+    expect(body.executions[0]).not.toHaveProperty('status');
     expect(body.executions.map((e: { executionId: string }) => e.executionId)).toEqual(['mine']);
     expect(listPurchase.mock.calls[0].slice(1, 3)).toEqual(['alice', 'bag-1']);
     expect(JSON.stringify(body)).not.toContain('"alice"');
@@ -64,6 +66,23 @@ describe('GET /api/bags/:id/executions', () => {
     listPurchase.mockResolvedValue([]);
     requireSession.mockResolvedValue({ ok: true, session: { userId: 'bob' } });
     expect((await call()).status).toBe(200);
+  });
+
+  it('rejects a bad limit or a tampered cursor with 400 (after authentication, never leaking data)', async () => {
+    expect((await call('bag-1', '?limit=0')).status).toBe(400);
+    expect((await call('bag-1', '?limit=51')).status).toBe(400);
+    expect((await call('bag-1', '?limit=abc')).status).toBe(400);
+    expect((await call('bag-1', '?cursor=%7Bbad')).status).toBe(400);
+    requireSession.mockResolvedValue({ ok: false, response: new Response(null, { status: 401 }) });
+    expect((await call('bag-1', '?cursor=anything')).status).toBe(401);
+  });
+
+  it('passes the page size through and reports hasMore/nextCursor', async () => {
+    listPurchase.mockResolvedValue([intent('00000000-0000-4000-8000-000000000001', 'alice', 'bag-1'), intent('00000000-0000-4000-8000-000000000002', 'alice', 'bag-1')]);
+    const body = await (await call('bag-1', '?limit=1')).json();
+    expect(body.executions).toHaveLength(1);
+    expect(body.hasMore).toBe(true);
+    expect(typeof body.nextCursor).toBe('string');
   });
 
   it('404s an unknown Bag', async () => {

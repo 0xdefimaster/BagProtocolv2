@@ -1,0 +1,536 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bagprotocol.com/schemas/execution-history.v2.json",
+  "title": "BAG Execution History (schemaVersion 2)",
+  "description": "Response of GET /api/bags/:id/executions. See types/execution-receipt.ts and docs/STRATEGY_API_SEMANTICS.md.",
+  "definitions": {
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chain",
+        "chainId",
+        "address",
+        "symbol",
+        "decimals"
+      ],
+      "properties": {
+        "chain": {
+          "enum": [
+            "ethereum",
+            "base",
+            "arbitrum",
+            "solana",
+            "robinhood"
+          ]
+        },
+        "chainId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "address": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "decimals": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "transaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "txHash",
+        "chain",
+        "chainId",
+        "role",
+        "verification",
+        "claim"
+      ],
+      "properties": {
+        "txHash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "chain": {
+          "enum": [
+            "ethereum",
+            "base",
+            "arbitrum",
+            "solana",
+            "robinhood"
+          ]
+        },
+        "chainId": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "role": {
+          "enum": [
+            "APPROVAL",
+            "EXECUTION"
+          ]
+        },
+        "verification": {
+          "enum": [
+            "VERIFIED",
+            "REPORTED_UNVERIFIED"
+          ]
+        },
+        "claim": {
+          "enum": [
+            "THIS_EXECUTION",
+            "OTHER_EXECUTION",
+            "UNCLAIMED"
+          ]
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stepIndex",
+        "action",
+        "outcome",
+        "asset",
+        "inputAmountRaw",
+        "bagMinimumRaw",
+        "providerEnforcedMinimumRaw",
+        "actualRaw",
+        "actualSource",
+        "quotedRaw",
+        "minimumRespected"
+      ],
+      "properties": {
+        "stepIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "action": {
+          "enum": [
+            "SWAP",
+            "KEEP"
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "FILLED",
+            "HELD",
+            "FAILED",
+            "PENDING",
+            "NOT_SUBMITTED",
+            "UNKNOWN"
+          ]
+        },
+        "asset": {
+          "$ref": "#/definitions/asset"
+        },
+        "inputAmountRaw": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "bagMinimumRaw": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]+$"
+        },
+        "providerEnforcedMinimumRaw": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]+$"
+        },
+        "actualRaw": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]+$"
+        },
+        "actualSource": {
+          "enum": [
+            "ONCHAIN_DERIVED",
+            "EXECUTION_PLAN",
+            "PROVIDER_REPORTED",
+            "BAG_RECORDED",
+            "BAG_ATTESTED",
+            null
+          ]
+        },
+        "quotedRaw": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]+$"
+        },
+        "minimumRespected": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executionId",
+        "kind",
+        "outcome",
+        "isFinal",
+        "bagId",
+        "strategyVersion",
+        "versionBinding",
+        "provider",
+        "executionPlanHash",
+        "planHashCheckedOnchain",
+        "wallet",
+        "transactions",
+        "blockNumber",
+        "blockTimestamp",
+        "createdAt",
+        "recordedExecutedAt",
+        "input",
+        "shares",
+        "outputs",
+        "evidence",
+        "policyEvaluation"
+      ],
+      "properties": {
+        "executionId": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "PURCHASE",
+            "REDEEM"
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "SUCCEEDED",
+            "PARTIAL",
+            "FAILED",
+            "PENDING",
+            "UNKNOWN"
+          ]
+        },
+        "isFinal": {
+          "type": "boolean"
+        },
+        "bagId": {
+          "type": "string"
+        },
+        "strategyVersion": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "versionBinding": {
+          "enum": [
+            "MATCHES_VERSION_RECORD",
+            "MISMATCH",
+            "VERSION_NOT_FOUND",
+            "NOT_RECORDED"
+          ]
+        },
+        "provider": {
+          "enum": [
+            "BAG_ROUTER",
+            "LIFI_COMPOSER",
+            "LIFI_SEQUENTIAL",
+            "UNKNOWN"
+          ]
+        },
+        "executionPlanHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "planHashCheckedOnchain": {
+          "type": "boolean"
+        },
+        "wallet": {
+          "type": "string"
+        },
+        "transactions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/transaction"
+          }
+        },
+        "blockNumber": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "blockTimestamp": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "recordedExecutedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "unit",
+            "asset",
+            "amountRaw",
+            "decimals",
+            "source"
+          ],
+          "properties": {
+            "unit": {
+              "enum": [
+                "TOKEN",
+                "BAG_SHARES"
+              ]
+            },
+            "asset": {
+              "oneOf": [
+                {
+                  "$ref": "#/definitions/asset"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "amountRaw": {
+              "type": "string",
+              "pattern": "^[0-9]+$"
+            },
+            "decimals": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "source": {
+              "const": "EXECUTION_PLAN"
+            }
+          }
+        },
+        "shares": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "amountRaw",
+            "decimals",
+            "source"
+          ],
+          "properties": {
+            "amountRaw": {
+              "type": "string",
+              "pattern": "^[0-9]+$"
+            },
+            "decimals": {
+              "type": "integer"
+            },
+            "source": {
+              "const": "BAG_RECORDED"
+            }
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/output"
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "level",
+            "swapSteps",
+            "filledSwaps",
+            "onchainDerived",
+            "providerReported",
+            "unrecorded"
+          ],
+          "properties": {
+            "level": {
+              "enum": [
+                "ONCHAIN",
+                "PROVIDER",
+                "PARTIAL",
+                "NONE"
+              ]
+            },
+            "swapSteps": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "filledSwaps": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "onchainDerived": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "providerReported": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unrecorded": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "policyEvaluation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "policySnapshotAvailable",
+            "evaluatedAgainstVersion",
+            "checks",
+            "noRouteFallback"
+          ],
+          "properties": {
+            "policySnapshotAvailable": {
+              "type": "boolean"
+            },
+            "evaluatedAgainstVersion": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "checks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "check",
+                  "result"
+                ],
+                "properties": {
+                  "check": {
+                    "enum": [
+                      "ACTUAL_AT_LEAST_MINIMUM",
+                      "TX_CLAIMED_BY_THIS_EXECUTION",
+                      "VERSION_BINDING"
+                    ]
+                  },
+                  "result": {
+                    "enum": [
+                      "PASS",
+                      "FAIL",
+                      "UNKNOWN"
+                    ]
+                  }
+                }
+              }
+            },
+            "noRouteFallback": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "policy",
+                    "skippedAssets",
+                    "unroutableWeightBps"
+                  ],
+                  "properties": {
+                    "policy": {
+                      "enum": [
+                        "HOLD_INPUT",
+                        "REFUND"
+                      ]
+                    },
+                    "skippedAssets": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/definitions/asset"
+                      }
+                    },
+                    "unroutableWeightBps": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "bagId",
+    "scope",
+    "executions",
+    "hasMore",
+    "nextCursor"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 2
+    },
+    "bagId": {
+      "type": "string"
+    },
+    "scope": {
+      "const": "VIEWER_OWN_EXECUTIONS"
+    },
+    "executions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/receipt"
+      }
+    },
+    "hasMore": {
+      "type": "boolean"
+    },
+    "nextCursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

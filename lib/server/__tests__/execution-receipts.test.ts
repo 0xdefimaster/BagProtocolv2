@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPurchaseReceipt, buildRedeemReceipt, purchaseProvider, ReceiptContext, sortReceipts } from '../execution-receipts';
+import { buildPurchaseReceipt, buildRedeemReceipt, chainIdFor, publicOutcome, publicStepOutcome, purchaseProvider, ReceiptContext, sortReceipts, toMicros } from '../execution-receipts';
 import { PurchaseIntent, PurchaseIntentStepRecord } from '@/types/purchase-intent';
 import { RedeemIntent } from '@/types/redeem-intent';
 import { CanonicalAsset } from '@/types/basket-protocol';
@@ -51,11 +51,13 @@ describe('buildPurchaseReceipt', () => {
   it('a completed Composer purchase: provider, version, input, verified tx, on-chain-derived actual outputs and their minimums', () => {
     const r = buildPurchaseReceipt(purchase(), ctx());
     expect(r).toMatchObject({ executionId: 'intent-1', kind: 'PURCHASE', bagId: 'bag-1', strategyVersion: 5, versionBinding: 'MATCHES_VERSION_RECORD', provider: 'LIFI_COMPOSER' });
-    expect(r.input).toEqual({ unit: 'TOKEN', asset: { chain: 'robinhood', address: USDG, symbol: 'USDG', decimals: 6 }, amountRaw: '1000000', decimals: 6, source: 'EXECUTION_PLAN' });
+    expect(r.input).toEqual({ unit: 'TOKEN', asset: { chain: 'robinhood', chainId: 4663, address: USDG, symbol: 'USDG', decimals: 6 }, amountRaw: '1000000', decimals: 6, source: 'EXECUTION_PLAN' });
+    expect(r).toMatchObject({ outcome: 'SUCCEEDED', isFinal: true });
+    expect(r.evidence).toEqual({ level: 'ONCHAIN', swapSteps: 2, filledSwaps: 2, onchainDerived: 2, providerReported: 0, unrecorded: 0 });
     expect(r.outputs[0]).toMatchObject({ asset: { symbol: 'NVDA' }, bagMinimumRaw: '990', providerEnforcedMinimumRaw: '985', actualRaw: '1000', actualSource: 'ONCHAIN_DERIVED', quotedRaw: null, minimumRespected: true });
     expect(r.transactions).toEqual([
-      { txHash: APPROVE, chain: 'robinhood', role: 'APPROVAL', verification: 'REPORTED_UNVERIFIED', claim: 'UNCLAIMED' },
-      { txHash: TX, chain: 'robinhood', role: 'EXECUTION', verification: 'VERIFIED', claim: 'THIS_EXECUTION' },
+      { txHash: APPROVE, chain: 'robinhood', chainId: 4663, role: 'APPROVAL', verification: 'REPORTED_UNVERIFIED', claim: 'UNCLAIMED' },
+      { txHash: TX, chain: 'robinhood', chainId: 4663, role: 'EXECUTION', verification: 'VERIFIED', claim: 'THIS_EXECUTION' },
     ]);
     expect(r.blockNumber).toBeNull();
     expect(r.blockTimestamp).toBeNull();
@@ -85,7 +87,9 @@ describe('buildPurchaseReceipt', () => {
 
   it('never shows a quote as the actual output: unfinished steps have actual null and the quote labelled as such', () => {
     const r = buildPurchaseReceipt(purchase({ status: 'FAILED', steps: [step(0, NVDA, { status: 'FAILED', outputAmountRaw: '1000' })] }), ctx());
-    expect(r.outputs[0]).toMatchObject({ actualRaw: null, actualSource: null, quotedRaw: '1000', minimumRespected: null });
+    expect(r.outputs[0]).toMatchObject({ outcome: 'FAILED', actualRaw: null, actualSource: null, quotedRaw: '1000', minimumRespected: null });
+    expect(r).toMatchObject({ outcome: 'FAILED', isFinal: true });
+    expect(r.evidence.level).toBe('NONE');
     expect(r.transactions.find((t) => t.role === 'EXECUTION')).toMatchObject({ verification: 'REPORTED_UNVERIFIED' });
     expect(r.policyEvaluation.checks[0]).toEqual({ check: 'ACTUAL_AT_LEAST_MINIMUM', result: 'UNKNOWN' });
   });
@@ -94,7 +98,9 @@ describe('buildPurchaseReceipt', () => {
     const seq = (minOutputRaw: string | null) =>
       buildPurchaseReceipt(purchase({ composerTransaction: null, steps: [step(0, NVDA, { lifiStep: {}, minOutputRaw, providerEnforcedMinOutputRaw: null })] }), ctx());
     expect(seq('990').outputs[0]).toMatchObject({ actualRaw: '1000', actualSource: 'PROVIDER_REPORTED' });
+    expect(seq('990').evidence.level).toBe('PROVIDER');
     expect(seq(null).outputs[0]).toMatchObject({ actualRaw: null, actualSource: null });
+    expect(seq(null).evidence).toMatchObject({ level: 'PARTIAL', unrecorded: 1 });
   });
 
   it('flags a tx claimed by another execution and a version mismatch', () => {
@@ -120,8 +126,14 @@ describe('buildPurchaseReceipt', () => {
       }),
       ctx()
     );
-    expect(r.policyEvaluation.noRouteFallback).toEqual({ policy: 'HOLD_INPUT', skippedAssets: ['AMD'], unroutableWeightBps: 2000 });
-    expect(r.outputs[1]).toMatchObject({ action: 'KEEP', actualRaw: '200000', actualSource: 'BAG_RECORDED', bagMinimumRaw: null });
+    expect(r.policyEvaluation.noRouteFallback).toEqual({
+      policy: 'HOLD_INPUT',
+      skippedAssets: [{ chain: 'robinhood', chainId: 4663, address: AMD, symbol: 'AMD', decimals: 18 }],
+      unroutableWeightBps: 2000,
+    });
+    expect(r.outputs[1]).toMatchObject({ action: 'KEEP', outcome: 'HELD', actualRaw: '200000', actualSource: 'BAG_RECORDED', bagMinimumRaw: null });
+    // Keep steps never count as evidence.
+    expect(r.evidence).toMatchObject({ swapSteps: 1, filledSwaps: 1, level: 'ONCHAIN' });
   });
 
   it('exposes no internal user id', () => {
@@ -156,5 +168,65 @@ describe('sortReceipts', () => {
     const c = buildPurchaseReceipt(purchase({ id: 'c', createdAt: '2026-10-03T00:00:00Z' }), ctx());
     expect(sortReceipts([a, b, c]).map((r) => r.executionId)).toEqual(['c', 'a', 'b']);
     expect(sortReceipts([c, b, a]).map((r) => r.executionId)).toEqual(['c', 'a', 'b']);
+  });
+});
+
+describe('public status mapping (independent of internal enums)', () => {
+  it('maps every internal intent status; anything unknown is UNKNOWN, never guessed', () => {
+    expect(publicOutcome('COMPLETED')).toBe('SUCCEEDED');
+    expect(publicOutcome('PARTIAL_SUCCESS')).toBe('PARTIAL');
+    expect(publicOutcome('RECONCILIATION_REQUIRED')).toBe('PARTIAL');
+    expect(publicOutcome('FAILED')).toBe('FAILED');
+    expect(publicOutcome('SUBMITTED')).toBe('PENDING');
+    expect(publicOutcome('CONFIRMING')).toBe('PENDING');
+    for (const s of ['DRAFT', 'QUOTED', 'READY', 'AWAITING_SIGNATURE', 'EXPIRED', 'CANCELLED', 'SOMETHING_NEW']) expect(publicOutcome(s)).toBe('UNKNOWN');
+  });
+
+  it('maps step statuses; a swap with no submitted tx is NOT_SUBMITTED; unknown is UNKNOWN', () => {
+    const s = (status: string, txHash: string | null = null, action: 'SWAP' | 'KEEP' = 'SWAP') => publicStepOutcome({ action, status: status as never, txHash });
+    expect(s('COMPLETED', TX)).toBe('FILLED');
+    expect(s('FAILED', TX)).toBe('FAILED');
+    expect(s('SUBMITTED', TX)).toBe('PENDING');
+    expect(s('CONFIRMING', TX)).toBe('PENDING');
+    expect(s('APPROVAL_CONFIRMED')).toBe('NOT_SUBMITTED');
+    expect(s('AWAITING_SIGNATURE')).toBe('NOT_SUBMITTED');
+    expect(s('PENDING')).toBe('NOT_SUBMITTED');
+    expect(s('NOT_NEEDED', null, 'KEEP')).toBe('HELD');
+    expect(s('WHATEVER')).toBe('UNKNOWN');
+  });
+
+  it('a receipt never exposes an internal status string', () => {
+    const json = JSON.stringify(buildPurchaseReceipt(purchase({ status: 'RECONCILIATION_REQUIRED' }), ctx()));
+    expect(json).not.toMatch(/RECONCILIATION_REQUIRED|PARTIAL_SUCCESS|AWAITING_SIGNATURE|"COMPLETED"|"status"|"stepStatus"/);
+    expect(JSON.parse(json)).toMatchObject({ outcome: 'PARTIAL', isFinal: true });
+    expect(buildPurchaseReceipt(purchase({ status: 'PARTIAL_SUCCESS' }), ctx())).toMatchObject({ outcome: 'PARTIAL', isFinal: false });
+    expect(buildPurchaseReceipt(purchase({ status: 'CONFIRMING' }), ctx())).toMatchObject({ outcome: 'PENDING', isFinal: false });
+  });
+});
+
+describe('forward-open and identity fields', () => {
+  it('future fields are typed open (null today, not permanently null)', () => {
+    const r = buildPurchaseReceipt(purchase(), ctx());
+    expect(r.blockNumber).toBeNull();
+    expect(r.blockTimestamp).toBeNull();
+    expect(r.policyEvaluation.policySnapshotAvailable).toBe(false);
+    // Type-level: these assignments compile only because the types are open.
+    const future: Pick<typeof r, 'blockNumber' | 'blockTimestamp'> = { blockNumber: 123, blockTimestamp: '2026-10-01T00:00:00Z' };
+    const snap: (typeof r)['policyEvaluation']['policySnapshotAvailable'] = true;
+    expect(future.blockNumber).toBe(123);
+    expect(snap).toBe(true);
+  });
+
+  it('chainId comes from BAG chain config by slug; non-EVM chains get null', () => {
+    expect(chainIdFor('robinhood')).toBe(4663);
+    expect(chainIdFor('ethereum')).toBe(1);
+    expect(chainIdFor('base')).toBe(8453);
+    expect(chainIdFor('solana')).toBeNull();
+  });
+
+  it('timestamps compare at microsecond precision regardless of fraction length', () => {
+    expect(toMicros('2026-10-01T10:00:00.1+00:00')).toBe(toMicros('2026-10-01T10:00:00.100000+00:00'));
+    expect(toMicros('2026-10-01T10:00:00.000002Z') > toMicros('2026-10-01T10:00:00.000001Z')).toBe(true);
+    expect(toMicros('2026-10-01T10:00:00+00:00')).toBe(toMicros('2026-10-01T10:00:00Z'));
   });
 });

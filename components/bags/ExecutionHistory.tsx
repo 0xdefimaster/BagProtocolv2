@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { formatRawAmount } from '@/lib/format';
-import type { ExecutionHistoryResponse, ExecutionReceipt, ReceiptCheck, ReceiptFieldSource, ReceiptOutput } from '@/types/execution-receipt';
+import type { ExecutionHistoryResponse, ExecutionOutcome, ExecutionReceipt, ReceiptCheck, ReceiptFieldSource, ReceiptOutput } from '@/types/execution-receipt';
 import type { ExecutionProviderKind } from '@/types/strategy-policy';
 
 // -----------------------------------------------------------------------------
@@ -24,6 +24,7 @@ const SOURCE_LABEL: Record<ReceiptFieldSource, string> = {
   EXECUTION_PLAN: 'execution plan',
   BAG_ATTESTED: 'quote',
 };
+const OUTCOME_LABEL: Record<ExecutionOutcome, string> = { SUCCEEDED: 'Succeeded', PARTIAL: 'Partially filled', FAILED: 'Failed', PENDING: 'Pending', UNKNOWN: 'Unknown' };
 const CHECK_LABEL: Record<ReceiptCheck['check'], string> = {
   ACTUAL_AT_LEAST_MINIMUM: 'Received at least the minimum',
   TX_CLAIMED_BY_THIS_EXECUTION: 'Transaction bound to this execution',
@@ -75,7 +76,7 @@ function Receipt({ r }: { r: ExecutionReceipt }) {
         <span className="font-semibold text-white">{r.kind === 'PURCHASE' ? 'Purchase' : 'Redeem'}</span>
         {r.strategyVersion !== null && <span className="text-sm text-white/60">v{r.strategyVersion}</span>}
         <span className="text-sm text-white/60">{PROVIDER_LABEL[r.provider]}</span>
-        <span className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-white/60">{r.status}</span>
+        <span className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-white/60">{OUTCOME_LABEL[r.outcome]}</span>
         <span className="ml-auto text-xs text-white/40">{new Date(r.createdAt).toLocaleString()}</span>
       </div>
       <div className="mt-2 text-sm text-white/70">
@@ -113,38 +114,66 @@ function Receipt({ r }: { r: ExecutionReceipt }) {
 }
 
 export function ExecutionHistory({ bagId }: { bagId: string }) {
-  const [data, setData] = useState<ExecutionHistoryResponse | null>(null);
+  const [executions, setExecutions] = useState<ExecutionReceipt[] | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<{ status: number; message: string } | null>(null);
+
+  const fetchPage = (cursor: string | null) =>
+    fetch(`/api/bags/${encodeURIComponent(bagId)}/executions${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { credentials: 'same-origin' }).then(async (res) => {
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw Object.assign(new Error(body?.error ?? `Request failed (${res.status}).`), { status: res.status });
+      return body as ExecutionHistoryResponse;
+    });
 
   useEffect(() => {
     let cancelled = false;
-    setData(null);
+    setExecutions(null);
+    setNextCursor(null);
     setError(null);
-    fetch(`/api/bags/${encodeURIComponent(bagId)}/executions`, { credentials: 'same-origin' })
-      .then(async (res) => {
-        const body = await res.json().catch(() => null);
-        if (!res.ok) throw Object.assign(new Error(body?.error ?? `Request failed (${res.status}).`), { status: res.status });
-        return body as ExecutionHistoryResponse;
+    fetchPage(null)
+      .then((d) => {
+        if (cancelled) return;
+        setExecutions(d.executions);
+        setNextCursor(d.hasMore ? d.nextCursor : null);
       })
-      .then((d) => !cancelled && setData(d))
       .catch((err: Error & { status?: number }) => !cancelled && setError({ status: err.status ?? 0, message: err.message }));
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchPage only closes over bagId
   }, [bagId]);
 
+  const loadMore = () => {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    fetchPage(nextCursor)
+      .then((d) => {
+        setExecutions((prev) => [...(prev ?? []), ...d.executions]);
+        setNextCursor(d.hasMore ? d.nextCursor : null);
+      })
+      .catch((err: Error & { status?: number }) => setError({ status: err.status ?? 0, message: err.message }))
+      .finally(() => setLoadingMore(false));
+  };
+
   if (error?.status === 401) return <p className="text-sm text-white/50">Connect and sign in with your wallet to see your executions in this Bag.</p>;
-  if (error) return <p className="text-sm text-red-400">Could not load executions: {error.message}</p>;
-  if (!data) return <p className="text-sm text-white/50">Loading executions…</p>;
-  if (data.executions.length === 0) return <p className="text-sm text-white/50">You have no executions in this Bag yet.</p>;
+  if (error && !executions) return <p className="text-sm text-red-400">Could not load executions: {error.message}</p>;
+  if (!executions) return <p className="text-sm text-white/50">Loading executions…</p>;
+  if (executions.length === 0) return <p className="text-sm text-white/50">You have no executions in this Bag yet.</p>;
   return (
     <div>
       <p className="mb-3 text-sm text-white/50">Your purchases and redemptions in this Bag. Only your own executions are shown.</p>
       <ol className="space-y-4">
-        {data.executions.map((r) => (
+        {executions.map((r) => (
           <Receipt key={`${r.kind}:${r.executionId}`} r={r} />
         ))}
       </ol>
+      {error && <p className="mt-3 text-sm text-red-400">Could not load more: {error.message}</p>}
+      {nextCursor && (
+        <button type="button" onClick={loadMore} disabled={loadingMore} className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 hover:bg-white/10">
+          {loadingMore ? 'Loading…' : 'Load more'}
+        </button>
+      )}
     </div>
   );
 }

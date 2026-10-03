@@ -212,13 +212,15 @@ export async function markRedeemReconciliationApplied(admin: SupabaseClient, id:
   if (error) throw new Error(error.message);
 }
 
-/** One user's intents for one Bag in the given statuses, newest first (execution history). Read-only. */
+/** One user's intents for one Bag in the given statuses, newest first then id (execution history). Read-only. */
 export async function listRedeemIntentsForUserBag(
   admin: SupabaseClient,
   userId: string,
   bagId: string,
   statuses: readonly RedeemIntentStatus[],
-  limit: number
+  limit: number,
+  /** Keyset position: only rows strictly after it in (created_at desc, id asc) order. Values must be pre-validated. */
+  after?: { createdAt: string; id: string }
 ): Promise<RedeemIntent[]> {
   const { data, error } = await admin
     .from('redeem_intents')
@@ -226,7 +228,9 @@ export async function listRedeemIntentsForUserBag(
     .eq('user_id', userId)
     .eq('bag_id', bagId)
     .in('status', [...statuses])
+    .or(after ? `created_at.lt."${after.createdAt}",and(created_at.eq."${after.createdAt}",id.gt."${after.id}")` : 'id.not.is.null')
     .order('created_at', { ascending: false })
+    .order('id', { ascending: true })
     .limit(limit);
   if (error) throw new Error(error.message);
   return ((data ?? []) as RedeemIntentRow[]).map(fromRow);

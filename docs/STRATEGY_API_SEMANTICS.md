@@ -39,6 +39,53 @@ Two different questions, which must not be merged into one endpoint:
   `/strategies/:id/executions` for aggregates vs `/users/me/strategies/:id/executions`
   for personal receipts).
 
+## Execution receipts: public contract (schemaVersion 2)
+
+JSON Schema: `docs/schemas/execution-history.v2.schema.json`; TypeScript:
+`types/execution-receipt.ts`. A test keeps the two in sync. The contract is
+independent of BAG's internal state machines: internal statuses are mapped
+and never exposed.
+
+**Outcome (receipt)**
+
+| Internal intent status | `outcome` | `isFinal` |
+|---|---|---|
+| COMPLETED | SUCCEEDED | true |
+| PARTIAL_SUCCESS | PARTIAL | false (advances to reconciliation) |
+| RECONCILIATION_REQUIRED | PARTIAL | true |
+| FAILED | FAILED | true |
+| SUBMITTED, CONFIRMING | PENDING | false |
+| anything else / unknown | UNKNOWN | per terminal set |
+
+Draft/quote/expired/cancelled intents are not executions and are never
+returned. PARTIAL only happens when swaps run as separate transactions; a
+single Composer or BAG Router transaction is all-or-nothing.
+
+**Outcome (step)**: FILLED (swap verified), HELD (keep step: no swap, stayed
+in the input token), FAILED, PENDING (tx submitted, not verified),
+NOT_SUBMITTED (no tx ever submitted), UNKNOWN.
+
+**Evidence summary** (`evidence.level`, over FILLED swaps only; keep steps
+and quotes never count): ONCHAIN (every actual output ONCHAIN_DERIVED),
+PROVIDER (every filled swap has an actual output, at least one only
+PROVIDER_REPORTED), PARTIAL (a filled swap has no recorded actual output),
+NONE (nothing filled). It summarizes; each output's `actualSource` stays
+authoritative.
+
+**Pagination**: newest first (`createdAt` desc, then `executionId` asc, at
+microsecond precision). `?limit=` 1–50 (default 50); `hasMore` and an opaque
+`nextCursor` (pass back as `?cursor=`). The same cursor always returns the
+same page. A cursor is bound to its Bag, only moves the position within the
+caller's own executions, and is validated before it reaches any query.
+
+**Identity**: assets (including skipped no-route assets) are identified by
+`chain` + `address`; `symbol` is display only. `chainId` (EIP-155) comes from
+BAG's chain config, never from the request; null for non-EVM chains.
+
+**Forward-open fields**: `blockNumber`, `blockTimestamp` and
+`policySnapshotAvailable` are typed for real values (`number | null`,
+`string | null`, `boolean`) even though they are null/false today.
+
 ## Execution receipts: known limitations
 
 These are deliberate and documented, not bugs. Receipts never paper over them.
