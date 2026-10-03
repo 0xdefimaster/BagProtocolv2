@@ -1,0 +1,128 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bagprotocol.com/schemas/bag.v1.json",
+  "title": "bag.json v1",
+  "description": "Canonical definition of one BAG strategy version. Only `definition` is hashed: definitionHash = keccak256(utf8(\"bag.json/v1\\n\" + JCS(definition))). null means 'not set by the creator in this version'. See docs/BAG_JSON_V1_DESIGN.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["bagJson", "definition", "definitionHash", "ref", "network", "metadata", "commitments", "forkedFrom"],
+  "properties": {
+    "bagJson": { "const": 1 },
+    "definition": { "$ref": "#/definitions/definition" },
+    "definitionHash": { "$ref": "#/definitions/bytes32" },
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategyId", "version", "parentVersion", "createdAt"],
+      "properties": {
+        "strategyId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+        "version": { "type": "integer", "minimum": 1 },
+        "parentVersion": { "type": ["integer", "null"], "minimum": 1 },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chainId"],
+      "properties": { "chainId": { "type": ["integer", "null"], "description": "EIP-155, from BAG chain config." } }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "symbol", "description"],
+      "properties": { "name": { "type": "string" }, "symbol": { "type": "string" }, "description": { "type": "string" } }
+    },
+    "commitments": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["onchainCompositionHash", "onchainTxHash", "compositionCommittedOnchain"],
+      "properties": {
+        "onchainCompositionHash": { "oneOf": [{ "$ref": "#/definitions/bytes32" }, { "type": "null" }] },
+        "onchainTxHash": { "oneOf": [{ "$ref": "#/definitions/bytes32" }, { "type": "null" }] },
+        "compositionCommittedOnchain": { "type": ["boolean", "null"] }
+      }
+    },
+    "forkedFrom": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["strategyId", "version"],
+          "properties": { "strategyId": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }, "version": { "type": "null" } }
+        },
+        { "type": "null" }
+      ]
+    }
+  },
+  "definitions": {
+    "bytes32": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+    "chain": { "enum": ["ethereum", "base", "arbitrum", "solana", "robinhood"] },
+    "bpsOrNull": { "type": ["integer", "null"] },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chain", "address", "symbol", "decimals", "weightBps"],
+      "properties": {
+        "chain": { "$ref": "#/definitions/chain" },
+        "address": { "type": "string", "description": "Lowercase for EVM chains. Identity is chain + address; symbol is display only." },
+        "symbol": { "type": "string" },
+        "decimals": { "type": "integer" },
+        "weightBps": { "type": "integer" }
+      }
+    },
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "chain", "mutability", "assets", "rules"],
+      "properties": {
+        "kind": { "enum": ["STATIC_BASKET", null] },
+        "chain": { "$ref": "#/definitions/chain" },
+        "mutability": { "enum": ["MUTABLE", "IMMUTABLE", null] },
+        "assets": { "type": "array", "items": { "$ref": "#/definitions/asset" }, "description": "Sorted by chain, then address (UTF-16 code units)." },
+        "rules": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["weightBounds", "maxAssets", "minInvestment", "swapSlippageBps", "rebalance", "performanceFeeBps", "noRouteAssetPolicy"],
+          "properties": {
+            "weightBounds": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["minBps", "maxBps"],
+              "properties": { "minBps": { "$ref": "#/definitions/bpsOrNull" }, "maxBps": { "$ref": "#/definitions/bpsOrNull" } }
+            },
+            "maxAssets": { "type": ["integer", "null"] },
+            "minInvestment": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["amount", "measuredAs"],
+                  "properties": { "amount": { "type": "string", "pattern": "^\\d+(\\.\\d+)?$" }, "measuredAs": { "const": "PAYMENT_TOKEN_AMOUNT" } }
+                },
+                { "type": "null" }
+              ]
+            },
+            "swapSlippageBps": { "$ref": "#/definitions/bpsOrNull" },
+            "rebalance": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["frequency", "driftThresholdBps"],
+                  "properties": {
+                    "frequency": { "enum": ["MANUAL", "DAILY", "WEEKLY", "MONTHLY", "THRESHOLD_ONLY", null] },
+                    "driftThresholdBps": { "$ref": "#/definitions/bpsOrNull" }
+                  }
+                },
+                { "type": "null" }
+              ]
+            },
+            "performanceFeeBps": { "$ref": "#/definitions/bpsOrNull" },
+            "noRouteAssetPolicy": { "enum": ["BLOCK", "HOLD_INPUT", "REFUND", null] }
+          }
+        }
+      }
+    }
+  }
+}

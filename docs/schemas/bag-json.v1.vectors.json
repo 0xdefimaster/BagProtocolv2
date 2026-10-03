@@ -1,0 +1,145 @@
+{
+  "description": "bag.json v1 definitionHash test vectors. preimage = \"bag.json/v1\\n\" + RFC 8785 JCS(canonical definition); definitionHash = keccak256(utf8(preimage)). `input` is deliberately not canonical (asset order, address case); canonicalization must turn it into `canonical`.",
+  "vectors": [
+    {
+      "name": "full-unnormalized-input",
+      "input": {
+        "kind": "STATIC_BASKET",
+        "chain": "robinhood",
+        "mutability": "MUTABLE",
+        "assets": [
+          {
+            "chain": "robinhood",
+            "address": "0xB0000000000000000000000000000000000000Bb",
+            "symbol": "TSLA",
+            "decimals": 18,
+            "weightBps": 6000
+          },
+          {
+            "chain": "robinhood",
+            "address": "0xa0000000000000000000000000000000000000aA",
+            "symbol": "AAPL",
+            "decimals": 18,
+            "weightBps": 4000
+          }
+        ],
+        "rules": {
+          "weightBounds": {
+            "minBps": 500,
+            "maxBps": 7000
+          },
+          "maxAssets": 10,
+          "minInvestment": {
+            "amount": "10",
+            "measuredAs": "PAYMENT_TOKEN_AMOUNT"
+          },
+          "swapSlippageBps": 100,
+          "rebalance": {
+            "frequency": "THRESHOLD_ONLY",
+            "driftThresholdBps": 500
+          },
+          "performanceFeeBps": 1000,
+          "noRouteAssetPolicy": "HOLD_INPUT"
+        }
+      },
+      "canonical": {
+        "kind": "STATIC_BASKET",
+        "chain": "robinhood",
+        "mutability": "MUTABLE",
+        "assets": [
+          {
+            "chain": "robinhood",
+            "address": "0xa0000000000000000000000000000000000000aa",
+            "symbol": "AAPL",
+            "decimals": 18,
+            "weightBps": 4000
+          },
+          {
+            "chain": "robinhood",
+            "address": "0xb0000000000000000000000000000000000000bb",
+            "symbol": "TSLA",
+            "decimals": 18,
+            "weightBps": 6000
+          }
+        ],
+        "rules": {
+          "weightBounds": {
+            "minBps": 500,
+            "maxBps": 7000
+          },
+          "maxAssets": 10,
+          "minInvestment": {
+            "amount": "10",
+            "measuredAs": "PAYMENT_TOKEN_AMOUNT"
+          },
+          "swapSlippageBps": 100,
+          "rebalance": {
+            "frequency": "THRESHOLD_ONLY",
+            "driftThresholdBps": 500
+          },
+          "performanceFeeBps": 1000,
+          "noRouteAssetPolicy": "HOLD_INPUT"
+        }
+      },
+      "preimage": "bag.json/v1\n{\"assets\":[{\"address\":\"0xa0000000000000000000000000000000000000aa\",\"chain\":\"robinhood\",\"decimals\":18,\"symbol\":\"AAPL\",\"weightBps\":4000},{\"address\":\"0xb0000000000000000000000000000000000000bb\",\"chain\":\"robinhood\",\"decimals\":18,\"symbol\":\"TSLA\",\"weightBps\":6000}],\"chain\":\"robinhood\",\"kind\":\"STATIC_BASKET\",\"mutability\":\"MUTABLE\",\"rules\":{\"maxAssets\":10,\"minInvestment\":{\"amount\":\"10\",\"measuredAs\":\"PAYMENT_TOKEN_AMOUNT\"},\"noRouteAssetPolicy\":\"HOLD_INPUT\",\"performanceFeeBps\":1000,\"rebalance\":{\"driftThresholdBps\":500,\"frequency\":\"THRESHOLD_ONLY\"},\"swapSlippageBps\":100,\"weightBounds\":{\"maxBps\":7000,\"minBps\":500}}}",
+      "definitionHash": "0x2aada97a4a95f9f95b7ad83ee5bc3cb302d708dd0d78e19cd8f184c666ee0995"
+    },
+    {
+      "name": "legacy-all-unset",
+      "input": {
+        "kind": null,
+        "chain": "robinhood",
+        "mutability": null,
+        "assets": [
+          {
+            "chain": "robinhood",
+            "address": "0x1111111111111111111111111111111111111111",
+            "symbol": "USDG",
+            "decimals": 6,
+            "weightBps": 10000
+          }
+        ],
+        "rules": {
+          "weightBounds": {
+            "minBps": null,
+            "maxBps": null
+          },
+          "maxAssets": null,
+          "minInvestment": null,
+          "swapSlippageBps": null,
+          "rebalance": null,
+          "performanceFeeBps": null,
+          "noRouteAssetPolicy": null
+        }
+      },
+      "canonical": {
+        "kind": null,
+        "chain": "robinhood",
+        "mutability": null,
+        "assets": [
+          {
+            "chain": "robinhood",
+            "address": "0x1111111111111111111111111111111111111111",
+            "symbol": "USDG",
+            "decimals": 6,
+            "weightBps": 10000
+          }
+        ],
+        "rules": {
+          "weightBounds": {
+            "minBps": null,
+            "maxBps": null
+          },
+          "maxAssets": null,
+          "minInvestment": null,
+          "swapSlippageBps": null,
+          "rebalance": null,
+          "performanceFeeBps": null,
+          "noRouteAssetPolicy": null
+        }
+      },
+      "preimage": "bag.json/v1\n{\"assets\":[{\"address\":\"0x1111111111111111111111111111111111111111\",\"chain\":\"robinhood\",\"decimals\":6,\"symbol\":\"USDG\",\"weightBps\":10000}],\"chain\":\"robinhood\",\"kind\":null,\"mutability\":null,\"rules\":{\"maxAssets\":null,\"minInvestment\":null,\"noRouteAssetPolicy\":null,\"performanceFeeBps\":null,\"rebalance\":null,\"swapSlippageBps\":null,\"weightBounds\":{\"maxBps\":null,\"minBps\":null}}}",
+      "definitionHash": "0x00c693fe6964e5feff4db887886c2905ea18789f00565e8859188768b40d715c"
+    }
+  ]
+}

@@ -1,0 +1,135 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bagprotocol.com/schemas/strategy.v1.json",
+  "title": "Unified Strategy API v1",
+  "description": "Responses of GET /api/strategies/:id (strategy), GET /api/strategies/:id/versions (versions) and POST /api/strategies/validate (validation). `definition` is bag.json v1 (bag.v1.json). Sections taken from the Strategy Passport v1 (creator, onchain, performance, forks) and StrategyPolicy v2 keep those contracts and are typed as objects here.",
+  "definitions": {
+    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "sourceInfo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "asOf", "verifiableBy", "readFromChainThisRequest"],
+      "properties": {
+        "source": { "enum": ["ONCHAIN", "DATABASE", "BAG_DERIVED", "BAG_ATTESTED"] },
+        "asOf": { "type": ["string", "null"] },
+        "verifiableBy": { "enum": ["TX_HASH", "NONE"] },
+        "readFromChainThisRequest": { "type": "boolean" }
+      }
+    },
+    "commitments": { "$ref": "bag.v1.json#/properties/commitments" },
+    "strategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "generatedAt", "strategyId", "definition", "state", "policy", "lineage", "links"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "generatedAt": { "type": "string" },
+        "strategyId": { "$ref": "#/definitions/uuid" },
+        "definition": { "oneOf": [{ "$ref": "bag.v1.json" }, { "type": "null" }] },
+        "state": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "slug", "display", "creator", "onchain", "performance", "routes", "performanceFee"],
+          "properties": {
+            "status": { "enum": ["DRAFT", "ACTIVE", "ARCHIVED"] },
+            "slug": { "type": "string" },
+            "display": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["sourceInfo", "name", "symbol", "description"],
+              "properties": { "sourceInfo": { "$ref": "#/definitions/sourceInfo" }, "name": { "type": "string" }, "symbol": { "type": "string" }, "description": { "type": "string" } }
+            },
+            "creator": { "type": "object" },
+            "onchain": { "type": ["object", "null"] },
+            "performance": { "type": "object" },
+            "routes": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["sourceInfo", "assets"],
+              "properties": {
+                "sourceInfo": { "$ref": "#/definitions/sourceInfo" },
+                "assets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["chain", "address", "routeStatus", "routeCheckedAt"],
+                    "properties": {
+                      "chain": { "type": "string" },
+                      "address": { "type": "string" },
+                      "routeStatus": { "enum": ["ROUTABLE", "NO_ROUTE", null] },
+                      "routeCheckedAt": { "type": ["string", "null"] }
+                    }
+                  }
+                }
+              }
+            },
+            "performanceFee": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["declaredBps", "effectiveBps", "locked"],
+              "properties": { "declaredBps": { "type": ["integer", "null"] }, "effectiveBps": { "type": ["integer", "null"] }, "locked": { "type": "boolean" } }
+            }
+          }
+        },
+        "policy": { "type": ["object", "null"] },
+        "lineage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["currentVersion", "versionCount", "forks"],
+          "properties": { "currentVersion": { "type": ["integer", "null"] }, "versionCount": { "type": "integer", "minimum": 0 }, "forks": { "type": "object" } }
+        },
+        "links": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["self", "versions", "currentDefinition", "myExecutions", "passport"],
+          "properties": {
+            "self": { "type": "string" },
+            "versions": { "type": "string" },
+            "currentDefinition": { "type": ["string", "null"] },
+            "myExecutions": { "type": "string" },
+            "passport": { "type": "string" }
+          }
+        }
+      }
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "strategyId", "currentVersion", "versions"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "strategyId": { "$ref": "#/definitions/uuid" },
+        "currentVersion": { "type": ["integer", "null"] },
+        "versions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["version", "parentVersion", "createdAt", "reason", "isCurrent", "definitionHash", "commitments"],
+            "properties": {
+              "version": { "type": "integer", "minimum": 1 },
+              "parentVersion": { "type": ["integer", "null"] },
+              "createdAt": { "type": "string" },
+              "reason": { "type": "string" },
+              "isCurrent": { "type": "boolean" },
+              "definitionHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+              "commitments": { "$ref": "#/definitions/commitments" }
+            }
+          }
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "definitionHash", "definition", "validation"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "definitionHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+        "definition": { "$ref": "bag.v1.json#/definitions/definition" },
+        "validation": { "type": "object", "required": ["schemaVersion", "valid", "errors", "warnings", "info", "checks", "policy"] }
+      }
+    }
+  }
+}

@@ -4,12 +4,46 @@ How BAG describes a strategy to people and agents: what each endpoint answers,
 where every value comes from, and what is deliberately not claimed. Applies to
 the HTTP API today and to the future MCP tools built on it.
 
+**Unified Strategy API** (canonical for agents and MCP; schemas in
+`docs/schemas/bag.v1.schema.json` and `docs/schemas/strategy.v1.schema.json`):
+
 | Question | Endpoint | Future MCP tool |
 |---|---|---|
-| What is this strategy? | `GET /api/bags/:id/passport` | `get_strategy` |
-| What changed? | `GET /api/bags/:id/versions` | `get_strategy_history` |
-| What is allowed? | `POST /api/bags/validate` | `validate_bag` |
-| What happened (to me)? | `GET /api/bags/:id/executions` | `get_execution_history` (personal) |
+| What is this strategy? | `GET /api/strategies/:id` | `get_strategy` |
+| What changed? | `GET /api/strategies/:id/versions` | `get_strategy_history` |
+| What exactly did version N commit to? | `GET /api/strategies/:id/versions/:v` (bag.json) | `get_strategy_definition` |
+| What is allowed? | `POST /api/strategies/validate` (bag.json definition) | `validate_bag` |
+| What happened (to me)? | `GET /api/users/me/strategies/:id/executions` | `get_my_executions` |
+
+The `/api/bags/*` routes (Passport, Version Timeline, validate, executions)
+stay as they are for the app; the Strategy API composes the same builders.
+
+## bag.json v1: definition vs state
+
+bag.json is the canonical **definition** of one strategy version: only what the
+creator committed to in that version (assets, weights, rules, mutability).
+Design and rationale: `docs/BAG_JSON_V1_DESIGN.md`.
+
+- **Not in bag.json:** state (NAV, TVL, holders, route checks), BAG's
+  enforcement claims (the policy view) and execution data (receipts).
+- **`null` = not set by the creator.** Defaults are never written into
+  bag.json, so a stored version's document and hash never change when a BAG
+  default changes. The policy view shows which default applies today.
+- **`definitionHash`** = `keccak256(utf8("bag.json/v1\n" + JCS(definition)))`
+  (RFC 8785; EVM addresses lowercase; assets sorted by chain, then address,
+  by code unit). Covers the definition only: identity (`ref`), display
+  `metadata`, `network` and `commitments` are not hashed. Test vectors:
+  `docs/schemas/bag-json.v1.vectors.json`.
+- **Content vs strategy identity:** two Bags with the same definition share a
+  `definitionHash`; their strategy identity (`strategyId` + `version`) differs.
+- **`metadata`** holds display values as recorded with the version; the
+  current (freely editable) ones are in the Strategy object's `state.display`.
+- **Performance fee:** bag.json keeps the declared fee; once it locks at Bag
+  level, `state.performanceFee.effectiveBps` is the one that applies.
+- **`commitments.compositionCommittedOnchain`:** BAG re-derived the on-chain
+  composition hash from the stored recipe and compared it with the recorded
+  one. A BAG check, not a chain read. The on-chain `compositionHash` uses its
+  own (older) canonical form and is not recomputable from bag.json alone.
 
 ## Validation vs quoting: three separate capabilities
 
