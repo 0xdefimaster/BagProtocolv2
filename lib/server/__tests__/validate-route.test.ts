@@ -26,7 +26,7 @@ describe('POST /api/bags/validate', () => {
     const res = await post({ assets: [{ address: A, weightBps: 10000 }], policy: { maxSingleAssetWeightBps: 10000 } });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toMatchObject({ schemaVersion: 1, valid: true, policy: { schemaVersion: 1 } });
+    expect(body).toMatchObject({ schemaVersion: 2, valid: true, policy: { schemaVersion: 2 } });
     expect(Array.isArray(body.checks)).toBe(true);
   });
 

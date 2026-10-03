@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { ArrowDown, Copy, GitBranch, GitCommitVertical } from 'lucide-react';
 import type { PassportForkNode, SourceInfo, StrategyPassport } from '@/types/strategy-passport';
-import type { DataSource, Enforcement, PolicyRule, RuleValueSource, StrategyPolicy, StrategyPolicyKey } from '@/types/strategy-policy';
+import type { DataSource, Enforcement, ExecutionProviderKind, PolicyRule, RuleValueSource, StrategyPolicy, StrategyPolicyKey } from '@/types/strategy-policy';
 
 // -----------------------------------------------------------------------------
 // Bag page → Passport: the canonical Strategy Passport (GET /api/bags/:id/passport)
@@ -51,6 +51,7 @@ const ENFORCEMENT_CLASS: Record<Enforcement, string> = {
   ATTESTED_ONLY: 'border-orange-500/30 bg-orange-500/10 text-orange-300',
   DECLARED_ONLY: 'border-white/15 bg-white/5 text-white/50',
 };
+const PROVIDER_LABEL: Record<ExecutionProviderKind, string> = { BAG_ROUTER: 'BAG Router', LIFI_COMPOSER: 'LI.FI Composer', LIFI_SEQUENTIAL: 'LI.FI (sequential)', UNKNOWN: 'unknown provider' };
 const VALUE_SOURCE_LABEL: Record<RuleValueSource, string> = { CREATOR_RECIPE: 'set by creator', BAG_PROTOCOL: 'BAG protocol', LIFI_COMPOSER: 'LI.FI default' };
 
 const pct = (bps: number) => `${(bps / 100).toFixed(2).replace(/\.?0+$/, '')}%`;
@@ -62,9 +63,10 @@ const RULES: { key: StrategyPolicyKey; label: string; format: (policy: StrategyP
   { key: 'maxSingleAssetWeightBps', label: 'Max single asset', format: (p) => pct(p.maxSingleAssetWeightBps.value) },
   { key: 'minSingleAssetWeightBps', label: 'Min single asset', format: (p) => pct(p.minSingleAssetWeightBps.value) },
   { key: 'maxAssets', label: 'Max assets', format: (p) => String(p.maxAssets.value) },
-  { key: 'minInvestmentUsd', label: 'Min investment', format: (p) => (p.minInvestmentUsd.value > 0 ? `$${p.minInvestmentUsd.value}` : 'None') },
+  { key: 'minInvestmentUsd', label: 'Min investment (payment token, USDG)', format: (p) => (p.minInvestmentUsd.value > 0 ? `$${p.minInvestmentUsd.value}` : 'None') },
   { key: 'maxSlippageBps', label: 'Max slippage per swap', format: (p) => `${p.maxSlippageBps.value} bps` },
-  { key: 'maxPriceImpactBps', label: 'Max price impact', format: (p) => `${pct(p.maxPriceImpactBps.value)} (buyer may accept up to ${pct(p.maxPriceImpactBps.consentCeilingBps)})` },
+  { key: 'maxPriceImpactBps', label: 'Max price impact (LI.FI Composer purchases)', format: (p) => pct(p.maxPriceImpactBps.value) },
+  { key: 'priceImpactConsentCeilingBps', label: 'Most a buyer may accept', format: (p) => pct(p.priceImpactConsentCeilingBps.value) },
   { key: 'performanceFeeBps', label: 'Performance fee', format: (p) => `${pct(p.performanceFeeBps.value)} of realized profit (max ${pct(p.performanceFeeBps.maxBps)})` },
   { key: 'noRouteAssetPolicy', label: 'If an asset has no route', format: (p) => `${p.noRouteAssetPolicy.value} (skip at most ${pct(p.noRouteAssetPolicy.maxUnroutableWeightBps)})` },
   { key: 'compositionChanges', label: 'Composition changes', format: (p) => p.compositionChanges.value.replace(/_/g, ' ').toLowerCase() },
@@ -143,6 +145,8 @@ function PolicyRow({ label, display, rule }: { label: string; display: string; r
       </div>
       <p className="mt-0.5 text-xs text-white/40">
         {ENFORCEMENT_HINT[rule.enforcement]} Value: {VALUE_SOURCE_LABEL[rule.source]}
+        {rule.scope.flows.length > 0 ? ` · applies to ${rule.scope.flows.join(', ').toLowerCase()}` : ''}
+        {rule.scope.providers ? ` via ${rule.scope.providers.map((x) => PROVIDER_LABEL[x]).join(', ')}` : ''}
         {rule.status === 'LOCKED' ? ' · locked' : rule.status === 'NOT_EXECUTED' ? ' · not executed' : ''}.
       </p>
     </li>

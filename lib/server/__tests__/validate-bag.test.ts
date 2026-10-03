@@ -21,9 +21,8 @@ const check = (r: ReturnType<typeof validateBag>, rule: string) => r.checks.find
 describe('validateBag', () => {
   it('a valid composition passes every rule and returns the policy it was checked against', () => {
     const r = validateBag(req([[1, 3000], [2, 3000], [3, 2000], [4, 2000]], { policy: { maxSingleAssetWeightBps: 3000 } }), registry);
-    expect(r).toMatchObject({ schemaVersion: 1, valid: true, errors: [], warnings: [], info: [] });
-    expect(r.checks.filter((c) => c.result === 'FAIL')).toEqual([]);
-    expect(check(r, 'minInvestmentUsd').result).toBe('SKIPPED');
+    expect(r).toMatchObject({ schemaVersion: 2, valid: true, errors: [], warnings: [], info: [] });
+    expect(r.checks.every((c) => c.result === 'PASS')).toBe(true);
     expect(r.policy.maxSingleAssetWeightBps.value).toBe(3000);
   });
 
@@ -59,25 +58,21 @@ describe('validateBag', () => {
     expect(r.errors.find((e) => e.code === 'TOO_MANY_ASSETS')).toMatchObject({ rule: 'maxAssets', requested: 3, allowed: 2 });
   });
 
-  it('min investment is checked like a purchase when a size is given', () => {
-    const base = req([[1, 5000], [2, 5000]], { policy: { minInvestmentUsd: 50 } });
-    expect(validateBag({ ...base, investmentUsd: 20 }, registry).errors.find((e) => e.code === 'MIN_INVESTMENT_NOT_MET')).toMatchObject({ requested: 20, allowed: 50 });
-    expect(validateBag({ ...base, investmentUsd: 50 }, registry).valid).toBe(true);
+  it('is market-independent: route status, prices and deposit size never change the result', () => {
+    const noRoute = registry.map((a) => ({ ...a, routeStatus: 'NO_ROUTE' as const }));
+    const unchecked = registry.map((a) => ({ ...a, routeStatus: undefined }));
+    const input = req([[1, 5000], [2, 5000]], { policy: { minInvestmentUsd: 50 } });
+    const base = validateBag(input, registry);
+    expect(validateBag(input, noRoute)).toEqual(base);
+    expect(validateBag(input, unchecked)).toEqual(base);
+    expect(base.valid).toBe(true);
+    expect(base.scope).toEqual({ dependsOn: ['REQUEST', 'ASSET_REGISTRY'], excludes: ['ROUTE_AVAILABILITY', 'LIVE_QUOTE', 'PRICE', 'PRICE_IMPACT', 'DEPOSIT_SIZE'] });
+    expect(base.checks.map((c) => c.rule)).not.toContain('routes');
   });
 
-  it('no-route assets are warnings (BAG-attested background check), never blocking on their own', () => {
-    const noRoute = registry.map((a) => (a.symbol === 'BTC' ? { ...a, routeStatus: 'NO_ROUTE' as const } : a));
-    const blocked = validateBag(req([[1, 4000], [2, 3000], [4, 3000]]), noRoute);
-    expect(blocked.valid).toBe(true);
-    expect(blocked.warnings.find((w) => w.code === 'ASSET_NO_ROUTE')).toMatchObject({ rule: 'routes', severity: 'warning', asset: { symbol: 'BTC' } });
-    expect(blocked.warnings[0].message).toMatch(/BLOCK/);
-    expect(check(blocked, 'routes')).toMatchObject({ result: 'WARN', enforcement: 'ATTESTED_ONLY' });
-
-    const heavy = validateBag(req([[1, 6000], [4, 4000]], { policy: { noRouteAssetPolicy: 'HOLD_INPUT' } }), noRoute);
-    expect(heavy.warnings.find((w) => w.code === 'UNROUTABLE_WEIGHT_TOO_HIGH')).toMatchObject({ requested: 4000, allowed: 3000 });
-
-    const unchecked = validateBag(req([[1, 5000], [2, 5000]]), registry.map((a) => (a.symbol === 'AMD' ? { ...a, routeStatus: undefined } : a)));
-    expect(unchecked.info.map((i) => i.code)).toEqual(['ROUTE_UNCHECKED']);
+  it('min investment: only the value itself is validated (a negative minimum is an error)', () => {
+    expect(validateBag(req([[1, 5000], [2, 5000]], { policy: { minInvestmentUsd: -1 } }), registry).errors.map((e) => e.code)).toEqual(['INVALID_MIN_INVESTMENT']);
+    expect(validateBag(req([[1, 5000], [2, 5000]], { policy: { minInvestmentUsd: 25 } }), registry).valid).toBe(true);
   });
 
   it('separates blocking errors, warnings and info, and a single-asset Bag is only a warning', () => {
@@ -118,5 +113,10 @@ describe('parseValidateBagRequest', () => {
     expect(() => parseValidateBagRequest({ assets: [], chain: 'mars' })).toThrow(/Unsupported chain/);
     expect(() => parseValidateBagRequest({ assets: [], policy: { maxAssets: '3' } })).toThrow(/policy.maxAssets must be a number/);
     expect(parseValidateBagRequest({ assets: [{ address: addr(1), weightBps: 10000 }] }).assets).toHaveLength(1);
+  });
+
+  it('refuses purchase-time inputs instead of silently ignoring them', () => {
+    expect(() => parseValidateBagRequest({ assets: [], investmentUsd: 100 })).toThrow(/purchase-time input/);
+    expect(() => parseValidateBagRequest({ assets: [], amount: '100' })).toThrow(/purchase-time input/);
   });
 });

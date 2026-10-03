@@ -21,15 +21,27 @@ import { deriveStrategyPolicy } from '@/lib/server/strategy-policy';
 
 // -----------------------------------------------------------------------------
 // validate_bag: checks a proposed composition + policy against the SAME rules
-// BAG applies when a Bag is created or bought — it runs the existing domain
-// validators (validateBasketRecipe's parts, registry verification,
-// applyUnroutablePolicy's weight cap, purchase-preview's minimum) — and returns
+// BAG applies when a Bag version is created — the existing domain validators
+// (validateBasketRecipe's parts) plus asset-registry verification — and returns
 // deterministic, machine-readable findings: what failed or passed, why, and who
-// would enforce it. Nothing is written. Backs POST /api/bags/validate and,
-// later, the MCP validate_bag tool.
+// would enforce it. Nothing is written.
+//
+// Deliberately NOT here: anything that depends on the market or on a specific
+// deposit — route availability, live quotes, prices, price impact, deposit size
+// vs minInvestmentUsd. Those are purchase-time checks and belong to a separate
+// capability (validate_purchase / quote_bag). The result depends only on the
+// request and the asset registry, so the same input gives the same answer.
+// Backs POST /api/bags/validate and, later, the MCP validate_bag tool.
 // -----------------------------------------------------------------------------
 
-export const VALIDATE_BAG_SCHEMA_VERSION = 1;
+// 2: route-status and deposit-size checks removed (purchase-time, market-dependent); `scope` added.
+export const VALIDATE_BAG_SCHEMA_VERSION = 2;
+
+/** What a validate_bag result depends on, and what it never checks. */
+export const VALIDATE_BAG_SCOPE = {
+  dependsOn: ['REQUEST', 'ASSET_REGISTRY'],
+  excludes: ['ROUTE_AVAILABILITY', 'LIVE_QUOTE', 'PRICE', 'PRICE_IMPACT', 'DEPOSIT_SIZE'],
+} as const;
 export const MAX_VALIDATE_ASSETS = 100;
 
 export interface ValidateBagRequest {
@@ -49,15 +61,13 @@ export interface ValidateBagRequest {
     driftThresholdBps?: number;
   };
   mutability?: BagMutability;
-  /** Optional deposit size to check against minInvestmentUsd. */
-  investmentUsd?: number;
 }
 
 export type FindingSeverity = 'error' | 'warning' | 'info';
-export type CheckResult = 'PASS' | 'FAIL' | 'WARN' | 'SKIPPED';
+export type CheckResult = 'PASS' | 'FAIL' | 'WARN';
 
 /** The rule a finding belongs to: a policy key, or a structural rule. */
-export type FindingRule = StrategyPolicyKey | 'composition' | 'weightsSum' | 'uniqueAssets' | 'registry' | 'routes';
+export type FindingRule = StrategyPolicyKey | 'composition' | 'weightsSum' | 'uniqueAssets' | 'registry';
 
 export interface ValidationFinding {
   code: string;
@@ -81,6 +91,7 @@ export interface ValidationCheck {
 
 export interface ValidateBagResult {
   schemaVersion: typeof VALIDATE_BAG_SCHEMA_VERSION;
+  scope: typeof VALIDATE_BAG_SCOPE;
   valid: boolean;
   errors: ValidationFinding[];
   warnings: ValidationFinding[];
@@ -106,7 +117,6 @@ const RULE_ORDER: FindingRule[] = [
   'performanceFeeBps',
   'noRouteAssetPolicy',
   'rebalanceRule',
-  'routes',
 ];
 
 const isInt = (v: unknown, min: number, max: number): v is number => typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
@@ -132,7 +142,11 @@ export function parseValidateBagRequest(body: unknown): ValidateBagRequest {
       throw new ValidateBagInputError(`policy.${k} must be a number.`);
     }
   }
-  if (b.investmentUsd !== undefined && typeof b.investmentUsd !== 'number') throw new ValidateBagInputError('investmentUsd must be a number.');
+  // Deposit size, routes and quotes are purchase-time questions (a future validate_purchase / quote_bag), not
+  // properties of a composition: refuse them explicitly rather than silently ignoring them.
+  for (const key of ['investmentUsd', 'amount', 'inputAsset']) {
+    if (key in b) throw new ValidateBagInputError(`${key} is a purchase-time input; validate_bag checks the composition and policy only.`);
+  }
   if (b.mutability !== undefined && b.mutability !== 'MUTABLE' && b.mutability !== 'IMMUTABLE') throw new ValidateBagInputError('mutability must be MUTABLE or IMMUTABLE.');
   return b as ValidateBagRequest;
 }
@@ -278,56 +292,6 @@ export function validateBag(req: ValidateBagRequest, registry: CanonicalAsset[])
     }
   });
 
-  // 3. Routes: the registry's background check (BAG-attested, may be stale; purchases re-quote live).
-  const policyForRoutes = recipe.unroutablePolicy ?? 'BLOCK';
-  let noRouteWeight = 0;
-  resolved.forEach((r, i) => {
-    if (!r.reg) return;
-    if (r.reg.routeStatus === 'NO_ROUTE') {
-      noRouteWeight += Number.isFinite(r.recipeAsset.weightBps) ? r.recipeAsset.weightBps : 0;
-      findings.push({
-        code: 'ASSET_NO_ROUTE',
-        severity: 'warning',
-        rule: 'routes',
-        field: `assets[${i}].address`,
-        message:
-          policyForRoutes === 'BLOCK'
-            ? `${r.recipeAsset.symbol} had no swap route at the last check; under BLOCK a purchase fails until a route exists.`
-            : `${r.recipeAsset.symbol} had no swap route at the last check; under ${policyForRoutes} a purchase skips it.`,
-        asset: assetOf(i),
-      });
-    } else if (!r.reg.routeStatus) {
-      findings.push({ code: 'ROUTE_UNCHECKED', severity: 'info', rule: 'routes', field: `assets[${i}].address`, message: `${r.recipeAsset.symbol} has not been route-checked yet; purchases quote live.`, asset: assetOf(i) });
-    }
-  });
-  if (policyForRoutes !== 'BLOCK' && noRouteWeight > 0) {
-    const cap = deriveStrategyPolicy(recipe, { mutability: recipe.mutability, deployed: false, performanceFeeBpsLocked: null }).noRouteAssetPolicy.maxUnroutableWeightBps;
-    if (noRouteWeight > cap) {
-      findings.push({
-        code: 'UNROUTABLE_WEIGHT_TOO_HIGH',
-        severity: 'warning',
-        rule: 'noRouteAssetPolicy',
-        field: 'policy.noRouteAssetPolicy',
-        message: `Assets without a route total ${noRouteWeight} bps, above the ${cap} bps a purchase may skip; purchases would be refused.`,
-        requested: noRouteWeight,
-        allowed: cap,
-      });
-    }
-  }
-
-  // 4. Minimum investment (same comparison as purchase-preview.ts), when a size is given.
-  if (req.investmentUsd !== undefined && recipe.minInvestment > 0 && req.investmentUsd < recipe.minInvestment) {
-    findings.push({
-      code: 'MIN_INVESTMENT_NOT_MET',
-      severity: 'error',
-      rule: 'minInvestmentUsd',
-      field: 'investmentUsd',
-      message: `The minimum investment is $${recipe.minInvestment}.`,
-      requested: req.investmentUsd,
-      allowed: recipe.minInvestment,
-    });
-  }
-
   const policy = deriveStrategyPolicy(recipe, { mutability: recipe.mutability, deployed: false, performanceFeeBpsLocked: null });
 
   findings.sort(
@@ -339,17 +303,17 @@ export function validateBag(req: ValidateBagRequest, registry: CanonicalAsset[])
   );
 
   const enforcementOf = (rule: FindingRule): Enforcement | null =>
-    rule in policy && rule !== 'composition' ? (policy as unknown as Record<string, { enforcement: Enforcement }>)[rule].enforcement : rule === 'routes' ? 'ATTESTED_ONLY' : null;
+    rule in policy && rule !== 'composition' ? (policy as unknown as Record<string, { enforcement: Enforcement }>)[rule].enforcement : null;
   const checks: ValidationCheck[] = RULE_ORDER.map((rule) => {
     const mine = findings.filter((f) => f.rule === rule);
-    const skipped = rule === 'minInvestmentUsd' && req.investmentUsd === undefined && !mine.length;
-    const result: CheckResult = mine.some((f) => f.severity === 'error') ? 'FAIL' : mine.some((f) => f.severity === 'warning') ? 'WARN' : skipped ? 'SKIPPED' : 'PASS';
+    const result: CheckResult = mine.some((f) => f.severity === 'error') ? 'FAIL' : mine.some((f) => f.severity === 'warning') ? 'WARN' : 'PASS';
     return { rule, result, enforcement: enforcementOf(rule), findings: mine.length };
   });
 
   const errors = findings.filter((f) => f.severity === 'error');
   return {
     schemaVersion: VALIDATE_BAG_SCHEMA_VERSION,
+    scope: VALIDATE_BAG_SCOPE,
     valid: errors.length === 0,
     errors,
     warnings: findings.filter((f) => f.severity === 'warning'),
