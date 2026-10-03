@@ -241,3 +241,26 @@ describe('POST /api/bags — undeployed draft cap', () => {
     expect(res.status).toBe(201);
   });
 });
+
+describe('POST /api/bags — fork lineage is never client input', () => {
+  // root_bag_id decides who is paid the fork royalty; forks are created only by POST /api/bags/:id/fork.
+  it.each([
+    { parentBagId: 'bag_victim' },
+    { rootBagId: 'bag_attacker_root' },
+    { parentBagId: 'bag_a', rootBagId: 'bag_z' },
+    { parentBagId: null, rootBagId: null },
+  ])('refuses a body carrying lineage (%o) before writing anything', async (lineage) => {
+    const res = await POST(postRequest({ name: 'Forged', chain: 'robinhood', composition: [{ symbol: 'NVDA', weight: 100 }], ...lineage }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain('/fork');
+    expect(createBagMock).not.toHaveBeenCalled();
+  });
+
+  it('a normal create passes no lineage to the repository', async () => {
+    const res = await POST(postRequest({ name: 'NVDA Bag', chain: 'robinhood', composition: [{ symbol: 'NVDA', weight: 100 }] }));
+    expect(res.status).toBe(201);
+    const input = createBagMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(input).not.toHaveProperty('parentBagId');
+    expect(input).not.toHaveProperty('rootBagId');
+  });
+});

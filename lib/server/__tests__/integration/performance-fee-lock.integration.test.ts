@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createBag, createBagVersion, getBagById } from '@/lib/server/bag-repo';
+import { createBag, createBagVersion, createForkBag, getBagById } from '@/lib/server/bag-repo';
 import { TestDatabase, createTestDatabase, validRecipeInput } from './pg-harness';
 import { feeLock, feeSettlements, newWallet, position, purchase, redeem } from './economics-harness';
 
@@ -214,15 +214,11 @@ describe('fork behavior (explicit)', () => {
     expect((await feeLock(db, parent.bag.id)).performance_fee_bps_locked).toBe(1000);
 
     const forker = await newWallet(db);
-    const fork = await createBag(db.client, {
-      slug: `fork-${Date.now()}`,
-      creatorId: forker.userId,
-      mutability: 'MUTABLE',
-      recipe: validRecipeInput({ performanceFeeBps: 0 }),
-      reason: 'fork',
-      parentBagId: parent.bag.id,
-      rootBagId: parent.bag.id,
-    });
+    const fork = await createForkBag(
+      db.client,
+      { slug: `fork-${Date.now()}`, creatorId: forker.userId, mutability: 'MUTABLE', recipe: validRecipeInput({ performanceFeeBps: 0 }), reason: 'fork' },
+      parent.bag
+    );
     if (!fork.ok) throw new Error('fork');
     expect(await feeLock(db, fork.bag.id)).toEqual({ performance_fee_locked_at: null, performance_fee_bps_locked: null });
     // The forker can set their own fee until THEIR first external investor…

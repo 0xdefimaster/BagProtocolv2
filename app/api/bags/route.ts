@@ -148,6 +148,11 @@ export async function POST(req: NextRequest) {
   if (!body || typeof body.name !== 'string' || !body.name.trim() || !Array.isArray(body.composition)) {
     return NextResponse.json({ error: 'name and composition are required.' }, { status: 400 });
   }
+  // Lineage is never accepted here: it decides who is paid the fork royalty. Refuse it explicitly rather than
+  // silently ignoring it, so a client cannot believe it created a fork. Forks: POST /api/bags/:id/fork.
+  if ('parentBagId' in body || 'rootBagId' in body) {
+    return NextResponse.json({ error: 'parentBagId/rootBagId cannot be set here. To fork a Bag, use POST /api/bags/:id/fork.' }, { status: 400 });
+  }
   const textIssue = validateBagText({ name: body.name, description: body.description, thesis: body.thesis });
   if (textIssue) return NextResponse.json({ error: textIssue }, { status: 400 });
 

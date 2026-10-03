@@ -70,8 +70,8 @@ export interface CreateBagApiRequest {
   rebalanceFrequency?: string;
   slippageBps?: number;
   mutability?: 'IMMUTABLE' | 'MUTABLE';
-  parentBagId?: string;
-  rootBagId?: string;
+  // No parentBagId/rootBagId: lineage is never client input (it decides the fork royalty recipient).
+  // A fork is created only by POST /api/bags/:id/fork, which derives lineage server-side.
   reason?: string;
   /** Basis points of realized profit paid to this bag's creator on redemption — see types/basket-protocol.ts's Phase 22 doc block. Omitted/0 = no fee. */
   performanceFeeBps?: number;
@@ -157,8 +157,6 @@ export function mapCreateBagRequestToRecipeInput(
     // with no contract behind it at all.
     status: 'DRAFT',
     reason: body.reason ?? 'Initial creation',
-    parentBagId: body.parentBagId,
-    rootBagId: body.rootBagId,
     recipe: {
       name: body.name,
       symbol,
