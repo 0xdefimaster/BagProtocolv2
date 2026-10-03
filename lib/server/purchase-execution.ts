@@ -211,7 +211,7 @@ function buildAllFailedSteps(
  * protocol default for a recipe that predates the setting, and is capped at
  * 3% whatever the stored value, so a bad recipe can't widen execution floors.
  */
-function bagSlippageBps(version: BagVersionRecord): number {
+export function bagSlippageBps(version: Pick<BagVersionRecord, 'recipe'>): number {
   const chosen = version.recipe.rebalanceRule?.maxSlippageBps;
   if (typeof chosen !== 'number' || !Number.isFinite(chosen) || chosen <= 0) return DEFAULT_COMPOSER_SLIPPAGE_BPS;
   return Math.min(300, Math.max(10, Math.round(chosen)));

@@ -28,6 +28,7 @@ import { FollowButton, useIsSelf } from '@/components/creator/FollowButton';
 import { Reputation } from '@/components/creator/Reputation';
 import { CreatorAvatar } from '@/components/creator/CreatorAvatar';
 import { VersionTimeline } from '@/components/bags/VersionTimeline';
+import { StrategyPassportView } from '@/components/bags/StrategyPassportView';
 import { MyBagPosition } from '@/components/bags/MyBagPosition';
 import { DeployBagPanel } from '@/components/bags/DeployBagPanel';
 import { StockQuote } from '@/components/bags/StockQuote';
@@ -160,7 +161,7 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
 
 
 
-  const tabs = ['Overview', 'Thesis', 'Rules', 'Performance', 'History', 'JSON'];
+  const tabs = ['Overview', 'Passport', 'Thesis', 'Rules', 'Performance', 'History', 'JSON'];
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(JSON.stringify(bag, null, 2));
@@ -513,6 +514,8 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
           )}
 
           {activeTab === 'performance' && <PerformanceTimeline bag={bag} />}
+
+          {activeTab === 'passport' && <StrategyPassportView bagId={bag.id} />}
 
           {activeTab === 'history' && <VersionTimeline bagId={bag.id} />}
 
