@@ -1,0 +1,95 @@
+import { BagVersionRecord, RecipeAsset } from '@/types/basket-protocol';
+import type { CreatorProfile, NavSnapshotPoint } from '@/types';
+import { diffRecipes, StrategyDiff } from '@/lib/domain/basket-protocol/strategy-diff';
+
+// -----------------------------------------------------------------------------
+// Version Timeline: every version of a Bag, newest first, each with who made
+// it, why (`bag_versions.reason`), its composition, the Strategy Diff from the
+// version before, and how NAV per share moved while it was the live version —
+// measured only from recorded NAV snapshots (bag_nav_snapshots), so a version
+// that predates the snapshot history shows no figure rather than an estimate.
+// -----------------------------------------------------------------------------
+
+export interface VersionPerformance {
+  fromAt: string;
+  toAt: string;
+  fromNavPerShare: string;
+  toNavPerShare: string;
+  /** Percent change of NAV per share over [fromAt, toAt]. */
+  returnPct: number;
+}
+
+export interface VersionTimelineEntry {
+  versionId: string;
+  version: number;
+  createdAt: string;
+  reason: string;
+  compositionHash: string;
+  createdBy: { id: string; name: string | null; address: string | null };
+  isCurrent: boolean;
+  assets: RecipeAsset[];
+  /** Against the previous version; the first version lists every asset as ADDED. */
+  diff: StrategyDiff;
+  /** Null when no recorded snapshot covers this version's live period. */
+  performance: VersionPerformance | null;
+}
+
+/** First snapshot at or after `iso`, if any. Snapshots must be oldest-first. */
+function firstAtOrAfter(snapshots: NavSnapshotPoint[], iso: string): NavSnapshotPoint | undefined {
+  const t = Date.parse(iso);
+  return snapshots.find((s) => Date.parse(s.capturedAt) >= t);
+}
+
+/** Last snapshot strictly before `iso`, if any. */
+function lastBefore(snapshots: NavSnapshotPoint[], iso: string): NavSnapshotPoint | undefined {
+  const t = Date.parse(iso);
+  let found: NavSnapshotPoint | undefined;
+  for (const s of snapshots) {
+    if (Date.parse(s.capturedAt) < t) found = s;
+    else break;
+  }
+  return found;
+}
+
+export function versionPerformance(snapshots: NavSnapshotPoint[], liveFrom: string, liveUntil: string | null): VersionPerformance | null {
+  const start = firstAtOrAfter(snapshots, liveFrom);
+  if (!start) return null;
+  const end = liveUntil === null ? snapshots[snapshots.length - 1] : lastBefore(snapshots, liveUntil);
+  if (!end || Date.parse(end.capturedAt) <= Date.parse(start.capturedAt)) return null;
+  const from = Number(start.navPerShare);
+  const to = Number(end.navPerShare);
+  if (!(from > 0) || !Number.isFinite(to)) return null;
+  return { fromAt: start.capturedAt, toAt: end.capturedAt, fromNavPerShare: start.navPerShare, toNavPerShare: end.navPerShare, returnPct: (to / from - 1) * 100 };
+}
+
+/**
+ * Builds the timeline. `versions` may come in any order; `snapshots` must be
+ * oldest-first (as getNavSnapshots returns them).
+ */
+export function buildVersionTimeline(
+  versions: BagVersionRecord[],
+  currentVersionId: string | null,
+  snapshots: NavSnapshotPoint[],
+  creators: Map<string, CreatorProfile>
+): VersionTimelineEntry[] {
+  const ascending = [...versions].sort((a, b) => a.version - b.version);
+  const entries = ascending.map((v, i): VersionTimelineEntry => {
+    const previous = i > 0 ? ascending[i - 1] : null;
+    const next = i < ascending.length - 1 ? ascending[i + 1] : null;
+    const creator = creators.get(v.createdBy);
+    const isCurrent = currentVersionId ? v.id === currentVersionId : next === null;
+    return {
+      versionId: v.id,
+      version: v.version,
+      createdAt: v.createdAt,
+      reason: v.reason,
+      compositionHash: v.compositionHash,
+      createdBy: { id: v.createdBy, name: creator?.name ?? null, address: creator?.address ?? null },
+      isCurrent,
+      assets: v.recipe.assets,
+      diff: diffRecipes(previous?.recipe ?? null, v.recipe),
+      performance: versionPerformance(snapshots, v.createdAt, next?.createdAt ?? null),
+    };
+  });
+  return entries.reverse();
+}

@@ -27,7 +27,7 @@ import { DiversificationScore } from '@/components/bags/DiversificationScore';
 import { FollowButton, useIsSelf } from '@/components/creator/FollowButton';
 import { Reputation } from '@/components/creator/Reputation';
 import { CreatorAvatar } from '@/components/creator/CreatorAvatar';
-import { ActivityFeed } from '@/components/activity/ActivityFeed';
+import { VersionTimeline } from '@/components/bags/VersionTimeline';
 import { MyBagPosition } from '@/components/bags/MyBagPosition';
 import { DeployBagPanel } from '@/components/bags/DeployBagPanel';
 import { StockQuote } from '@/components/bags/StockQuote';
@@ -98,7 +98,7 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
   const { id } = use(params);
   const { userBags } = useUserBags();
   const { following, toggleFollow } = usePortfolio();
-  const { activity: allActivity, addActivity } = useActivity();
+  const { addActivity } = useActivity();
   const api = useBag(id);
   const localBag =
     userBags.find((b) => b.id === id) ?? mockUserBags.find((b) => b.id === id) ?? mockBags.find((b) => b.id === id);
@@ -113,7 +113,6 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
   const { fork, isForking, forkError } = useForkBag();
   const isFollowing = bag ? following.includes(bag.id) : false;
   const isOwnBag = useIsSelf(bag?.creator.address);
-  const bagActivity = bag ? allActivity.filter((item) => item.action.includes(bag.name)) : [];
   const isRobinhood = bag?.chains.includes('robinhood') ?? false;
   const stockQuotes = useStockQuotes(bag ? bag.composition.map((c) => c.symbol) : [], isRobinhood && activeTab === 'overview');
 
@@ -161,7 +160,7 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
 
 
 
-  const tabs = ['Overview', 'Thesis', 'Rules', 'Performance', 'Activity', 'JSON'];
+  const tabs = ['Overview', 'Thesis', 'Rules', 'Performance', 'History', 'JSON'];
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(JSON.stringify(bag, null, 2));
@@ -515,14 +514,7 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
 
           {activeTab === 'performance' && <PerformanceTimeline bag={bag} />}
 
-          {activeTab === 'activity' && (
-            <div className="rounded-xl border border-white/10 bg-white/5 p-6">
-              <ActivityFeed
-                items={bagActivity}
-                emptyMessage="No activity yet for this bag — invest, fork, or follow it to see it here."
-              />
-            </div>
-          )}
+          {activeTab === 'history' && <VersionTimeline bagId={bag.id} />}
 
           {activeTab === 'json' && (
             <div className="space-y-4">
