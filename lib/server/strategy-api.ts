@@ -16,6 +16,7 @@ import { computeOnChainCompositionHash } from '@/lib/domain/basket-protocol/onch
 import { assetIdentityKey } from '@/lib/domain/basket-protocol/asset-identity';
 import { BAG_CHAINS, BagChain } from '@/lib/config/chains';
 import { loadStrategyPassport } from '@/lib/server/strategy-passport';
+import { getBagById, listBags } from '@/lib/server/bag-repo';
 import { ValidateBagInputError, ValidateBagRequest, ValidationFinding, parseValidateBagRequest, validateBag } from '@/lib/server/validate-bag';
 
 // -----------------------------------------------------------------------------
@@ -309,4 +310,44 @@ export function validateDefinition(def: BagDefinition, registry: CanonicalAsset[
     definition,
     validation: { ...result, valid: errors.length === 0, errors, warnings: result.warnings.map(remapField), info: result.info.map(remapField), checks },
   };
+}
+
+// ----------------------------- public (anonymous) access -----------------------
+
+/**
+ * A strategy as an anonymous reader may see it: ACTIVE Bags only. Malformed ids, missing Bags and non-public
+ * Bags are all null, so a caller cannot tell them apart. Used by the MCP server, which never reads a session.
+ */
+export async function loadPublicStrategy(admin: SupabaseClient, id: string): Promise<BagRecord | null> {
+  if (!isStrategyId(id)) return null;
+  const bag = await getBagById(admin, id.toLowerCase());
+  return bag && bag.status === 'ACTIVE' ? bag : null;
+}
+
+export interface StrategyListItem {
+  strategyId: string;
+  name: string;
+  symbol: string;
+  chain: ChainId;
+  currentVersion: number | null;
+  createdAt: string;
+  links: { self: string; versions: string };
+}
+
+export const MAX_STRATEGY_LIST = 50;
+
+/** Newest public (ACTIVE) strategies. Display fields only; the Strategy object has the rest. */
+export async function listPublicStrategies(admin: SupabaseClient, limit: number): Promise<StrategyListItem[]> {
+  const bags = await listBags(admin, { status: 'ACTIVE', limit: Math.min(Math.max(Math.trunc(limit), 1), MAX_STRATEGY_LIST) });
+  return bags
+    .filter((b) => b.status === 'ACTIVE')
+    .map((b) => ({
+      strategyId: b.id,
+      name: b.name,
+      symbol: b.symbol,
+      chain: b.chain,
+      currentVersion: b.currentVersionId ? b.currentVersion : null,
+      createdAt: b.createdAt,
+      links: { self: `/api/strategies/${b.id}`, versions: `/api/strategies/${b.id}/versions` },
+    }));
 }

@@ -2,18 +2,19 @@
 
 How BAG describes a strategy to people and agents: what each endpoint answers,
 where every value comes from, and what is deliberately not claimed. Applies to
-the HTTP API today and to the future MCP tools built on it.
+the HTTP API and to the MCP server built on it (`docs/MCP.md`).
 
 **Unified Strategy API** (canonical for agents and MCP; schemas in
 `docs/schemas/bag.v1.schema.json` and `docs/schemas/strategy.v1.schema.json`):
 
-| Question | Endpoint | Future MCP tool |
+| Question | Endpoint | MCP tool (`docs/MCP.md`) |
 |---|---|---|
+| Which strategies exist? | (Explore: `GET /api/bags`) | `list_strategies` |
 | What is this strategy? | `GET /api/strategies/:id` | `get_strategy` |
 | What changed? | `GET /api/strategies/:id/versions` | `get_strategy_history` |
 | What exactly did version N commit to? | `GET /api/strategies/:id/versions/:v` (bag.json) | `get_strategy_definition` |
 | What is allowed? | `POST /api/strategies/validate` (bag.json definition) | `validate_bag` |
-| What happened (to me)? | `GET /api/users/me/strategies/:id/executions` | `get_my_executions` |
+| What happened (to me)? | `GET /api/users/me/strategies/:id/executions` | not exposed yet (needs agent auth) |
 
 The `/api/bags/*` routes (Passport, Version Timeline, validate, executions)
 stay as they are for the app; the Strategy API composes the same builders.
