@@ -1,0 +1,43 @@
+-- 0029_add_provider_id_and_bag_router_transaction.sql
+--
+-- Adds `provider_id` (nullable text) and `bag_router_transaction` (nullable
+-- jsonb) to `purchase_intents`.
+--
+-- Why (Bag Router execution hardening, checkpoint 1/3): `compiler.ts`'s
+-- `CompiledExecution.mode` is `SINGLE_TX` for BOTH the `lifi-composer` and
+-- `bag-router` providers — `lib/execution/purchase-intent-bridge.ts`
+-- previously used `mode === 'SINGLE_TX'` as its ONLY discriminator between
+-- "this is a Composer transaction" and everything else, which silently
+-- mapped a BAG Router result into `composer_transaction` too. That bug
+-- meant a BAG-Router-executed purchase would (a) be sent to the wallet via
+-- the Composer execution path client-side, with no ERC-20 allowance check
+-- the router's own `transferFrom` actually requires, and (b) have its
+-- steps' `output_decimals`/`min_output_raw` forced to `null` the same way
+-- Composer's genuinely-non-enforced simulation figure is, even though the
+-- BAG Router provider always returns a REAL, on-chain-enforced minimum for
+-- every leg. A `null` `output_decimals` step is silently EXCLUDED from
+-- `apply_purchase_execution`'s/`apply_partial_purchase_execution`'s holdings
+-- credit (see purchase-execution.ts) — so a successfully-executed BAG
+-- Router purchase would leave the depositor's bag never credited with the
+-- assets it actually received.
+--
+-- `provider_id` is the explicit, persisted discriminant `compiledExecutionToPurchaseIntentSteps()`
+-- now branches on (`CompiledExecution.providerId`, never `mode`) — carried
+-- through to the persisted intent so nothing downstream has to re-derive
+-- which provider actually compiled this execution. `bag_router_transaction`
+-- is `bag-router`'s own, separate counterpart to `composer_transaction`:
+-- shaped similarly ({to, data, value, chainId}) but never interchangeable
+-- with it, and carries the two extra fields (`inputToken`/`inputAmountRaw`)
+-- the client needs to check/request an ERC-20 approval before sending the
+-- router transaction, plus `bagOnChainId` so `verifyExecution()` can confirm
+-- the on-chain `ExecutionCompleted` event attests to the exact bag/plan this
+-- intent was compiled for.
+--
+-- Null for every existing row and for every intent whose selected provider
+-- isn't `bag-router` (redemptions always; every Composer/sequential
+-- deposit) — nothing to backfill, this is the normal case, same convention
+-- as `composer_transaction`/`execution_mode` (0021/0023).
+
+alter table purchase_intents
+  add column if not exists provider_id text,
+  add column if not exists bag_router_transaction jsonb;

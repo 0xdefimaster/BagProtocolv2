@@ -1,0 +1,47 @@
+{
+  "status": "BLOCKED",
+  "reason": "An egress proxy refused li.quest before it was reached (HTTP 403 from an egress proxy — li.quest was never reached). This says NOTHING about LI.FI or chain 4663 — run from a machine with normal internet access.",
+  "diagnosis": "EGRESS_BLOCKED",
+  "diagnosisDetail": "HTTP 403 from an egress proxy — li.quest was never reached",
+  "chain": {
+    "id": 4663,
+    "hex": "0x1237"
+  },
+  "testAddressUsed": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+  "rpcCheck": {
+    "attempted": true,
+    "ok": false,
+    "reportedChainIdHex": null,
+    "error": "EGRESS_BLOCKED: HTTP 403 from an egress proxy (host_not_allowed)",
+    "diagnosis": "EGRESS_BLOCKED"
+  },
+  "registryCall": {
+    "label": "registry",
+    "method": "GET",
+    "url": "https://li.quest/v1/tokens?chains=4663",
+    "queryParams": {
+      "chains": "4663"
+    },
+    "requestHeaders": {
+      "accept": "application/json"
+    },
+    "timestampSent": "2026-09-28T04:30:32.802Z",
+    "timestampReceived": "2026-09-28T04:30:32.897Z",
+    "httpStatus": 403,
+    "responseHeaders": {
+      "content-length": "95",
+      "content-type": "text/plain",
+      "date": "Mon, 28 Sep 2026 04:30:32 GMT",
+      "x-deny-reason": "host_not_allowed"
+    },
+    "rawBody": "Host not in allowlist: li.quest. Add this host to your network egress settings to allow access.",
+    "parsedBody": null,
+    "networkError": null
+  },
+  "candidatesConsidered": [],
+  "chosenPair": null,
+  "quoteCall": null,
+  "freshness": null,
+  "rawApiErrorBody": null,
+  "finishedAt": "2026-09-28T04:30:32.897Z"
+}

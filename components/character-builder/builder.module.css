@@ -1,0 +1,55 @@
+/* Scoped visual tokens for the Character Builder, ported 1:1 from the
+   standalone builder project. Kept in its own CSS module so it never
+   touches bag-protocol's global tailwind theme / globals.css. */
+
+.glassPanel {
+  background: linear-gradient(180deg, rgba(13, 40, 26, 0.6), rgba(10, 31, 20, 0.55));
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(0, 255, 102, 0.12);
+}
+
+.grainBg {
+  background-image: radial-gradient(circle at 50% 30%, rgba(0, 255, 102, 0.08), transparent 55%);
+}
+
+.radialGlow {
+  background-image: radial-gradient(circle at 50% 40%, rgba(0, 255, 102, 0.12), transparent 60%);
+}
+
+.shadowGlow {
+  box-shadow: 0 0 40px rgba(0, 255, 102, 0.15);
+}
+
+.shadowGlowSm:hover {
+  box-shadow: 0 0 20px rgba(0, 255, 102, 0.25);
+}
+
+.scrollThin::-webkit-scrollbar {
+  width: 6px;
+}
+.scrollThin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollThin::-webkit-scrollbar-thumb {
+  background: #16a34a55;
+  border-radius: 999px;
+}
+.scrollThin::-webkit-scrollbar-thumb:hover {
+  background: #16a34a99;
+}
+
+@keyframes floaty {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+.floaty {
+  animation: floaty 4.5s ease-in-out infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+.pulseGlow {
+  animation: pulseGlow 2.2s ease-in-out infinite;
+}

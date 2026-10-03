@@ -1,0 +1,2128 @@
+{
+  "assets": [
+    {
+      "id": "head_001",
+      "slot": "HEAD",
+      "name": "Head 001",
+      "image": "/assets/bag_v2/head/head_001.png"
+    },
+    {
+      "id": "head_002",
+      "slot": "HEAD",
+      "name": "Head 002",
+      "image": "/assets/bag_v2/head/head_002.png"
+    },
+    {
+      "id": "head_003",
+      "slot": "HEAD",
+      "name": "Head 003",
+      "image": "/assets/bag_v2/head/head_003.png"
+    },
+    {
+      "id": "head_004",
+      "slot": "HEAD",
+      "name": "Head 004",
+      "image": "/assets/bag_v2/head/head_004.png"
+    },
+    {
+      "id": "head_005",
+      "slot": "HEAD",
+      "name": "Head 005",
+      "image": "/assets/bag_v2/head/head_005.png"
+    },
+    {
+      "id": "head_006",
+      "slot": "HEAD",
+      "name": "Head 006",
+      "image": "/assets/bag_v2/head/head_006.png"
+    },
+    {
+      "id": "head_007",
+      "slot": "HEAD",
+      "name": "Head 007",
+      "image": "/assets/bag_v2/head/head_007.png"
+    },
+    {
+      "id": "head_008",
+      "slot": "HEAD",
+      "name": "Head 008",
+      "image": "/assets/bag_v2/head/head_008.png"
+    },
+    {
+      "id": "head_009",
+      "slot": "HEAD",
+      "name": "Head 009",
+      "image": "/assets/bag_v2/head/head_009.png"
+    },
+    {
+      "id": "head_010",
+      "slot": "HEAD",
+      "name": "Head 010",
+      "image": "/assets/bag_v2/head/head_010.png"
+    },
+    {
+      "id": "head_011",
+      "slot": "HEAD",
+      "name": "Head 011",
+      "image": "/assets/bag_v2/head/head_011.png"
+    },
+    {
+      "id": "head_012",
+      "slot": "HEAD",
+      "name": "Head 012",
+      "image": "/assets/bag_v2/head/head_012.png"
+    },
+    {
+      "id": "head_013",
+      "slot": "HEAD",
+      "name": "Head 013",
+      "image": "/assets/bag_v2/head/head_013.png"
+    },
+    {
+      "id": "head_014",
+      "slot": "HEAD",
+      "name": "Head 014",
+      "image": "/assets/bag_v2/head/head_014.png"
+    },
+    {
+      "id": "head_015",
+      "slot": "HEAD",
+      "name": "Head 015",
+      "image": "/assets/bag_v2/head/head_015.png"
+    },
+    {
+      "id": "head_016",
+      "slot": "HEAD",
+      "name": "Head 016",
+      "image": "/assets/bag_v2/head/head_016.png"
+    },
+    {
+      "id": "head_017",
+      "slot": "HEAD",
+      "name": "Head 017",
+      "image": "/assets/bag_v2/head/head_017.png"
+    },
+    {
+      "id": "head_018",
+      "slot": "HEAD",
+      "name": "Head 018",
+      "image": "/assets/bag_v2/head/head_018.png"
+    },
+    {
+      "id": "head_019",
+      "slot": "HEAD",
+      "name": "Head 019",
+      "image": "/assets/bag_v2/head/head_019.png"
+    },
+    {
+      "id": "head_020",
+      "slot": "HEAD",
+      "name": "Head 020",
+      "image": "/assets/bag_v2/head/head_020.png"
+    },
+    {
+      "id": "head_021",
+      "slot": "HEAD",
+      "name": "Head 021",
+      "image": "/assets/bag_v2/head/head_021.png"
+    },
+    {
+      "id": "head_022",
+      "slot": "HEAD",
+      "name": "Head 022",
+      "image": "/assets/bag_v2/head/head_022.png"
+    },
+    {
+      "id": "head_023",
+      "slot": "HEAD",
+      "name": "Head 023",
+      "image": "/assets/bag_v2/head/head_023.png"
+    },
+    {
+      "id": "head_024",
+      "slot": "HEAD",
+      "name": "Head 024",
+      "image": "/assets/bag_v2/head/head_024.png"
+    },
+    {
+      "id": "head_025",
+      "slot": "HEAD",
+      "name": "Head 025",
+      "image": "/assets/bag_v2/head/head_025.png"
+    },
+    {
+      "id": "head_026",
+      "slot": "HEAD",
+      "name": "Head 026",
+      "image": "/assets/bag_v2/head/head_026.png"
+    },
+    {
+      "id": "head_027",
+      "slot": "HEAD",
+      "name": "Head 027",
+      "image": "/assets/bag_v2/head/head_027.png"
+    },
+    {
+      "id": "head_028",
+      "slot": "HEAD",
+      "name": "Head 028",
+      "image": "/assets/bag_v2/head/head_028.png"
+    },
+    {
+      "id": "head_029",
+      "slot": "HEAD",
+      "name": "Head 029",
+      "image": "/assets/bag_v2/head/head_029.png"
+    },
+    {
+      "id": "head_030",
+      "slot": "HEAD",
+      "name": "Head 030",
+      "image": "/assets/bag_v2/head/head_030.png"
+    },
+    {
+      "id": "head_031",
+      "slot": "HEAD",
+      "name": "Head 031",
+      "image": "/assets/bag_v2/head/head_031.png"
+    },
+    {
+      "id": "head_032",
+      "slot": "HEAD",
+      "name": "Head 032",
+      "image": "/assets/bag_v2/head/head_032.png"
+    },
+    {
+      "id": "head_033",
+      "slot": "HEAD",
+      "name": "Head 033",
+      "image": "/assets/bag_v2/head/head_033.png"
+    },
+    {
+      "id": "head_034",
+      "slot": "HEAD",
+      "name": "Head 034",
+      "image": "/assets/bag_v2/head/head_034.png"
+    },
+    {
+      "id": "head_035",
+      "slot": "HEAD",
+      "name": "Head 035",
+      "image": "/assets/bag_v2/head/head_035.png"
+    },
+    {
+      "id": "head_036",
+      "slot": "HEAD",
+      "name": "Head 036",
+      "image": "/assets/bag_v2/head/head_036.png"
+    },
+    {
+      "id": "head_037",
+      "slot": "HEAD",
+      "name": "Head 037",
+      "image": "/assets/bag_v2/head/head_037.png"
+    },
+    {
+      "id": "head_038",
+      "slot": "HEAD",
+      "name": "Head 038",
+      "image": "/assets/bag_v2/head/head_038.png"
+    },
+    {
+      "id": "head_039",
+      "slot": "HEAD",
+      "name": "Head 039",
+      "image": "/assets/bag_v2/head/head_039.png"
+    },
+    {
+      "id": "head_040",
+      "slot": "HEAD",
+      "name": "Head 040",
+      "image": "/assets/bag_v2/head/head_040.png"
+    },
+    {
+      "id": "face_001",
+      "slot": "FACE",
+      "name": "Face 001",
+      "image": "/assets/bag_v2/face/face_001.png"
+    },
+    {
+      "id": "face_002",
+      "slot": "FACE",
+      "name": "Face 002",
+      "image": "/assets/bag_v2/face/face_002.png"
+    },
+    {
+      "id": "face_003",
+      "slot": "FACE",
+      "name": "Face 003",
+      "image": "/assets/bag_v2/face/face_003.png"
+    },
+    {
+      "id": "face_004",
+      "slot": "FACE",
+      "name": "Face 004",
+      "image": "/assets/bag_v2/face/face_004.png"
+    },
+    {
+      "id": "face_005",
+      "slot": "FACE",
+      "name": "Face 005",
+      "image": "/assets/bag_v2/face/face_005.png"
+    },
+    {
+      "id": "face_006",
+      "slot": "FACE",
+      "name": "Face 006",
+      "image": "/assets/bag_v2/face/face_006.png"
+    },
+    {
+      "id": "face_007",
+      "slot": "FACE",
+      "name": "Face 007",
+      "image": "/assets/bag_v2/face/face_007.png"
+    },
+    {
+      "id": "face_008",
+      "slot": "FACE",
+      "name": "Face 008",
+      "image": "/assets/bag_v2/face/face_008.png"
+    },
+    {
+      "id": "face_009",
+      "slot": "FACE",
+      "name": "Face 009",
+      "image": "/assets/bag_v2/face/face_009.png"
+    },
+    {
+      "id": "face_010",
+      "slot": "FACE",
+      "name": "Face 010",
+      "image": "/assets/bag_v2/face/face_010.png"
+    },
+    {
+      "id": "face_011",
+      "slot": "FACE",
+      "name": "Face 011",
+      "image": "/assets/bag_v2/face/face_011.png"
+    },
+    {
+      "id": "face_012",
+      "slot": "FACE",
+      "name": "Face 012",
+      "image": "/assets/bag_v2/face/face_012.png"
+    },
+    {
+      "id": "face_013",
+      "slot": "FACE",
+      "name": "Face 013",
+      "image": "/assets/bag_v2/face/face_013.png"
+    },
+    {
+      "id": "face_014",
+      "slot": "FACE",
+      "name": "Face 014",
+      "image": "/assets/bag_v2/face/face_014.png"
+    },
+    {
+      "id": "face_015",
+      "slot": "FACE",
+      "name": "Face 015",
+      "image": "/assets/bag_v2/face/face_015.png"
+    },
+    {
+      "id": "face_016",
+      "slot": "FACE",
+      "name": "Face 016",
+      "image": "/assets/bag_v2/face/face_016.png"
+    },
+    {
+      "id": "face_017",
+      "slot": "FACE",
+      "name": "Face 017",
+      "image": "/assets/bag_v2/face/face_017.png"
+    },
+    {
+      "id": "face_018",
+      "slot": "FACE",
+      "name": "Face 018",
+      "image": "/assets/bag_v2/face/face_018.png"
+    },
+    {
+      "id": "face_019",
+      "slot": "FACE",
+      "name": "Face 019",
+      "image": "/assets/bag_v2/face/face_019.png"
+    },
+    {
+      "id": "face_020",
+      "slot": "FACE",
+      "name": "Face 020",
+      "image": "/assets/bag_v2/face/face_020.png"
+    },
+    {
+      "id": "face_021",
+      "slot": "FACE",
+      "name": "Face 021",
+      "image": "/assets/bag_v2/face/face_021.png"
+    },
+    {
+      "id": "face_022",
+      "slot": "FACE",
+      "name": "Face 022",
+      "image": "/assets/bag_v2/face/face_022.png"
+    },
+    {
+      "id": "face_023",
+      "slot": "FACE",
+      "name": "Face 023",
+      "image": "/assets/bag_v2/face/face_023.png"
+    },
+    {
+      "id": "face_024",
+      "slot": "FACE",
+      "name": "Face 024",
+      "image": "/assets/bag_v2/face/face_024.png"
+    },
+    {
+      "id": "face_025",
+      "slot": "FACE",
+      "name": "Face 025",
+      "image": "/assets/bag_v2/face/face_025.png"
+    },
+    {
+      "id": "face_026",
+      "slot": "FACE",
+      "name": "Face 026",
+      "image": "/assets/bag_v2/face/face_026.png"
+    },
+    {
+      "id": "face_027",
+      "slot": "FACE",
+      "name": "Face 027",
+      "image": "/assets/bag_v2/face/face_027.png"
+    },
+    {
+      "id": "face_028",
+      "slot": "FACE",
+      "name": "Face 028",
+      "image": "/assets/bag_v2/face/face_028.png"
+    },
+    {
+      "id": "face_029",
+      "slot": "FACE",
+      "name": "Face 029",
+      "image": "/assets/bag_v2/face/face_029.png"
+    },
+    {
+      "id": "face_030",
+      "slot": "FACE",
+      "name": "Face 030",
+      "image": "/assets/bag_v2/face/face_030.png"
+    },
+    {
+      "id": "face_031",
+      "slot": "FACE",
+      "name": "Face 031",
+      "image": "/assets/bag_v2/face/face_031.png"
+    },
+    {
+      "id": "face_032",
+      "slot": "FACE",
+      "name": "Face 032",
+      "image": "/assets/bag_v2/face/face_032.png"
+    },
+    {
+      "id": "face_033",
+      "slot": "FACE",
+      "name": "Face 033",
+      "image": "/assets/bag_v2/face/face_033.png"
+    },
+    {
+      "id": "face_034",
+      "slot": "FACE",
+      "name": "Face 034",
+      "image": "/assets/bag_v2/face/face_034.png"
+    },
+    {
+      "id": "face_035",
+      "slot": "FACE",
+      "name": "Face 035",
+      "image": "/assets/bag_v2/face/face_035.png"
+    },
+    {
+      "id": "face_036",
+      "slot": "FACE",
+      "name": "Face 036",
+      "image": "/assets/bag_v2/face/face_036.png"
+    },
+    {
+      "id": "face_037",
+      "slot": "FACE",
+      "name": "Face 037",
+      "image": "/assets/bag_v2/face/face_037.png"
+    },
+    {
+      "id": "face_038",
+      "slot": "FACE",
+      "name": "Face 038",
+      "image": "/assets/bag_v2/face/face_038.png"
+    },
+    {
+      "id": "face_039",
+      "slot": "FACE",
+      "name": "Face 039",
+      "image": "/assets/bag_v2/face/face_039.png"
+    },
+    {
+      "id": "face_040",
+      "slot": "FACE",
+      "name": "Face 040",
+      "image": "/assets/bag_v2/face/face_040.png"
+    },
+    {
+      "id": "face_041",
+      "slot": "FACE",
+      "name": "Face 041",
+      "image": "/assets/bag_v2/face/face_041.png"
+    },
+    {
+      "id": "face_042",
+      "slot": "FACE",
+      "name": "Face 042",
+      "image": "/assets/bag_v2/face/face_042.png"
+    },
+    {
+      "id": "face_043",
+      "slot": "FACE",
+      "name": "Face 043",
+      "image": "/assets/bag_v2/face/face_043.png"
+    },
+    {
+      "id": "face_044",
+      "slot": "FACE",
+      "name": "Face 044",
+      "image": "/assets/bag_v2/face/face_044.png"
+    },
+    {
+      "id": "face_045",
+      "slot": "FACE",
+      "name": "Face 045",
+      "image": "/assets/bag_v2/face/face_045.png"
+    },
+    {
+      "id": "face_046",
+      "slot": "FACE",
+      "name": "Face 046",
+      "image": "/assets/bag_v2/face/face_046.png"
+    },
+    {
+      "id": "face_047",
+      "slot": "FACE",
+      "name": "Face 047",
+      "image": "/assets/bag_v2/face/face_047.png"
+    },
+    {
+      "id": "face_048",
+      "slot": "FACE",
+      "name": "Face 048",
+      "image": "/assets/bag_v2/face/face_048.png"
+    },
+    {
+      "id": "face_049",
+      "slot": "FACE",
+      "name": "Face 049",
+      "image": "/assets/bag_v2/face/face_049.png"
+    },
+    {
+      "id": "face_050",
+      "slot": "FACE",
+      "name": "Face 050",
+      "image": "/assets/bag_v2/face/face_050.png"
+    },
+    {
+      "id": "neck_001",
+      "slot": "NECK",
+      "name": "Neck 001",
+      "image": "/assets/bag_v2/neck/neck_001.png"
+    },
+    {
+      "id": "neck_002",
+      "slot": "NECK",
+      "name": "Neck 002",
+      "image": "/assets/bag_v2/neck/neck_002.png"
+    },
+    {
+      "id": "neck_003",
+      "slot": "NECK",
+      "name": "Neck 003",
+      "image": "/assets/bag_v2/neck/neck_003.png"
+    },
+    {
+      "id": "neck_004",
+      "slot": "NECK",
+      "name": "Neck 004",
+      "image": "/assets/bag_v2/neck/neck_004.png"
+    },
+    {
+      "id": "neck_005",
+      "slot": "NECK",
+      "name": "Neck 005",
+      "image": "/assets/bag_v2/neck/neck_005.png"
+    },
+    {
+      "id": "neck_006",
+      "slot": "NECK",
+      "name": "Neck 006",
+      "image": "/assets/bag_v2/neck/neck_006.png"
+    },
+    {
+      "id": "neck_007",
+      "slot": "NECK",
+      "name": "Neck 007",
+      "image": "/assets/bag_v2/neck/neck_007.png"
+    },
+    {
+      "id": "neck_008",
+      "slot": "NECK",
+      "name": "Neck 008",
+      "image": "/assets/bag_v2/neck/neck_008.png"
+    },
+    {
+      "id": "neck_009",
+      "slot": "NECK",
+      "name": "Neck 009",
+      "image": "/assets/bag_v2/neck/neck_009.png"
+    },
+    {
+      "id": "neck_010",
+      "slot": "NECK",
+      "name": "Neck 010",
+      "image": "/assets/bag_v2/neck/neck_010.png"
+    },
+    {
+      "id": "neck_011",
+      "slot": "NECK",
+      "name": "Neck 011",
+      "image": "/assets/bag_v2/neck/neck_011.png"
+    },
+    {
+      "id": "neck_012",
+      "slot": "NECK",
+      "name": "Neck 012",
+      "image": "/assets/bag_v2/neck/neck_012.png"
+    },
+    {
+      "id": "neck_013",
+      "slot": "NECK",
+      "name": "Neck 013",
+      "image": "/assets/bag_v2/neck/neck_013.png"
+    },
+    {
+      "id": "neck_014",
+      "slot": "NECK",
+      "name": "Neck 014",
+      "image": "/assets/bag_v2/neck/neck_014.png"
+    },
+    {
+      "id": "neck_015",
+      "slot": "NECK",
+      "name": "Neck 015",
+      "image": "/assets/bag_v2/neck/neck_015.png"
+    },
+    {
+      "id": "neck_016",
+      "slot": "NECK",
+      "name": "Neck 016",
+      "image": "/assets/bag_v2/neck/neck_016.png"
+    },
+    {
+      "id": "neck_017",
+      "slot": "NECK",
+      "name": "Neck 017",
+      "image": "/assets/bag_v2/neck/neck_017.png"
+    },
+    {
+      "id": "neck_018",
+      "slot": "NECK",
+      "name": "Neck 018",
+      "image": "/assets/bag_v2/neck/neck_018.png"
+    },
+    {
+      "id": "neck_021",
+      "slot": "NECK",
+      "name": "Neck 021",
+      "image": "/assets/bag_v2/neck/neck_021.png"
+    },
+    {
+      "id": "neck_022",
+      "slot": "NECK",
+      "name": "Neck 022",
+      "image": "/assets/bag_v2/neck/neck_022.png"
+    },
+    {
+      "id": "neck_023",
+      "slot": "NECK",
+      "name": "Neck 023",
+      "image": "/assets/bag_v2/neck/neck_023.png"
+    },
+    {
+      "id": "neck_024",
+      "slot": "NECK",
+      "name": "Neck 024",
+      "image": "/assets/bag_v2/neck/neck_024.png"
+    },
+    {
+      "id": "neck_025",
+      "slot": "NECK",
+      "name": "Neck 025",
+      "image": "/assets/bag_v2/neck/neck_025.png"
+    },
+    {
+      "id": "neck_026",
+      "slot": "NECK",
+      "name": "Neck 026",
+      "image": "/assets/bag_v2/neck/neck_026.png"
+    },
+    {
+      "id": "neck_027",
+      "slot": "NECK",
+      "name": "Neck 027",
+      "image": "/assets/bag_v2/neck/neck_027.png"
+    },
+    {
+      "id": "neck_028",
+      "slot": "NECK",
+      "name": "Neck 028",
+      "image": "/assets/bag_v2/neck/neck_028.png"
+    },
+    {
+      "id": "neck_029",
+      "slot": "NECK",
+      "name": "Neck 029",
+      "image": "/assets/bag_v2/neck/neck_029.png"
+    },
+    {
+      "id": "neck_030",
+      "slot": "NECK",
+      "name": "Neck 030",
+      "image": "/assets/bag_v2/neck/neck_030.png"
+    },
+    {
+      "id": "body_001",
+      "slot": "BODY",
+      "name": "Body 001",
+      "image": "/assets/bag_v2/body/body_001.png"
+    },
+    {
+      "id": "body_002",
+      "slot": "BODY",
+      "name": "Body 002",
+      "image": "/assets/bag_v2/body/body_002.png"
+    },
+    {
+      "id": "body_003",
+      "slot": "BODY",
+      "name": "Body 003",
+      "image": "/assets/bag_v2/body/body_003.png"
+    },
+    {
+      "id": "body_004",
+      "slot": "BODY",
+      "name": "Body 004",
+      "image": "/assets/bag_v2/body/body_004.png"
+    },
+    {
+      "id": "body_005",
+      "slot": "BODY",
+      "name": "Body 005",
+      "image": "/assets/bag_v2/body/body_005.png"
+    },
+    {
+      "id": "body_006",
+      "slot": "BODY",
+      "name": "Body 006",
+      "image": "/assets/bag_v2/body/body_006.png"
+    },
+    {
+      "id": "body_007",
+      "slot": "BODY",
+      "name": "Body 007",
+      "image": "/assets/bag_v2/body/body_007.png"
+    },
+    {
+      "id": "body_008",
+      "slot": "BODY",
+      "name": "Body 008",
+      "image": "/assets/bag_v2/body/body_008.png"
+    },
+    {
+      "id": "body_009",
+      "slot": "BODY",
+      "name": "Body 009",
+      "image": "/assets/bag_v2/body/body_009.png"
+    },
+    {
+      "id": "body_010",
+      "slot": "BODY",
+      "name": "Body 010",
+      "image": "/assets/bag_v2/body/body_010.png"
+    },
+    {
+      "id": "body_011",
+      "slot": "BODY",
+      "name": "Body 011",
+      "image": "/assets/bag_v2/body/body_011.png"
+    },
+    {
+      "id": "body_012",
+      "slot": "BODY",
+      "name": "Body 012",
+      "image": "/assets/bag_v2/body/body_012.png"
+    },
+    {
+      "id": "body_013",
+      "slot": "BODY",
+      "name": "Body 013",
+      "image": "/assets/bag_v2/body/body_013.png"
+    },
+    {
+      "id": "body_014",
+      "slot": "BODY",
+      "name": "Body 014",
+      "image": "/assets/bag_v2/body/body_014.png"
+    },
+    {
+      "id": "body_015",
+      "slot": "BODY",
+      "name": "Body 015",
+      "image": "/assets/bag_v2/body/body_015.png"
+    },
+    {
+      "id": "body_016",
+      "slot": "BODY",
+      "name": "Body 016",
+      "image": "/assets/bag_v2/body/body_016.png"
+    },
+    {
+      "id": "body_017",
+      "slot": "BODY",
+      "name": "Body 017",
+      "image": "/assets/bag_v2/body/body_017.png"
+    },
+    {
+      "id": "body_018",
+      "slot": "BODY",
+      "name": "Body 018",
+      "image": "/assets/bag_v2/body/body_018.png"
+    },
+    {
+      "id": "body_019",
+      "slot": "BODY",
+      "name": "Body 019",
+      "image": "/assets/bag_v2/body/body_019.png"
+    },
+    {
+      "id": "body_020",
+      "slot": "BODY",
+      "name": "Body 020",
+      "image": "/assets/bag_v2/body/body_020.png"
+    },
+    {
+      "id": "body_021",
+      "slot": "BODY",
+      "name": "Body 021",
+      "image": "/assets/bag_v2/body/body_021.png"
+    },
+    {
+      "id": "body_022",
+      "slot": "BODY",
+      "name": "Body 022",
+      "image": "/assets/bag_v2/body/body_022.png"
+    },
+    {
+      "id": "body_023",
+      "slot": "BODY",
+      "name": "Body 023",
+      "image": "/assets/bag_v2/body/body_023.png"
+    },
+    {
+      "id": "body_024",
+      "slot": "BODY",
+      "name": "Body 024",
+      "image": "/assets/bag_v2/body/body_024.png"
+    },
+    {
+      "id": "body_025",
+      "slot": "BODY",
+      "name": "Body 025",
+      "image": "/assets/bag_v2/body/body_025.png"
+    },
+    {
+      "id": "body_026",
+      "slot": "BODY",
+      "name": "Body 026",
+      "image": "/assets/bag_v2/body/body_026.png"
+    },
+    {
+      "id": "body_027",
+      "slot": "BODY",
+      "name": "Body 027",
+      "image": "/assets/bag_v2/body/body_027.png"
+    },
+    {
+      "id": "body_028",
+      "slot": "BODY",
+      "name": "Body 028",
+      "image": "/assets/bag_v2/body/body_028.png"
+    },
+    {
+      "id": "body_029",
+      "slot": "BODY",
+      "name": "Body 029",
+      "image": "/assets/bag_v2/body/body_029.png"
+    },
+    {
+      "id": "body_030",
+      "slot": "BODY",
+      "name": "Body 030",
+      "image": "/assets/bag_v2/body/body_030.png"
+    },
+    {
+      "id": "body_031",
+      "slot": "BODY",
+      "name": "Body 031",
+      "image": "/assets/bag_v2/body/body_031.png"
+    },
+    {
+      "id": "back_001",
+      "slot": "BACK",
+      "name": "Back 001",
+      "image": "/assets/bag_v2/back/back_001.png"
+    },
+    {
+      "id": "back_002",
+      "slot": "BACK",
+      "name": "Back 002",
+      "image": "/assets/bag_v2/back/back_002.png"
+    },
+    {
+      "id": "back_003",
+      "slot": "BACK",
+      "name": "Back 003",
+      "image": "/assets/bag_v2/back/back_003.png"
+    },
+    {
+      "id": "back_004",
+      "slot": "BACK",
+      "name": "Back 004",
+      "image": "/assets/bag_v2/back/back_004.png"
+    },
+    {
+      "id": "back_005",
+      "slot": "BACK",
+      "name": "Back 005",
+      "image": "/assets/bag_v2/back/back_005.png"
+    },
+    {
+      "id": "back_006",
+      "slot": "BACK",
+      "name": "Back 006",
+      "image": "/assets/bag_v2/back/back_006.png"
+    },
+    {
+      "id": "back_007",
+      "slot": "BACK",
+      "name": "Back 007",
+      "image": "/assets/bag_v2/back/back_007.png"
+    },
+    {
+      "id": "back_008",
+      "slot": "BACK",
+      "name": "Back 008",
+      "image": "/assets/bag_v2/back/back_008.png"
+    },
+    {
+      "id": "back_009",
+      "slot": "BACK",
+      "name": "Back 009",
+      "image": "/assets/bag_v2/back/back_009.png"
+    },
+    {
+      "id": "back_010",
+      "slot": "BACK",
+      "name": "Back 010",
+      "image": "/assets/bag_v2/back/back_010.png"
+    },
+    {
+      "id": "back_011",
+      "slot": "BACK",
+      "name": "Back 011",
+      "image": "/assets/bag_v2/back/back_011.png"
+    },
+    {
+      "id": "back_012",
+      "slot": "BACK",
+      "name": "Back 012",
+      "image": "/assets/bag_v2/back/back_012.png"
+    },
+    {
+      "id": "back_013",
+      "slot": "BACK",
+      "name": "Back 013",
+      "image": "/assets/bag_v2/back/back_013.png"
+    },
+    {
+      "id": "back_014",
+      "slot": "BACK",
+      "name": "Back 014",
+      "image": "/assets/bag_v2/back/back_014.png"
+    },
+    {
+      "id": "back_015",
+      "slot": "BACK",
+      "name": "Back 015",
+      "image": "/assets/bag_v2/back/back_015.png"
+    },
+    {
+      "id": "back_016",
+      "slot": "BACK",
+      "name": "Back 016",
+      "image": "/assets/bag_v2/back/back_016.png"
+    },
+    {
+      "id": "back_017",
+      "slot": "BACK",
+      "name": "Back 017",
+      "image": "/assets/bag_v2/back/back_017.png"
+    },
+    {
+      "id": "back_018",
+      "slot": "BACK",
+      "name": "Back 018",
+      "image": "/assets/bag_v2/back/back_018.png"
+    },
+    {
+      "id": "back_019",
+      "slot": "BACK",
+      "name": "Back 019",
+      "image": "/assets/bag_v2/back/back_019.png"
+    },
+    {
+      "id": "back_020",
+      "slot": "BACK",
+      "name": "Back 020",
+      "image": "/assets/bag_v2/back/back_020.png"
+    },
+    {
+      "id": "back_021",
+      "slot": "BACK",
+      "name": "Back 021",
+      "image": "/assets/bag_v2/back/back_021.png"
+    },
+    {
+      "id": "back_022",
+      "slot": "BACK",
+      "name": "Back 022",
+      "image": "/assets/bag_v2/back/back_022.png"
+    },
+    {
+      "id": "back_023",
+      "slot": "BACK",
+      "name": "Back 023",
+      "image": "/assets/bag_v2/back/back_023.png"
+    },
+    {
+      "id": "back_024",
+      "slot": "BACK",
+      "name": "Back 024",
+      "image": "/assets/bag_v2/back/back_024.png"
+    },
+    {
+      "id": "back_025",
+      "slot": "BACK",
+      "name": "Back 025",
+      "image": "/assets/bag_v2/back/back_025.png"
+    },
+    {
+      "id": "back_026",
+      "slot": "BACK",
+      "name": "Back 026",
+      "image": "/assets/bag_v2/back/back_026.png"
+    },
+    {
+      "id": "back_027",
+      "slot": "BACK",
+      "name": "Back 027",
+      "image": "/assets/bag_v2/back/back_027.png"
+    },
+    {
+      "id": "back_028",
+      "slot": "BACK",
+      "name": "Back 028",
+      "image": "/assets/bag_v2/back/back_028.png"
+    },
+    {
+      "id": "back_029",
+      "slot": "BACK",
+      "name": "Back 029",
+      "image": "/assets/bag_v2/back/back_029.png"
+    },
+    {
+      "id": "back_030",
+      "slot": "BACK",
+      "name": "Back 030",
+      "image": "/assets/bag_v2/back/back_030.png"
+    },
+    {
+      "id": "hands_001",
+      "slot": "HANDS",
+      "name": "Hands 001",
+      "image": "/assets/bag_v2/hands/hands_001.png"
+    },
+    {
+      "id": "hands_002",
+      "slot": "HANDS",
+      "name": "Hands 002",
+      "image": "/assets/bag_v2/hands/hands_002.png"
+    },
+    {
+      "id": "hands_003",
+      "slot": "HANDS",
+      "name": "Hands 003",
+      "image": "/assets/bag_v2/hands/hands_003.png"
+    },
+    {
+      "id": "hands_004",
+      "slot": "HANDS",
+      "name": "Hands 004",
+      "image": "/assets/bag_v2/hands/hands_004.png"
+    },
+    {
+      "id": "hands_005",
+      "slot": "HANDS",
+      "name": "Hands 005",
+      "image": "/assets/bag_v2/hands/hands_005.png"
+    },
+    {
+      "id": "hands_006",
+      "slot": "HANDS",
+      "name": "Hands 006",
+      "image": "/assets/bag_v2/hands/hands_006.png"
+    },
+    {
+      "id": "hands_007",
+      "slot": "HANDS",
+      "name": "Hands 007",
+      "image": "/assets/bag_v2/hands/hands_007.png"
+    },
+    {
+      "id": "hands_008",
+      "slot": "HANDS",
+      "name": "Hands 008",
+      "image": "/assets/bag_v2/hands/hands_008.png"
+    },
+    {
+      "id": "hands_009",
+      "slot": "HANDS",
+      "name": "Hands 009",
+      "image": "/assets/bag_v2/hands/hands_009.png"
+    },
+    {
+      "id": "hands_010",
+      "slot": "HANDS",
+      "name": "Hands 010",
+      "image": "/assets/bag_v2/hands/hands_010.png"
+    },
+    {
+      "id": "hands_011",
+      "slot": "HANDS",
+      "name": "Hands 011",
+      "image": "/assets/bag_v2/hands/hands_011.png"
+    },
+    {
+      "id": "hands_012",
+      "slot": "HANDS",
+      "name": "Hands 012",
+      "image": "/assets/bag_v2/hands/hands_012.png"
+    },
+    {
+      "id": "hands_013",
+      "slot": "HANDS",
+      "name": "Hands 013",
+      "image": "/assets/bag_v2/hands/hands_013.png"
+    },
+    {
+      "id": "hands_014",
+      "slot": "HANDS",
+      "name": "Hands 014",
+      "image": "/assets/bag_v2/hands/hands_014.png"
+    },
+    {
+      "id": "hands_015",
+      "slot": "HANDS",
+      "name": "Hands 015",
+      "image": "/assets/bag_v2/hands/hands_015.png"
+    },
+    {
+      "id": "hands_016",
+      "slot": "HANDS",
+      "name": "Hands 016",
+      "image": "/assets/bag_v2/hands/hands_016.png"
+    },
+    {
+      "id": "hands_017",
+      "slot": "HANDS",
+      "name": "Hands 017",
+      "image": "/assets/bag_v2/hands/hands_017.png"
+    },
+    {
+      "id": "hands_018",
+      "slot": "HANDS",
+      "name": "Hands 018",
+      "image": "/assets/bag_v2/hands/hands_018.png"
+    },
+    {
+      "id": "hands_019",
+      "slot": "HANDS",
+      "name": "Hands 019",
+      "image": "/assets/bag_v2/hands/hands_019.png"
+    },
+    {
+      "id": "hands_020",
+      "slot": "HANDS",
+      "name": "Hands 020",
+      "image": "/assets/bag_v2/hands/hands_020.png"
+    },
+    {
+      "id": "hands_021",
+      "slot": "HANDS",
+      "name": "Hands 021",
+      "image": "/assets/bag_v2/hands/hands_021.png"
+    },
+    {
+      "id": "hands_022",
+      "slot": "HANDS",
+      "name": "Hands 022",
+      "image": "/assets/bag_v2/hands/hands_022.png"
+    },
+    {
+      "id": "hands_023",
+      "slot": "HANDS",
+      "name": "Hands 023",
+      "image": "/assets/bag_v2/hands/hands_023.png"
+    },
+    {
+      "id": "hands_024",
+      "slot": "HANDS",
+      "name": "Hands 024",
+      "image": "/assets/bag_v2/hands/hands_024.png"
+    },
+    {
+      "id": "hands_025",
+      "slot": "HANDS",
+      "name": "Hands 025",
+      "image": "/assets/bag_v2/hands/hands_025.png"
+    },
+    {
+      "id": "hands_026",
+      "slot": "HANDS",
+      "name": "Hands 026",
+      "image": "/assets/bag_v2/hands/hands_026.png"
+    },
+    {
+      "id": "hands_027",
+      "slot": "HANDS",
+      "name": "Hands 027",
+      "image": "/assets/bag_v2/hands/hands_027.png"
+    },
+    {
+      "id": "hands_028",
+      "slot": "HANDS",
+      "name": "Hands 028",
+      "image": "/assets/bag_v2/hands/hands_028.png"
+    },
+    {
+      "id": "hands_029",
+      "slot": "HANDS",
+      "name": "Hands 029",
+      "image": "/assets/bag_v2/hands/hands_029.png"
+    },
+    {
+      "id": "hands_030",
+      "slot": "HANDS",
+      "name": "Hands 030",
+      "image": "/assets/bag_v2/hands/hands_030.png"
+    },
+    {
+      "id": "hands_031",
+      "slot": "HANDS",
+      "name": "Hands 031",
+      "image": "/assets/bag_v2/hands/hands_031.png"
+    },
+    {
+      "id": "hands_032",
+      "slot": "HANDS",
+      "name": "Hands 032",
+      "image": "/assets/bag_v2/hands/hands_032.png"
+    },
+    {
+      "id": "hands_033",
+      "slot": "HANDS",
+      "name": "Hands 033",
+      "image": "/assets/bag_v2/hands/hands_033.png"
+    },
+    {
+      "id": "hands_034",
+      "slot": "HANDS",
+      "name": "Hands 034",
+      "image": "/assets/bag_v2/hands/hands_034.png"
+    },
+    {
+      "id": "hands_035",
+      "slot": "HANDS",
+      "name": "Hands 035",
+      "image": "/assets/bag_v2/hands/hands_035.png"
+    },
+    {
+      "id": "hands_036",
+      "slot": "HANDS",
+      "name": "Hands 036",
+      "image": "/assets/bag_v2/hands/hands_036.png"
+    },
+    {
+      "id": "hands_037",
+      "slot": "HANDS",
+      "name": "Hands 037",
+      "image": "/assets/bag_v2/hands/hands_037.png"
+    },
+    {
+      "id": "hands_038",
+      "slot": "HANDS",
+      "name": "Hands 038",
+      "image": "/assets/bag_v2/hands/hands_038.png"
+    },
+    {
+      "id": "hands_039",
+      "slot": "HANDS",
+      "name": "Hands 039",
+      "image": "/assets/bag_v2/hands/hands_039.png"
+    },
+    {
+      "id": "hands_040",
+      "slot": "HANDS",
+      "name": "Hands 040",
+      "image": "/assets/bag_v2/hands/hands_040.png"
+    },
+    {
+      "id": "hands_041",
+      "slot": "HANDS",
+      "name": "Hands 041",
+      "image": "/assets/bag_v2/hands/hands_041.png"
+    },
+    {
+      "id": "hands_042",
+      "slot": "HANDS",
+      "name": "Hands 042",
+      "image": "/assets/bag_v2/hands/hands_042.png"
+    },
+    {
+      "id": "hands_043",
+      "slot": "HANDS",
+      "name": "Hands 043",
+      "image": "/assets/bag_v2/hands/hands_043.png"
+    },
+    {
+      "id": "hands_044",
+      "slot": "HANDS",
+      "name": "Hands 044",
+      "image": "/assets/bag_v2/hands/hands_044.png"
+    },
+    {
+      "id": "hands_045",
+      "slot": "HANDS",
+      "name": "Hands 045",
+      "image": "/assets/bag_v2/hands/hands_045.png"
+    },
+    {
+      "id": "hands_046",
+      "slot": "HANDS",
+      "name": "Hands 046",
+      "image": "/assets/bag_v2/hands/hands_046.png"
+    },
+    {
+      "id": "hands_047",
+      "slot": "HANDS",
+      "name": "Hands 047",
+      "image": "/assets/bag_v2/hands/hands_047.png"
+    },
+    {
+      "id": "hands_048",
+      "slot": "HANDS",
+      "name": "Hands 048",
+      "image": "/assets/bag_v2/hands/hands_048.png"
+    },
+    {
+      "id": "hands_049",
+      "slot": "HANDS",
+      "name": "Hands 049",
+      "image": "/assets/bag_v2/hands/hands_049.png"
+    },
+    {
+      "id": "hands_050",
+      "slot": "HANDS",
+      "name": "Hands 050",
+      "image": "/assets/bag_v2/hands/hands_050.png"
+    },
+    {
+      "id": "hands_051",
+      "slot": "HANDS",
+      "name": "Hands 051",
+      "image": "/assets/bag_v2/hands/hands_051.png"
+    },
+    {
+      "id": "hands_052",
+      "slot": "HANDS",
+      "name": "Hands 052",
+      "image": "/assets/bag_v2/hands/hands_052.png"
+    },
+    {
+      "id": "hands_053",
+      "slot": "HANDS",
+      "name": "Hands 053",
+      "image": "/assets/bag_v2/hands/hands_053.png"
+    },
+    {
+      "id": "hands_054",
+      "slot": "HANDS",
+      "name": "Hands 054",
+      "image": "/assets/bag_v2/hands/hands_054.png"
+    },
+    {
+      "id": "hands_055",
+      "slot": "HANDS",
+      "name": "Hands 055",
+      "image": "/assets/bag_v2/hands/hands_055.png"
+    },
+    {
+      "id": "hands_056",
+      "slot": "HANDS",
+      "name": "Hands 056",
+      "image": "/assets/bag_v2/hands/hands_056.png"
+    },
+    {
+      "id": "hands_057",
+      "slot": "HANDS",
+      "name": "Hands 057",
+      "image": "/assets/bag_v2/hands/hands_057.png"
+    },
+    {
+      "id": "hands_058",
+      "slot": "HANDS",
+      "name": "Hands 058",
+      "image": "/assets/bag_v2/hands/hands_058.png"
+    },
+    {
+      "id": "hands_059",
+      "slot": "HANDS",
+      "name": "Hands 059",
+      "image": "/assets/bag_v2/hands/hands_059.png"
+    },
+    {
+      "id": "feet_001",
+      "slot": "FEET",
+      "name": "Feet 001",
+      "image": "/assets/bag_v2/feet/feet_001.png"
+    },
+    {
+      "id": "feet_002",
+      "slot": "FEET",
+      "name": "Feet 002",
+      "image": "/assets/bag_v2/feet/feet_002.png"
+    },
+    {
+      "id": "feet_003",
+      "slot": "FEET",
+      "name": "Feet 003",
+      "image": "/assets/bag_v2/feet/feet_003.png"
+    },
+    {
+      "id": "feet_004",
+      "slot": "FEET",
+      "name": "Feet 004",
+      "image": "/assets/bag_v2/feet/feet_004.png"
+    },
+    {
+      "id": "feet_005",
+      "slot": "FEET",
+      "name": "Feet 005",
+      "image": "/assets/bag_v2/feet/feet_005.png"
+    },
+    {
+      "id": "feet_006",
+      "slot": "FEET",
+      "name": "Feet 006",
+      "image": "/assets/bag_v2/feet/feet_006.png"
+    },
+    {
+      "id": "feet_007",
+      "slot": "FEET",
+      "name": "Feet 007",
+      "image": "/assets/bag_v2/feet/feet_007.png"
+    },
+    {
+      "id": "feet_008",
+      "slot": "FEET",
+      "name": "Feet 008",
+      "image": "/assets/bag_v2/feet/feet_008.png"
+    },
+    {
+      "id": "feet_009",
+      "slot": "FEET",
+      "name": "Feet 009",
+      "image": "/assets/bag_v2/feet/feet_009.png"
+    },
+    {
+      "id": "feet_010",
+      "slot": "FEET",
+      "name": "Feet 010",
+      "image": "/assets/bag_v2/feet/feet_010.png"
+    },
+    {
+      "id": "feet_011",
+      "slot": "FEET",
+      "name": "Feet 011",
+      "image": "/assets/bag_v2/feet/feet_011.png"
+    },
+    {
+      "id": "feet_012",
+      "slot": "FEET",
+      "name": "Feet 012",
+      "image": "/assets/bag_v2/feet/feet_012.png"
+    },
+    {
+      "id": "feet_013",
+      "slot": "FEET",
+      "name": "Feet 013",
+      "image": "/assets/bag_v2/feet/feet_013.png"
+    },
+    {
+      "id": "feet_014",
+      "slot": "FEET",
+      "name": "Feet 014",
+      "image": "/assets/bag_v2/feet/feet_014.png"
+    },
+    {
+      "id": "feet_015",
+      "slot": "FEET",
+      "name": "Feet 015",
+      "image": "/assets/bag_v2/feet/feet_015.png"
+    },
+    {
+      "id": "feet_016",
+      "slot": "FEET",
+      "name": "Feet 016",
+      "image": "/assets/bag_v2/feet/feet_016.png"
+    },
+    {
+      "id": "feet_017",
+      "slot": "FEET",
+      "name": "Feet 017",
+      "image": "/assets/bag_v2/feet/feet_017.png"
+    },
+    {
+      "id": "feet_018",
+      "slot": "FEET",
+      "name": "Feet 018",
+      "image": "/assets/bag_v2/feet/feet_018.png"
+    },
+    {
+      "id": "feet_019",
+      "slot": "FEET",
+      "name": "Feet 019",
+      "image": "/assets/bag_v2/feet/feet_019.png"
+    },
+    {
+      "id": "feet_020",
+      "slot": "FEET",
+      "name": "Feet 020",
+      "image": "/assets/bag_v2/feet/feet_020.png"
+    },
+    {
+      "id": "feet_021",
+      "slot": "FEET",
+      "name": "Feet 021",
+      "image": "/assets/bag_v2/feet/feet_021.png"
+    },
+    {
+      "id": "feet_022",
+      "slot": "FEET",
+      "name": "Feet 022",
+      "image": "/assets/bag_v2/feet/feet_022.png"
+    },
+    {
+      "id": "feet_023",
+      "slot": "FEET",
+      "name": "Feet 023",
+      "image": "/assets/bag_v2/feet/feet_023.png"
+    },
+    {
+      "id": "feet_024",
+      "slot": "FEET",
+      "name": "Feet 024",
+      "image": "/assets/bag_v2/feet/feet_024.png"
+    },
+    {
+      "id": "feet_025",
+      "slot": "FEET",
+      "name": "Feet 025",
+      "image": "/assets/bag_v2/feet/feet_025.png"
+    },
+    {
+      "id": "special_001",
+      "slot": "SPECIAL",
+      "name": "Special 001",
+      "image": "/assets/bag_v2/special/special_001.png"
+    },
+    {
+      "id": "special_002",
+      "slot": "SPECIAL",
+      "name": "Special 002",
+      "image": "/assets/bag_v2/special/special_002.png"
+    },
+    {
+      "id": "special_003",
+      "slot": "SPECIAL",
+      "name": "Special 003",
+      "image": "/assets/bag_v2/special/special_003.png"
+    },
+    {
+      "id": "special_004",
+      "slot": "SPECIAL",
+      "name": "Special 004",
+      "image": "/assets/bag_v2/special/special_004.png"
+    },
+    {
+      "id": "special_005",
+      "slot": "SPECIAL",
+      "name": "Special 005",
+      "image": "/assets/bag_v2/special/special_005.png"
+    },
+    {
+      "id": "special_006",
+      "slot": "SPECIAL",
+      "name": "Special 006",
+      "image": "/assets/bag_v2/special/special_006.png"
+    },
+    {
+      "id": "special_007",
+      "slot": "SPECIAL",
+      "name": "Special 007",
+      "image": "/assets/bag_v2/special/special_007.png"
+    },
+    {
+      "id": "special_008",
+      "slot": "SPECIAL",
+      "name": "Special 008",
+      "image": "/assets/bag_v2/special/special_008.png"
+    },
+    {
+      "id": "special_009",
+      "slot": "SPECIAL",
+      "name": "Special 009",
+      "image": "/assets/bag_v2/special/special_009.png"
+    },
+    {
+      "id": "special_010",
+      "slot": "SPECIAL",
+      "name": "Special 010",
+      "image": "/assets/bag_v2/special/special_010.png"
+    },
+    {
+      "id": "special_011",
+      "slot": "SPECIAL",
+      "name": "Special 011",
+      "image": "/assets/bag_v2/special/special_011.png"
+    },
+    {
+      "id": "special_012",
+      "slot": "SPECIAL",
+      "name": "Special 012",
+      "image": "/assets/bag_v2/special/special_012.png"
+    },
+    {
+      "id": "special_013",
+      "slot": "SPECIAL",
+      "name": "Special 013",
+      "image": "/assets/bag_v2/special/special_013.png"
+    },
+    {
+      "id": "special_014",
+      "slot": "SPECIAL",
+      "name": "Special 014",
+      "image": "/assets/bag_v2/special/special_014.png"
+    },
+    {
+      "id": "special_015",
+      "slot": "SPECIAL",
+      "name": "Special 015",
+      "image": "/assets/bag_v2/special/special_015.png"
+    },
+    {
+      "id": "special_016",
+      "slot": "SPECIAL",
+      "name": "Special 016",
+      "image": "/assets/bag_v2/special/special_016.png"
+    },
+    {
+      "id": "special_017",
+      "slot": "SPECIAL",
+      "name": "Special 017",
+      "image": "/assets/bag_v2/special/special_017.png"
+    },
+    {
+      "id": "special_018",
+      "slot": "SPECIAL",
+      "name": "Special 018",
+      "image": "/assets/bag_v2/special/special_018.png"
+    },
+    {
+      "id": "special_019",
+      "slot": "SPECIAL",
+      "name": "Special 019",
+      "image": "/assets/bag_v2/special/special_019.png"
+    },
+    {
+      "id": "special_020",
+      "slot": "SPECIAL",
+      "name": "Special 020",
+      "image": "/assets/bag_v2/special/special_020.png"
+    },
+    {
+      "id": "special_021",
+      "slot": "SPECIAL",
+      "name": "Special 021",
+      "image": "/assets/bag_v2/special/special_021.png"
+    },
+    {
+      "id": "special_022",
+      "slot": "SPECIAL",
+      "name": "Special 022",
+      "image": "/assets/bag_v2/special/special_022.png"
+    },
+    {
+      "id": "special_023",
+      "slot": "SPECIAL",
+      "name": "Special 023",
+      "image": "/assets/bag_v2/special/special_023.png"
+    },
+    {
+      "id": "special_024",
+      "slot": "SPECIAL",
+      "name": "Special 024",
+      "image": "/assets/bag_v2/special/special_024.png"
+    },
+    {
+      "id": "face_audio_headphones_01",
+      "slot": "FACE",
+      "name": "Audio Headphones 01",
+      "image": "/assets/bag_v2/face/face_audio_headphones_01.png"
+    },
+    {
+      "id": "face_audio_headphones_02",
+      "slot": "FACE",
+      "name": "Audio Headphones 02",
+      "image": "/assets/bag_v2/face/face_audio_headphones_02.png"
+    },
+    {
+      "id": "face_audio_headphones_03",
+      "slot": "FACE",
+      "name": "Audio Headphones 03",
+      "image": "/assets/bag_v2/face/face_audio_headphones_03.png"
+    },
+    {
+      "id": "face_audio_headphones_04",
+      "slot": "FACE",
+      "name": "Audio Headphones 04",
+      "image": "/assets/bag_v2/face/face_audio_headphones_04.png"
+    },
+    {
+      "id": "body_cyan-grid-jacket",
+      "slot": "BODY",
+      "name": "Cyan Grid Jacket",
+      "image": "/assets/bag_v2/body/body_cyan-grid-jacket.png"
+    },
+    {
+      "id": "body_purple-shadow-coat",
+      "slot": "BODY",
+      "name": "Purple Shadow Coat",
+      "image": "/assets/bag_v2/body/body_purple-shadow-coat.png"
+    },
+    {
+      "id": "body_inferno-jacket",
+      "slot": "BODY",
+      "name": "Inferno Jacket",
+      "image": "/assets/bag_v2/body/body_inferno-jacket.png"
+    },
+    {
+      "id": "body_white-gold-varsity",
+      "slot": "BODY",
+      "name": "White Gold Varsity",
+      "image": "/assets/bag_v2/body/body_white-gold-varsity.png"
+    },
+    {
+      "id": "body_obsidian-l2-jacket",
+      "slot": "BODY",
+      "name": "Obsidian L2 Jacket",
+      "image": "/assets/bag_v2/body/body_obsidian-l2-jacket.png"
+    },
+    {
+      "id": "body_magenta-pulse-jacket",
+      "slot": "BODY",
+      "name": "Magenta Pulse Jacket",
+      "image": "/assets/bag_v2/body/body_magenta-pulse-jacket.png"
+    },
+    {
+      "id": "feet_void_tech_sneakers",
+      "slot": "FEET",
+      "name": "Void Tech Sneakers",
+      "image": "/assets/bag_v2/feet/feet_void_tech_sneakers.png"
+    },
+    {
+      "id": "feet_neon_blade_boots",
+      "slot": "FEET",
+      "name": "Neon Blade Boots",
+      "image": "/assets/bag_v2/feet/feet_neon_blade_boots.png"
+    },
+    {
+      "id": "feet_inferno_runners",
+      "slot": "FEET",
+      "name": "Inferno Runners",
+      "image": "/assets/bag_v2/feet/feet_inferno_runners.png"
+    },
+    {
+      "id": "feet_emerald_tech_sneakers",
+      "slot": "FEET",
+      "name": "Emerald Tech Sneakers",
+      "image": "/assets/bag_v2/feet/feet_emerald_tech_sneakers.png"
+    },
+    {
+      "id": "feet_gold_trader_lows",
+      "slot": "FEET",
+      "name": "Gold Trader Lows",
+      "image": "/assets/bag_v2/feet/feet_gold_trader_lows.png"
+    },
+    {
+      "id": "feet_arctic_alpha_sneakers",
+      "slot": "FEET",
+      "name": "Arctic Alpha Sneakers",
+      "image": "/assets/bag_v2/feet/feet_arctic_alpha_sneakers.png"
+    },
+    {
+      "id": "hands_void_tech_gloves",
+      "slot": "HANDS",
+      "name": "Void Tech Gloves",
+      "image": "/assets/bag_v2/hands/hands_void_tech_gloves.png"
+    },
+    {
+      "id": "hands_neon_blade_gloves",
+      "slot": "HANDS",
+      "name": "Neon Blade Gloves",
+      "image": "/assets/bag_v2/hands/hands_neon_blade_gloves.png"
+    },
+    {
+      "id": "hands_inferno_gauntlets",
+      "slot": "HANDS",
+      "name": "Inferno Gauntlets",
+      "image": "/assets/bag_v2/hands/hands_inferno_gauntlets.png"
+    },
+    {
+      "id": "hands_emerald_tech_gloves",
+      "slot": "HANDS",
+      "name": "Emerald Tech Gloves",
+      "image": "/assets/bag_v2/hands/hands_emerald_tech_gloves.png"
+    },
+    {
+      "id": "hands_gold_trader_gloves",
+      "slot": "HANDS",
+      "name": "Gold Trader Gloves",
+      "image": "/assets/bag_v2/hands/hands_gold_trader_gloves.png"
+    },
+    {
+      "id": "hands_arctic_alpha_gloves",
+      "slot": "HANDS",
+      "name": "Arctic Alpha Gloves",
+      "image": "/assets/bag_v2/hands/hands_arctic_alpha_gloves.png"
+    },
+    {
+      "id": "body_void-tech-jacket",
+      "slot": "BODY",
+      "name": "Void Tech Jacket",
+      "image": "/assets/bag_v2/body/body_void-tech-jacket.png"
+    },
+    {
+      "id": "body_neon-blade-jacket",
+      "slot": "BODY",
+      "name": "Neon Blade Jacket",
+      "image": "/assets/bag_v2/body/body_neon-blade-jacket.png"
+    },
+    {
+      "id": "body_emerald-tech-jacket",
+      "slot": "BODY",
+      "name": "Emerald Tech Jacket",
+      "image": "/assets/bag_v2/body/body_emerald-tech-jacket.png"
+    },
+    {
+      "id": "body_gold-trader-bomber",
+      "slot": "BODY",
+      "name": "Gold Trader Bomber",
+      "image": "/assets/bag_v2/body/body_gold-trader-bomber.png"
+    },
+    {
+      "id": "body_arctic-alpha-jacket",
+      "slot": "BODY",
+      "name": "Arctic Alpha Jacket",
+      "image": "/assets/bag_v2/body/body_arctic-alpha-jacket.png"
+    },
+    {
+      "id": "head-cowboy-01",
+      "slot": "HEAD",
+      "name": "Desert Ranger Head",
+      "image": "/assets/bag_v2/head/head_cowboy_01_desert_ranger.png"
+    },
+    {
+      "id": "head-cowboy-02",
+      "slot": "HEAD",
+      "name": "Midnight Outlaw Head",
+      "image": "/assets/bag_v2/head/head_cowboy_02_midnight_outlaw.png"
+    },
+    {
+      "id": "head-cowboy-03",
+      "slot": "HEAD",
+      "name": "Nomad Head",
+      "image": "/assets/bag_v2/head/head_cowboy_03_nomad.png"
+    },
+    {
+      "id": "head-cowboy-04",
+      "slot": "HEAD",
+      "name": "Cardinal Head",
+      "image": "/assets/bag_v2/head/head_cowboy_04_cardinal.png"
+    },
+    {
+      "id": "head-cowboy-05",
+      "slot": "HEAD",
+      "name": "Raven Head",
+      "image": "/assets/bag_v2/head/head_cowboy_05_raven.png"
+    },
+    {
+      "id": "face-cowboy-01",
+      "slot": "FACE",
+      "name": "Desert Ranger Face",
+      "image": "/assets/bag_v2/face/face_cowboy_01_desert_ranger.png"
+    },
+    {
+      "id": "face-cowboy-02",
+      "slot": "FACE",
+      "name": "Midnight Outlaw Face",
+      "image": "/assets/bag_v2/face/face_cowboy_02_midnight_outlaw.png"
+    },
+    {
+      "id": "face-cowboy-03",
+      "slot": "FACE",
+      "name": "Nomad Face",
+      "image": "/assets/bag_v2/face/face_cowboy_03_nomad.png"
+    },
+    {
+      "id": "face-cowboy-04",
+      "slot": "FACE",
+      "name": "Cardinal Face",
+      "image": "/assets/bag_v2/face/face_cowboy_04_cardinal.png"
+    },
+    {
+      "id": "face-cowboy-05",
+      "slot": "FACE",
+      "name": "Raven Face",
+      "image": "/assets/bag_v2/face/face_cowboy_05_raven.png"
+    },
+    {
+      "id": "neck-cowboy-01",
+      "slot": "NECK",
+      "name": "Desert Ranger Neck",
+      "image": "/assets/bag_v2/neck/neck_cowboy_01_desert_ranger.png"
+    },
+    {
+      "id": "neck-cowboy-02",
+      "slot": "NECK",
+      "name": "Midnight Outlaw Neck",
+      "image": "/assets/bag_v2/neck/neck_cowboy_02_midnight_outlaw.png"
+    },
+    {
+      "id": "neck-cowboy-03",
+      "slot": "NECK",
+      "name": "Nomad Neck",
+      "image": "/assets/bag_v2/neck/neck_cowboy_03_nomad.png"
+    },
+    {
+      "id": "neck-cowboy-04",
+      "slot": "NECK",
+      "name": "Cardinal Neck",
+      "image": "/assets/bag_v2/neck/neck_cowboy_04_cardinal.png"
+    },
+    {
+      "id": "neck-cowboy-05",
+      "slot": "NECK",
+      "name": "Raven Neck",
+      "image": "/assets/bag_v2/neck/neck_cowboy_05_raven.png"
+    },
+    {
+      "id": "body-cowboy-01",
+      "slot": "BODY",
+      "name": "Desert Ranger Body",
+      "image": "/assets/bag_v2/body/body_cowboy_01_desert_ranger.png"
+    },
+    {
+      "id": "body-cowboy-02",
+      "slot": "BODY",
+      "name": "Midnight Outlaw Body",
+      "image": "/assets/bag_v2/body/body_cowboy_02_midnight_outlaw.png"
+    },
+    {
+      "id": "body-cowboy-03",
+      "slot": "BODY",
+      "name": "Nomad Body",
+      "image": "/assets/bag_v2/body/body_cowboy_03_nomad.png"
+    },
+    {
+      "id": "body-cowboy-04",
+      "slot": "BODY",
+      "name": "Cardinal Body",
+      "image": "/assets/bag_v2/body/body_cowboy_04_cardinal.png"
+    },
+    {
+      "id": "body-cowboy-05",
+      "slot": "BODY",
+      "name": "Raven Body",
+      "image": "/assets/bag_v2/body/body_cowboy_05_raven.png"
+    },
+    {
+      "id": "back-cowboy-01",
+      "slot": "BACK",
+      "name": "Desert Ranger Back",
+      "image": "/assets/bag_v2/back/back_cowboy_01_desert_ranger.png"
+    },
+    {
+      "id": "back-cowboy-02",
+      "slot": "BACK",
+      "name": "Midnight Outlaw Back",
+      "image": "/assets/bag_v2/back/back_cowboy_02_midnight_outlaw.png"
+    },
+    {
+      "id": "back-cowboy-03",
+      "slot": "BACK",
+      "name": "Nomad Back",
+      "image": "/assets/bag_v2/back/back_cowboy_03_nomad.png"
+    },
+    {
+      "id": "back-cowboy-04",
+      "slot": "BACK",
+      "name": "Cardinal Back",
+      "image": "/assets/bag_v2/back/back_cowboy_04_cardinal.png"
+    },
+    {
+      "id": "back-cowboy-05",
+      "slot": "BACK",
+      "name": "Raven Back",
+      "image": "/assets/bag_v2/back/back_cowboy_05_raven.png"
+    },
+    {
+      "id": "hands-cowboy-01",
+      "slot": "HANDS",
+      "name": "Desert Ranger Hands",
+      "image": "/assets/bag_v2/hands/hands_cowboy_01_desert_ranger.png"
+    },
+    {
+      "id": "hands-cowboy-02",
+      "slot": "HANDS",
+      "name": "Midnight Outlaw Hands",
+      "image": "/assets/bag_v2/hands/hands_cowboy_02_midnight_outlaw.png"
+    },
+    {
+      "id": "hands-cowboy-03",
+      "slot": "HANDS",
+      "name": "Nomad Hands",
+      "image": "/assets/bag_v2/hands/hands_cowboy_03_nomad.png"
+    },
+    {
+      "id": "hands-cowboy-04",
+      "slot": "HANDS",
+      "name": "Cardinal Hands",
+      "image": "/assets/bag_v2/hands/hands_cowboy_04_cardinal.png"
+    },
+    {
+      "id": "hands-cowboy-05",
+      "slot": "HANDS",
+      "name": "Raven Hands",
+      "image": "/assets/bag_v2/hands/hands_cowboy_05_raven.png"
+    },
+    {
+      "id": "feet-cowboy-01",
+      "slot": "FEET",
+      "name": "Desert Ranger Feet",
+      "image": "/assets/bag_v2/feet/feet_cowboy_01_desert_ranger.png"
+    },
+    {
+      "id": "feet-cowboy-02",
+      "slot": "FEET",
+      "name": "Midnight Outlaw Feet",
+      "image": "/assets/bag_v2/feet/feet_cowboy_02_midnight_outlaw.png"
+    },
+    {
+      "id": "feet-cowboy-03",
+      "slot": "FEET",
+      "name": "Nomad Feet",
+      "image": "/assets/bag_v2/feet/feet_cowboy_03_nomad.png"
+    },
+    {
+      "id": "feet-cowboy-04",
+      "slot": "FEET",
+      "name": "Cardinal Feet",
+      "image": "/assets/bag_v2/feet/feet_cowboy_04_cardinal.png"
+    },
+    {
+      "id": "feet-cowboy-05",
+      "slot": "FEET",
+      "name": "Raven Feet",
+      "image": "/assets/bag_v2/feet/feet_cowboy_05_raven.png"
+    },
+    {
+      "id": "special-cowboy-01",
+      "slot": "SPECIAL",
+      "name": "Desert Ranger Special",
+      "image": "/assets/bag_v2/special/special_cowboy_01_desert_ranger.png"
+    },
+    {
+      "id": "special-cowboy-02",
+      "slot": "SPECIAL",
+      "name": "Midnight Outlaw Special",
+      "image": "/assets/bag_v2/special/special_cowboy_02_midnight_outlaw.png"
+    },
+    {
+      "id": "special-cowboy-03",
+      "slot": "SPECIAL",
+      "name": "Nomad Special",
+      "image": "/assets/bag_v2/special/special_cowboy_03_nomad.png"
+    },
+    {
+      "id": "special-cowboy-04",
+      "slot": "SPECIAL",
+      "name": "Cardinal Special",
+      "image": "/assets/bag_v2/special/special_cowboy_04_cardinal.png"
+    },
+    {
+      "id": "special-cowboy-05",
+      "slot": "SPECIAL",
+      "name": "Raven Special",
+      "image": "/assets/bag_v2/special/special_cowboy_05_raven.png"
+    }
+  ]
+}

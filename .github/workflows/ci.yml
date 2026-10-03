@@ -1,0 +1,144 @@
+name: CI
+
+# -----------------------------------------------------------------------------
+# Closes the two gaps every previous local run of this project's own test
+# suite had to report honestly rather than fake:
+#   - `npm run test:integration` needs a real PostgreSQL superuser connection
+#     (lib/server/__tests__/integration/pg-harness.ts) — never available in a
+#     throwaway sandbox with no database. GitHub Actions' `services:` gives
+#     each `integration` job run a real, disposable Postgres 16 container.
+#   - `npm run build` needs real internet access to fetch Google Fonts
+#     (next/font pulls from fonts.googleapis.com/fonts.gstatic.com at build
+#     time) — GitHub-hosted runners have normal internet access, unlike a
+#     network-restricted sandbox.
+#
+# Five independent jobs, run in parallel: each answers one question ("does
+# it typecheck", "do the unit tests pass", "does it behave correctly against
+# a REAL database", "do the contracts pass", "does it build for real") and
+# none blocks the others from reporting — a broken build shouldn't hide a
+# passing test run or vice versa.
+# -----------------------------------------------------------------------------
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch/PR cancels whatever CI run is still in
+# flight for it — no point finishing a check on code that's already stale.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Node 24: the production dependency @lifi/composer-sdk@0.5.0 (and its
+  # @lifi/compose-spec@0.5.0) declares `engines.node: ">=24"` — verified in
+  # package-lock.json. package.json `engines` and .nvmrc pin the same major
+  # so local dev, CI and the production runtime (Vercel reads `engines.node`)
+  # all run the version the dependency tree actually supports.
+  NODE_VERSION: '24'
+
+jobs:
+  secret-scan:
+    name: No tracked secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Fails on any tracked .env file other than .env.example, and on any
+      # 32-byte hex private-key literal in the tree.
+      - run: ./scripts/check-no-secrets.sh
+
+  lint-and-typecheck:
+    name: Lint & typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+
+  unit-tests:
+    name: Unit tests (lib/hooks/components)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  integration-tests:
+    name: Integration tests (real Postgres)
+    runs-on: ubuntu-latest
+    # A real, disposable PostgreSQL 16 — the exact "14+ superuser
+    # connection" pg-harness.ts's own doc asks for. `postgres:16`'s default
+    # image already includes everything schema.sql needs (gen_random_uuid()
+    # has been built into Postgres core since v13 — no CREATE EXTENSION
+    # required); the harness creates its own scratch database and the
+    # anon/authenticated/service_role roles per test run, so nothing about
+    # this service needs to look like an actual Supabase project.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # bag-deployment-local-evm.integration.test.ts spins up its own local
+      # Hardhat node in-process via @nomicfoundation/hardhat-viem — it needs
+      # BagFactory's compiled artifact to already exist, same as the
+      # contracts job below.
+      - run: npx hardhat compile
+      - run: npm run test:integration
+
+  contracts:
+    name: Contract tests (Hardhat)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test:contracts
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # No Supabase/RPC secrets set here on purpose: isSupabaseConfigured()
+      # (lib/supabase/server.ts) makes every server-side code path degrade
+      # to a clean "not configured" response instead of throwing, and
+      # `next build`'s static analysis/prerendering has already been
+      # verified to complete without them — this job is checking that the
+      # BUILD itself succeeds (bundling, font fetching, type-level route
+      # correctness), not exercising real backend behavior (that's what
+      # integration-tests and unit-tests are for).
+      - run: npm run build

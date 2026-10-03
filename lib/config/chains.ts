@@ -1,0 +1,111 @@
+import { arbitrum, base, mainnet, type Chain } from 'viem/chains';
+import { defineChain } from 'viem';
+import {
+  ROBINHOOD_CHAIN_ID,
+  ROBINHOOD_EXPLORER_URL,
+  ROBINHOOD_NATIVE_CURRENCY,
+  ROBINHOOD_PUBLIC_RPC_URL,
+} from './robinhood-chain';
+
+// -----------------------------------------------------------------------------
+// The ONE place BAG's EVM chains are described. Everything chain-specific
+// (chain id, native token, explorer, which RPC providers exist, which asset
+// types live there) is read from here; nothing else re-types these values.
+//
+// Solana stays in the protocol-level `ChainId` union (types/basket-protocol.ts)
+// for LI.FI routing, but it is not an EVM chain and has no entry here.
+//
+// RPC providers per chain (resolved in lib/blockchain/rpc/endpoints.ts):
+//   1. primary   — `<CHAIN>_RPC_URL` (or legacy `RPC_URL_<CHAIN>`), else an
+//                  Alchemy URL built from ALCHEMY_API_KEY + `alchemyNetwork`
+//   2. secondary — `<CHAIN>_RPC_URL_SECONDARY` (e.g. QuickNode)
+//   3. public    — `publicRpcUrls`, only where the chain's OPERATOR runs one.
+//                  Ethereum has none: a third-party public endpoint is not a
+//                  protocol-blessed default.
+// Alchemy network slugs: alchemy.com/docs (eth-mainnet, arb-mainnet,
+// base-mainnet) and alchemy.com/rpc/robinhood (robinhood-mainnet).
+// -----------------------------------------------------------------------------
+
+export const BAG_CHAINS_LIST = ['ethereum', 'arbitrum', 'base', 'robinhood'] as const;
+export type BagChain = (typeof BAG_CHAINS_LIST)[number];
+
+export type BagAssetType = 'CRYPTO' | 'STOCK_TOKEN';
+
+export interface BagChainConfig {
+  chain: BagChain;
+  chainId: number;
+  name: string;
+  nativeCurrency: { name: string; symbol: string; decimals: number };
+  explorerUrl: string;
+  /** Alchemy network slug: https://<slug>.g.alchemy.com/v2/<key> */
+  alchemyNetwork: string;
+  /** Public RPC endpoints run by the chain's operator (last-resort fallback). */
+  publicRpcUrls: readonly string[];
+  supportedAssetTypes: readonly BagAssetType[];
+  viemChain: Chain;
+}
+
+const ROBINHOOD_NATIVE = { name: 'Ether', ...ROBINHOOD_NATIVE_CURRENCY };
+
+const robinhoodViemChain = defineChain({
+  id: ROBINHOOD_CHAIN_ID,
+  name: 'Robinhood Chain',
+  nativeCurrency: ROBINHOOD_NATIVE,
+  rpcUrls: { default: { http: [ROBINHOOD_PUBLIC_RPC_URL] } },
+  blockExplorers: { default: { name: 'Blockscout', url: ROBINHOOD_EXPLORER_URL } },
+});
+
+export const BAG_CHAINS: Record<BagChain, BagChainConfig> = {
+  ethereum: {
+    chain: 'ethereum',
+    chainId: mainnet.id,
+    name: 'Ethereum',
+    nativeCurrency: mainnet.nativeCurrency,
+    explorerUrl: mainnet.blockExplorers.default.url,
+    alchemyNetwork: 'eth-mainnet',
+    publicRpcUrls: [],
+    supportedAssetTypes: ['CRYPTO'],
+    viemChain: mainnet,
+  },
+  arbitrum: {
+    chain: 'arbitrum',
+    chainId: arbitrum.id,
+    name: 'Arbitrum One',
+    nativeCurrency: arbitrum.nativeCurrency,
+    explorerUrl: arbitrum.blockExplorers.default.url,
+    alchemyNetwork: 'arb-mainnet',
+    publicRpcUrls: arbitrum.rpcUrls.default.http,
+    supportedAssetTypes: ['CRYPTO'],
+    viemChain: arbitrum,
+  },
+  base: {
+    chain: 'base',
+    chainId: base.id,
+    name: 'Base',
+    nativeCurrency: base.nativeCurrency,
+    explorerUrl: base.blockExplorers.default.url,
+    alchemyNetwork: 'base-mainnet',
+    publicRpcUrls: base.rpcUrls.default.http,
+    supportedAssetTypes: ['CRYPTO'],
+    viemChain: base as unknown as Chain,
+  },
+  robinhood: {
+    chain: 'robinhood',
+    chainId: ROBINHOOD_CHAIN_ID,
+    name: 'Robinhood Chain',
+    nativeCurrency: ROBINHOOD_NATIVE,
+    explorerUrl: ROBINHOOD_EXPLORER_URL,
+    alchemyNetwork: 'robinhood-mainnet',
+    publicRpcUrls: [ROBINHOOD_PUBLIC_RPC_URL],
+    supportedAssetTypes: ['CRYPTO', 'STOCK_TOKEN'],
+    viemChain: robinhoodViemChain,
+  },
+};
+
+export function isBagChain(value: string): value is BagChain {
+  return (BAG_CHAINS_LIST as readonly string[]).includes(value);
+}
+
+export function bagChainByChainId(chainId: number): BagChainConfig | undefined {
+  return Object.values(BAG_CHAINS).find((c) => c.chainId === chainId);
+}

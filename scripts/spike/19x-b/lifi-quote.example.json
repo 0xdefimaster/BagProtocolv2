@@ -1,0 +1,28 @@
+{
+  "_comment": "Fill this in with the EXACT JSON body returned by a real GET https://li.quest/v1/quote call for a Robinhood Chain (chainId 4663) mainnet pair, fetched by someone/something with real network access to li.quest. Do NOT hand-write plausible-looking values here — run.ts's preflight check independently re-derives fromToken/toToken decimals from the fork's own on-chain state and will fail loudly if this file's numbers don't match reality, but it cannot detect a value that is internally consistent yet simply invented. This file existing with real content is what separates 19.X-B from 19.X-A.",
+  "id": "",
+  "fromChainId": 4663,
+  "toChainId": 4663,
+  "fromToken": {
+    "address": "",
+    "symbol": "",
+    "decimals": 0
+  },
+  "toToken": {
+    "address": "",
+    "symbol": "",
+    "decimals": 0
+  },
+  "fromAmount": "",
+  "toAmount": "",
+  "transactionRequest": {
+    "to": "",
+    "data": "0x",
+    "value": "0x0",
+    "from": "",
+    "chainId": 4663
+  },
+  "estimate": {
+    "approvalAddress": ""
+  }
+}

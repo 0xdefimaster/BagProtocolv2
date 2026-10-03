@@ -1,0 +1,476 @@
+.container {
+  width: 100%;
+  height: 100%;
+}
+
+.previewBox {
+  background: linear-gradient(135deg, rgba(0, 255, 136, 0.05) 0%, rgba(0, 0, 0, 0.3) 100%);
+  border: 2px solid #00ff88;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  box-shadow: 0 0 30px rgba(0, 255, 136, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.previewHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+  padding-bottom: 12px;
+}
+
+.previewHeader h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #00ff88;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rarity {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  background: rgba(0, 255, 136, 0.2);
+  color: #00ff88;
+  border: 1px solid rgba(0, 255, 136, 0.4);
+}
+
+.debugToggle {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #888;
+  border: 1px solid #555;
+  cursor: pointer;
+}
+
+.debugToggle.debugOn {
+  background: rgba(255, 170, 0, 0.15);
+  color: #ffaa00;
+  border-color: #ffaa00;
+}
+
+/* Canvas - where the character layers are rendered.
+   Square container == the 1024x1024 asset canvas. Every layer inside fills
+   this container edge-to-edge (0,0 -> 100%,100%), which is the CSS
+   equivalent of ctx.drawImage(img, 0, 0, 1024, 1024). No centering, no
+   object-fit, no scaling — assets are already aligned in the PNG itself. */
+.canvas {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  background: radial-gradient(circle at center, rgba(0, 255, 136, 0.05) 0%, rgba(0, 0, 0, 0.5) 100%);
+  border: 1px solid rgba(0, 255, 136, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.layerImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.debugLabel {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.debugBorder {
+  position: absolute;
+  inset: 0;
+  border: 1px dashed rgba(255, 170, 0, 0.5);
+}
+
+.debugTag {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: rgba(0, 0, 0, 0.75);
+  border: 1px solid rgba(255, 170, 0, 0.6);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 9px;
+  font-family: 'Monaco', 'Courier New', monospace;
+  color: #ffaa00;
+  line-height: 1.4;
+}
+
+.layerToggles {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 170, 0, 0.2);
+  border-radius: 8px;
+  padding: 8px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.layerToggleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #aaa;
+  cursor: pointer;
+}
+
+.layerToggleRow span:first-of-type {
+  color: #ffaa00;
+  font-weight: 700;
+  min-width: 60px;
+}
+
+.layerToggleId {
+  color: #666;
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 10px;
+}
+
+.combinationBox {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(0, 255, 136, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.combinationJson {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #aaa;
+  font-family: 'Monaco', 'Courier New', monospace;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.exportBtn {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(0, 255, 136, 0.4);
+  border-radius: 8px;
+  background: transparent;
+  color: #00ff88;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+
+.exportBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.exportBtn:not(:disabled):hover {
+  background: rgba(0, 255, 136, 0.1);
+}
+
+.emptyState {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #666;
+  z-index: 999;
+}
+
+.emptyIcon {
+  font-size: 48px;
+  opacity: 0.5;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.emptyText {
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+}
+
+/* Stats Section */
+.stats {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  border: 1px solid rgba(0, 255, 136, 0.1);
+}
+
+.statRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.statLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  min-width: 80px;
+}
+
+.progressBar {
+  flex: 1;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 255, 136, 0.2);
+}
+
+.progressFill {
+  height: 100%;
+  background: linear-gradient(90deg, #00ff88, #00cc6a);
+  transition: width 0.3s ease;
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+}
+
+.statValue {
+  font-size: 12px;
+  font-weight: 700;
+  color: #00ff88;
+  min-width: 40px;
+  text-align: right;
+}
+
+/* Slot Status Dots */
+.slotStatus {
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 255, 136, 0.1);
+}
+
+.statusDot {
+  flex: 1;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 3px;
+  border: 1px solid #555;
+  transition: all 0.3s ease;
+}
+
+.statusDot.filled {
+  background: linear-gradient(135deg, #00ff88, #00cc6a);
+  border-color: #00ff88;
+  box-shadow: 0 0 8px rgba(0, 255, 136, 0.4);
+}
+
+/* Items List */
+.itemsList {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  border: 1px solid rgba(0, 255, 136, 0.1);
+  overflow: hidden;
+}
+
+.listHeader {
+  padding: 10px 12px;
+  background: rgba(0, 255, 136, 0.05);
+  border-bottom: 1px solid rgba(0, 255, 136, 0.1);
+  font-size: 11px;
+  font-weight: 700;
+  color: #00ff88;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.listContent {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.listItem {
+  display: grid;
+  grid-template-columns: 50px 1fr;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(0, 255, 136, 0.1);
+  font-size: 11px;
+  align-items: center;
+  min-height: 28px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.listItem:hover {
+  background: rgba(0, 255, 136, 0.05);
+}
+
+.listItem:last-child {
+  border-bottom: none;
+}
+
+.itemSlot {
+  color: #00ff88;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.itemName {
+  color: #aaa;
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Assemble Button */
+.assembleBtn {
+  width: 100%;
+  padding: 14px;
+  border: 2px solid #00ff88;
+  border-radius: 8px;
+  background: rgba(0, 255, 136, 0.1);
+  color: #00ff88;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.1);
+  margin-top: auto;
+}
+
+.assembleBtn:not(.disabled):hover {
+  background: rgba(0, 255, 136, 0.2);
+  border-color: #00ff88;
+  box-shadow: 0 0 25px rgba(0, 255, 136, 0.3);
+  transform: translateY(-2px);
+}
+
+.assembleBtn:not(.disabled):active {
+  transform: translateY(0);
+}
+
+.assembleBtn.ready {
+  background: linear-gradient(135deg, rgba(0, 255, 136, 0.3) 0%, rgba(0, 255, 136, 0.1) 100%);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(0, 255, 136, 0.4);
+  }
+}
+
+.assembleBtn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-color: #555;
+  color: #666;
+}
+
+/* Scrollbar styling for items list */
+.listContent::-webkit-scrollbar {
+  width: 4px;
+}
+
+.listContent::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.listContent::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 136, 0.3);
+  border-radius: 2px;
+}
+
+.listContent::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 136, 0.5);
+}
+
+/* Responsive */
+@media (max-width: 1400px) {
+  .previewBox {
+    height: auto;
+  }
+
+  .canvas {
+    aspect-ratio: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .previewBox {
+    padding: 16px;
+  }
+
+  .previewHeader h3 {
+    font-size: 16px;
+  }
+
+  .rarity {
+    font-size: 10px;
+    padding: 4px 8px;
+  }
+
+  .itemsList {
+    max-height: 150px;
+  }
+
+  .assembleBtn {
+    padding: 12px;
+    font-size: 12px;
+  }
+}

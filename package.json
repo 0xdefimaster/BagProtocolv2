@@ -1,0 +1,80 @@
+{
+  "name": "bag-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "dev:webpack": "next dev",
+    "demo": "next build && next start",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "seed:bags": "tsx scripts/seed-bags.ts",
+    "import:robinhood-assets": "tsx scripts/import-robinhood-assets.ts",
+    "import:lifi-assets": "tsx scripts/import-lifi-assets.ts",
+    "import:coingecko-assets": "tsx scripts/import-coingecko-assets.ts",
+    "spike:lifi-quote": "tsx scripts/spike/lifi-quote-test.ts",
+    "compile:contracts": "hardhat compile",
+    "deploy:bag-factory": "tsx scripts/deploy-bag-factory.ts",
+    "sync:router-token-allowlist": "tsx scripts/sync-router-token-allowlist.ts",
+    "test:contracts": "hardhat test"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/jost": "^5.3.0",
+    "@lifi/composer-sdk": "^0.5.0",
+    "@lifi/sdk": "^4.6.0",
+    "@lifi/sdk-provider-ethereum": "^4.0.13",
+    "@supabase/supabase-js": "^2.112.2",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@walletconnect/ethereum-provider": "^2.25.0",
+    "jose": "^6.2.8",
+    "lucide-react": "^1.28.0",
+    "next": "15.5.26",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "viem": "^2.55.11"
+  },
+  "devDependencies": {
+    "@next/env": "^15.5.26",
+    "@nomicfoundation/hardhat-toolbox-viem": "^5.0.7",
+    "@openzeppelin/contracts": "^5.1.0",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^24.19.0",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "autoprefixer": "^10.5.4",
+    "axe-core": "4.13.0",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "15.5.26",
+    "hardhat": "^3.14.0",
+    "jsdom": "^24.1.3",
+    "pg": "^8.23.0",
+    "postcss": "^8.5.25",
+    "solc": "0.8.24",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "$postcss"
+    },
+    "solc": {
+      "tmp": "^0.2.7"
+    }
+  }
+}

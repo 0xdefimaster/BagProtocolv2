@@ -1,0 +1,12 @@
+{
+  "mode": "DRY_RUN",
+  "status": "BLOCKED",
+  "diagnosis": "EGRESS_BLOCKED",
+  "detail": "HTTP 403 from an egress proxy (host_not_allowed)",
+  "at": "2026-09-28T04:31:57.822Z",
+  "steps": [
+    "1. RPC chain id",
+    "   EGRESS_BLOCKED: HTTP 403 from an egress proxy (host_not_allowed)"
+  ],
+  "wallet": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
+}

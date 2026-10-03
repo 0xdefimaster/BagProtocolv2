@@ -1,0 +1,148 @@
+{
+ "corpActions": [
+  {
+   "id": "0x000000000000000000000000000000005f7e82ad6e4c4b60ba76497863fe4a67",
+   "type": "CORPORATE_ACTION_TYPE_CASH_DIVIDEND",
+   "status": "CORPORATE_ACTION_STATUS_IN_PROGRESS",
+   "processDate": {
+    "year": 2026,
+    "month": 9,
+    "day": 4
+   },
+   "tokenSymbol": "SGOV",
+   "deployments": [
+    {
+     "contractAddress": "0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5",
+     "chainId": 4663,
+     "networkName": "Robinhood Chain"
+    }
+   ],
+   "details": {
+    "cashDividend": {
+     "underlyingSymbol": "SGOV",
+     "rate": "0.307098"
+    }
+   }
+  },
+  {
+   "id": "0x00000000000000000000000000000000915f477416294f5099a5e0e09f327ce5",
+   "type": "CORPORATE_ACTION_TYPE_CASH_DIVIDEND",
+   "status": "CORPORATE_ACTION_STATUS_IN_PROGRESS",
+   "processDate": {
+    "year": 2026,
+    "month": 10,
+    "day": 1
+   },
+   "tokenSymbol": "NVDA",
+   "deployments": [
+    {
+     "contractAddress": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
+     "chainId": 4663,
+     "networkName": "Robinhood Chain"
+    }
+   ],
+   "details": {
+    "cashDividend": {
+     "underlyingSymbol": "NVDA",
+     "rate": "0.25"
+    }
+   }
+  },
+  {
+   "id": "0x000000000000000000000000000000005f7e82ad6e4c4b60ba76497863fe4a67",
+   "type": "CORPORATE_ACTION_TYPE_CASH_DIVIDEND",
+   "status": "CORPORATE_ACTION_STATUS_COMPLETED",
+   "processDate": {
+    "year": 2026,
+    "month": 8,
+    "day": 6
+   },
+   "tokenSymbol": "SGOV",
+   "deployments": [
+    {
+     "contractAddress": "0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5",
+     "chainId": 4663,
+     "networkName": "Robinhood Chain"
+    }
+   ],
+   "details": {
+    "cashDividend": {
+     "underlyingSymbol": "SGOV",
+     "rate": "0.306812"
+    }
+   }
+  },
+  {
+   "id": "0x00000000000000000000000000000000c2425be3658540dd8e2424cbf3c5c649",
+   "type": "CORPORATE_ACTION_TYPE_CASH_DIVIDEND",
+   "status": "CORPORATE_ACTION_STATUS_COMPLETED",
+   "processDate": {
+    "year": 2026,
+    "month": 8,
+    "day": 13
+   },
+   "tokenSymbol": "AAPL",
+   "deployments": [
+    {
+     "contractAddress": "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9",
+     "chainId": 4663,
+     "networkName": "Robinhood Chain"
+    }
+   ],
+   "details": {
+    "cashDividend": {
+     "underlyingSymbol": "AAPL",
+     "rate": "0.27"
+    }
+   }
+  },
+  {
+   "id": "0x00000000000000000000000000000000a98d1e2ff1ea4e54a538680595585902",
+   "type": "CORPORATE_ACTION_TYPE_CASH_DIVIDEND",
+   "status": "CORPORATE_ACTION_STATUS_IN_PROGRESS",
+   "processDate": {
+    "year": 2026,
+    "month": 9,
+    "day": 10
+   },
+   "tokenSymbol": "AMAT",
+   "deployments": [
+    {
+     "contractAddress": "0x36046893810a7E7fCE501229d57dc3FC8c8716d0",
+     "chainId": 4663,
+     "networkName": "Robinhood Chain"
+    }
+   ],
+   "details": {
+    "cashDividend": {
+     "underlyingSymbol": "AMAT",
+     "rate": "0.53"
+    }
+   }
+  },
+  {
+   "id": "0x0000000000000000000000000000000040b2153b3d3d4715b8d22a15ba1acff2",
+   "type": "CORPORATE_ACTION_TYPE_CASH_DIVIDEND",
+   "status": "CORPORATE_ACTION_STATUS_IN_PROGRESS",
+   "processDate": {
+    "year": 2026,
+    "month": 9,
+    "day": 29
+   },
+   "tokenSymbol": "GLW",
+   "deployments": [
+    {
+     "contractAddress": "0x7c04E6A3368F2A1DE3874f0e80d2e0A1a9915da6",
+     "chainId": 4663,
+     "networkName": "Robinhood Chain"
+    }
+   ],
+   "details": {
+    "cashDividend": {
+     "underlyingSymbol": "GLW",
+     "rate": "0.28"
+    }
+   }
+  }
+ ]
+}
