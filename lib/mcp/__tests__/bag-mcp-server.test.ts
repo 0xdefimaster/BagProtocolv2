@@ -40,8 +40,8 @@ const row = {
 const definition = (rules: Record<string, unknown> = {}) => ({
   kind: 'STATIC_BASKET', chain: 'robinhood', mutability: 'MUTABLE',
   assets: [
-    { chain: 'robinhood', address: addr(1), symbol: 'NVDA', decimals: 18, weightBps: 5000 },
-    { chain: 'robinhood', address: addr(2), symbol: 'AMD', decimals: 18, weightBps: 5000 },
+    { chain: 'robinhood', address: addr(1), decimals: 18, weightBps: 5000 },
+    { chain: 'robinhood', address: addr(2), decimals: 18, weightBps: 5000 },
   ],
   rules: { weightBounds: { minBps: null, maxBps: null }, maxAssets: null, minInvestment: null, swapSlippageBps: null, rebalance: null, performanceFeeBps: null, noRouteAssetPolicy: null, ...rules },
 });

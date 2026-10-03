@@ -18,13 +18,24 @@ export const BAG_JSON_FORMAT_VERSION = 1;
 /** Domain prefix hashed in front of the canonical definition. */
 export const BAG_JSON_HASH_DOMAIN = 'bag.json/v1\n';
 
+/**
+ * One asset of the definition: identity (chain + address), the unit its amounts are expressed in (decimals,
+ * from the asset registry) and its target weight. No symbol: display names live in `metadata.assets`, so a
+ * renamed token never changes the strategy's definition or hash.
+ */
 export interface BagDefinitionAsset {
   chain: ChainId;
   /** Lowercase for EVM chains; as-is for case-sensitive chains. Identity is chain + address. */
   address: string;
-  symbol: string;
   decimals: number;
   weightBps: number;
+}
+
+/** Display name of one asset, as recorded with the version. Not hashed; never a rule. */
+export interface BagAssetDisplay {
+  chain: ChainId;
+  address: string;
+  symbol: string;
 }
 
 export interface BagDefinition {
@@ -56,20 +67,36 @@ export interface BagJson {
   ref: { strategyId: string; version: number; parentVersion: number | null; createdAt: string };
   /** EIP-155 chain id from BAG's chain config; null for non-EVM chains. */
   network: { chainId: number | null };
-  /** Display values as recorded with this version (the current ones are in Strategy `state.display`). Not hashed. */
-  metadata: { name: string; symbol: string; description: string };
+  /**
+   * Display only, as recorded with this version (current Bag display values are in Strategy `state.display`).
+   * Not hashed, and never a rule: an agent must not read intent or constraints from these strings.
+   */
+  metadata: { name: string; symbol: string; description: string; assets: BagAssetDisplay[] };
   commitments: {
-    /** The bytes32 recorded on-chain for this version; null if it was never recorded on-chain. */
+    /** The bytes32 recorded for this version from its on-chain version event; null if none was recorded. */
     onchainCompositionHash: string | null;
     onchainTxHash: string | null;
-    /**
-     * BAG re-derived the on-chain composition hash from this version's stored recipe and compared it
-     * (true/false). Null when nothing was recorded on-chain. A BAG check, not a chain read.
-     */
-    compositionCommittedOnchain: boolean | null;
+    onchainComposition: OnchainCompositionCheck;
   };
   /** The Bag this one was forked from. Fork records do not store the parent version, so it is always null. */
   forkedFrom: { strategyId: string; version: null } | null;
+}
+
+/**
+ * What BAG can say about this version's on-chain composition commitment, and how it knows it:
+ * - `MATCHES_RECORDED` / `MISMATCH`: BAG recomputed the on-chain composition hash from the version's stored
+ *   recipe and compared it with the hash it recorded from the version's verified transaction receipt.
+ * - `NOT_RECORDED`: no on-chain hash is recorded for this version (never recorded on-chain, or version 1,
+ *   whose deploy-time hash is checked at deploy but not stored).
+ * Never a chain read made by this response (`readFromChainThisRequest: false`).
+ */
+export interface OnchainCompositionCheck {
+  status: 'MATCHES_RECORDED' | 'MISMATCH' | 'NOT_RECORDED';
+  /** Where the recorded hash came from; null when nothing is recorded. */
+  recordedFrom: 'VERIFIED_TX_RECEIPT' | null;
+  /** Who compared it: BAG's server, against its own record. */
+  comparedBy: 'BAG' | null;
+  readFromChainThisRequest: false;
 }
 
 // ----------------------------- Unified Strategy API ----------------------------

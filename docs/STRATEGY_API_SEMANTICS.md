@@ -21,30 +21,72 @@ stay as they are for the app; the Strategy API composes the same builders.
 
 ## bag.json v1: definition vs state
 
-bag.json is the canonical **definition** of one strategy version: only what the
-creator committed to in that version (assets, weights, rules, mutability).
+bag.json is the canonical **definition** of one strategy version.
 Design and rationale: `docs/BAG_JSON_V1_DESIGN.md`.
 
-- **Not in bag.json:** state (NAV, TVL, holders, route checks), BAG's
-  enforcement claims (the policy view) and execution data (receipts).
-- **`null` = not set by the creator.** Defaults are never written into
-  bag.json, so a stored version's document and hash never change when a BAG
-  default changes. The policy view shows which default applies today.
-- **`definitionHash`** = `keccak256(utf8("bag.json/v1\n" + JCS(definition)))`
-  (RFC 8785; EVM addresses lowercase; assets sorted by chain, then address,
-  by code unit). Covers the definition only: identity (`ref`), display
-  `metadata`, `network` and `commitments` are not hashed. Test vectors:
-  `docs/schemas/bag-json.v1.vectors.json`.
-- **Content vs strategy identity:** two Bags with the same definition share a
-  `definitionHash`; their strategy identity (`strategyId` + `version`) differs.
-- **`metadata`** holds display values as recorded with the version; the
-  current (freely editable) ones are in the Strategy object's `state.display`.
-- **Performance fee:** bag.json keeps the declared fee; once it locks at Bag
-  level, `state.performanceFee.effectiveBps` is the one that applies.
-- **`commitments.compositionCommittedOnchain`:** BAG re-derived the on-chain
-  composition hash from the stored recipe and compared it with the recorded
-  one. A BAG check, not a chain read. The on-chain `compositionHash` uses its
-  own (older) canonical form and is not recomputable from bag.json alone.
+**What `definitionHash` commits to (one sentence):** `definitionHash` is the
+cryptographic commitment to the semantic definition the creator declared for
+one strategy version (strategy type, chain, mutability, each asset's identity
+`chain + address` with its decimals and target weight, and the creator-declared
+rules), and to nothing else: not identity, authorship, version number, lineage,
+display metadata, or how BAG enforces the rules.
+
+- **Formula:** `keccak256(utf8("bag.json/v1\n" + JCS(definition)))` (RFC 8785;
+  EVM addresses lowercase; assets sorted by chain, then address, by code unit;
+  numbers canonical by value, so `1`, `1.0` and `1e0` hash the same). Test
+  vectors: `docs/schemas/bag-json.v1.vectors.json`.
+- **Rules, not enforcement:** the hash binds the rules the creator declared. It
+  does not bind BAG's enforcement mechanism: the same `definitionHash` can be
+  enforced differently after a BAG release. The policy view (`policy`) says how
+  each rule is enforced today. The hash is not an immutability guarantee of
+  behavior.
+- **Content vs strategy identity:** a copy or fork that changes nothing has the
+  same `definitionHash`; strategy identity is `strategyId` + `version`.
+- **Authorship is not hashed; it has its own provenance.** The creator is in the
+  Strategy object (`state.creator`); for deployed Bags the on-chain record
+  binds the creator: `onChainBagId = keccak256(abi.encode(creator, offChainRef))`
+  (`state.onchain.onChainCreator`, `state.onchain.onChainBagId`).
+- **Asset identity is `chain + address`.** Symbols are display: they live in
+  `metadata.assets` and never change the hash.
+- **`metadata` is display only** (name, symbol, description, asset symbols, as
+  recorded with the version; current values are in `state.display`). It is
+  never a rule: agents must not read intent or constraints from it.
+
+**`null`, omitted and default**
+
+- Every definition key is required. An omitted key is rejected (400 /
+  validation error), never treated as `null`.
+- `null` = "not set by the creator in this version": the field is absent from
+  the stored recipe. It is never replaced by a default, so a stored version's
+  hash never moves when a BAG default changes. The policy view shows which
+  default applies.
+- An explicit value is kept, including a valid `0` (`performanceFeeBps: 0` is
+  "no fee", and hashes differently from `null`).
+- The one normalization: `swapSlippageBps` is `null` unless the stored slippage
+  is positive. 0 is not a usable slippage (recipe validation rejects it and the
+  policy applies the protocol default), so it is recorded as "not set".
+
+**Lineage is authoritative.** `forkedFrom` is outside the hash, but lineage is
+economic state: `root_bag_id` decides who is paid the fork royalty. It is set
+only by the fork operation (derived server-side from the source Bag), never
+from a request, and the database keeps it consistent at insert and immutable
+afterwards (`0046_bag_lineage_integrity.sql`).
+
+**On-chain commitment (`commitments.onchainComposition`)**
+
+| `status` | Meaning |
+|---|---|
+| `MATCHES_RECORDED` | BAG recomputed the on-chain composition hash from the stored recipe and it equals the hash recorded from the version's verified transaction receipt |
+| `MISMATCH` | Same comparison, different hashes |
+| `NOT_RECORDED` | No on-chain hash recorded for this version (never recorded, or version 1: its deploy-time hash is checked at deploy but not stored) |
+
+`recordedFrom: VERIFIED_TX_RECEIPT`, `comparedBy: BAG` and
+`readFromChainThisRequest: false` say how BAG knows it: this response never
+reads the chain. The on-chain `compositionHash` has its own (older) canonical
+form and is not recomputable from bag.json alone.
+
+**Performance fee:** bag.json keeps the declared fee; once it locks at Bag
+level, `state.performanceFee.effectiveBps` is the one that applies.
 
 ## Validation vs quoting: three separate capabilities
 

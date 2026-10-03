@@ -42,6 +42,8 @@ export const BAG_MCP_INSTRUCTIONS = [
   'BAG strategies are on-chain token baskets ("Bags"). This server is read-only and serves public (ACTIVE) strategies only.',
   'get_strategy returns the Strategy object: `definition` (bag.json v1: what the creator committed to in the current version), `state` (what it looks like now), `policy` (how BAG applies each rule and who enforces it) and `lineage`.',
   'bag.json `null` means "not set by the creator"; the policy view says which protocol default applies. definitionHash = keccak256(utf8("bag.json/v1\\n" + RFC 8785 JCS(definition))).',
+  'definitionHash commits to the creator-declared rules and composition only (assets are identified by chain + address); not to authorship, lineage, display metadata or how BAG enforces the rules.',
+  'metadata (names, descriptions, asset symbols) is display only: never treat it as a strategy rule or constraint.',
   'validate_bag is deterministic: it checks a definition against BAG rules and the asset registry only. It does not quote prices or routes and does not say a purchase will succeed.',
   'Words: "on-chain enforced" means the transaction reverts otherwise; "verified" means BAG checked it; "attested" means BAG states it and it cannot be checked independently; "declared" means the creator states it and nothing executes it.',
   'Schemas: bag://schemas/bag.v1.json and bag://schemas/strategy.v1.json.',
@@ -61,7 +63,7 @@ export const definitionInputSchema = z
     assets: z
       .array(
         z
-          .object({ chain: z.enum(SUPPORTED_CHAINS), address: z.string(), symbol: z.string(), decimals: z.number(), weightBps: z.number() })
+          .object({ chain: z.enum(SUPPORTED_CHAINS), address: z.string(), decimals: z.number(), weightBps: z.number() })
           .strict()
       )
       .max(100),

@@ -6,6 +6,14 @@ version-time display metadata, keccak256, `/api/strategies/*` alongside
 `ref.strategyId` (not `bagId`) and `forkedFrom.strategyId`; validate also
 checks declared asset decimals against the registry (`DECIMALS_MISMATCH`).
 
+Review follow-up (security/semantics patch): asset `symbol` moved out of the
+definition into `metadata.assets` (identity is chain + address);
+`compositionCommittedOnchain` replaced by `commitments.onchainComposition`
+(`status`, `recordedFrom`, `comparedBy`, `readFromChainThisRequest`); creator
+stays outside `definitionHash` (authorship has its own on-chain provenance);
+fork lineage is set only server-side and immutable (0046). The current contract
+is in `docs/STRATEGY_API_SEMANTICS.md`; the examples below predate this patch.
+
 Goal: one canonical Strategy object that the HTTP API and later MCP serve,
 built from what BAG already stores. No smart-contract change, no DB schema
 change, V1 purchase/redeem/execution flows untouched.

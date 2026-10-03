@@ -69,8 +69,15 @@ describe('bag.json for a stored version', () => {
     expect(doc.ref).toEqual({ strategyId: ID, version: 2, parentVersion: 1, createdAt: '2026-09-08T00:00:00Z' });
     expect(doc.network.chainId).toBe(4663);
     // Version-time display values, not the Bag's current (renamed) ones.
-    expect(doc.metadata).toEqual({ name: 'AI Infra', symbol: 'AINF', description: 'text at v2' });
-    expect(doc.commitments).toEqual({ onchainCompositionHash: rows[1].onchain_composition_hash, onchainTxHash: rows[1].onchain_tx_hash, compositionCommittedOnchain: true });
+    expect(doc.metadata).toEqual({
+      name: 'AI Infra', symbol: 'AINF', description: 'text at v2',
+      assets: [{ chain: 'robinhood', address: NVDA.toLowerCase(), symbol: 'NVDA' }, { chain: 'robinhood', address: AMD, symbol: 'AMD' }],
+    });
+    expect(doc.commitments).toEqual({
+      onchainCompositionHash: rows[1].onchain_composition_hash,
+      onchainTxHash: rows[1].onchain_tx_hash,
+      onchainComposition: { status: 'MATCHES_RECORDED', recordedFrom: 'VERIFIED_TX_RECEIPT', comparedBy: 'BAG', readFromChainThisRequest: false },
+    });
     expect(doc.definition.assets.map((a) => a.address)).toEqual([NVDA.toLowerCase(), AMD].sort());
     expect(doc.forkedFrom).toBeNull();
     expect(validBagJson(doc)).toBe(true);
@@ -78,8 +85,13 @@ describe('bag.json for a stored version', () => {
 
   it('reports a mismatching on-chain commitment as false and an absent one as null', () => {
     const tampered = { ...rows[1], onchain_composition_hash: '0x' + 'ee'.repeat(32) };
-    expect(buildBagJson(bag(), tampered).commitments.compositionCommittedOnchain).toBe(false);
-    expect(buildBagJson(bag(), rows[0]).commitments).toEqual({ onchainCompositionHash: null, onchainTxHash: null, compositionCommittedOnchain: null });
+    expect(buildBagJson(bag(), tampered).commitments.onchainComposition).toEqual({ status: 'MISMATCH', recordedFrom: 'VERIFIED_TX_RECEIPT', comparedBy: 'BAG', readFromChainThisRequest: false });
+    expect(buildBagJson(bag(), rows[0]).commitments).toEqual({
+      onchainCompositionHash: null, onchainTxHash: null,
+      onchainComposition: { status: 'NOT_RECORDED', recordedFrom: null, comparedBy: null, readFromChainThisRequest: false },
+    });
+    // Never claims a chain read.
+    expect(JSON.stringify(buildBagJson(bag(), rows[1]))).not.toMatch(/"readFromChainThisRequest":true/);
   });
 
   it('is stable: the Bag\'s current metadata, status, fee lock or fork link never change the definition hash', () => {
@@ -189,8 +201,8 @@ const registry = [reg(1, 'NVDA'), reg(2, 'AMD'), reg(3, 'USDC', { decimals: 6 })
 const definition = (over: Record<string, unknown> = {}, rules: Record<string, unknown> = {}) => ({
   kind: 'STATIC_BASKET', chain: 'robinhood', mutability: 'MUTABLE',
   assets: [
-    { chain: 'robinhood', address: addr(2), symbol: 'AMD', decimals: 18, weightBps: 4000 },
-    { chain: 'robinhood', address: addr(1), symbol: 'NVDA', decimals: 18, weightBps: 6000 },
+    { chain: 'robinhood', address: addr(2), decimals: 18, weightBps: 4000 },
+    { chain: 'robinhood', address: addr(1), decimals: 18, weightBps: 6000 },
   ],
   rules: {
     weightBounds: { minBps: 500, maxBps: 7000 }, maxAssets: 10, minInvestment: { amount: '10', measuredAs: 'PAYMENT_TOKEN_AMOUNT' }, swapSlippageBps: 100,
@@ -201,7 +213,7 @@ const definition = (over: Record<string, unknown> = {}, rules: Record<string, un
 
 describe('parseDefinition (strict shape)', () => {
   it('accepts { definition } or a whole bag.json document', () => {
-    expect(parseDefinition({ definition: definition() }).assets.map((a) => a.symbol)).toEqual(['NVDA', 'AMD']);
+    expect(parseDefinition({ definition: definition() }).assets.map((a) => a.address)).toEqual([addr(1), addr(2)]);
     const doc = buildBagJson(bag(), rows[1]);
     expect(parseDefinition(doc)).toEqual(doc.definition);
   });
@@ -218,7 +230,9 @@ describe('parseDefinition (strict shape)', () => {
       { definition: definition({}, { minInvestment: { amount: '10', measuredAs: 'USD' } }) },
       { definition: definition({ chain: 'dogechain' }) },
       { definition: definition({ kind: 'LEVERAGED' }) },
-      { definition: definition({ assets: [{ chain: 'robinhood', address: addr(1), symbol: 'NVDA', weightBps: 10000 }] }) },
+      { definition: definition({ assets: [{ chain: 'robinhood', address: addr(1), weightBps: 10000 }] }) },
+      // A symbol is display, not part of bag.json v1's definition.
+      { definition: definition({ assets: [{ chain: 'robinhood', address: addr(1), symbol: 'NVDA', decimals: 18, weightBps: 10000 }] }) },
       { bagJson: 2, definition: definition() },
     ];
     for (const b of bad) expect(() => parseDefinition(b), JSON.stringify(b)).toThrow(ValidateBagInputError);
@@ -229,7 +243,7 @@ describe('validateDefinition', () => {
   it('a valid definition: same engine as validate_bag, canonical form and hash returned', () => {
     const r = validateDefinition(parseDefinition({ definition: definition() }), registry);
     expect(r.validation.valid).toBe(true);
-    expect(r.definition.assets.map((a) => a.symbol)).toEqual(['NVDA', 'AMD']);
+    expect(r.definition.assets.map((a) => a.address)).toEqual([addr(1), addr(2)]);
     expect(r.definitionHash).toMatch(/^0x[0-9a-f]{64}$/);
     // Input order does not change the hash.
     const swapped = definition({ assets: [...definition().assets].reverse() });
@@ -246,7 +260,7 @@ describe('validateDefinition', () => {
   });
 
   it('declared decimals must match the registry', () => {
-    const wrong = definition({ assets: [{ chain: 'robinhood', address: addr(3), symbol: 'USDC', decimals: 18, weightBps: 10000 }] });
+    const wrong = definition({ assets: [{ chain: 'robinhood', address: addr(3), decimals: 18, weightBps: 10000 }] });
     const r = validateDefinition(parseDefinition({ definition: wrong }), registry);
     expect(r.validation.valid).toBe(false);
     expect(r.validation.errors.find((e) => e.code === 'DECIMALS_MISMATCH')).toMatchObject({ rule: 'registry', field: 'assets[0].decimals', requested: 18, allowed: 6 });
