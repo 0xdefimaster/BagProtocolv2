@@ -293,3 +293,23 @@ export async function markReconciliationApplied(admin: SupabaseClient, id: strin
     .is('reconciliation_applied_at', null);
   if (error) throw new Error(error.message);
 }
+
+/** One user's intents for one Bag in the given statuses, newest first (execution history). Read-only. */
+export async function listPurchaseIntentsForUserBag(
+  admin: SupabaseClient,
+  userId: string,
+  bagId: string,
+  statuses: readonly PurchaseIntentStatus[],
+  limit: number
+): Promise<PurchaseIntent[]> {
+  const { data, error } = await admin
+    .from('purchase_intents')
+    .select()
+    .eq('user_id', userId)
+    .eq('bag_id', bagId)
+    .in('status', [...statuses])
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as PurchaseIntentRow[]).map(fromRow);
+}
