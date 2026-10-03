@@ -1,6 +1,10 @@
 # bag.json v1 + Unified Strategy API (PR #5) — design draft
 
-Status: DRAFT for review. Nothing here is implemented yet.
+Status: implemented in PR #5. Decisions taken on the open questions (§7):
+version-time display metadata, keccak256, `/api/strategies/*` alongside
+`/api/bags/*`, `null` for fields a legacy recipe lacks. Implementation notes:
+`ref.strategyId` (not `bagId`) and `forkedFrom.strategyId`; validate also
+checks declared asset decimals against the registry (`DECIMALS_MISMATCH`).
 
 Goal: one canonical Strategy object that the HTTP API and later MCP serve,
 built from what BAG already stores. No smart-contract change, no DB schema
@@ -68,15 +72,15 @@ BAG's claim about itself and can change with a release), or execution data.
   "definitionHash": "0x…",             // keccak256 of the canonical definition (§4)
 
   // Not hashed: identity, display and links.
-  "ref": { "bagId": "uuid", "version": 3, "parentVersion": 2, "createdAt": "…" },
+  "ref": { "strategyId": "uuid", "version": 3, "parentVersion": 2, "createdAt": "…" },
   "network": { "chainId": 4663 },      // EIP-155, from BAG chain config
-  "metadata": { "name": "…", "symbol": "…", "description": "…", "asOfVersion": true },
+  "metadata": { "name": "…", "symbol": "…", "description": "…" },   // as recorded with this version
   "commitments": {
     "onchainCompositionHash": "0x…" | null,
     "onchainTxHash": "0x…" | null,
     "compositionCommittedOnchain": true | false | null   // BAG re-derived the hash from this version's stored recipe
   },
-  "forkedFrom": { "bagId": "uuid", "version": null } | null   // fork records do not store the parent version
+  "forkedFrom": { "strategyId": "uuid", "version": null } | null   // fork records do not store the parent version
 }
 ```
 

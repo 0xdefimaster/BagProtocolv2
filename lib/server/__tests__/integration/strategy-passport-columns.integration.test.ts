@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { TestDatabase, createTestDatabase } from './pg-harness';
 import { VERSION_ROW_COLUMNS } from '@/lib/server/strategy-passport';
+import { STRATEGY_VERSION_COLUMNS } from '@/lib/server/strategy-api';
 
 // The Strategy Passport reads on-chain version fields straight from
 // bag_versions; this proves every column it selects exists in BOTH a fresh
@@ -26,6 +27,16 @@ describe('Strategy Passport column contract', () => {
       for (const c of VERSION_ROW_COLUMNS.split(',')) expect(cols).toContain(c);
       await db.admin.query(`select ${VERSION_ROW_COLUMNS} from bag_versions limit 1`);
       await db.admin.query(`select id from bags where parent_bag_id is not null order by created_at desc limit 1`);
+    }
+  });
+
+  it('every bag_versions column the Strategy API (bag.json) selects exists', async () => {
+    for (const db of [fresh, upgraded]) {
+      const cols = (await db.admin.query(`select column_name from information_schema.columns where table_schema = 'public' and table_name = 'bag_versions'`)).rows.map(
+        (r) => r.column_name as string
+      );
+      for (const c of STRATEGY_VERSION_COLUMNS.split(',')) expect(cols).toContain(c);
+      await db.admin.query(`select ${STRATEGY_VERSION_COLUMNS} from bag_versions limit 1`);
     }
   });
 });
