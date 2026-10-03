@@ -17,7 +17,10 @@ import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
 import { claimNewlyVerifiedTxHashes, TX_HASH_RE } from '@/lib/server/intent-tx-claims';
 import { paymentAssetsFor } from '@/lib/server/payment-assets';
 import { FORK_ROYALTY_BPS } from '@/lib/config/rewards';
-import { getBagNavSafe } from '@/lib/server/bag-nav';
+import { getBagAssetHoldings, getBagNavSafe, priceHoldingsIndividually } from '@/lib/server/bag-nav';
+import { EXECUTION_QUOTE_PRICE_SOURCE, executionPricesFromLegs, navAtExecutionPrices } from '@/lib/domain/basket-protocol/shares/execution-valuation';
+import { getDepositQuote, OrphanedNavError, ZeroNavError } from '@/lib/domain/basket-protocol/shares/shares';
+import type { DepositQuote, ShareSupply } from '@/types/basket-protocol';
 import { getShareSupply } from '@/lib/server/bag-share-state-repo';
 import { getVerifiedIdentityKeys, listAssets } from '@/lib/server/asset-repo';
 import { getPriceProvider } from '@/lib/server/price-provider';
@@ -248,6 +251,14 @@ export type PurchaseExecutionError =
   | { kind: 'UNKNOWN_INPUT_ASSET' }
   | { kind: 'PREVIEW_ERROR'; message: string }
   | { kind: 'PRICE_UNAVAILABLE'; message: string }
+  /** Robinhood's live Stock Token registry could not be reached, so the Bag's Stock Tokens cannot be re-checked. Not a price problem. */
+  | { kind: 'STOCK_REGISTRY_UNAVAILABLE'; message: string }
+  /**
+   * Neither the oracle nor this purchase's own executable quote could value these holdings, so shares cannot be
+   * priced. Never estimated: the purchase stops. (Typically a holding left from an older version whose price
+   * source is down while its market is closed.)
+   */
+  | { kind: 'VALUATION_UNAVAILABLE'; assets: AssetIdentity[] }
   | { kind: 'QUOTE_FAILED'; failureCode: PurchaseIntentFailureCode; message: string; composerFallback?: ComposerFallbackNotice }
   | { kind: 'PURCHASE_IN_PROGRESS'; intentId: string }
   | { kind: 'PROVIDER_SELECTION_UNAVAILABLE' }
@@ -334,7 +345,13 @@ interface PreparedBagPurchaseContext {
   outputIdentityKeys: Set<string>;
   inputAsset: CanonicalAsset;
   identity: AssetIdentity;
-  nav: NavResult;
+  /**
+   * Oracle NAV, or null when the oracle could not price the holdings. A null NAV never blocks a purchase by
+   * itself: shares are then priced from the executable quote (`priceSharesFromExecution`). Everything that
+   * protects the buyer (route, quote, minimum output, slippage, allowlists, policy) is unaffected.
+   */
+  nav: NavResult | null;
+  shareSupply: ShareSupply;
   outcome: PurchasePreviewResult;
   /** Set when the Bag's unroutable-asset policy changed what this purchase buys — persisted on the intent. */
   fallback: PurchaseIntentFallback | null;
@@ -389,7 +406,7 @@ async function prepareBagPurchaseContext(
   const stockGuard = await checkStockTokensForPurchase(version.recipe.assets.map(recipeAssetIdentity), inputAssets);
   if (!stockGuard.ok) {
     return stockGuard.kind === 'REGISTRY_UNAVAILABLE'
-      ? { ok: false, error: { kind: 'PRICE_UNAVAILABLE', message: stockGuard.message } }
+      ? { ok: false, error: { kind: 'STOCK_REGISTRY_UNAVAILABLE', message: stockGuard.message } }
       : { ok: false, error: { kind: 'REGISTRY_INVALID', details: stockGuard.details } };
   }
 
@@ -398,13 +415,14 @@ async function prepareBagPurchaseContext(
     getShareSupply(admin, bagId),
   ]);
 
-  // Real-price fail-closed guard (Phase 18): never quote/lock a purchase
-  // intent against a missing, stale, or invalid price — fail the whole
-  // creation instead.
-  if (!navOutcome.ok) {
-    return { ok: false, error: { kind: 'PRICE_UNAVAILABLE', message: navOutcome.message } };
-  }
-  const nav = navOutcome.nav;
+  // Real-price fail-closed guard (Phase 18), narrowed to what needs a price:
+  // a missing, stale or invalid oracle price is never used and never
+  // estimated. It no longer blocks the purchase on its own, because nothing
+  // that protects the buyer depends on it (allocation is weights x amount;
+  // minimum output comes from the executable quote). Only the share mint
+  // needs a valuation, and `priceSharesFromExecution()` provides one from the
+  // purchase's own quote, or stops the purchase.
+  const nav = navOutcome.ok ? navOutcome.nav : null;
 
   const identity: AssetIdentity = { chain: inputAsset.chain, address: inputAsset.address };
 
@@ -463,7 +481,42 @@ async function prepareBagPurchaseContext(
     return { ok: false, error: { kind: 'PREVIEW_ERROR', message: messageByKind[outcome.error.kind] ?? 'Unable to calculate allocation.' } };
   }
 
-  return { ok: true, value: { bag, version, outputIdentityKeys, inputAsset, identity, nav, outcome, fallback } };
+  return { ok: true, value: { bag, version, outputIdentityKeys, inputAsset, identity, nav, shareSupply, outcome, fallback } };
+}
+
+/**
+ * Shares for a purchase whose holdings the oracle could not value: the Bag's holdings and the deposit are valued
+ * at the prices this purchase's own executable quote implies (input spent / BAG's minimum output, rounded up;
+ * see execution-valuation.ts). A holding the purchase does not buy is priced by the oracle individually, or the
+ * purchase stops with the assets named. Nothing is estimated and no price is invented.
+ */
+async function priceSharesFromExecution(
+  admin: SupabaseClient,
+  bagId: string,
+  steps: PurchaseIntentStepRecord[],
+  inputAsset: CanonicalAsset,
+  shareSupply: ShareSupply,
+  depositAmount: string,
+  now: Date
+): Promise<PurchaseExecutionOutcome<{ depositQuote: DepositQuote; nav: NavResult }>> {
+  const executionPrices = executionPricesFromLegs(
+    steps.map((st) => ({ action: st.action, outputAsset: st.outputAsset, inputAmountRaw: st.inputAmountRaw, minOutputRaw: st.minOutputRaw, outputDecimals: st.outputDecimals })),
+    { asset: { chain: inputAsset.chain, address: inputAsset.address }, decimals: inputAsset.decimals },
+    now.toISOString()
+  );
+  const holdings = await getBagAssetHoldings(admin, bagId);
+  const uncovered = holdings.filter((h) => !executionPrices.has(assetIdentityKey(h.asset)));
+  const other = uncovered.length > 0 ? (await priceHoldingsIndividually(uncovered, priceProvider)).prices : new Map();
+  const valued = navAtExecutionPrices(holdings, executionPrices, other, now);
+  if (!valued.ok) return { ok: false, error: { kind: 'VALUATION_UNAVAILABLE', assets: valued.unpriced } };
+  try {
+    return { ok: true, value: { depositQuote: getDepositQuote(valued.nav, shareSupply, depositAmount), nav: valued.nav } };
+  } catch (err) {
+    if (err instanceof OrphanedNavError || err instanceof ZeroNavError) {
+      return { ok: false, error: { kind: 'PREVIEW_ERROR', message: 'NAV is currently unavailable.' } };
+    }
+    throw err;
+  }
 }
 
 /**
@@ -554,7 +607,7 @@ export async function createPurchaseIntentForUser(
 
   const prepared = await prepareBagPurchaseContext(admin, bagId, inputAssetId, amount);
   if (!prepared.ok) return prepared;
-  const { bag, version, outputIdentityKeys, inputAsset, identity, nav, outcome, fallback } = prepared.value;
+  const { bag, version, outputIdentityKeys, inputAsset, identity, nav: oracleNav, shareSupply, outcome, fallback } = prepared.value;
 
   // THE Phase 17 step: quote every SWAP step against the real, connected,
   // session-authenticated wallet — never PLACEHOLDER_ADDRESS (spec Aşama
@@ -681,6 +734,30 @@ export async function createPurchaseIntentForUser(
     if (composerFallback) steps = buildAllFailedSteps(outcome.executionPlan.steps, inputAsset.decimals);
   }
 
+  // Shares: oracle NAV when it could value the Bag; otherwise this purchase's
+  // own quote. Without a complete quote there is nothing true to value with,
+  // and the purchase fails below anyway, so no row is written for it.
+  let depositQuote = outcome.depositQuote;
+  let nav = oracleNav;
+  if (!depositQuote || !nav) {
+    if (!allSwapsQuoted) {
+      return {
+        ok: false,
+        error: {
+          kind: 'QUOTE_FAILED',
+          failureCode: firstFailure?.failureCode ?? 'PROVIDER_ERROR',
+          message: firstFailure?.message ?? 'No executable route could be quoted for this purchase.',
+          ...(composerFallback ? { composerFallback } : {}),
+        },
+      };
+    }
+    const priced = await priceSharesFromExecution(admin, bagId, steps, inputAsset, shareSupply, outcome.inputAmountDisplay, new Date());
+    if (!priced.ok) return priced;
+    depositQuote = priced.value.depositQuote;
+    nav = priced.value.nav;
+    console.info(`[purchase] bag ${bagId}: oracle NAV unavailable; shares priced from the executable quote (${EXECUTION_QUOTE_PRICE_SOURCE}).`);
+  }
+
   const fingerprint = computeExecutionPlanFingerprint(outcome.executionPlan);
   const expiresAt = new Date(Date.now() + PURCHASE_INTENT_TTL_MS).toISOString();
 
@@ -694,8 +771,8 @@ export async function createPurchaseIntentForUser(
     // already showed this user — minted verbatim on completion (see
     // PurchaseIntent.sharesRaw's doc comment), never recomputed against a
     // possibly-moved NAV at execution time.
-    sharesRaw: outcome.depositQuote.sharesRaw,
-    shareDecimals: outcome.depositQuote.shareDecimals,
+    sharesRaw: depositQuote.sharesRaw,
+    shareDecimals: depositQuote.shareDecimals,
     routeFingerprint: fingerprint,
     // Phase 18 — locked alongside the fingerprint, re-verified at execute
     // time (see prepareExecution() below) instead of the weaker "output
@@ -703,12 +780,12 @@ export async function createPurchaseIntentForUser(
     recipeVersion: version.version,
     compositionHash: version.compositionHash,
     navSnapshot: { grossNav: nav.grossNav, quoteCurrency: nav.quoteCurrency, asOf: nav.asOf },
-    sharePriceAtQuote: outcome.depositQuote.isBootstrap ? null : outcome.depositQuote.sharePrice,
+    sharePriceAtQuote: depositQuote.isBootstrap ? null : depositQuote.sharePrice,
     // Phase 20 — locked now, from the same DepositQuote the Purchase
     // Preview already showed the user, so `applyAccountingIdempotently()`
     // below has a well-defined per-investor cost-basis delta regardless of
     // whether this deposit was a bootstrap (sharePriceAtQuote null) or not.
-    depositAmount: outcome.depositQuote.depositAmount,
+    depositAmount: depositQuote.depositAmount,
     steps,
     composerTransaction,
     bagRouterTransaction,

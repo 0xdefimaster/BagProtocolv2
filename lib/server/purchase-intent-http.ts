@@ -31,6 +31,20 @@ export function purchaseExecutionErrorResponse(error: PurchaseExecutionError): N
         { error: 'Live pricing is temporarily unavailable. Please try again shortly.' },
         { status: 503 }
       );
+    case 'STOCK_REGISTRY_UNAVAILABLE':
+      return NextResponse.json(
+        { error: "Robinhood's Stock Token registry can't be reached right now, so this Bag's stock tokens can't be re-checked. Please try again shortly.", code: 'STOCK_REGISTRY_UNAVAILABLE' },
+        { status: 503 }
+      );
+    case 'VALUATION_UNAVAILABLE':
+      return NextResponse.json(
+        {
+          error: "Your shares can't be priced right now: some of this Bag's holdings have no usable price and this purchase doesn't buy them. Nothing was sent. Please try again later.",
+          code: 'VALUATION_UNAVAILABLE',
+          assets: error.assets,
+        },
+        { status: 503 }
+      );
     case 'QUOTE_FAILED':
       return NextResponse.json(
         { error: error.message, failureCode: error.failureCode, ...(error.composerFallback ? { composerFallback: error.composerFallback } : {}) },

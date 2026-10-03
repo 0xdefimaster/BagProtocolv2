@@ -41,7 +41,7 @@ export interface BagPriceRouterConfig {
 
 export class PriceSourceDisagreementError extends PriceUnavailableError {
   constructor(asset: AssetIdentity, public readonly deviationBps: bigint, public readonly primary: string, public readonly secondary: string) {
-    super(asset);
+    super(asset, 'SOURCES_DISAGREE');
     this.name = 'PriceSourceDisagreementError';
     this.message = `Price sources disagree by ${deviationBps} bps for ${asset.chain}:${asset.address} (${primary} vs ${secondary})`;
   }
@@ -63,7 +63,7 @@ export class BagPriceRouter implements PriceProvider {
       token = await this.config.stockApi.tokenByAddress(asset.address);
     } catch {
       if (asset.address.toLowerCase() === this.config.usdgAddress.toLowerCase()) return 'CRYPTO';
-      throw new PriceUnavailableError(asset);
+      throw new PriceUnavailableError(asset, 'SOURCE_UNAVAILABLE');
     }
     if (token) return 'STOCK_TOKEN';
     if (this.config.chainlink.hasFeed(asset)) throw new PriceUnavailableError(asset); // feed for a non-registry address

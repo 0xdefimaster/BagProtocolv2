@@ -92,11 +92,15 @@ interface PurchasePreviewResponse {
   inputSymbol: string;
   inputAmountDisplay: string;
   depositPlan: { allocations: DepositAllocationView[]; unallocatedRaw: string };
-  depositQuote: { sharesRaw: string; shareDecimals: number; sharePrice: string; isBootstrap: boolean };
+  /** Null when the oracle could not value the Bag: shares are then priced from the executable quote when the purchase is prepared. */
+  depositQuote: { sharesRaw: string; shareDecimals: number; sharePrice: string; isBootstrap: boolean } | null;
+  shareValuation?: 'ORACLE_NAV' | 'EXECUTION_QUOTE';
   executionPlan: { steps: ExecutionStepView[] };
-  navGross: string;
-  navQuoteCurrency: string;
+  navGross: string | null;
+  navQuoteCurrency: string | null;
   isBootstrap: boolean;
+  /** Which holdings have no usable market price right now, and why. Display only: it never blocks the purchase by itself. */
+  valuation?: { available: true } | { available: false; unavailable: { chain: string; address: string; symbol: string | null; cause: string }[] };
   /** Phase 14 — present (possibly `null`) only because this file always requests `?quotes=true`; a caller of the raw API without that flag never gets this field populated. */
   quotes: ExecutionResultView | null;
   quotesError: string | null;
@@ -115,6 +119,18 @@ interface PurchasePreviewModalProps {
   onCompleted?: () => void;
   onClose: () => void;
 }
+
+const PRICE_CAUSE_LABEL: Record<string, string> = {
+  MARKET_CLOSED_OR_HALTED: 'market closed or trading halted',
+  SPREAD_TOO_WIDE: 'bid/ask spread too wide, e.g. market closed',
+  STALE_QUOTE: 'no recent quote',
+  NOT_LISTED: 'not listed by the price source',
+  SOURCES_DISAGREE: 'price sources disagree',
+  SOURCE_UNAVAILABLE: 'price source unreachable',
+  NO_PRICE: 'no price published',
+  STALE_PRICE: 'price too old',
+};
+const priceCauseLabel = (cause: string) => PRICE_CAUSE_LABEL[cause] ?? 'unavailable';
 
 export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart, onCompleted, onClose }: PurchasePreviewModalProps) {
   // No default amount: a pre-filled "100" made the background preparation
@@ -404,9 +420,10 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
     [inputAssets, selectedAssetId]
   );
 
-  const estimatedSharesDisplay = preview
+  const estimatedSharesDisplay = preview?.depositQuote
     ? formatRawAmount(preview.depositQuote.sharesRaw, preview.depositQuote.shareDecimals, { maxFractionDigits: 4 })
     : null;
+  const unvaluedAssets = preview?.valuation && !preview.valuation.available ? preview.valuation.unavailable : [];
 
   return (
     <div
@@ -623,6 +640,23 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
               })}
             </div>
 
+            {unvaluedAssets.length > 0 && (
+              <div
+                role="status"
+                style={{
+                  marginBottom: 10,
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  fontSize: 12.5,
+                  border: '1px solid var(--line-soft, rgba(255,255,255,0.12))',
+                  color: 'var(--ink-soft, #B4AEA2)',
+                }}
+              >
+                Market price unavailable:{' '}
+                {unvaluedAssets.map((a) => `${a.symbol ?? `${a.address.slice(0, 6)}…`} (${priceCauseLabel(a.cause)})`).join(', ')}. Your purchase still uses
+                live executable routes and their minimum outputs; your shares are priced from that quote.
+              </div>
+            )}
             <div
               style={{
                 display: 'flex',
@@ -634,13 +668,13 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
               }}
             >
               <span style={{ fontSize: 12.5, color: 'var(--ink-soft, #B4AEA2)' }}>
-                Estimated BAG Shares {preview.depositQuote.isBootstrap ? '(bootstrap quote)' : ''}
+                Estimated BAG Shares {preview.depositQuote?.isBootstrap ? '(bootstrap quote)' : ''}
               </span>
-              <span style={{ fontSize: 18, fontWeight: 700 }}>{estimatedSharesDisplay}</span>
+              <span style={{ fontSize: 18, fontWeight: 700 }}>{estimatedSharesDisplay ?? 'From your quote'}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14, fontSize: 12.5, color: 'var(--ink-soft, #B4AEA2)' }}>
               <span>Price per share</span>
-              <span>{formatDecimalStringUsd(preview.depositQuote.sharePrice)}</span>
+              <span>{preview.depositQuote ? formatDecimalStringUsd(preview.depositQuote.sharePrice) : 'Set at confirmation'}</span>
             </div>
 
             <div style={{ marginBottom: 6, fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--ink-soft, #B4AEA2)' }}>

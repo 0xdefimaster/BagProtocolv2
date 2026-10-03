@@ -510,20 +510,20 @@ export class RobinhoodApiPriceProvider implements PriceProvider {
   }
 
   async getPrice(asset: AssetIdentity): Promise<AssetPrice> {
-    if (asset.chain !== 'robinhood') throw new PriceUnavailableError(asset);
+    if (asset.chain !== 'robinhood') throw new PriceUnavailableError(asset, 'NOT_LISTED');
     let q: RobinhoodStockQuote;
     try {
       const token = await this.config.api.tokenByAddress(asset.address);
-      if (!token) throw new PriceUnavailableError(asset);
+      if (!token) throw new PriceUnavailableError(asset, 'NOT_LISTED');
       q = await this.config.api.quote(token);
     } catch (err) {
       if (err instanceof PriceUnavailableError) throw err;
-      throw new PriceUnavailableError(asset);
+      throw new PriceUnavailableError(asset, 'SOURCE_UNAVAILABLE');
     }
     const now = this.config.now ? this.config.now() : new Date();
-    if (q.isTradingHalt) throw new PriceUnavailableError(asset);
-    if (now.getTime() - Date.parse(q.generatedAt) > this.maxAgeMs) throw new PriceUnavailableError(asset);
-    if (!(q.spreadBps <= this.maxSpreadBps)) throw new PriceUnavailableError(asset); // also rejects zero/crossed (Infinity)
+    if (q.isTradingHalt) throw new PriceUnavailableError(asset, 'MARKET_CLOSED_OR_HALTED');
+    if (now.getTime() - Date.parse(q.generatedAt) > this.maxAgeMs) throw new PriceUnavailableError(asset, 'STALE_QUOTE');
+    if (!(q.spreadBps <= this.maxSpreadBps)) throw new PriceUnavailableError(asset, 'SPREAD_TOO_WIDE'); // also rejects zero/crossed (Infinity)
     return {
       asset,
       price: q.mid,
