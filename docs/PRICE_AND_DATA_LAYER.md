@@ -204,8 +204,10 @@ stops a purchase by itself:
   `NO_PRICE`). The UI shows "Market price unavailable: …" and keeps Purchase on.
 - **Intent creation** quotes first, then prices the shares from that quote
   (`lib/domain/basket-protocol/shares/execution-valuation.ts`): each holding is
-  valued at input spent / BAG's minimum output for its leg, rounded up, and
-  the payment token at 1. No value moves between the buyer and existing
+  valued at input spent / the leg's floor output, rounded up, and the payment
+  token at 1. The floor is BAG's own minimum (BAG Router, sequential LI.FI),
+  else LI.FI Composer's on-chain `amountOutMin`, else the simulated output
+  reduced by the Bag's slippage tolerance. No value moves between the buyer and existing
   holders at the prices the market actually offers; using the minimum output
   and rounding up can only give the buyer fewer shares, never more.
 - **Still blocked, with the real reason:** no executable quote

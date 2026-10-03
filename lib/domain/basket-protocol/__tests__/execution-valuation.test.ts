@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { executionPricesFromLegs, navAtExecutionPrices, EXECUTION_QUOTE_PRICE_SOURCE, ExecutionLeg } from '../shares/execution-valuation';
+import { executionPricesFromLegs, legFloorOutputRaw, navAtExecutionPrices, EXECUTION_QUOTE_PRICE_SOURCE, ExecutionLeg } from '../shares/execution-valuation';
 import { getDepositQuote } from '../shares/shares';
 import { assetIdentityKey } from '../asset-identity';
 import type { AssetHolding, AssetPrice, ShareSupply } from '@/types/basket-protocol';
@@ -99,5 +99,26 @@ describe('share pricing at execution prices', () => {
   it('payment-token holdings (kept input) are valued at 1', () => {
     const v = navAtExecutionPrices([holding(USDG, '25000000', 6)], prices, new Map(), NOW);
     expect(v.ok && Number(v.nav.grossNav)).toBe(25);
+  });
+});
+
+describe('legFloorOutputRaw: the lowest output a leg can end with, strictest source first', () => {
+  const base: ExecutionLeg = { action: 'SWAP', outputAsset: NVDA, inputAmountRaw: '1000000', minOutputRaw: null, outputDecimals: 18 };
+  it("BAG's own minimum first, then the provider-enforced minimum (Composer amountOutMin)", () => {
+    expect(legFloorOutputRaw({ ...base, minOutputRaw: '90', providerEnforcedMinOutputRaw: '95', outputAmountRaw: '100' }, 100)).toBe(BigInt(90));
+    expect(legFloorOutputRaw({ ...base, providerEnforcedMinOutputRaw: '95', outputAmountRaw: '100' }, 100)).toBe(BigInt(95));
+  });
+  it('without any minimum: the simulated output reduced by the slippage tolerance, never the raw simulation', () => {
+    expect(legFloorOutputRaw({ ...base, outputAmountRaw: '10000' }, 100)).toBe(BigInt(9900));
+    expect(legFloorOutputRaw({ ...base, outputAmountRaw: '10000' }, 37.5)).toBe(BigInt(9962)); // tolerance rounded up
+  });
+  it('no usable number, or no tolerance configured: no floor (the asset stays unpriced)', () => {
+    expect(legFloorOutputRaw({ ...base, outputAmountRaw: '10000' }, -1)).toBeNull();
+    expect(legFloorOutputRaw({ ...base, minOutputRaw: '0', providerEnforcedMinOutputRaw: 'abc' }, 100)).toBeNull();
+    expect(legFloorOutputRaw(base, 100)).toBeNull();
+  });
+  it('a Composer-shaped leg is priced from amountOutMin', () => {
+    const p = executionPricesFromLegs([{ ...base, inputAmountRaw: String(60e6), providerEnforcedMinOutputRaw: e18(9.9).toString(), outputAmountRaw: e18(10).toString() }], input, NOW.toISOString());
+    expect(p.get(assetIdentityKey(NVDA))?.price).toBe('6.060606060606060607');
   });
 });

@@ -39,7 +39,7 @@ export function purchaseExecutionErrorResponse(error: PurchaseExecutionError): N
     case 'VALUATION_UNAVAILABLE':
       return NextResponse.json(
         {
-          error: "Your shares can't be priced right now: some of this Bag's holdings have no usable price and this purchase doesn't buy them. Nothing was sent. Please try again later.",
+          error: `Your shares can't be priced right now: this Bag holds ${error.labels.join(', ')}, which this purchase doesn't buy and which has no usable price right now. Nothing was sent. Please try again later.`,
           code: 'VALUATION_UNAVAILABLE',
           assets: error.assets,
         },

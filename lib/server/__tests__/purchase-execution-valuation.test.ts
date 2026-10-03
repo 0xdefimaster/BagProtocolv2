@@ -132,6 +132,41 @@ describe('purchase when the oracle cannot value the Bag (A, E, F)', () => {
   });
 });
 
+describe('LI.FI Composer purchases (the production path)', () => {
+  // Composer steps leave BAG's own minOutputRaw null; the on-chain floor is LI.FI's amountOutMin
+  // (providerEnforcedMinOutputRaw). Reproduces the live "Your shares can't be priced right now" failure.
+  const composerStep = (i: number, address: string, inputUsdc: number, providerMin: number | null, simulated: number) =>
+    step(i, address, inputUsdc, 0, { minOutputRaw: null, providerEnforcedMinOutputRaw: providerMin === null ? null : e18(providerMin), outputAmountRaw: e18(simulated) });
+
+  it('prices shares from the provider-enforced minimum (amountOutMin)', async () => {
+    getBagNavSafeMock.mockResolvedValue(navDown);
+    buildPurchaseIntentStepsMock.mockResolvedValue({
+      steps: [composerStep(0, NVDA, 60, 9.9, 10), composerStep(1, AAPL, 40, 4, 4.04)],
+      allSwapsQuoted: true,
+      firstFailure: null,
+      composerTransaction: { to: '0xc', data: '0x', value: '0', chainId: 1, userProxy: '0xp' },
+    });
+    const outcome = await create();
+    expect(outcome.ok).toBe(true);
+    expect(insertedShares()).toBeLessThanOrEqual(BigInt(e18(10)));
+    expect(insertedShares()).toBeGreaterThan(BigInt(e18(9.999)));
+    expect(priceHoldingsIndividuallyMock).not.toHaveBeenCalled();
+  });
+
+  it('without any reported minimum, uses the simulated output reduced by the Bag slippage tolerance (never the raw simulation)', async () => {
+    getBagNavSafeMock.mockResolvedValue(navDown);
+    buildPurchaseIntentStepsMock.mockResolvedValue({
+      steps: [composerStep(0, NVDA, 60, null, 10), composerStep(1, AAPL, 40, null, 4.04)],
+      allSwapsQuoted: true,
+      firstFailure: null,
+      composerTransaction: { to: '0xc', data: '0x', value: '0', chainId: 1, userProxy: '0xp' },
+    });
+    expect((await create()).ok).toBe(true);
+    // Simulated 10 NVDA / 4.04 AAPL would be 10.1% / 10%; the haircut floor keeps the buyer at or below 10%.
+    expect(insertedShares()).toBeLessThanOrEqual(BigInt(e18(10)));
+  });
+});
+
 describe('purchase is blocked with an accurate reason (B, G, H)', () => {
   it('oracle down AND no executable quote: QUOTE_FAILED, nothing written, no price invented', async () => {
     getBagNavSafeMock.mockResolvedValue(navDown);
@@ -150,7 +185,7 @@ describe('purchase is blocked with an accurate reason (B, G, H)', () => {
     getBagNavSafeMock.mockResolvedValue(navDown);
     getBagAssetHoldingsMock.mockResolvedValue(holdings([{ asset: { chain: 'ethereum', address: OLD }, quantityRaw: e18(1), decimals: 18 }]));
     const outcome = await create();
-    expect(outcome).toEqual({ ok: false, error: { kind: 'VALUATION_UNAVAILABLE', assets: [{ chain: 'ethereum', address: OLD }] } });
+    expect(outcome).toEqual({ ok: false, error: { kind: 'VALUATION_UNAVAILABLE', assets: [{ chain: 'ethereum', address: OLD }], labels: ['0x3333…3333'] } });
     expect(priceHoldingsIndividuallyMock).toHaveBeenCalledWith([{ asset: { chain: 'ethereum', address: OLD }, quantityRaw: e18(1), decimals: 18 }], expect.anything());
     expect(createPurchaseIntentMock).not.toHaveBeenCalled();
   });

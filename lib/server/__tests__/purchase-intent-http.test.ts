@@ -4,11 +4,12 @@ import { purchaseExecutionErrorResponse } from '../purchase-intent-http';
 // Each failure says what actually went wrong; none of them is the old blanket "Live pricing is temporarily unavailable".
 describe('purchaseExecutionErrorResponse — accurate reasons', () => {
   it('a valuation failure names the unpriced holdings and says nothing was sent', async () => {
-    const res = purchaseExecutionErrorResponse({ kind: 'VALUATION_UNAVAILABLE', assets: [{ chain: 'robinhood', address: '0xabc' }] });
+    const res = purchaseExecutionErrorResponse({ kind: 'VALUATION_UNAVAILABLE', assets: [{ chain: 'robinhood', address: '0xabc' }], labels: ['OLDX'] });
     expect(res.status).toBe(503);
     const body = await res.json();
     expect(body).toMatchObject({ code: 'VALUATION_UNAVAILABLE', assets: [{ chain: 'robinhood', address: '0xabc' }] });
     expect(body.error).toContain('Nothing was sent');
+    expect(body.error).toContain('OLDX');
     expect(body.error).not.toContain('Live pricing');
   });
 

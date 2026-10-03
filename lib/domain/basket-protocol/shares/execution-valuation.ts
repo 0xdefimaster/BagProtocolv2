@@ -16,13 +16,18 @@ import { calculateNavFromPrices, NAV_VALUE_DECIMALS } from '@/lib/domain/basket-
 // proportions this is exactly the in-kind ratio, "this deposit adds X% to
 // what the Bag holds"). No external price is needed and nobody is favoured:
 //
-//   price(asset) = input spent on the leg / BAG's minimum output for the leg
+//   price(asset) = input spent on the leg / the leg's floor output
 //
-// The minimum output (`minOutputRaw`: the floor BAG verifies on chain) is
-// used, not the expected output, and the division rounds UP: both make the
-// existing holdings worth at least as much as the market price, so the
-// buyer can only receive fewer shares than a perfect price would give, never
-// more. Existing holders are never diluted by this fallback.
+// The floor is the lowest output the purchase can end up with, strictest
+// source first: BAG's own verified minimum (`minOutputRaw`: BAG Router,
+// sequential LI.FI); else the provider's on-chain-enforced minimum
+// (`providerEnforcedMinOutputRaw`: LI.FI Composer's `amountOutMin`, which
+// reverts the whole transaction below it); else the simulated output reduced
+// by the slippage tolerance the transaction is built with. Valuing against a
+// floor, and rounding the division UP, makes the existing holdings worth at
+// least as much as the market price, so the buyer can only receive fewer
+// shares than a perfect price would give, never more. Existing holders are
+// never diluted by this fallback.
 //
 // The payment token itself is priced at 1, the same convention deposit
 // amounts already use (payment-token amount counted 1:1 in the quote
@@ -35,9 +40,24 @@ export interface ExecutionLeg {
   action: 'KEEP' | 'SWAP';
   outputAsset: AssetIdentity;
   inputAmountRaw: string;
-  /** BAG's verified minimum output for the leg; null when the leg was not quoted. */
+  /** BAG's verified minimum output for the leg (BAG Router, sequential LI.FI); null on Composer legs and unquoted legs. */
   minOutputRaw: string | null;
+  /** The provider's on-chain-enforced minimum (LI.FI Composer `amountOutMin`), when reported. */
+  providerEnforcedMinOutputRaw?: string | null;
+  /** Quoted / simulated output; only used reduced by `expectedHaircutBps` when no minimum is reported. */
+  outputAmountRaw?: string | null;
   outputDecimals: number | null;
+}
+
+/** The lowest output a leg can end with (see module doc), or null when the leg reports nothing usable. */
+export function legFloorOutputRaw(leg: ExecutionLeg, expectedHaircutBps: number): bigint | null {
+  const positive = (v: string | null | undefined) => (v !== null && v !== undefined && /^\d+$/.test(v) && BigInt(v) > BigInt(0) ? BigInt(v) : null);
+  const min = positive(leg.minOutputRaw) ?? positive(leg.providerEnforcedMinOutputRaw);
+  if (min !== null) return min;
+  const expected = positive(leg.outputAmountRaw);
+  if (expected === null || !(expectedHaircutBps >= 0 && expectedHaircutBps < 10000)) return null;
+  const floor = (expected * BigInt(10000 - Math.ceil(expectedHaircutBps))) / BigInt(10000);
+  return floor > BigInt(0) ? floor : null;
 }
 
 const TEN = BigInt(10);
@@ -58,8 +78,10 @@ export function executionPricesFromLegs(
   legs: ExecutionLeg[],
   input: { asset: AssetIdentity; decimals: number },
   timestamp: string,
-  quoteCurrency = 'USD'
+  options: { quoteCurrency?: string; expectedHaircutBps?: number } = {}
 ): Map<string, AssetPrice> {
+  const quoteCurrency = options.quoteCurrency ?? 'USD';
+  const haircutBps = options.expectedHaircutBps ?? -1; // no haircut configured: never price from an expected output
   const prices = new Map<string, AssetPrice>();
   const put = (asset: AssetIdentity, price: string) => prices.set(assetIdentityKey(asset), { asset, price, quoteCurrency, timestamp, source: EXECUTION_QUOTE_PRICE_SOURCE });
   put(input.asset, '1');
@@ -67,10 +89,10 @@ export function executionPricesFromLegs(
   const best = new Map<string, { asset: AssetIdentity; scaled: bigint }>();
   for (const leg of legs) {
     if (leg.action !== 'SWAP' || assetIdentitiesEqual(leg.outputAsset, input.asset)) continue;
-    if (leg.minOutputRaw === null || leg.outputDecimals === null) continue;
+    if (leg.outputDecimals === null) continue;
     const spent = BigInt(leg.inputAmountRaw);
-    const out = BigInt(leg.minOutputRaw);
-    if (spent <= BigInt(0) || out <= BigInt(0)) continue;
+    const out = legFloorOutputRaw(leg, haircutBps);
+    if (spent <= BigInt(0) || out === null) continue;
     // price = (spent / 10^in) / (out / 10^outDec), scaled by 10^NAV, rounded up.
     const num = spent * pow10(NAV_VALUE_DECIMALS + leg.outputDecimals);
     const den = out * pow10(input.decimals);

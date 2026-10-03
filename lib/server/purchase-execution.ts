@@ -258,7 +258,7 @@ export type PurchaseExecutionError =
    * priced. Never estimated: the purchase stops. (Typically a holding left from an older version whose price
    * source is down while its market is closed.)
    */
-  | { kind: 'VALUATION_UNAVAILABLE'; assets: AssetIdentity[] }
+  | { kind: 'VALUATION_UNAVAILABLE'; assets: AssetIdentity[]; labels: string[] }
   | { kind: 'QUOTE_FAILED'; failureCode: PurchaseIntentFailureCode; message: string; composerFallback?: ComposerFallbackNotice }
   | { kind: 'PURCHASE_IN_PROGRESS'; intentId: string }
   | { kind: 'PROVIDER_SELECTION_UNAVAILABLE' }
@@ -497,18 +497,34 @@ async function priceSharesFromExecution(
   inputAsset: CanonicalAsset,
   shareSupply: ShareSupply,
   depositAmount: string,
+  slippageBps: number,
+  /** Display symbols by identity key (recipe assets), only to name an unpriced holding in the error. */
+  knownSymbols: ReadonlyMap<string, string>,
   now: Date
 ): Promise<PurchaseExecutionOutcome<{ depositQuote: DepositQuote; nav: NavResult }>> {
   const executionPrices = executionPricesFromLegs(
-    steps.map((st) => ({ action: st.action, outputAsset: st.outputAsset, inputAmountRaw: st.inputAmountRaw, minOutputRaw: st.minOutputRaw, outputDecimals: st.outputDecimals })),
+    steps.map((st) => ({
+      action: st.action,
+      outputAsset: st.outputAsset,
+      inputAmountRaw: st.inputAmountRaw,
+      minOutputRaw: st.minOutputRaw,
+      providerEnforcedMinOutputRaw: st.providerEnforcedMinOutputRaw ?? null,
+      outputAmountRaw: st.outputAmountRaw,
+      outputDecimals: st.outputDecimals,
+    })),
     { asset: { chain: inputAsset.chain, address: inputAsset.address }, decimals: inputAsset.decimals },
-    now.toISOString()
+    now.toISOString(),
+    // Only used when a leg reports no minimum at all: the same tolerance the transaction is built with.
+    { expectedHaircutBps: slippageBps }
   );
   const holdings = await getBagAssetHoldings(admin, bagId);
   const uncovered = holdings.filter((h) => !executionPrices.has(assetIdentityKey(h.asset)));
   const other = uncovered.length > 0 ? (await priceHoldingsIndividually(uncovered, priceProvider)).prices : new Map();
   const valued = navAtExecutionPrices(holdings, executionPrices, other, now);
-  if (!valued.ok) return { ok: false, error: { kind: 'VALUATION_UNAVAILABLE', assets: valued.unpriced } };
+  if (!valued.ok) {
+    const labels = valued.unpriced.map((a) => knownSymbols.get(assetIdentityKey(a)) ?? `${a.address.slice(0, 6)}…${a.address.slice(-4)}`);
+    return { ok: false, error: { kind: 'VALUATION_UNAVAILABLE', assets: valued.unpriced, labels } };
+  }
   try {
     return { ok: true, value: { depositQuote: getDepositQuote(valued.nav, shareSupply, depositAmount), nav: valued.nav } };
   } catch (err) {
@@ -751,7 +767,8 @@ export async function createPurchaseIntentForUser(
         },
       };
     }
-    const priced = await priceSharesFromExecution(admin, bagId, steps, inputAsset, shareSupply, outcome.inputAmountDisplay, new Date());
+    const knownSymbols = new Map(version.recipe.assets.map((a) => [assetIdentityKey(a), a.symbol] as const));
+    const priced = await priceSharesFromExecution(admin, bagId, steps, inputAsset, shareSupply, outcome.inputAmountDisplay, bagSlippageBps(version), knownSymbols, new Date());
     if (!priced.ok) return priced;
     depositQuote = priced.value.depositQuote;
     nav = priced.value.nav;
