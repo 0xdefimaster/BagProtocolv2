@@ -7,6 +7,7 @@ import { getBagNavSafe } from '@/lib/server/bag-nav';
 import { getShareSupply } from '@/lib/server/bag-share-state-repo';
 import { getDisplayPriceProvider } from '@/lib/server/price-provider';
 import { getRedeemQuote } from '@/lib/domain/basket-protocol/shares/shares';
+import { settleUnsettledPurchasesForUser } from '@/lib/server/purchase-execution';
 
 // -----------------------------------------------------------------------------
 // GET /api/portfolio/positions — the signed-in user's real Bag positions
@@ -40,6 +41,9 @@ export async function GET() {
 
   try {
     const admin = supabaseAdmin();
+    // A purchase whose window was closed before confirmation is still CONFIRMING: verify it now
+    // (on-chain, idempotent, this user's own intents only) so the position below includes it.
+    await settleUnsettledPurchasesForUser(admin, auth.session);
     const positions = (await listInvestorPositionsForUser(admin, auth.session.userId)).filter((p) => BigInt(p.sharesRaw) > BigInt(0));
 
     const views = await Promise.all(

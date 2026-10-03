@@ -190,6 +190,22 @@ export async function getPurchaseIntentForUser(
 }
 
 /** Finds any of this user's intents for this bag that are still "in flight" (not yet terminal) — used to reject opening a second concurrent purchase intent for the same (user, bag) while one is already mid-execution. */
+/**
+ * The user's purchases that already have a transaction on chain but are not final yet (SUBMITTED/CONFIRMING),
+ * newest first. Used to settle purchases whose purchase window was closed before verification ran.
+ */
+export async function listUnsettledPurchaseIntentsForUser(admin: SupabaseClient, userId: string, limit: number): Promise<PurchaseIntent[]> {
+  const { data, error } = await admin
+    .from('purchase_intents')
+    .select()
+    .eq('user_id', userId)
+    .in('status', ['SUBMITTED', 'CONFIRMING'])
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as PurchaseIntentRow[]).map(fromRow);
+}
+
 export async function findActivePurchaseIntentForBag(
   admin: SupabaseClient,
   userId: string,

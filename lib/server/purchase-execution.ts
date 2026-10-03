@@ -45,6 +45,7 @@ import { trackBagRouterTransaction } from '@/lib/blockchain/bag-router-status';
 import {
   createPurchaseIntent as insertPurchaseIntent,
   findActivePurchaseIntentForBag,
+  listUnsettledPurchaseIntentsForUser,
   getPurchaseIntentForUser,
   markAccountingApplied,
   markReconciliationApplied,
@@ -1302,6 +1303,34 @@ async function settleOpenIntent(admin: SupabaseClient, session: SessionPayload, 
     return verified.ok && TERMINAL_PURCHASE_INTENT_STATUSES.has(verified.value.status);
   }
   return false;
+}
+
+/** How many unsettled purchases one call settles (each is one on-chain check, no waiting). */
+export const MAX_SETTLE_PER_CALL = 5;
+
+/**
+ * Verifies the user's purchases that have a transaction on chain but were never verified (e.g. the purchase
+ * window was closed before confirmation), so their shares, holdings and activity are recorded. Same
+ * `verifyExecution()` as the purchase flow: on-chain checked, idempotent, scoped to this user's own intents.
+ * Never throws: a check that cannot complete now is simply retried on the next call.
+ */
+export async function settleUnsettledPurchasesForUser(admin: SupabaseClient, session: SessionPayload): Promise<{ checked: number; settled: number }> {
+  let intents: PurchaseIntent[];
+  try {
+    intents = await listUnsettledPurchaseIntentsForUser(admin, session.userId, MAX_SETTLE_PER_CALL);
+  } catch {
+    return { checked: 0, settled: 0 };
+  }
+  let settled = 0;
+  for (const intent of intents) {
+    try {
+      const outcome = await verifyExecution(admin, session, intent.id);
+      if (outcome.ok && TERMINAL_PURCHASE_INTENT_STATUSES.has(outcome.value.status)) settled++;
+    } catch {
+      // Retried on the next call.
+    }
+  }
+  return { checked: intents.length, settled };
 }
 
 export async function verifyExecution(
