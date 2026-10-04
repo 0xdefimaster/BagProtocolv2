@@ -37,7 +37,8 @@ function getConfiguredRedeemFeeRouterAddress(): `0x${string}` | null {
   return raw ? (raw as `0x${string}`) : null;
 }
 
-export type RedeemExecutionPhase = 'idle' | 'creating' | 'preparing' | 'awaiting_signature' | 'confirming' | 'completed' | 'failed';
+/** `partial`: some legs sold and some failed (A4) — never reported as a completed sale. */
+export type RedeemExecutionPhase = 'idle' | 'creating' | 'preparing' | 'awaiting_signature' | 'confirming' | 'completed' | 'partial' | 'failed';
 
 export interface RedeemExecutionState {
   phase: RedeemExecutionPhase;
@@ -266,7 +267,7 @@ export function useRedeemExecution() {
   }, []);
 
   const start = useCallback(
-    async (bagId: string, sharesToRedeemRaw: string, outputAssetId: string, walletAddress: string): Promise<void> => {
+    async (bagId: string, fractionBps: number, outputAssetId: string, walletAddress: string): Promise<void> => {
       reset();
       setState((s) => ({ ...s, phase: 'creating' }));
 
@@ -275,7 +276,7 @@ export function useRedeemExecution() {
 
       try {
         const { intent: created } = await postJson<{ intent: RedeemIntent }>(`/api/bags/${bagId}/redeem-intent`, {
-          sharesToRedeemRaw,
+          fractionBps,
           outputAssetId,
         });
         createdIntentId = created.id;
@@ -332,6 +333,10 @@ export function useRedeemExecution() {
           setState((s) => ({ ...s, intent: verified }));
           if (verified.status === 'COMPLETED') {
             setState((s) => ({ ...s, phase: 'completed' }));
+            return;
+          }
+          if (verified.status === 'PARTIAL_SUCCESS' || verified.status === 'RECONCILIATION_REQUIRED') {
+            setState((s) => ({ ...s, phase: 'partial' }));
             return;
           }
           if (verified.status === 'FAILED' || verified.status === 'EXPIRED' || verified.status === 'CANCELLED') {

@@ -16,19 +16,22 @@ const RATE_LIMIT = { windowSeconds: 60, maxRequests: 10 };
 // for the output asset (registry id only, same as `inputAssetId` on the
 // deposit side).
 //
-//   POST /api/bags/:id/redeem-intent   { sharesToRedeemRaw, outputAssetId } -> RedeemIntent
+//   POST /api/bags/:id/redeem-intent   { fractionBps, outputAssetId } -> RedeemIntent
+//
+// A4: the amount is a fraction of the position (basis points, 1..10000 =
+// 0.01%..100%) of what the wallet effectively holds for this strategy — not a
+// share count (shares are no longer an economic quantity, D1).
 // -----------------------------------------------------------------------------
 
 interface CreateRedeemIntentBody {
-  /** Raw integer share-quantity string — same convention as `PurchaseIntent.sharesRaw`, never a human decimal (this is shares, not a currency amount). */
-  sharesToRedeemRaw: string;
+  fractionBps: number;
   outputAssetId: string;
 }
 
 function isCreateRedeemIntentBody(value: unknown): value is CreateRedeemIntentBody {
   if (typeof value !== 'object' || value === null) return false;
   const body = value as Record<string, unknown>;
-  return typeof body.sharesToRedeemRaw === 'string' && typeof body.outputAssetId === 'string';
+  return typeof body.fractionBps === 'number' && typeof body.outputAssetId === 'string';
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -54,14 +57,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
   }
   if (!isCreateRedeemIntentBody(body)) {
-    return NextResponse.json({ error: 'Expected { sharesToRedeemRaw: string, outputAssetId: string }.' }, { status: 400 });
+    return NextResponse.json({ error: 'Expected { fractionBps: number, outputAssetId: string }.' }, { status: 400 });
   }
 
   const outcome = await createRedeemIntentForUser({
     admin,
     session: auth.session,
     bagId: id,
-    sharesToRedeemRaw: body.sharesToRedeemRaw,
+    fractionBps: body.fractionBps,
     outputAssetId: body.outputAssetId,
   });
 

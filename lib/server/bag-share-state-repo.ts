@@ -40,6 +40,9 @@ import { ShareSupply } from '@/types/basket-protocol';
  * a real row, that row's own `share_decimals` is authoritative, not this
  * constant.
  */
+// Accounting V2 / A4: `bag_share_state` is NOT authoritative for any user's value (docs/ACCOUNTING_V2_DESIGN.md
+// §4.1). It backs NAV per share, which only the performance-fee redemption path still uses as its fee basis.
+
 export const DEFAULT_SHARE_DECIMALS = 18;
 
 interface BagShareStateRow {

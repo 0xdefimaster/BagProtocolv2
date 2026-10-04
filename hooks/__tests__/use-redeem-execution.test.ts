@@ -111,7 +111,7 @@ describe('useRedeemExecution', () => {
 
     const { result } = renderHook(() => useRedeemExecution());
     await act(async () => {
-      await result.current.start(BAG_ID, '500000', 'asset_usdg', WALLET_ADDRESS);
+      await result.current.start(BAG_ID, 5000, 'asset_usdg', WALLET_ADDRESS);
     });
 
     expect(ensureRouterAllowanceMock).toHaveBeenCalledWith('0x1', WALLET_ADDRESS, ROUTER_ADDRESS, BigInt(100));
@@ -138,7 +138,7 @@ describe('useRedeemExecution', () => {
 
     const { result } = renderHook(() => useRedeemExecution());
     await act(async () => {
-      await result.current.start(BAG_ID, '500000', 'asset_usdg', WALLET_ADDRESS);
+      await result.current.start(BAG_ID, 5000, 'asset_usdg', WALLET_ADDRESS);
     });
 
     expect(result.current.state.phase).toBe('failed');
@@ -158,12 +158,30 @@ describe('useRedeemExecution', () => {
 
     const { result } = renderHook(() => useRedeemExecution());
     await act(async () => {
-      await result.current.start(BAG_ID, '500000', 'asset_usdg', WALLET_ADDRESS);
+      await result.current.start(BAG_ID, 5000, 'asset_usdg', WALLET_ADDRESS);
     });
 
     expect(sendRedeemTransactionMock).not.toHaveBeenCalled();
     expect(result.current.state.phase).toBe('completed');
     const fetchedUrls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
     expect(fetchedUrls.some((u: string) => u.endsWith('attest-fee'))).toBe(false);
+  });
+  it('A4: one leg sold and one failed ends as a partial sale, never as completed (and stops polling)', async () => {
+    const { useRedeemExecution } = await import('../use-redeem-execution');
+
+    mockFetchSequence([
+      { url: /\/redeem-intent$/, body: { intent: baseIntent({ id: 'intent_1' }) } },
+      { url: /\/execute$/, body: { intent: baseIntent({ id: 'intent_1', steps: [] }) } },
+      { url: /verify$/, body: { intent: baseIntent({ id: 'intent_1', status: 'RECONCILIATION_REQUIRED' }) } },
+    ]);
+
+    const { result } = renderHook(() => useRedeemExecution());
+    await act(async () => {
+      await result.current.start(BAG_ID, 10_000, 'asset_usdg', WALLET_ADDRESS);
+    });
+
+    expect(result.current.state.phase).toBe('partial');
+    const body = JSON.parse((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
+    expect(body).toEqual({ fractionBps: 10_000, outputAssetId: 'asset_usdg' });
   });
 });

@@ -23,12 +23,18 @@ import { SupabaseClient } from '@supabase/supabase-js';
 // (purchase-intent-repo.ts's getPurchaseIntentForUser() is the template).
 // -----------------------------------------------------------------------------
 
+/**
+ * Accounting V2 / A4: NOT authoritative (docs/ACCOUNTING_V2_DESIGN.md §4.1). Shares are a mechanical counter
+ * kept consistent with sales; position value comes from holdings (lib/server/position-valuation.ts) and cost
+ * basis / realized P&L from the ledger (accounting/position-pnl.ts). Read this only for the legacy fee basis.
+ */
 export interface InvestorPosition {
   userId: string;
   bagId: string;
+  /** Not authoritative (A4): never use for value. */
   sharesRaw: string;
   shareDecimals: number;
-  /** Additive sum of every completed deposit's quoted amount (`purchase_intents.deposit_amount`) — see the migration's doc comment for why this, not a derived `sharePriceAtQuote * shares` figure, is the source of truth. */
+  /** Not authoritative (A4): share-proportional legacy basis, used only as the legacy fee basis. The ledger's per-asset average cost is the cost basis shown to users. */
   costBasisQuote: string;
   updatedAt: string;
 }

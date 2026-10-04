@@ -33,10 +33,12 @@ vi.mock('@/lib/server/asset-repo', () => ({
 vi.mock('@/lib/server/payment-assets', () => ({ paymentAssetsFor: (assets: { symbol: string }[]) => assets.filter((a) => a.symbol === 'USDG') }));
 vi.mock('@/lib/server/bag-nav', () => ({ getBagNavSafe: async () => ({ ok: true, nav: {} }) }));
 vi.mock('@/lib/server/bag-share-state-repo', () => ({ getShareSupply: async () => ({ shareDecimals: 18 }) }));
-vi.mock('@/lib/server/bag-investor-position-repo', () => ({ getInvestorPosition: async () => ({ sharesRaw: '10' }) }));
-vi.mock('@/lib/server/bag-investor-holdings-repo', () => ({
-  getInvestorHoldings: async () => [{ chain: 'robinhood', address: MSFT, decimals: 18, quantityRaw: '1000' }],
+vi.mock('@/lib/server/bag-investor-position-repo', () => ({ getInvestorPosition: async () => ({ sharesRaw: '10', shareDecimals: 18 }) }));
+vi.mock('@/lib/server/position-valuation', () => ({
+  observeUserHoldings: async () => ({ rows: [{ bagId: 'bag_1' }] }),
+  sellableHoldingsForBag: () => [{ chain: 'robinhood', address: MSFT, decimals: 18, quantityRaw: '1000', sellableRaw: '1000' }],
 }));
+vi.mock('@/lib/blockchain/rpc/clients', () => ({ getChainPublicClient: () => ({}) }));
 vi.mock('@/lib/server/price-provider', () => ({ getPriceProvider: () => ({}) }));
 vi.mock('@/lib/domain/basket-protocol/shares/shares', async (orig) => ({
   ...(await orig<object>()),
@@ -52,7 +54,7 @@ const COMPOSER_STEPS = [{ stepIndex: 0, action: 'SWAP', status: 'PENDING' }];
 const SEQ_STEPS = [{ stepIndex: 0, action: 'SWAP', status: 'PENDING', lifiStep: {} }];
 
 const create = () =>
-  createRedeemIntentForUser({ admin: {} as never, session: { userId: 'investor', walletAddress: WALLET } as never, bagId: 'bag_1', sharesToRedeemRaw: '10', outputAssetId: 'usdg' });
+  createRedeemIntentForUser({ admin: {} as never, session: { userId: 'investor', walletAddress: WALLET } as never, bagId: 'bag_1', fractionBps: 10_000, outputAssetId: 'usdg' });
 
 beforeEach(() => {
   vi.clearAllMocks();

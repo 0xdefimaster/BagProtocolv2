@@ -24,6 +24,9 @@ vi.mock('@/lib/server/redeem-intent-repo', () => ({
   updateRedeemIntentSteps: vi.fn(),
 }));
 vi.mock('@/lib/server/price-provider', () => ({ getPriceProvider: () => ({}) }));
+vi.mock('@/lib/server/bag-investor-position-repo', () => ({ getInvestorPosition: async () => ({ sharesRaw: '10', shareDecimals: 18 }) }));
+vi.mock('@/lib/server/position-valuation', () => ({ observeUserHoldings: async () => ({ rows: [] }), sellableHoldingsForBag: () => null }));
+vi.mock('@/lib/blockchain/rpc/clients', () => ({ getChainPublicClient: () => ({}) }));
 
 const { prepareRedeemExecution } = await import('../redeem-execution');
 

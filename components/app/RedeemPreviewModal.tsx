@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { X, Loader2, CheckCircle2, AlertTriangle, Wallet } from 'lucide-react';
-import { formatDecimalStringUsd, formatRawAmount, parseDecimalToRaw } from '@/lib/format';
+import { formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
+import { estimatedProceedsRaw, minimumProceedsRaw, summarizeSale } from '@/lib/domain/basket-protocol/redeem/proceeds';
 import { useWallet } from '@/lib/wallet-context';
 import { useRedeemExecution } from '@/hooks/use-redeem-execution';
 
@@ -25,6 +26,13 @@ import { useRedeemExecution } from '@/hooks/use-redeem-execution';
 // needs a connected wallet to preview (anyone can preview a hypothetical
 // deposit; only an actual depositor can preview redeeming their own
 // position).
+//
+// A4: the user picks a FRACTION of the position (25/50/75/100% or custom),
+// sold from what the wallet effectively holds — never a share count. Four
+// numbers are kept apart: strategy exposure (what BAG tracks), in wallet,
+// the position value of the slice being sold, and — once a real route is
+// quoted — estimated proceeds and the guaranteed minimum. A sale where one
+// leg fails is shown as partial, never as sold.
 // -----------------------------------------------------------------------------
 
 interface OutputAssetOption {
@@ -36,10 +44,21 @@ interface OutputAssetOption {
   name: string;
 }
 
+interface PositionAssetView {
+  symbol?: string;
+  decimals: number;
+  trackedRaw: string;
+  effectiveRaw: string | null;
+  status: 'IN_SYNC' | 'DRIFT' | 'UNREADABLE';
+}
+
 interface PositionView {
-  sharesRaw: string;
-  shareDecimals: number;
-  costBasisQuote: string;
+  strategyExposureQuote: string | null;
+  observedWalletQuote: string | null;
+  effectivePositionQuote: string | null;
+  hasDrift: boolean;
+  hasUnreadable: boolean;
+  assets: PositionAssetView[];
 }
 
 interface RedeemAllocationView {
@@ -51,9 +70,23 @@ interface RedeemAllocationView {
 
 interface RedeemPreviewResponse {
   outputSymbol: string;
-  redeemQuote: { sharesRaw: string; shareDecimals: number; sharePrice: string; grossValue: string };
+  fractionBps: number;
+  /** Position value of the slice at verified prices — not what the sale returns. */
+  sliceValueQuote: string | null;
   allocation: RedeemAllocationView[];
 }
+
+const PRESET_PERCENTS = [25, 50, 75, 100];
+
+/** "12.5" (%) → 1250 bps; null when outside 0.01..100 or not a number. */
+function percentToBps(input: string): number | null {
+  if (!/^\d{1,3}(\.\d{1,2})?$/.test(input.trim())) return null;
+  const [whole, frac = ''] = input.trim().split('.');
+  const bps = Number(whole) * 100 + Number((frac + '00').slice(0, 2));
+  return bps >= 1 && bps <= 10_000 ? bps : null;
+}
+
+const usdOrDash = (v: string | null | undefined) => (v === null || v === undefined ? '—' : formatDecimalStringUsd(v));
 
 interface RedeemPreviewModalProps {
   bagId: string;
@@ -68,8 +101,7 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
   const [loadingPosition, setLoadingPosition] = useState(true);
   const [positionError, setPositionError] = useState<string | null>(null);
 
-  const [sharesInput, setSharesInput] = useState('');
-  const [isMax, setIsMax] = useState(false);
+  const [percentInput, setPercentInput] = useState('100');
 
   const [preview, setPreview] = useState<RedeemPreviewResponse | null>(null);
   const [calculating, setCalculating] = useState(false);
@@ -86,7 +118,7 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
     fetch(`/api/bags/${bagId}/redeem-preview`, { credentials: 'same-origin' })
       .then(async (res) => {
         if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `Request failed (${res.status})`);
-        return res.json() as Promise<{ position: PositionView; outputAssets: OutputAssetOption[] }>;
+        return res.json() as Promise<{ position: PositionView | null; outputAssets: OutputAssetOption[] }>;
       })
       .then((data) => {
         if (cancelled) return;
@@ -106,15 +138,11 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
     };
   }, [bagId]);
 
-  const sharesToRedeemRaw = useMemo(() => {
-    if (!position) return null;
-    if (isMax) return position.sharesRaw;
-    return parseDecimalToRaw(sharesInput, position.shareDecimals);
-  }, [position, isMax, sharesInput]);
+  const fractionBps = useMemo(() => percentToBps(percentInput), [percentInput]);
 
   // Recompute the preview whenever the redeem amount/output asset changes.
   useEffect(() => {
-    if (!selectedAssetId || !sharesToRedeemRaw || sharesToRedeemRaw === '0') {
+    if (!selectedAssetId || fractionBps === null) {
       setPreview(null);
       setPreviewError(null);
       return;
@@ -129,7 +157,7 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ sharesToRedeemRaw, outputAssetId: selectedAssetId }),
+        body: JSON.stringify({ fractionBps, outputAssetId: selectedAssetId }),
       })
         .then(async (res) => {
           const body = await res.json().catch(() => null);
@@ -154,10 +182,9 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [bagId, selectedAssetId, sharesToRedeemRaw]);
+  }, [bagId, selectedAssetId, fractionBps]);
 
-  const hasNoPosition = position !== null && position.sharesRaw === '0';
-  const maxSharesDisplay = position ? formatRawAmount(position.sharesRaw, position.shareDecimals, { maxFractionDigits: 6 }) : null;
+  const hasNoPosition = !loadingPosition && !positionError && position === null;
 
   return (
     <div
@@ -196,7 +223,7 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Redeem {bagName}</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Sell {bagName}</h3>
           <button
             onClick={(e) => {
               e.preventDefault();
@@ -246,21 +273,69 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
 
         {position && !hasNoPosition && (
           <>
-            {/* Shares to redeem */}
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--ink-soft, #B4AEA2)' }}>
-                Shares to Redeem
-              </span>
-              <span style={{ fontSize: 11.5, color: 'var(--ink-soft, #B4AEA2)' }}>You hold {maxSharesDisplay}</span>
+            {/* Position value (A4): exposure vs what the wallet really holds */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14, fontSize: 12.5 }}>
+              <div>
+                <div style={{ color: 'var(--ink-soft, #B4AEA2)' }}>Strategy exposure</div>
+                <div style={{ fontWeight: 600 }}>{usdOrDash(position.strategyExposureQuote)}</div>
+              </div>
+              <div>
+                <div style={{ color: 'var(--ink-soft, #B4AEA2)' }}>In your wallet</div>
+                <div style={{ fontWeight: 600 }}>{usdOrDash(position.effectivePositionQuote)}</div>
+              </div>
+            </div>
+            {position.hasDrift && (
+              <div style={{ padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(224,185,122,0.4)', color: '#E0B97A', fontSize: 12, marginBottom: 14 }}>
+                Your wallet holds less than BAG tracks for this strategy ({position.assets
+                  .filter((a) => a.status === 'DRIFT')
+                  .map((a) => `${a.symbol ?? '?'}: ${formatRawAmount(a.effectiveRaw ?? '0', a.decimals, { maxFractionDigits: 6 })} of ${formatRawAmount(a.trackedRaw, a.decimals, { maxFractionDigits: 6 })}`)
+                  .join(', ')}). Only what is in the wallet can be sold.
+              </div>
+            )}
+            {position.hasUnreadable && (
+              <div style={{ padding: '8px 10px', borderRadius: 10, border: '1px solid var(--line-soft, rgba(255,255,255,0.08))', color: 'var(--ink-soft, #B4AEA2)', fontSize: 12, marginBottom: 14 }}>
+                Your wallet balances could not be read right now, so nothing can be sold until they can. Try again shortly.
+              </div>
+            )}
+
+            {/* How much to sell */}
+            <div style={{ marginBottom: 6, fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--ink-soft, #B4AEA2)' }}>
+              Amount to Sell
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+              {PRESET_PERCENTS.map((pct) => (
+                <button
+                  key={pct}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setPercentInput(String(pct));
+                  }}
+                  disabled={isExecuting}
+                  style={{
+                    flex: 1,
+                    background: fractionBps === pct * 100 ? 'var(--gold-tint, rgba(217,185,139,0.18))' : 'transparent',
+                    border: `1px solid ${fractionBps === pct * 100 ? 'var(--gold, #D9B98B)' : 'var(--line-soft, rgba(255,255,255,0.08))'}`,
+                    borderRadius: 8,
+                    padding: '6px 0',
+                    color: 'var(--gold-lt, #F0DFC0)',
+                    fontWeight: 600,
+                    fontSize: 12.5,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {pct === 100 ? 'All' : `${pct}%`}
+                </button>
+              ))}
             </div>
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 10,
+                gap: 8,
                 border: '1px solid var(--line-soft, rgba(255,255,255,0.08))',
                 borderRadius: 10,
-                padding: '10px 14px',
+                padding: '8px 14px',
                 marginBottom: 14,
                 opacity: isExecuting ? 0.6 : 1,
               }}
@@ -268,44 +343,14 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
               <input
                 type="text"
                 inputMode="decimal"
-                value={isMax ? maxSharesDisplay ?? '' : sharesInput}
+                value={percentInput}
                 disabled={isExecuting}
-                onChange={(e) => {
-                  setIsMax(false);
-                  setSharesInput(e.target.value.replace(/[^0-9.]/g, ''));
-                }}
-                placeholder="0"
-                style={{
-                  flex: 1,
-                  background: 'transparent',
-                  border: 'none',
-                  outline: 'none',
-                  color: 'var(--ink, #F6F3EC)',
-                  fontSize: 20,
-                  fontWeight: 600,
-                  minWidth: 0,
-                }}
+                onChange={(e) => setPercentInput(e.target.value.replace(/[^0-9.]/g, ''))}
+                placeholder="100"
+                aria-label="Percent of position to sell"
+                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: 'var(--ink, #F6F3EC)', fontSize: 18, fontWeight: 600, minWidth: 0 }}
               />
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsMax(true);
-                }}
-                disabled={isExecuting}
-                style={{
-                  background: 'var(--gold-tint, rgba(217,185,139,0.1))',
-                  border: '1px solid var(--line-soft, rgba(255,255,255,0.08))',
-                  borderRadius: 8,
-                  padding: '6px 10px',
-                  color: 'var(--gold-lt, #F0DFC0)',
-                  fontWeight: 600,
-                  fontSize: 12.5,
-                  cursor: 'pointer',
-                }}
-              >
-                Max
-              </button>
+              <span style={{ color: 'var(--ink-soft, #B4AEA2)', fontWeight: 600 }}>%</span>
             </div>
 
             {/* Redeem into */}
@@ -415,23 +460,27 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
                     borderTop: '1px solid var(--line-soft, rgba(255,255,255,0.08))',
                   }}
                 >
-                  <span style={{ fontSize: 12.5, color: 'var(--ink-soft, #B4AEA2)' }}>Estimated Payout</span>
-                  <span style={{ fontSize: 18, fontWeight: 700 }}>{formatDecimalStringUsd(preview.redeemQuote.grossValue)}</span>
+                  <span style={{ fontSize: 12.5, color: 'var(--ink-soft, #B4AEA2)' }}>Position value being sold</span>
+                  <span style={{ fontSize: 18, fontWeight: 700 }}>{usdOrDash(preview.sliceValueQuote)}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14, fontSize: 12.5, color: 'var(--ink-soft, #B4AEA2)' }}>
-                  <span>Price per share</span>
-                  <span>{formatDecimalStringUsd(preview.redeemQuote.sharePrice)}</span>
-                </div>
+                <p style={{ marginBottom: 14, fontSize: 11.5, color: 'var(--ink-soft, #B4AEA2)' }}>
+                  At current prices, before price impact and fees. Estimated proceeds and the guaranteed minimum come from the real route,
+                  shown before you sign.
+                </p>
               </>
             )}
           </>
         )}
 
         {execution.state.phase !== 'idle' && (
-          <RedeemExecutionPanel state={execution.state} outputSymbol={preview?.outputSymbol ?? ''} />
+          <RedeemExecutionPanel
+            state={execution.state}
+            outputSymbol={preview?.outputSymbol ?? ''}
+            outputDecimals={outputAssets?.find((a) => a.id === selectedAssetId)?.decimals ?? null}
+          />
         )}
 
-        {execution.state.phase === 'completed' ? (
+        {execution.state.phase === 'completed' || execution.state.phase === 'partial' ? (
           <button
             onClick={(e) => {
               e.preventDefault();
@@ -473,14 +522,14 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
           !hasNoPosition && (
             <button
               onClick={() => {
-                if (!selectedAssetId || !sharesToRedeemRaw) return;
-                void execution.start(bagId, sharesToRedeemRaw, selectedAssetId, wallet.walletAddress);
+                if (!selectedAssetId || fractionBps === null) return;
+                void execution.start(bagId, fractionBps, selectedAssetId, wallet.walletAddress);
               }}
-              disabled={!preview || !!previewError || calculating || isExecuting || !selectedAssetId || !sharesToRedeemRaw}
+              disabled={!preview || !!previewError || calculating || isExecuting || !selectedAssetId || fractionBps === null}
               style={{
                 ...primaryButtonStyle,
-                opacity: !preview || !!previewError || calculating || isExecuting || !selectedAssetId || !sharesToRedeemRaw ? 0.5 : 1,
-                cursor: !preview || !!previewError || calculating || isExecuting || !selectedAssetId || !sharesToRedeemRaw ? 'not-allowed' : 'pointer',
+                opacity: !preview || !!previewError || calculating || isExecuting || !selectedAssetId || fractionBps === null ? 0.5 : 1,
+                cursor: !preview || !!previewError || calculating || isExecuting || !selectedAssetId || fractionBps === null ? 'not-allowed' : 'pointer',
               }}
             >
               {isExecuting ? (
@@ -490,7 +539,7 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
               ) : execution.state.phase === 'failed' ? (
                 'Try again'
               ) : (
-                'Redeem'
+                fractionBps === 10_000 ? 'Sell all' : 'Sell'
               )}
             </button>
           )
@@ -545,10 +594,18 @@ const FAILURE_MESSAGES: Partial<Record<string, string>> = {
 function RedeemExecutionPanel({
   state,
   outputSymbol,
+  outputDecimals,
 }: {
   state: ReturnType<typeof useRedeemExecution>['state'];
   outputSymbol: string;
+  outputDecimals: number | null;
 }) {
+  const steps = state.intent?.steps ?? [];
+  const estimate = steps.length > 0 ? estimatedProceedsRaw(steps) : null;
+  const minimum = steps.length > 0 ? minimumProceedsRaw(steps) : null;
+  const sale = summarizeSale(steps);
+  const fmt = (raw: string | null) => (raw === null || outputDecimals === null ? '—' : `${formatRawAmount(raw, outputDecimals, { maxFractionDigits: 6 })} ${outputSymbol}`);
+  const showQuote = state.phase === 'awaiting_signature' || state.phase === 'preparing' || state.phase === 'confirming';
   const swapSteps = state.intent?.steps.filter((s) => s.action === 'SWAP') ?? [];
   const activeSwapIndex = swapSteps.findIndex((s) => s.stepIndex === state.activeStepIndex);
 
@@ -563,14 +620,29 @@ function RedeemExecutionPanel({
     const position = swapSteps.length > 1 && activeSwapIndex >= 0 ? ` (${activeSwapIndex + 1}/${swapSteps.length})` : '';
     label = step ? `Confirm sale of ${step.targetSymbol} in your wallet${position}` : 'Confirm in your wallet…';
   } else if (state.phase === 'confirming') label = 'Confirming on-chain…';
-  else if (state.phase === 'completed') label = `Redemption complete${outputSymbol ? ` — sent as ${outputSymbol}` : ''}`;
+  else if (state.phase === 'completed') label = `Sale complete${outputSymbol ? ` — sent as ${outputSymbol}` : ''}`;
+  else if (state.phase === 'partial')
+    label = `Partially sold: ${sale.soldLegs} of ${sale.soldLegs + sale.failedLegs} assets sold, ${sale.failedLegs} failed. The unsold assets are still in your wallet and in your position.`;
   else if (state.phase === 'failed') label = FAILURE_MESSAGES[state.failureCode ?? ''] ?? state.error ?? 'Redemption failed.';
   else label = '';
 
-  const isError = state.phase === 'failed';
+  const isError = state.phase === 'failed' || state.phase === 'partial';
   const isDone = state.phase === 'completed';
 
   return (
+    <>
+    {showQuote && (
+      <div style={{ marginBottom: 10, fontSize: 12.5 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ color: 'var(--ink-soft, #B4AEA2)' }}>Estimated proceeds</span>
+          <span style={{ fontWeight: 600 }}>{fmt(estimate)}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ color: 'var(--ink-soft, #B4AEA2)' }}>Minimum you receive</span>
+          <span>{fmt(minimum)}</span>
+        </div>
+      </div>
+    )}
     <div
       role="status"
       style={{
@@ -589,5 +661,6 @@ function RedeemExecutionPanel({
       {isError ? <AlertTriangle size={14} /> : isDone ? <CheckCircle2 size={14} /> : <Loader2 size={14} className="spin" />}
       <span>{label}</span>
     </div>
+    </>
   );
 }

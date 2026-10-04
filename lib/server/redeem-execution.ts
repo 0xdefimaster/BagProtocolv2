@@ -10,15 +10,20 @@ import { paymentAssetsFor } from '@/lib/server/payment-assets';
 import { getBagNavSafe } from '@/lib/server/bag-nav';
 import { getShareSupply } from '@/lib/server/bag-share-state-repo';
 import { getInvestorPosition } from '@/lib/server/bag-investor-position-repo';
-import { getInvestorHoldings } from '@/lib/server/bag-investor-holdings-repo';
 import { listAssets } from '@/lib/server/asset-repo';
 import { getPriceProvider } from '@/lib/server/price-provider';
-import { InsufficientSharesError, getRedeemQuote, ZeroShareSupplyError } from '@/lib/domain/basket-protocol/shares/shares';
+import { InsufficientSharesError, getRedeemQuote, ZeroRedeemAmountError, ZeroShareSupplyError } from '@/lib/domain/basket-protocol/shares/shares';
 import {
-  InsufficientPositionError,
+  InvalidRedeemFractionError,
+  assertValidFractionBps,
   calculateRedeemAllocation,
   buildRedeemExecutionSteps,
+  sharesToBurnForFraction,
+  type RedeemHoldingInput,
 } from '@/lib/domain/basket-protocol/redeem/allocation';
+import { estimatedProceedsRaw } from '@/lib/domain/basket-protocol/redeem/proceeds';
+import { observeUserHoldings, sellableHoldingsForBag } from '@/lib/server/position-valuation';
+import { getChainPublicClient } from '@/lib/blockchain/rpc/clients';
 import { computeRedeemFingerprint } from '@/lib/domain/basket-protocol/redeem/fingerprint';
 import {
   assertValidPurchaseIntentStepTransition,
@@ -29,7 +34,7 @@ import { trackStepStatus } from '@/lib/blockchain/lifi-status';
 import { trackComposerTransaction } from '@/lib/blockchain/composer-status';
 import { DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
 import { buildRedeemComposer, splitReceivedAcrossLegs } from '@/lib/server/redeem-composer';
-import { rawToDecimalString } from '@/lib/domain/basket-protocol/accounting/decimal';
+import { formatDec, mulDiv, parseDec, rawToDecimalString } from '@/lib/domain/basket-protocol/accounting/decimal';
 import {
   createRedeemIntent as insertRedeemIntent,
   findActiveRedeemIntentForBag,
@@ -70,7 +75,10 @@ export type RedeemExecutionError =
   | { kind: 'INVALID_STATE'; status: string }
   | { kind: 'INVALID_TX_HASH' }
   | { kind: 'TX_ALREADY_USED' }
-  | { kind: 'FEE_ROUTER_REQUIRED' };
+  | { kind: 'FEE_ROUTER_REQUIRED' }
+  | { kind: 'INVALID_FRACTION' }
+  | { kind: 'NOTHING_TO_SELL' }
+  | { kind: 'BALANCE_UNAVAILABLE' };
 
 export type RedeemExecutionOutcome<T> = { ok: true; value: T } | { ok: false; error: RedeemExecutionError };
 
@@ -80,19 +88,29 @@ export interface CreateRedeemIntentParams {
   admin: SupabaseClient;
   session: SessionPayload;
   bagId: string;
-  sharesToRedeemRaw: string;
+  /** A4: fraction of the position to exit, in basis points (10000 = everything sellable). */
+  fractionBps: number;
   outputAssetId: string;
 }
 
 /**
- * Builds a fresh `RedeemIntent` against THIS depositor's own current
- * position and holdings — never the bag-level aggregate (see
- * redeem/allocation.ts's module doc). Rejects outright if this wallet
- * already has a non-terminal redeem intent open for this bag, same "don't
- * let two exits race" guard `createPurchaseIntentForUser()` gives deposits.
+ * Builds a fresh `RedeemIntent` that sells `fractionBps` of THIS depositor's
+ * EFFECTIVE holdings (A4, docs/ACCOUNTING_V2_DESIGN.md §7): what BAG tracks
+ * for them in this Bag, limited to what their wallet really holds right now
+ * (balances read at one block, fail-closed — an unreadable balance refuses
+ * the quote instead of assuming the tokens are there). Rejects outright if
+ * this wallet already has a non-terminal redeem intent open for this bag,
+ * same "don't let two exits race" guard `createPurchaseIntentForUser()` gives
+ * deposits.
  */
 export async function createRedeemIntentForUser(params: CreateRedeemIntentParams): Promise<RedeemExecutionOutcome<RedeemIntent>> {
-  const { admin, session, bagId, sharesToRedeemRaw, outputAssetId } = params;
+  const { admin, session, bagId, fractionBps, outputAssetId } = params;
+
+  try {
+    assertValidFractionBps(fractionBps);
+  } catch {
+    return { ok: false, error: { kind: 'INVALID_FRACTION' } };
+  }
 
   const existing = await findActiveRedeemIntentForBag(admin, session.userId, bagId);
   if (existing) {
@@ -110,60 +128,40 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
   if (!outputAssetRecord) return { ok: false, error: { kind: 'UNKNOWN_OUTPUT_ASSET' } };
   const outputAsset: AssetIdentity = { chain: outputAssetRecord.chain, address: outputAssetRecord.address };
 
-  const [navOutcome, shareSupply, position, holdings] = await Promise.all([
-    getBagNavSafe(admin, bagId, priceProvider),
-    getShareSupply(admin, bagId),
+  const [position, observed] = await Promise.all([
     getInvestorPosition(admin, session.userId, bagId),
-    getInvestorHoldings(admin, session.userId, bagId),
+    observeUserHoldings(admin, getChainPublicClient('robinhood'), session),
   ]);
-
-  if (!navOutcome.ok) {
-    return { ok: false, error: { kind: 'PRICE_UNAVAILABLE', message: navOutcome.message } };
-  }
-  const nav = navOutcome.nav;
-
-  if (position.sharesRaw === '0') {
+  if (!observed.rows.some((r) => r.bagId === bagId)) {
     return { ok: false, error: { kind: 'NO_POSITION' } };
   }
-
-  let redeemQuote;
-  try {
-    redeemQuote = getRedeemQuote(nav, shareSupply, sharesToRedeemRaw);
-  } catch (err) {
-    if (err instanceof ZeroShareSupplyError) return { ok: false, error: { kind: 'ZERO_SUPPLY' } };
-    // Bag-level insufficiency — should be unreachable in practice, since a
-    // request exceeding THIS depositor's own position (the common case)
-    // is caught below by `calculateRedeemAllocation()`'s
-    // `InsufficientPositionError` instead, and a depositor's own position
-    // can never exceed the bag's total. Handled anyway rather than left to
-    // surface as an unhandled 500, in case `bag_share_state` and
-    // `bag_investor_positions` are ever found to have drifted apart.
-    if (err instanceof InsufficientSharesError) {
-      return { ok: false, error: { kind: 'INSUFFICIENT_POSITION', requestedRaw: err.requestedRaw, ownedRaw: err.availableRaw } };
-    }
-    throw err;
-  }
+  const sellable = sellableHoldingsForBag(observed, bagId);
+  if (!sellable) return { ok: false, error: { kind: 'BALANCE_UNAVAILABLE' } };
 
   let allocation;
   try {
     allocation = calculateRedeemAllocation({
       bagId,
-      sharesRaw: position.sharesRaw,
-      sharesToRedeemRaw,
+      fractionBps,
       outputAsset,
       outputDecimals: outputAssetRecord.decimals,
-      holdings: holdings.map((h) => ({ chain: h.chain, address: h.address, decimals: h.decimals, quantityRaw: h.quantityRaw })),
+      holdings: sellable,
     });
   } catch (err) {
-    if (err instanceof InsufficientPositionError) {
-      return { ok: false, error: { kind: 'INSUFFICIENT_POSITION', requestedRaw: err.requestedRaw, ownedRaw: err.ownedRaw } };
-    }
+    if (err instanceof ZeroRedeemAmountError) return { ok: false, error: { kind: 'NOTHING_TO_SELL' } };
+    if (err instanceof InvalidRedeemFractionError) return { ok: false, error: { kind: 'INVALID_FRACTION' } };
     throw err;
   }
+  // Legacy share bookkeeping only (D1): burned in the same proportion, never used for value.
+  const sharesBurnRaw = sharesToBurnForFraction(position.sharesRaw, fractionBps);
 
   const symbolByKey = new Map(assets.map((a) => [`${a.chain}:${a.address.toLowerCase()}`, a.symbol]));
   const symbolFor = (asset: AssetIdentity) => symbolByKey.get(`${asset.chain}:${asset.address.toLowerCase()}`) ?? '';
   const executionSteps = buildRedeemExecutionSteps(allocation, outputAsset, symbolFor);
+
+  const ownBag = bag.creatorId === session.userId;
+  const feeVersion = ownBag ? null : await getCurrentBagVersion(admin, bagId);
+  const feeBps = ownBag ? 0 : (bag.performanceFeeBpsLocked ?? feeVersion?.recipe.performanceFeeBps ?? 0);
 
   // Same real, wallet-bound LI.FI quoting the deposit side uses — see
   // lib/blockchain/lifi-purchase-quote.ts's module doc on why this
@@ -174,42 +172,62 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
   // path would run at all: no RedeemFeeRouter configured (that path settles
   // fees itself) and no performance fee owed on this redemption.
   let composer: Awaited<ReturnType<typeof buildRedeemComposer>> = null;
-  if (process.env.LIFI_API_KEY && !DEPLOYED_CONTRACTS.redeemFeeRouter) {
-    const ownBag = bag.creatorId === session.userId;
-    const feeVersion = ownBag ? null : await getCurrentBagVersion(admin, bagId);
-    const feeBps = ownBag ? 0 : (bag.performanceFeeBpsLocked ?? feeVersion?.recipe.performanceFeeBps ?? 0);
-    if (feeBps === 0) {
-      composer = await buildRedeemComposer({
-        steps: executionSteps,
-        walletAddress: session.walletAddress,
-        outputAsset,
-        outputDecimals: outputAssetRecord.decimals,
-        apiKey: process.env.LIFI_API_KEY,
-      });
-    }
+  if (process.env.LIFI_API_KEY && !DEPLOYED_CONTRACTS.redeemFeeRouter && feeBps === 0) {
+    composer = await buildRedeemComposer({
+      steps: executionSteps,
+      walletAddress: session.walletAddress,
+      outputAsset,
+      outputDecimals: outputAssetRecord.decimals,
+      apiKey: process.env.LIFI_API_KEY,
+    });
   }
   const { steps, allSwapsQuoted, firstFailure } = composer
     ? { steps: composer.steps, allSwapsQuoted: true, firstFailure: null }
     : await buildPurchaseIntentSteps(executionSteps, session.walletAddress, outputAssetRecord.decimals);
 
-  const fingerprint = computeRedeemFingerprint({ bagId, sharesToRedeemRaw, outputAsset, steps: executionSteps });
+  // `redeemValueQuote` is the legacy fee basis of apply_redeem_execution (value − consumed share cost basis).
+  // A performance-fee Bag keeps it NAV-based, exactly as RedeemFeeRouter's attestation expects (D4: fee
+  // semantics change only in their own PR). Without a fee it is the route's estimated proceeds — no NAV
+  // dependency on the sell path. Either way it is never realized P&L: that comes only from verified
+  // receipts (accounting/position-pnl.ts).
+  let redeemValueQuote: string;
+  let sharePriceAtQuote: string;
+  if (feeBps > 0) {
+    if (sharesBurnRaw === '0') return { ok: false, error: { kind: 'NO_POSITION' } };
+    const [navOutcome, shareSupply] = await Promise.all([getBagNavSafe(admin, bagId, priceProvider), getShareSupply(admin, bagId)]);
+    if (!navOutcome.ok) return { ok: false, error: { kind: 'PRICE_UNAVAILABLE', message: navOutcome.message } };
+    try {
+      const redeemQuote = getRedeemQuote(navOutcome.nav, shareSupply, sharesBurnRaw);
+      redeemValueQuote = redeemQuote.grossValue;
+      sharePriceAtQuote = redeemQuote.sharePrice;
+    } catch (err) {
+      if (err instanceof ZeroShareSupplyError) return { ok: false, error: { kind: 'ZERO_SUPPLY' } };
+      if (err instanceof InsufficientSharesError) {
+        return { ok: false, error: { kind: 'INSUFFICIENT_POSITION', requestedRaw: err.requestedRaw, ownedRaw: err.availableRaw } };
+      }
+      throw err;
+    }
+  } else {
+    const estimate = estimatedProceedsRaw(steps);
+    redeemValueQuote = estimate === null ? '0' : rawToDecimalString(estimate, outputAssetRecord.decimals);
+    sharePriceAtQuote =
+      sharesBurnRaw === '0' ? '0' : formatDec(mulDiv(parseDec(redeemValueQuote), BigInt(10) ** BigInt(position.shareDecimals), BigInt(sharesBurnRaw)));
+  }
+
+  const fingerprint = computeRedeemFingerprint({ bagId, sharesToRedeemRaw: sharesBurnRaw, outputAsset, steps: executionSteps });
   const expiresAt = new Date(Date.now() + PURCHASE_INTENT_TTL_MS).toISOString();
 
   const intentInput: CreateRedeemIntentInput = {
     userId: session.userId,
     walletAddress: session.walletAddress,
     bagId,
-    sharesRaw: sharesToRedeemRaw,
-    shareDecimals: shareSupply.shareDecimals,
+    sharesRaw: sharesBurnRaw,
+    shareDecimals: position.shareDecimals,
     outputAsset,
     outputDecimals: outputAssetRecord.decimals,
     routeFingerprint: fingerprint,
-    sharePriceAtQuote: redeemQuote.sharePrice,
-    // Phase 21 — locked now, from the same RedeemQuote a Redeem Preview
-    // (future UI work) would show this user; threaded into
-    // `apply_redeem_execution()` as the proportional cost-basis REDUCTION
-    // input — see that RPC's doc on why this isn't derived some other way.
-    redeemValueQuote: redeemQuote.grossValue,
+    sharePriceAtQuote,
+    redeemValueQuote,
     steps,
     status: allSwapsQuoted ? 'READY' : 'FAILED',
     failureCode: allSwapsQuoted ? null : (firstFailure?.failureCode ?? 'UNKNOWN_ERROR'),
@@ -252,16 +270,30 @@ function isExpired(intent: RedeemIntent): boolean {
   return new Date(intent.expiresAt).getTime() < Date.now();
 }
 
+/**
+ * Every leg's sell amount is still covered by what BAG tracks AND what the wallet effectively holds for this
+ * strategy, and the legacy share burn still fits. Pure; exported for tests.
+ */
+export function saleStillCovered(intent: Pick<RedeemIntent, 'steps' | 'sharesRaw'>, sellable: RedeemHoldingInput[], positionSharesRaw: string): boolean {
+  if (BigInt(intent.sharesRaw) > BigInt(positionSharesRaw)) return false;
+  const byKey = new Map(sellable.map((h) => [`${h.chain}:${h.address.toLowerCase()}`, h]));
+  for (const step of intent.steps) {
+    const h = byKey.get(`${step.inputAsset.chain}:${step.inputAsset.address.toLowerCase()}`);
+    if (!h) return false;
+    const need = BigInt(step.inputAmountRaw);
+    if (need > BigInt(h.quantityRaw) || need > BigInt(h.sellableRaw)) return false;
+  }
+  return true;
+}
+
 // ----------------------------- 2. Execute (idempotent) ------------------------
 
 /**
  * Idempotent execution endpoint — same shape as `prepareExecution()` for
- * deposits. Re-derives the allocation from this depositor's CURRENT
- * position/holdings and compares fingerprints: for a redemption, what can
- * go stale between quote and execute is THIS depositor's own
- * shares/holdings changing (another purchase or redemption completing) —
- * not the Bag's recipe, which a redemption never reads (see
- * redeem/allocation.ts's module doc).
+ * deposits. Before the wallet is asked to sign, re-checks that every leg is
+ * still covered by THIS depositor's tracked holdings and by what their
+ * wallet effectively holds now (`saleStillCovered`) — not the Bag's recipe,
+ * which a redemption never reads (see redeem/allocation.ts's module doc).
  */
 export async function prepareRedeemExecution(
   admin: SupabaseClient,
@@ -299,42 +331,17 @@ export async function prepareRedeemExecution(
     if (feeBps > 0) return { ok: false, error: { kind: 'FEE_ROUTER_REQUIRED' } };
   }
 
-  let currentFingerprint: string;
-  try {
-    const [position, holdings] = await Promise.all([
-      getInvestorPosition(admin, session.userId, intent.bagId),
-      getInvestorHoldings(admin, session.userId, intent.bagId),
-    ]);
-    const allocation = calculateRedeemAllocation({
-      bagId: intent.bagId,
-      sharesRaw: position.sharesRaw,
-      sharesToRedeemRaw: intent.sharesRaw,
-      outputAsset: intent.outputAsset,
-      outputDecimals: intent.outputDecimals,
-      holdings: holdings.map((h) => ({ chain: h.chain, address: h.address, decimals: h.decimals, quantityRaw: h.quantityRaw })),
-    });
-    const symbolByKey = new Map(intent.steps.map((s) => [`${s.inputAsset.chain}:${s.inputAsset.address.toLowerCase()}`, s.targetSymbol]));
-    const executionSteps = buildRedeemExecutionSteps(
-      allocation,
-      intent.outputAsset,
-      (asset) => symbolByKey.get(`${asset.chain}:${asset.address.toLowerCase()}`) ?? ''
-    );
-    currentFingerprint = computeRedeemFingerprint({
-      bagId: intent.bagId,
-      sharesToRedeemRaw: intent.sharesRaw,
-      outputAsset: intent.outputAsset,
-      steps: executionSteps,
-    });
-  } catch {
-    // Position/holdings changed enough that the SAME allocation can no
-    // longer be recomputed (e.g. insufficient shares now, or a holding
-    // this intent's steps depended on has since been fully redeemed
-    // elsewhere) — this intent cannot be executed as quoted.
-    await updateRedeemIntentStatus(admin, { id: intentId, from: intent.status, to: 'FAILED', failureCode: 'ROUTE_EXPIRED' });
-    return { ok: false, error: { kind: 'ROUTE_CHANGED' } };
-  }
-
-  if (currentFingerprint !== intent.routeFingerprint) {
+  // A4: what can go stale between quote and signature is the wallet itself (tokens moved out) or the books
+  // (another purchase/redemption settled). Re-read both, at one block, and refuse to sign a sale of anything
+  // that is no longer really there — never sell non-existent balance. An unreadable balance does not fail
+  // the intent; the user can retry once the chain answers.
+  const [position, observed] = await Promise.all([
+    getInvestorPosition(admin, session.userId, intent.bagId),
+    observeUserHoldings(admin, getChainPublicClient('robinhood'), session),
+  ]);
+  const sellable = sellableHoldingsForBag(observed, intent.bagId);
+  if (!sellable) return { ok: false, error: { kind: 'BALANCE_UNAVAILABLE' } };
+  if (!saleStillCovered(intent, sellable, position.sharesRaw)) {
     await updateRedeemIntentStatus(admin, { id: intentId, from: intent.status, to: 'FAILED', failureCode: 'ROUTE_EXPIRED' });
     return { ok: false, error: { kind: 'ROUTE_CHANGED' } };
   }

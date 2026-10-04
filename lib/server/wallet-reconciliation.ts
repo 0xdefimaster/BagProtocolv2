@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { erc20Abi, type PublicClient } from 'viem';
-import { MULTICALL3_ADDRESS } from '@/lib/server/wallet-holdings';
+import type { PublicClient } from 'viem';
+import { readBalancesAtBlock } from '@/lib/server/wallet-balances';
 import { verifyRedeemExecution } from '@/lib/server/redeem-execution';
 import { settleUnsettledPurchasesForUser } from '@/lib/server/purchase-execution';
 import { listUnsettledRedeemIntentsForUser } from '@/lib/server/redeem-intent-repo';
@@ -37,24 +37,7 @@ export interface WalletReconcileResult {
 /** Only Robinhood Chain is reconciled today (the chain BAG executes on). */
 const RECONCILED_CHAIN = 'robinhood';
 
-/** balanceOf for each asset at `blockNumber`; null where the read failed (never a guessed 0). */
-export async function readBalancesAtBlock(client: PublicClient, owner: string, assets: TrackedAsset[], blockNumber: bigint): Promise<(bigint | null)[]> {
-  if (assets.length === 0) return [];
-  const contracts = assets.map((a) => ({ address: a.address as `0x${string}`, abi: erc20Abi, functionName: 'balanceOf' as const, args: [owner as `0x${string}`] as const }));
-  try {
-    const results = await client.multicall({ multicallAddress: MULTICALL3_ADDRESS, allowFailure: true, contracts, blockNumber });
-    return results.map((r) => (r.status === 'success' ? (r.result as bigint) : null));
-  } catch {
-    return Promise.all(
-      contracts.map((c) =>
-        client
-          .readContract({ ...c, blockNumber })
-          .then((v) => v as bigint)
-          .catch(() => null)
-      )
-    );
-  }
-}
+export { readBalancesAtBlock };
 
 async function settlePendingFor(admin: SupabaseClient, userId: string, walletAddress: string): Promise<void> {
   const session = { userId, walletAddress } as Parameters<typeof settleUnsettledPurchasesForUser>[1];

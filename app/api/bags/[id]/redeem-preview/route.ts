@@ -2,15 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
 import { requireSession } from '@/lib/auth/require-session';
 import { getBagById } from '@/lib/server/bag-repo';
-import { getBagNavSafe } from '@/lib/server/bag-nav';
-import { getShareSupply } from '@/lib/server/bag-share-state-repo';
-import { getInvestorPosition } from '@/lib/server/bag-investor-position-repo';
-import { getInvestorHoldings } from '@/lib/server/bag-investor-holdings-repo';
 import { listAssets } from '@/lib/server/asset-repo';
 import { paymentAssetsFor } from '@/lib/server/payment-assets';
-import { getPriceProvider } from '@/lib/server/price-provider';
-import { getRedeemQuote, InsufficientSharesError, ZeroRedeemAmountError, ZeroShareSupplyError } from '@/lib/domain/basket-protocol/shares/shares';
-import { InsufficientPositionError, calculateRedeemAllocation } from '@/lib/domain/basket-protocol/redeem/allocation';
+import { getDisplayPriceProvider } from '@/lib/server/price-provider';
+import { getChainPublicClient } from '@/lib/blockchain/rpc/clients';
+import { observeUserHoldings, sellableHoldingsForBag, valueUserPositions, assetKey } from '@/lib/server/position-valuation';
+import { valuePosition } from '@/lib/domain/basket-protocol/accounting/position-value';
+import { ZeroRedeemAmountError } from '@/lib/domain/basket-protocol/shares/shares';
+import { InvalidRedeemFractionError, calculateRedeemAllocation } from '@/lib/domain/basket-protocol/redeem/allocation';
 import { checkRateLimit, rateLimitedResponseBody } from '@/lib/server/rate-limit';
 
 // Production-hardening P1-10 — authenticated: per-user, same convention as
@@ -18,26 +17,24 @@ import { checkRateLimit, rateLimitedResponseBody } from '@/lib/server/rate-limit
 const RATE_LIMIT = { windowSeconds: 60, maxRequests: 20 };
 
 // -----------------------------------------------------------------------------
-// Phase 21 — Redeem Preview. Exit-side counterpart to
-// .../purchase-preview/route.ts, with one structural difference that
-// matters: a deposit preview is the same for anyone (any amount, any
-// input asset — no session required). A redemption preview is inherently
-// per-user (it can only ever be about THIS depositor's own position/
-// holdings — see redeem/allocation.ts's module doc), so unlike
-// purchase-preview, BOTH verbs here require a session.
+// Phase 21 / A4 — Redeem Preview. Inherently per-user (it can only ever be
+// about THIS depositor's own holdings — see redeem/allocation.ts's module
+// doc), so both verbs require a session.
 //
-// Deliberately does NOT call LI.FI (no wallet-bound quote, no `?quotes=
-// true` equivalent) — that only happens once a redemption is actually
-// committed via POST /api/bags/:id/redeem-intent (lib/server/
-// redeem-execution.ts), which locks a real, signable route. This route is
-// for the "how many shares, redeem into what, how much would that be"
-// question a user asks BEFORE committing to anything wallet-bound.
+// A4 (docs/ACCOUNTING_V2_DESIGN.md §7): the position is valued from what the
+// wallet holds, not from shares × NAV, and three numbers are kept apart:
+//   strategyExposure   what BAG tracks for this strategy, at verified prices
+//   observedWallet     what of it is still in the wallet
+//   effectivePosition  the wallet's balance attributed to this strategy (what can be sold)
+// Estimated proceeds (after price impact and fees) are a fourth number that
+// only a real route quote can give — POST /api/bags/:id/redeem-intent returns
+// it with the signable route. This route never calls LI.FI.
 //
-//   GET  /api/bags/:id/redeem-preview                                    -> this depositor's position + verified output assets
-//   POST /api/bags/:id/redeem-preview  { sharesToRedeemRaw, outputAssetId } -> RedeemQuote + allocation breakdown
+//   GET  /api/bags/:id/redeem-preview                              -> position value + verified output assets
+//   POST /api/bags/:id/redeem-preview  { fractionBps, outputAssetId } -> what that fraction sells, and its position value
 // -----------------------------------------------------------------------------
 
-const priceProvider = getPriceProvider();
+const priceProvider = getDisplayPriceProvider();
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!isSupabaseConfigured()) {
@@ -52,33 +49,39 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const bag = await getBagById(admin, id);
   if (!bag) return NextResponse.json({ error: 'Bag not found.' }, { status: 404 });
 
-  const [position, holdings, outputAssets] = await Promise.all([
-    getInvestorPosition(admin, auth.session.userId, id),
-    getInvestorHoldings(admin, auth.session.userId, id),
-    listAssets(admin, { status: 'VERIFIED', chain: bag.chain }).then((assets) => paymentAssetsFor(assets, bag.chain)),
-  ]);
+  const chainAssets = await listAssets(admin, { chain: bag.chain });
+  const symbolByKey = new Map(chainAssets.map((a) => [assetKey(a.chain, a.address), a.symbol]));
+  const outputAssets = paymentAssetsFor(chainAssets.filter((a) => a.status === 'VERIFIED'), bag.chain);
+  const values = await valueUserPositions(admin, getChainPublicClient('robinhood'), priceProvider, auth.session, (c, a) => symbolByKey.get(assetKey(c, a)));
+  const value = values.get(id) ?? null;
 
   return NextResponse.json({
     bag: { id: bag.id, name: bag.name, symbol: bag.symbol },
-    position: { sharesRaw: position.sharesRaw, shareDecimals: position.shareDecimals, costBasisQuote: position.costBasisQuote },
-    // This depositor's own per-asset composition — what a redemption would
-    // actually sell (see redeem/allocation.ts's module doc), shown so the
-    // UI can explain WHY the payout isn't simply "shares × NAV" the same
-    // way a pooled fund's would be.
-    holdings: holdings.map((h) => ({ chain: h.chain, address: h.address, decimals: h.decimals, quantityRaw: h.quantityRaw })),
+    position: value
+      ? {
+          strategyExposureQuote: value.strategyExposureQuote,
+          observedWalletQuote: value.observedWalletQuote,
+          effectivePositionQuote: value.effectivePositionQuote,
+          hasDrift: value.hasDrift,
+          hasUnreadable: value.hasUnreadable,
+          blockNumber: value.blockNumber,
+          quoteCurrency: 'USD',
+          assets: value.assets,
+        }
+      : null,
     outputAssets: outputAssets.map((a) => ({ id: a.id, chain: a.chain, address: a.address, symbol: a.symbol, decimals: a.decimals, name: a.name })),
   });
 }
 
 interface RedeemPreviewRequestBody {
-  sharesToRedeemRaw: string;
+  fractionBps: number;
   outputAssetId: string;
 }
 
 function isRedeemPreviewRequestBody(value: unknown): value is RedeemPreviewRequestBody {
   if (typeof value !== 'object' || value === null) return false;
   const body = value as Record<string, unknown>;
-  return typeof body.sharesToRedeemRaw === 'string' && typeof body.outputAssetId === 'string';
+  return typeof body.fractionBps === 'number' && typeof body.outputAssetId === 'string';
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -103,7 +106,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
   }
   if (!isRedeemPreviewRequestBody(body)) {
-    return NextResponse.json({ error: 'Expected { sharesToRedeemRaw: string, outputAssetId: string }.' }, { status: 400 });
+    return NextResponse.json({ error: 'Expected { fractionBps: number, outputAssetId: string }.' }, { status: 400 });
   }
 
   const bag = await getBagById(admin, id);
@@ -114,61 +117,57 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const outputAsset = outputAssets.find((a) => a.id === body.outputAssetId);
   if (!outputAsset) return NextResponse.json({ error: 'Unknown or unverified output asset.' }, { status: 400 });
 
-  const [navOutcome, shareSupply, position, holdings] = await Promise.all([
-    getBagNavSafe(admin, id, priceProvider),
-    getShareSupply(admin, id),
-    getInvestorPosition(admin, auth.session.userId, id),
-    getInvestorHoldings(admin, auth.session.userId, id),
-  ]);
-
-  if (!navOutcome.ok) {
-    return NextResponse.json({ error: 'Live pricing is temporarily unavailable. Please try again shortly.', reason: navOutcome.reason }, { status: 503 });
-  }
-
-  let redeemQuote;
-  try {
-    redeemQuote = getRedeemQuote(navOutcome.nav, shareSupply, body.sharesToRedeemRaw);
-  } catch (err) {
-    if (err instanceof ZeroRedeemAmountError) return NextResponse.json({ error: 'Enter a share amount greater than zero.' }, { status: 422 });
-    if (err instanceof ZeroShareSupplyError) return NextResponse.json({ error: 'This Bag has no outstanding shares to redeem.' }, { status: 409 });
-    if (err instanceof InsufficientSharesError) {
-      return NextResponse.json({ error: `Cannot redeem ${err.requestedRaw} raw shares — only ${err.availableRaw} are outstanding.` }, { status: 422 });
-    }
-    throw err;
-  }
+  const observed = await observeUserHoldings(admin, getChainPublicClient('robinhood'), auth.session);
+  if (!observed.rows.some((r) => r.bagId === id)) return NextResponse.json({ error: 'You have no position in this Bag to sell.' }, { status: 409 });
+  const sellable = sellableHoldingsForBag(observed, id);
+  if (!sellable) return NextResponse.json({ error: 'Your wallet balances could not be read right now. Please try again shortly.' }, { status: 503 });
 
   let allocation;
   try {
     allocation = calculateRedeemAllocation({
       bagId: id,
-      sharesRaw: position.sharesRaw,
-      sharesToRedeemRaw: body.sharesToRedeemRaw,
+      fractionBps: body.fractionBps,
       outputAsset: { chain: outputAsset.chain, address: outputAsset.address },
       outputDecimals: outputAsset.decimals,
-      holdings: holdings.map((h) => ({ chain: h.chain, address: h.address, decimals: h.decimals, quantityRaw: h.quantityRaw })),
+      holdings: sellable,
     });
   } catch (err) {
-    if (err instanceof InsufficientPositionError) {
-      return NextResponse.json({ error: `Cannot redeem ${err.requestedRaw} raw shares — this position only holds ${err.ownedRaw}.` }, { status: 422 });
-    }
-    if (err instanceof ZeroRedeemAmountError) return NextResponse.json({ error: 'Enter a share amount greater than zero.' }, { status: 422 });
+    if (err instanceof InvalidRedeemFractionError) return NextResponse.json({ error: 'Choose how much of the position to sell (between 0.01% and 100%).' }, { status: 422 });
+    if (err instanceof ZeroRedeemAmountError) return NextResponse.json({ error: 'Your wallet holds nothing of this position that can be sold.' }, { status: 422 });
     throw err;
   }
 
   // Every asset on the chain (not only payment assets): the allocation sells the Bag's own holdings.
-  const symbolByKey = new Map(chainAssets.map((a) => [`${a.chain}:${a.address.toLowerCase()}`, a.symbol]));
+  const symbolByKey = new Map(chainAssets.map((a) => [assetKey(a.chain, a.address), a.symbol]));
+  // Position value of the slice being sold, at verified display prices — NOT what the sale will return.
+  const prices = await Promise.all(
+    allocation.map((a) =>
+      priceProvider
+        .getPrice(a.sourceAsset)
+        .then((p) => p.price)
+        .catch(() => null)
+    )
+  );
+  const sliceValue = valuePosition(
+    allocation.map((a, i) => ({
+      chain: a.sourceAsset.chain,
+      address: a.sourceAsset.address,
+      decimals: a.sourceDecimals,
+      trackedRaw: a.sellQuantityRaw,
+      trackedAllStrategiesRaw: a.sellQuantityRaw,
+      observedRaw: a.sellQuantityRaw,
+      price: prices[i],
+    }))
+  );
 
   return NextResponse.json({
     preview: {
       outputSymbol: outputAsset.symbol,
-      redeemQuote: {
-        sharesRaw: redeemQuote.sharesRaw,
-        shareDecimals: redeemQuote.shareDecimals,
-        sharePrice: redeemQuote.sharePrice,
-        grossValue: redeemQuote.grossValue,
-      },
+      fractionBps: body.fractionBps,
+      sliceValueQuote: sliceValue.effectivePositionQuote,
+      quoteCurrency: 'USD',
       allocation: allocation.map((a) => ({
-        symbol: symbolByKey.get(`${a.sourceAsset.chain}:${a.sourceAsset.address.toLowerCase()}`) ?? '?',
+        symbol: symbolByKey.get(assetKey(a.sourceAsset.chain, a.sourceAsset.address)) ?? '?',
         sellQuantityRaw: a.sellQuantityRaw,
         decimals: a.sourceDecimals,
         isOutputAsset:

@@ -2,16 +2,17 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
+import { formatDecimalStringUsd } from '@/lib/format';
 import { useWallet } from '@/lib/wallet-context';
 import { WalletAssetsPanel } from '@/components/portfolio/WalletAssetsPanel';
 
 // -----------------------------------------------------------------------------
 // Portfolio — the signed-in user's real Bag positions (GET
-// /api/portfolio/positions: bag_investor_positions + live NAV). Replaces the
-// old paper-trading demo ($10,000 of play money and BTC/ETH "trades" that
-// never touched a chain). Values come from the same NAV math as redeem; a
-// Bag whose prices are unavailable right now shows its cost basis only.
+// /api/portfolio/positions). A4: valued from holdings, not shares × NAV —
+// strategy exposure (what BAG tracks) and the effective position (what the
+// wallet really holds for it) are shown side by side, with drift flagged
+// where they differ. Cost basis and realized P&L come from the ledger. A
+// number the server could not know right now is shown as "—", never guessed.
 // -----------------------------------------------------------------------------
 
 interface PositionView {
@@ -19,12 +20,17 @@ interface PositionView {
   bagName: string;
   bagSymbol: string;
   bagStatus: string;
-  sharesRaw: string;
-  shareDecimals: number;
-  costBasis: string;
-  currentValue: string | null;
+  strategyExposure: string | null;
+  observedWallet: string | null;
+  effectivePosition: string | null;
+  hasDrift: boolean;
+  hasUnreadable: boolean;
+  costBasis: string | null;
+  realizedPnl: string | null;
   quoteCurrency: string;
 }
+
+const signedUsd = (v: number) => `${v >= 0 ? '+' : '-'}${formatDecimalStringUsd(Math.abs(v).toFixed(2))}`;
 
 const toNumber = (value: string | null) => (value === null ? null : Number(value));
 
@@ -79,12 +85,13 @@ export default function PortfolioPage() {
   }
 
   const list = positions ?? [];
-  const totalCost = list.reduce((sum, p) => sum + Number(p.costBasis), 0);
-  const priced = list.filter((p) => p.currentValue !== null);
-  const totalValue = priced.reduce((sum, p) => sum + Number(p.currentValue), 0);
-  const pricedCost = priced.reduce((sum, p) => sum + Number(p.costBasis), 0);
-  const pnl = totalValue - pricedCost;
-  const allPriced = priced.length === list.length;
+  // Unrealized P&L compares like with like: exposure and cost basis are over the same tracked quantities.
+  const complete = list.filter((p) => p.strategyExposure !== null && p.costBasis !== null && p.effectivePosition !== null);
+  const totalEffective = complete.reduce((sum, p) => sum + Number(p.effectivePosition), 0);
+  const totalCost = complete.reduce((sum, p) => sum + Number(p.costBasis), 0);
+  const pnl = complete.reduce((sum, p) => sum + Number(p.strategyExposure) - Number(p.costBasis), 0);
+  const allKnown = complete.length === list.length;
+  const anyDrift = list.some((p) => p.hasDrift);
 
   return (
     <main className="wrap" style={{ paddingBottom: 80, paddingTop: 44 }}>
@@ -95,8 +102,8 @@ export default function PortfolioPage() {
 
       <div className="portfolio-summary" style={{ marginTop: 32 }}>
         <div className="dash-stat">
-          <span className="l">Current Value</span>
-          <div className="v">{formatDecimalStringUsd(totalValue.toFixed(2))}{!allPriced && '*'}</div>
+          <span className="l">In Wallet</span>
+          <div className="v">{formatDecimalStringUsd(totalEffective.toFixed(2))}{!allKnown && '*'}</div>
         </div>
         <div className="dash-stat">
           <span className="l">Invested</span>
@@ -105,8 +112,7 @@ export default function PortfolioPage() {
         <div className="dash-stat">
           <span className="l">Unrealized PnL</span>
           <div className="v" style={{ color: pnl >= 0 ? 'var(--emerald)' : '#E0847A' }}>
-            {pnl >= 0 ? '+' : '-'}
-            {formatDecimalStringUsd(Math.abs(pnl).toFixed(2))}
+            {signedUsd(pnl)}
           </div>
         </div>
         <div className="dash-stat">
@@ -114,9 +120,15 @@ export default function PortfolioPage() {
           <div className="v">{list.length}</div>
         </div>
       </div>
-      {!allPriced && (
+      {!allKnown && (
         <p style={{ color: 'var(--mute)', fontSize: 12.5, marginTop: 8 }}>
-          * Live prices are unavailable for some Bags right now; they are left out of the value and PnL above.
+          * Live prices or wallet balances are unavailable for some Bags right now; they are left out of the totals above.
+        </p>
+      )}
+      {anyDrift && (
+        <p style={{ color: '#E0B97A', fontSize: 12.5, marginTop: 8 }}>
+          Drift: your wallet holds less than BAG tracks for some strategies (tokens moved out of the wallet). Only what is really in
+          the wallet can be sold; if the difference persists it is booked as an external outflow, not as a gain or loss.
         </p>
       )}
 
@@ -143,17 +155,20 @@ export default function PortfolioPage() {
               <thead>
                 <tr>
                   <th>Bag</th>
-                  <th>Shares</th>
                   <th>Invested</th>
-                  <th>Value</th>
-                  <th>PnL</th>
+                  <th>Exposure</th>
+                  <th>In Wallet</th>
+                  <th>Unrealized</th>
+                  <th>Realized</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
                 {list.map((p) => {
-                  const value = toNumber(p.currentValue);
-                  const rowPnl = value === null ? null : value - Number(p.costBasis);
+                  const exposure = toNumber(p.strategyExposure);
+                  const cost = toNumber(p.costBasis);
+                  const realized = toNumber(p.realizedPnl);
+                  const rowPnl = exposure === null || cost === null ? null : exposure - cost;
                   return (
                     <tr key={p.bagId}>
                       <td>
@@ -162,11 +177,22 @@ export default function PortfolioPage() {
                         </Link>
                         <div className="mono" style={{ fontSize: 11, color: 'var(--mute)' }}>{p.bagSymbol}</div>
                       </td>
-                      <td className="mono">{formatRawAmount(p.sharesRaw, p.shareDecimals, { maxFractionDigits: 4 })}</td>
-                      <td className="mono">{formatDecimalStringUsd(p.costBasis)}</td>
-                      <td className="mono">{value === null ? '—' : formatDecimalStringUsd(p.currentValue!)}</td>
+                      <td className="mono">{p.costBasis === null ? '—' : formatDecimalStringUsd(p.costBasis)}</td>
+                      <td className="mono">{p.strategyExposure === null ? '—' : formatDecimalStringUsd(p.strategyExposure)}</td>
+                      <td className="mono">
+                        {p.effectivePosition === null ? '—' : formatDecimalStringUsd(p.effectivePosition)}
+                        {p.hasDrift && (
+                          <div style={{ fontSize: 10.5, color: '#E0B97A' }} title="Your wallet holds less than BAG tracks for this strategy">
+                            drift
+                          </div>
+                        )}
+                        {p.hasUnreadable && <div style={{ fontSize: 10.5, color: 'var(--mute)' }}>balance unavailable</div>}
+                      </td>
                       <td className="mono" style={{ color: rowPnl === null ? 'var(--mute)' : rowPnl >= 0 ? 'var(--emerald)' : '#E0847A' }}>
-                        {rowPnl === null ? '—' : `${rowPnl >= 0 ? '+' : '-'}${formatDecimalStringUsd(Math.abs(rowPnl).toFixed(2))}`}
+                        {rowPnl === null ? '—' : signedUsd(rowPnl)}
+                      </td>
+                      <td className="mono" style={{ color: realized === null ? 'var(--mute)' : realized >= 0 ? 'var(--emerald)' : '#E0847A' }}>
+                        {realized === null ? '—' : signedUsd(realized)}
                       </td>
                       <td>
                         <Link href={`/dashboard/bag/${p.bagId}`} className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 12.5 }}>
