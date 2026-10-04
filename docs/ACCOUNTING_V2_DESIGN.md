@@ -119,7 +119,16 @@ both).
   This removes the NAV dependency from redeem accounting (fixes P2 and the
   weekend redeem).
 - **External outflow** removes quantity and its cost basis but records **no**
-  realized P&L: BAG does not know the proceeds and does not guess.
+  realized P&L: BAG does not know the proceeds and does not guess. Semantics
+  (fixed): an external outflow is an asset leaving the position, **not** a
+  sale, gain or loss. Its basis is reported separately
+  (`basisExitedExternallyQuote`); performance figures, the Strategy
+  Performance Index, fee bases and leaderboards must never treat it as a
+  realized result.
+- **Exactness:** leg costs sum exactly to the intent's cost basis, leg
+  proceeds sum exactly to the verified total (raw integer split, remainder to
+  the last leg), and realized P&L = Σ proceeds − Σ allocated basis, all in
+  exact decimal arithmetic (18 places, no floats).
 
 ### 3.3 Fees
 

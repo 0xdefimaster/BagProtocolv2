@@ -12,7 +12,9 @@ import { formatDec, mulDiv, parseDec } from './decimal';
 //     actually received (`proceedsQuote` on the leg, from the verified receipt).
 //     NAV and quotes are never used.
 //   - An external outflow removes quantity and its basis but realizes nothing:
-//     BAG does not know the proceeds.
+//     BAG does not know the proceeds. It is NOT a sale, gain or loss: the basis
+//     that left is reported separately (`basisExitedExternallyQuote`) and must
+//     never be read as a realized result by performance, fees or indexes.
 //   - Where a cost or a proceeds amount is unknown (state that predates per-leg
 //     costs), the affected numbers are null, never estimated. An asset's basis
 //     becomes known again once its quantity returns to zero.

@@ -23,4 +23,23 @@ describe('decimal', () => {
     const parts = splitDecimal('13.37', [BigInt(7), BigInt(11), BigInt(13)]);
     expect(parts.reduce((a, p) => a + parseDec(p), BigInt(0))).toBe(parseDec('13.37'));
   });
+
+  it('property: for many random totals and weights, parts are never negative and always sum exactly to the total', () => {
+    let seed = 42;
+    const rnd = (max: number) => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % max;
+    };
+    for (let i = 0; i < 500; i++) {
+      const weights = Array.from({ length: 1 + rnd(8) }, () => BigInt(rnd(5) === 0 ? 0 : rnd(10_000_000)));
+      const totalRaw = BigInt(rnd(1_000_000_000)) * BigInt(1 + rnd(1000));
+      const raw = splitRaw(totalRaw, weights);
+      expect(raw.reduce((a, b) => a + b, BigInt(0))).toBe(totalRaw);
+      expect(raw.every((x) => x >= BigInt(0))).toBe(true);
+      const total = `${rnd(100000)}.${String(rnd(1_000_000)).padStart(6, '0')}`;
+      const dec = splitDecimal(total, weights);
+      expect(dec.reduce((a, p) => a + parseDec(p), BigInt(0))).toBe(parseDec(total));
+      expect(dec.every((p) => !p.startsWith('-'))).toBe(true);
+    }
+  });
 });
