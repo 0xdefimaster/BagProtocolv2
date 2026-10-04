@@ -1,6 +1,6 @@
 # Accounting V2 — design draft
 
-Status: **design, not implemented.** Awaiting approval of the open decisions in §13.
+Status: **design approved, decisions locked (§13); A1 in progress.** Not implemented yet.
 Scope: V2 only. V1 (bagprotocol.com) is not changed by anything in this document.
 
 Architecture decision this builds on (2026-10-04): **BAG stays non-custodial
@@ -93,7 +93,8 @@ Receipts (verified executions)        Chain observations (balances, logs)
 | `REDEEM_FILL` | verified redeem receipt | `−qty` per asset sold | **proceeds actually received** |
 | `FEE_CHARGED` | redeem settlement | none | fee amount, base (realized gain), bps |
 | `ROYALTY_ACCRUED` | purchase settlement | none | royalty amount, base, bps |
-| `EXTERNAL_OUTFLOW` | reconciliation | `−qty` (tracked follows the chain down) | none (proceeds unknown) |
+| `EXTERNAL_OUTFLOW` | reconciliation | `−qty` (tracked follows the chain down) | none (proceeds unknown); reason starts as `UNKNOWN_OUTFLOW` |
+| `OUTFLOW_CLASSIFIED` | classifier | none | references an earlier `EXTERNAL_OUTFLOW` and adds its reason (`EXTERNAL_SWAP`, `EXTERNAL_TRANSFER`); the original event is never edited |
 | `RECONCILIATION_NOTE` | reconciliation | none | records surplus or a resolved drift |
 | `OPENING_BALANCE` | migration only | sets initial state from the existing tables | cost basis carried over |
 
@@ -154,6 +155,13 @@ Decision D1 (recommended): **retire pooled shares as the economic quantity.**
 - `bag_share_state` and `shares_raw` stay readable during migration and are
   then dropped from the UI and API.
 
+### 3.4 Ledger events are not chain events
+
+A chain event says "50 AAPL left the wallet". A ledger event says "these 50
+AAPL left the exposure of strategy #42". The classifier links the two: every
+ledger event that comes from the chain carries `source = {chain, txHash,
+logIndex}` and the allocation used, so the attribution can be audited later.
+
 ## 5. Wallet reconciliation
 
 ### 5.1 Observation
@@ -169,6 +177,24 @@ A wallet can hold the same asset for several strategies and outside BAG.
 - If `observed < tracked_total`: **shortfall is allocated pro rata** across the
   positions holding that asset (decision D3). Each position's effective
   quantity = tracked × observed / tracked_total.
+- **The allocation is stored with the record** (`allocation jsonb`: each
+  position's tracked quantity and share at that block). A later change to
+  strategy weights or positions never re-allocates an earlier outflow.
+
+### 5.2a Ledger, effective and the record are three different numbers
+For each position and asset the projection exposes `ledgerQuantity`,
+`observedWallet` (the position's share of it), `effectiveExposure`,
+`reconciliationDelta` and `reconciliationStatus` (`OK`, `DRIFT`,
+`EXTERNALLY_EXITED`). `min(ledger, wallet)` is only the effective exposure;
+it is never written back over the ledger.
+
+### 5.2b When tokens come back
+If a shortfall disappears before it is confirmed (§5.3), it was a timing gap:
+the drift record is closed and no event is written. After an
+`EXTERNAL_OUTFLOW` has been recorded, tokens that later arrive in the wallet
+are **not** automatically re-attached to the strategy (they may be an
+unrelated purchase); they show as surplus. Re-attaching is an explicit user
+action that writes its own event. Earlier events are never deleted.
 
 ### 5.3 Invariant
 `effective_quantity ≤ tracked_quantity` and
@@ -177,11 +203,22 @@ hidden: every shortfall produces a reconciliation record and, once confirmed on
 two consecutive observations, an `EXTERNAL_OUTFLOW` event that brings tracked
 quantity down to effective.
 
-### 5.4 Cadence
-On portfolio/activity visits (same pattern as `settleUnsettledPurchasesForUser`)
-and a scheduled batch (same pattern as the #47 reconciler). Pending BAG intents
-for the wallet are settled first so an in-flight sale is not misread as an
-external exit.
+### 5.4 Cadence (decision D6: event-driven + 5-minute safety pass)
+- **Real time:** a listener for `Transfer` events of tracked assets from/to
+  tracked wallets triggers reconciliation of that wallet within seconds.
+  Netlify functions cannot hold a WebSocket open, so the listener is either a
+  small always-on worker (provider WebSocket endpoint) or a provider address-
+  activity webhook that calls a BAG endpoint. Which one Robinhood Chain's
+  provider supports is to be verified before A2.
+- **Backstop:** a scheduled pass every 5 minutes (same pattern as the #47
+  reconciler) re-reads balances, so a missed event is corrected.
+- Also on portfolio/activity visits. Pending BAG intents for the wallet are
+  settled first so an in-flight sale is not misread as an external exit.
+- Chain source of truth: provider RPC/WebSocket (Robinhood's documentation
+  recommends a provider such as Alchemy over the public RPC for production,
+  and an archive endpoint for historical reads). Blockscout is a supplemental
+  indexer for classification, debugging and fallback, never the source of
+  truth (decision D5).
 
 ## 6. External exit detection
 
@@ -219,6 +256,13 @@ Phased, so v2.0 never claims more than it knows.
 States are stored on the position projection and used by the portfolio UI,
 TVL, and performance. `CLOSED` and `EXTERNALLY_EXITED` positions stay visible
 in history with their realized results.
+
+**User-facing:** a drift is shown on the position ("about 42 % of this
+position left your wallet outside BAG on Oct 4, 2026 · view transaction"),
+with the reason only as certain as the classifier is (`UNKNOWN_OUTFLOW` is
+shown as "moved out, reason unknown"). A fully exited position shows
+"Externally exited". In the non-custodial model this is a feature, not an
+error state.
 
 ## 8. NAV and TVL
 
@@ -292,18 +336,24 @@ Dropped (after migration and a release with both): `bag_share_state`,
 API added along the way: `/users/me/positions` (state, tracked, effective,
 drift), `/users/me/ledger`, `/users/me/reconciliation`.
 
-## 13. Open decisions
+## 13. Decisions (locked 2026-10-04)
 
-- **D1** Retire pooled shares as the economic quantity (recommended) or keep
-  them as an internal index?
-- **D2** Average cost per asset (recommended) or FIFO lots?
-- **D3** Shortfall allocation across strategies: pro rata (recommended) or
-  most-recent-first?
-- **D4** Change RedeemFeeRouter to charge on realized output (contract change +
-  audit), or keep the attested fixed fee for now?
-- **D5** Log source for exit classification: RPC `eth_getLogs` or an indexer
-  (Blockscout)? Needs a check of Robinhood Chain RPC log-range limits.
-- **D6** Reconciliation cadence and RPC budget (per-visit + every N minutes).
+- **D1** Pooled shares are retired as the economic quantity.
+- **D2** Average cost per (user, bag, asset). A tax-lot engine, if ever needed,
+  is a separate layer on top of the ledger.
+- **D3** Shortfall allocation across strategies is pro rata, with the
+  allocation snapshot stored on the record (§5.2).
+- **D4** Fee on realized proceeds enforced on-chain is a separate, audited
+  contract PR **after** Accounting V2. Until then the existing enforceable fee
+  path stays, and the docs state plainly: a BAG-enforced fee applies only to
+  exits executed through BAG; a sale outside BAG carries no BAG fee.
+- **D5** Provider RPC/WebSocket is the chain source of truth; Blockscout is
+  supplemental (classification, debugging, fallback).
+- **D6** Event-driven reconciliation plus a 5-minute safety pass.
+
+One-click sell (exit the whole strategy in one plan) ships alongside A4: it is
+the end-to-end test of the books (buy → position → wallet → sell → realized
+P&L → closed).
 
 ## 14. Not verified
 
