@@ -369,9 +369,9 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
                   What Gets Sold
                 </div>
                 <div style={{ marginBottom: 14 }}>
-                  {preview.allocation.map((a) => (
+                  {preview.allocation.map((a, i) => (
                     <div
-                      key={a.symbol}
+                      key={`${a.symbol}:${i}`}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
