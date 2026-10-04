@@ -3,6 +3,7 @@ import { decodeEventLog, type Hex } from 'viem';
 import { getChainPublicClient } from '@/lib/blockchain/rpc/clients';
 import { DEPLOYED_CONTRACTS, rewardTokenRawToQuoteDecimal } from '@/lib/config/robinhood-chain';
 import { getRedeemIntentForUser, updateRedeemIntentStatus } from '@/lib/server/redeem-intent-repo';
+import { rawToDecimalString, splitRaw } from '@/lib/domain/basket-protocol/accounting/decimal';
 
 // -----------------------------------------------------------------------------
 // V11 — server-side verification for the RedeemFeeRouter execution path.
@@ -95,6 +96,7 @@ export async function verifyAndIndexRouterRedemption(
     user: `0x${string}`;
     creator: `0x${string}`;
     feeAmount: bigint;
+    swapOutput: bigint;
   }
   let decoded: DecodedRedeemed | null = null;
   for (const log of receipt.logs) {
@@ -130,9 +132,20 @@ export async function verifyAndIndexRouterRedemption(
 
   const feeAmountQuote = rewardTokenRawToQuoteDecimal(decoded.feeAmount);
 
-  const holdingsSold = intent.steps
-    .filter((s) => (s.action === 'SWAP' || s.action === 'KEEP') && BigInt(s.inputAmountRaw) > BigInt(0))
-    .map((s) => ({ chain: s.inputAsset.chain, address: s.inputAsset.address, quantity_raw: s.inputAmountRaw }));
+  // A3: proceeds per leg, before the fee. The router reports one swapOutput for all swapped legs; it is split
+  // across them in proportion to each leg's quoted output. A KEEP leg returns itself.
+  const soldSteps = intent.steps.filter((s) => (s.action === 'SWAP' || s.action === 'KEEP') && BigInt(s.inputAmountRaw) > BigInt(0));
+  const swapSteps = soldSteps.filter((s) => s.action === 'SWAP');
+  const swapShares = splitRaw(
+    BigInt(decoded.swapOutput),
+    swapSteps.map((s) => BigInt(/^\d+$/.test(s.outputAmountRaw ?? '') ? (s.outputAmountRaw as string) : /^\d+$/.test(s.minOutputRaw ?? '') ? (s.minOutputRaw as string) : '0'))
+  );
+  const holdingsSold = soldSteps.map((s) => ({
+    chain: s.inputAsset.chain,
+    address: s.inputAsset.address,
+    quantity_raw: s.inputAmountRaw,
+    proceeds_quote: rawToDecimalString(s.action === 'KEEP' ? BigInt(s.inputAmountRaw) : swapShares[swapSteps.indexOf(s)], intent.outputDecimals),
+  }));
 
   const { error: rpcError } = await admin.rpc('apply_redeem_execution_router_settled', {
     p_intent_id: intent.id,

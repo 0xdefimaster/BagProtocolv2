@@ -41,6 +41,7 @@ import {
 import { buildPurchaseIntentSteps, DEFAULT_COMPOSER_SLIPPAGE_BPS } from '@/lib/blockchain/lifi-purchase-quote';
 import { trackStepStatus } from '@/lib/blockchain/lifi-status';
 import { trackComposerTransaction } from '@/lib/blockchain/composer-status';
+import { splitDecimal } from '@/lib/domain/basket-protocol/accounting/decimal';
 import { trackBagRouterTransaction } from '@/lib/blockchain/bag-router-status';
 import {
   createPurchaseIntent as insertPurchaseIntent,
@@ -1662,6 +1663,16 @@ function scaleDecimalString(value: string, num: bigint, den: bigint): string {
   return outFrac ? `${out / scale}.${outFrac}` : (out / scale).toString();
 }
 
+/**
+ * Accounting V2 / A3: each credited leg carries its share of the cost basis (`cost_quote`), split across legs in
+ * proportion to the input each leg spent, exactly (parts sum to the total). Recorded on the ledger leg; the
+ * investor tables are unchanged.
+ */
+export function withLegCosts<T extends { input_raw: string }>(holdings: T[], totalCost: string): (Omit<T, 'input_raw'> & { cost_quote: string })[] {
+  const costs = splitDecimal(totalCost, holdings.map((h) => BigInt(h.input_raw)));
+  return holdings.map(({ input_raw: _input, ...h }, i) => ({ ...h, cost_quote: costs[i] }));
+}
+
 async function reconcilePartialExecution(admin: SupabaseClient, intent: PurchaseIntent): Promise<PurchaseIntent> {
   if (!intent.reconciliationAppliedAt) {
     assertCompletedSwapsCreditable(intent);
@@ -1672,6 +1683,7 @@ async function reconcilePartialExecution(admin: SupabaseClient, intent: Purchase
         address: s.outputAsset.address,
         decimals: s.outputDecimals as number,
         delta_raw: s.outputAmountRaw as string,
+        input_raw: s.inputAmountRaw,
       }));
     const keepHoldings = intent.steps
       .filter((s) => s.action === 'KEEP' && s.outputDecimals !== null)
@@ -1680,6 +1692,7 @@ async function reconcilePartialExecution(admin: SupabaseClient, intent: Purchase
         address: s.outputAsset.address,
         decimals: s.outputDecimals as number,
         delta_raw: s.inputAmountRaw,
+        input_raw: s.inputAmountRaw,
       }));
 
     // Shares and cost basis for the part that actually executed: pro rata
@@ -1689,7 +1702,7 @@ async function reconcilePartialExecution(admin: SupabaseClient, intent: Purchase
     const { error: partialRpcError } = await admin.rpc('apply_partial_purchase_execution', {
       p_intent_id: intent.id,
       p_bag_id: intent.bagId,
-      p_holdings: [...completedSwapHoldings, ...keepHoldings],
+      p_holdings: withLegCosts([...completedSwapHoldings, ...keepHoldings], partial.costBasis),
       p_user_id: intent.userId,
       p_shares_delta_raw: partial.sharesRaw,
       p_share_decimals: intent.shareDecimals,
@@ -1756,6 +1769,7 @@ async function applyAccountingIdempotently(admin: SupabaseClient, intent: Purcha
       address: s.outputAsset.address,
       decimals: s.outputDecimals as number,
       delta_raw: s.outputAmountRaw as string,
+      input_raw: s.inputAmountRaw,
     }));
 
   // KEEP steps stay as the input asset itself — their value was never
@@ -1771,9 +1785,10 @@ async function applyAccountingIdempotently(admin: SupabaseClient, intent: Purcha
       address: s.outputAsset.address,
       decimals: s.outputDecimals as number,
       delta_raw: s.inputAmountRaw,
+      input_raw: s.inputAmountRaw,
     }));
 
-  const holdings = [...swapHoldings, ...keepHoldings];
+  const holdings = withLegCosts([...swapHoldings, ...keepHoldings], intent.depositAmount);
 
   // Phase 22, Layer 3 — fork royalty. Resolved fresh here (never trusted
   // from the client): only paid when THIS bag has a root_bag_id (i.e. it's
