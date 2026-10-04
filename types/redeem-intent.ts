@@ -64,6 +64,21 @@ export interface RedeemIntent {
   /** The locked, human-decimal, quote-currency value of this redemption at quote time (`RedeemQuote.grossValue`) — see module doc. */
   redeemValueQuote: string;
   steps: RedeemIntentStepRecord[];
+  /**
+   * Non-null iff every SWAP leg is sold in ONE LI.FI Composer transaction
+   * (lib/server/redeem-composer.ts) instead of one LI.FI route per asset.
+   * The wallet signs this one transaction (after the listed exact-amount
+   * approvals); its hash is reported for every SWAP step and verified
+   * against exactly this sender/target/calldata/value (composer-status.ts).
+   * Null for per-asset intents and for rows stored before it existed.
+   */
+  composerTransaction: {
+    to: string;
+    data: string;
+    value: string;
+    chainId: number;
+    approvals: { token: string; spender: string; amountRaw: string }[];
+  } | null;
   status: RedeemIntentStatus;
   failureCode: RedeemIntentFailureCode | null;
   createdAt: string;

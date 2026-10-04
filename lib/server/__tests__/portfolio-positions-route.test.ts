@@ -12,6 +12,8 @@ vi.mock('@/lib/server/bag-repo', () => ({ getBagById: (...a: unknown[]) => getBa
 vi.mock('@/lib/server/bag-nav', () => ({ getBagNavSafe: (...a: unknown[]) => getBagNavSafeMock(...a) }));
 vi.mock('@/lib/server/bag-share-state-repo', () => ({ getShareSupply: (...a: unknown[]) => getShareSupplyMock(...a) }));
 vi.mock('@/lib/server/price-provider', () => ({ getPriceProvider: () => ({}), getDisplayPriceProvider: () => ({}) }));
+const settleMock = vi.fn(async () => ({ checked: 0, settled: 0 }));
+vi.mock('@/lib/server/purchase-execution', () => ({ settleUnsettledPurchasesForUser: (...a: unknown[]) => settleMock(...(a as [])) }));
 
 const { GET } = await import('@/app/api/portfolio/positions/route');
 
@@ -49,5 +51,16 @@ describe('GET /api/portfolio/positions', () => {
     expect(Number(body.positions[0].currentValue)).toBeCloseTo(6);
     expect(body.positions[0]).toMatchObject({ bagName: 'Bag a', costBasis: '5' });
     expect(body.positions[1].currentValue).toBeNull();
+  });
+});
+
+describe('GET /api/portfolio/positions — unverified purchases', () => {
+  it("verifies the user's unsettled purchases before listing positions, so a closed purchase window still shows up", async () => {
+    settleMock.mockClear();
+    listPositionsMock.mockResolvedValue([]);
+    await GET();
+    expect(settleMock).toHaveBeenCalledTimes(1);
+    expect((settleMock.mock.calls[0] as unknown[])[1]).toEqual({ userId: 'user_1', walletAddress: '0xabc' });
+    expect(settleMock.mock.invocationCallOrder[0]).toBeLessThan(listPositionsMock.mock.invocationCallOrder.at(-1)!);
   });
 });

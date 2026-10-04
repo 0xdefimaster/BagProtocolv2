@@ -241,6 +241,20 @@ describe('RobinhoodApiPriceProvider — fail closed', () => {
   ])('%s -> PriceUnavailable', async (_l, address, prices) => {
     await expect(provider(harness(prices as never)).getPrice(asset(address))).rejects.toThrow(PriceUnavailableError);
   });
+
+  // The cause only makes the refusal explainable ("market closed"); every cause is still a refusal.
+  it.each([
+    ['impostor address', IMPOSTOR, {}, 'NOT_LISTED'],
+    ['trading halt', AAPL, { AAPL: quoteBody('AAPL', '1', '1', { isTradingHalt: true }) }, 'MARKET_CLOSED_OR_HALTED'],
+    ['stale quote', AAPL, { AAPL: quoteBody('AAPL', '1', '1', { generatedAt: new Date(NOW - 6 * 60 * 1000).toISOString() }) }, 'STALE_QUOTE'],
+    ['spread wider than 5%', AAPL, { AAPL: quoteBody('AAPL', '100', '106') }, 'SPREAD_TOO_WIDE'],
+    ['crossed quote', AAPL, { AAPL: quoteBody('AAPL', '101', '100') }, 'SPREAD_TOO_WIDE'],
+    ['API error', AAPL, { AAPL: 503 }, 'SOURCE_UNAVAILABLE'],
+  ])('%s -> cause %s', async (_l, address, prices, cause) => {
+    const err = await provider(harness(prices as never)).getPrice(asset(address)).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PriceUnavailableError);
+    expect((err as PriceUnavailableError).cause).toBe(cause);
+  });
 });
 
 // ------------------------------- Chainlink ----------------------------------

@@ -48,6 +48,8 @@ afterEach(async () => {
       )
     ).rows[0].n;
     expect(Number(neg)).toBe(0);
+    // I4 (0048) — the investor tables can be rebuilt exactly from ledger events.
+    expect((await db.service.query('select * from ledger_projection_mismatches() where bag_id = $1', [bagId])).rows).toEqual([]);
     // I3 — a zero-share position carries no cost basis.
     const residual = (await db.admin.query(`select count(*)::int as n from bag_investor_positions where bag_id = $1 and shares_raw::numeric = 0 and cost_basis_quote::numeric <> 0`, [bagId])).rows[0].n;
     expect(residual).toBe(0);

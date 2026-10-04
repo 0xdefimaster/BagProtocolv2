@@ -44,10 +44,18 @@ export interface PurchasePreviewResult {
   inputAmountRaw: string;
   inputAmountDisplay: string;
   depositPlan: DepositPlan;
-  depositQuote: DepositQuote;
+  /**
+   * Shares this deposit buys at the oracle NAV. Null when the oracle could not value the Bag's holdings
+   * (`shareValuation: 'EXECUTION_QUOTE'`): the shares are then priced from the purchase's own executable
+   * quote when the intent is created (lib/domain/basket-protocol/shares/execution-valuation.ts). The
+   * allocation, minimum investment and execution plan never depend on it.
+   */
+  depositQuote: DepositQuote | null;
+  /** How this purchase's shares are (or will be) priced. */
+  shareValuation: 'ORACLE_NAV' | 'EXECUTION_QUOTE';
   executionPlan: ExecutionPlan;
-  navQuoteCurrency: string;
-  navGross: string;
+  navQuoteCurrency: string | null;
+  navGross: string | null;
   isBootstrap: boolean;
 }
 
@@ -68,8 +76,11 @@ export interface ComputePurchasePreviewInput {
    * function so this stays a pure, synchronous, easily-testable pipeline —
    * fetching holdings is the caller's job, exactly like every other
    * function in this Phase 10 pipeline already keeps I/O at its edges.
+   *
+   * Null when the oracle could not price the holdings: the preview is still computed (allocation,
+   * minimum investment, execution plan) and `depositQuote` is left for the executable quote to price.
    */
-  nav: NavResult;
+  nav: NavResult | null;
   /**
    * The Bag's CURRENT share supply (Phase 13) — computed by the caller via
    * `getShareSupply()` (lib/server/bag-share-state-repo.ts), same
@@ -116,26 +127,29 @@ export function computePurchasePreview(input: ComputePurchasePreviewInput): Purc
 
   const executionPlan = buildExecutionPlan(depositPlan);
 
-  let depositQuote: DepositQuote;
-  try {
-    depositQuote = getDepositQuote(input.nav, input.shareSupply, amount);
-  } catch (err) {
-    if (err instanceof OrphanedNavError || err instanceof ZeroNavError) {
-      return { ok: false, error: { kind: 'NAV_UNAVAILABLE', message: err.message } };
+  let depositQuote: DepositQuote | null = null;
+  if (input.nav) {
+    try {
+      depositQuote = getDepositQuote(input.nav, input.shareSupply, amount);
+    } catch (err) {
+      if (err instanceof OrphanedNavError || err instanceof ZeroNavError) {
+        return { ok: false, error: { kind: 'NAV_UNAVAILABLE', message: err.message } };
+      }
+      if (err instanceof ZeroShareSupplyError) {
+        // Should be unreachable — getDepositQuote() bootstraps at zero
+        // supply rather than throwing this — but handled explicitly rather
+        // than left to bubble up as a 500 if that invariant ever changes.
+        return { ok: false, error: { kind: 'NAV_UNAVAILABLE', message: 'Share quote unavailable.' } };
+      }
+      throw err;
     }
-    if (err instanceof ZeroShareSupplyError) {
-      // Should be unreachable — getDepositQuote() bootstraps at zero
-      // supply rather than throwing this — but handled explicitly rather
-      // than left to bubble up as a 500 if that invariant ever changes.
-      return { ok: false, error: { kind: 'NAV_UNAVAILABLE', message: 'Share quote unavailable.' } };
-    }
-    throw err;
   }
 
   // The creator's minimum deposit (recipe.minInvestment, quote currency).
   // Enforced here so the preview and the purchase paths apply the same rule.
+  // The deposit amount is the payment-token amount itself (counted 1:1), so the check never needs a price.
   const minimum = input.recipe.minInvestment ?? 0;
-  if (minimum > 0 && Number(depositQuote.depositAmount) < minimum) {
+  if (minimum > 0 && Number(depositQuote?.depositAmount ?? amount) < minimum) {
     return {
       ok: false,
       error: { kind: 'BELOW_MIN_INVESTMENT', minimum, message: `The minimum investment for this Bag is $${minimum}.` },
@@ -151,10 +165,11 @@ export function computePurchasePreview(input: ComputePurchasePreviewInput): Purc
     inputAmountDisplay: amount,
     depositPlan,
     depositQuote,
+    shareValuation: depositQuote ? 'ORACLE_NAV' : 'EXECUTION_QUOTE',
     executionPlan,
-    navQuoteCurrency: input.nav.quoteCurrency,
-    navGross: input.nav.grossNav,
-    isBootstrap: depositQuote.isBootstrap,
+    navQuoteCurrency: input.nav?.quoteCurrency ?? null,
+    navGross: input.nav?.grossNav ?? null,
+    isBootstrap: depositQuote?.isBootstrap ?? false,
   };
 }
 

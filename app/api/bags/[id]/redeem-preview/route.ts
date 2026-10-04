@@ -109,7 +109,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const bag = await getBagById(admin, id);
   if (!bag) return NextResponse.json({ error: 'Bag not found.' }, { status: 404 });
 
-  const outputAssets = paymentAssetsFor(await listAssets(admin, { status: 'VERIFIED', chain: bag.chain }), bag.chain);
+  const chainAssets = await listAssets(admin, { chain: bag.chain });
+  const outputAssets = paymentAssetsFor(chainAssets.filter((a) => a.status === 'VERIFIED'), bag.chain);
   const outputAsset = outputAssets.find((a) => a.id === body.outputAssetId);
   if (!outputAsset) return NextResponse.json({ error: 'Unknown or unverified output asset.' }, { status: 400 });
 
@@ -154,7 +155,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     throw err;
   }
 
-  const symbolByKey = new Map(outputAssets.map((a) => [`${a.chain}:${a.address.toLowerCase()}`, a.symbol]));
+  // Every asset on the chain (not only payment assets): the allocation sells the Bag's own holdings.
+  const symbolByKey = new Map(chainAssets.map((a) => [`${a.chain}:${a.address.toLowerCase()}`, a.symbol]));
 
   return NextResponse.json({
     preview: {

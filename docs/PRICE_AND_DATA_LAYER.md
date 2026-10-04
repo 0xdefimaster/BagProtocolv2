@@ -189,6 +189,38 @@ action history, because the API exposes per-share rates but not totals.
 
 A market price is never used as an execution amount.
 
+### When the oracle cannot value the Bag (e.g. Stock Tokens on a weekend)
+
+The oracle NAV is needed for one thing only: how many shares a purchase mints.
+Allocation (weights × amount), the minimum investment (payment-token amount)
+and the buyer's protections (route, quote, minimum output, slippage,
+allowlists, policy) never depend on it. So an unavailable price no longer
+stops a purchase by itself:
+
+- **Preview** returns the allocation and execution plan, `depositQuote: null`,
+  `shareValuation: "EXECUTION_QUOTE"`, and `valuation.unavailable`: each holding
+  without a usable price and why (`MARKET_CLOSED_OR_HALTED`, `SPREAD_TOO_WIDE`,
+  `STALE_QUOTE`, `NOT_LISTED`, `SOURCES_DISAGREE`, `SOURCE_UNAVAILABLE`,
+  `NO_PRICE`). The UI shows "Market price unavailable: …" and keeps Purchase on.
+- **Intent creation** quotes first, then prices the shares from that quote
+  (`lib/domain/basket-protocol/shares/execution-valuation.ts`): each holding is
+  valued at input spent / the leg's floor output, rounded up, and the payment
+  token at 1. The floor is BAG's own minimum (BAG Router, sequential LI.FI),
+  else LI.FI Composer's on-chain `amountOutMin`, else the simulated output
+  reduced by the Bag's slippage tolerance. No value moves between the buyer and existing
+  holders at the prices the market actually offers; using the minimum output
+  and rounding up can only give the buyer fewer shares, never more.
+- **Still blocked, with the real reason:** no executable quote
+  (`QUOTE_FAILED`, nothing written), or a holding the purchase does not buy and
+  that has no price of its own (`VALUATION_UNAVAILABLE`, assets named, nothing
+  written). Robinhood's Stock Token registry being unreachable is reported as
+  `STOCK_REGISTRY_UNAVAILABLE`, not as a price problem.
+- When the oracle works, nothing changes: shares come from the oracle NAV.
+
+Redemption still values through the oracle NAV; moving it (and the
+performance fee) to realized amounts is the accounting work tracked
+separately.
+
 ## Deliberately not done
 
 - **A single Bag spanning several chains**, for example ETH on Ethereum plus

@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
 import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
 import { paymentAssetsFor } from '@/lib/server/payment-assets';
-import { getBagNavSafe } from '@/lib/server/bag-nav';
+import { getBagAssetHoldings, getBagNavSafe, priceHoldingsIndividually } from '@/lib/server/bag-nav';
 import { getShareSupply } from '@/lib/server/bag-share-state-repo';
 import { getVerifiedIdentityKeys, listAssets } from '@/lib/server/asset-repo';
 import { getPriceProvider } from '@/lib/server/price-provider';
 import { computePurchasePreview, PREVIEW_DISCLAIMER } from '@/lib/server/purchase-preview';
 import { validateRecipeAssetsAgainstRegistry } from '@/lib/domain/basket-protocol/validation/registry-validation';
-import { recipeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
+import { assetIdentitiesEqual, recipeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 import { AssetIdentity, DEFAULT_UNROUTABLE_POLICY } from '@/types/basket-protocol';
 import { liFiExecutionAdapter } from '@/lib/blockchain/lifi-execution-adapter';
 import { ExecutionResult } from '@/lib/blockchain/execution-adapter';
@@ -183,16 +183,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     getShareSupply(admin, id),
   ]);
 
-  // Real-price fail-closed guard (Phase 18): a missing/stale/invalid price
-  // for ANY holding never falls back to a stale or estimated NAV — the
-  // whole preview fails with a clean, typed error instead.
+  // Real-price fail-closed guard (Phase 18): a missing/stale/invalid price is
+  // never used or estimated. It no longer fails the whole preview: the
+  // allocation, minimum investment and execution plan do not need a price,
+  // and the purchase prices its shares from its own executable quote
+  // (lib/server/purchase-execution.ts). The response says exactly which
+  // holdings could not be valued and why, instead of "try again shortly".
+  const nav = navOutcome.ok ? navOutcome.nav : null;
+  let valuation: { available: true } | { available: false; unavailable: { chain: string; address: string; symbol: string | null; cause: string }[] } = { available: true };
   if (!navOutcome.ok) {
-    return NextResponse.json(
-      { error: 'Live pricing is temporarily unavailable. Please try again shortly.', reason: navOutcome.reason },
-      { status: 503 }
-    );
+    const { failures } = await priceHoldingsIndividually(await getBagAssetHoldings(admin, id), priceProvider);
+    const reported = failures.length > 0 ? failures : [{ asset: navOutcome.asset, cause: navOutcome.cause }];
+    valuation = {
+      available: false,
+      unavailable: reported.map((f) => ({
+        chain: f.asset.chain,
+        address: f.asset.address,
+        symbol: inputAssets.find((a) => assetIdentitiesEqual(a, f.asset))?.symbol ?? null,
+        cause: f.cause,
+      })),
+    };
   }
-  const nav = navOutcome.nav;
 
   const identity: AssetIdentity = { chain: inputAsset.chain, address: inputAsset.address };
   const outcome = computePurchasePreview({
@@ -234,5 +245,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // buyer what happens to a leg with no route (the purchase itself applies
   // it server-side — lib/server/purchase-execution.ts).
   const unroutablePolicy = version.recipe.unroutablePolicy ?? DEFAULT_UNROUTABLE_POLICY;
-  return NextResponse.json({ preview: { ...outcome, quotes, quotesError, unroutablePolicy } });
+  return NextResponse.json({ preview: { ...outcome, quotes, quotesError, unroutablePolicy, valuation } });
 }

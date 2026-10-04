@@ -27,7 +27,7 @@ import { GET as myExecutions } from '@/app/api/users/me/strategies/[id]/executio
 const ID = '11111111-1111-4111-8111-111111111111';
 const params = <T>(p: T) => ({ params: Promise.resolve(p) });
 const row = { id: 'row-v1', version: 1, created_at: '2026-09-01T00:00:00Z', reason: 'Initial', onchain_tx_hash: null, onchain_composition_hash: null,
-  recipe: { chain: 'robinhood', name: 'n', symbol: 's', description: 'd', assets: [{ chain: 'robinhood', address: '0x' + '11'.repeat(20), symbol: 'X', decimals: 18, weightBps: 10000 }] } };
+  recipe: { chain: 'robinhood', name: 'n', symbol: 's', description: 'd', assets: [{ chain: 'robinhood', address: '0x' + '11'.repeat(20), decimals: 18, weightBps: 10000 }] } };
 
 beforeEach(() => {
   [getBagById, getSession, loadStrategyObject, loadStrategyVersionRows, bagExecutions].forEach((m) => m.mockReset());
@@ -87,7 +87,7 @@ describe('POST /api/strategies/validate', () => {
     expect((await post('{')).status).toBe(400);
     expect((await post({ assets: [] })).status).toBe(400);
     const def = {
-      kind: null, chain: 'robinhood', mutability: null, assets: [{ chain: 'robinhood', address: '0x' + '11'.repeat(20), symbol: 'X', decimals: 18, weightBps: 10000 }],
+      kind: null, chain: 'robinhood', mutability: null, assets: [{ chain: 'robinhood', address: '0x' + '11'.repeat(20), decimals: 18, weightBps: 10000 }],
       rules: { weightBounds: { minBps: null, maxBps: null }, maxAssets: null, minInvestment: null, swapSlippageBps: null, rebalance: null, performanceFeeBps: null, noRouteAssetPolicy: null },
     };
     const res = await post({ definition: def });

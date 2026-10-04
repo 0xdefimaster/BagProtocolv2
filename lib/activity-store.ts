@@ -14,23 +14,23 @@ const MAX_ITEMS = 20;
 
 // Seed data so the feed doesn't look empty on a first-ever visit, backdated
 // so it reads naturally alongside real, newer events.
-function seedActivity(): ActivityItem[] {
-  const now = Date.now();
-  return [
-    { id: 'seed-1', action: 'Invested $5,000 in AI Leaders', timestamp: now - 2 * 60 * 60 * 1000 },
-    { id: 'seed-2', action: 'Forked L2 Ecosystem Bag', timestamp: now - 24 * 60 * 60 * 1000 },
-    { id: 'seed-3', action: 'Started following RWA Index', timestamp: now - 3 * 24 * 60 * 60 * 1000 },
-  ];
-}
+// Local, per-browser log of actions this browser took (create, fork, follow).
+// Real money activity (purchases, redemptions, fees, royalties) comes from the
+// server (GET /api/activity) and is merged in by the profile page. There is
+// no demo seed: an earlier version filled an empty log with invented entries
+// ("Invested $5,000 in AI Leaders"); any stored seed entries are dropped.
+const isSeed = (item: ActivityItem) => typeof item.id === 'string' && item.id.startsWith('seed-');
 
 function readActivity(): ActivityItem[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as ActivityItem[];
-    const seeded = seedActivity();
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded));
-    return seeded;
+    if (!raw) return [];
+    const items = JSON.parse(raw) as ActivityItem[];
+    if (!Array.isArray(items)) return [];
+    const real = items.filter((i) => !isSeed(i));
+    if (real.length !== items.length) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(real));
+    return real;
   } catch {
     return [];
   }

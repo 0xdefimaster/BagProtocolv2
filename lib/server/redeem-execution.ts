@@ -26,6 +26,9 @@ import {
 } from '@/lib/domain/basket-protocol/purchase-intent/state-machine';
 import { buildPurchaseIntentSteps } from '@/lib/blockchain/lifi-purchase-quote';
 import { trackStepStatus } from '@/lib/blockchain/lifi-status';
+import { trackComposerTransaction } from '@/lib/blockchain/composer-status';
+import { DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
+import { buildRedeemComposer, splitReceivedAcrossLegs } from '@/lib/server/redeem-composer';
 import {
   createRedeemIntent as insertRedeemIntent,
   findActiveRedeemIntentForBag,
@@ -34,6 +37,7 @@ import {
   markRedeemReconciliationApplied,
   updateRedeemIntentStatus,
   updateRedeemIntentSteps,
+  type CreateRedeemIntentInput,
 } from '@/lib/server/redeem-intent-repo';
 
 // -----------------------------------------------------------------------------
@@ -165,16 +169,32 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
   // function was narrowed to take `ExecutionStep[]` directly in this
   // phase (a redemption has no single top-level inputAsset/inputAmountRaw
   // an `ExecutionPlan` would otherwise require it to fabricate).
-  const { steps, allSwapsQuoted, firstFailure } = await buildPurchaseIntentSteps(
-    executionSteps,
-    session.walletAddress,
-    outputAssetRecord.decimals
-  );
+  // One transaction when it can be (LI.FI Composer), only where the per-asset
+  // path would run at all: no RedeemFeeRouter configured (that path settles
+  // fees itself) and no performance fee owed on this redemption.
+  let composer: Awaited<ReturnType<typeof buildRedeemComposer>> = null;
+  if (process.env.LIFI_API_KEY && !DEPLOYED_CONTRACTS.redeemFeeRouter) {
+    const ownBag = bag.creatorId === session.userId;
+    const feeVersion = ownBag ? null : await getCurrentBagVersion(admin, bagId);
+    const feeBps = ownBag ? 0 : (bag.performanceFeeBpsLocked ?? feeVersion?.recipe.performanceFeeBps ?? 0);
+    if (feeBps === 0) {
+      composer = await buildRedeemComposer({
+        steps: executionSteps,
+        walletAddress: session.walletAddress,
+        outputAsset,
+        outputDecimals: outputAssetRecord.decimals,
+        apiKey: process.env.LIFI_API_KEY,
+      });
+    }
+  }
+  const { steps, allSwapsQuoted, firstFailure } = composer
+    ? { steps: composer.steps, allSwapsQuoted: true, firstFailure: null }
+    : await buildPurchaseIntentSteps(executionSteps, session.walletAddress, outputAssetRecord.decimals);
 
   const fingerprint = computeRedeemFingerprint({ bagId, sharesToRedeemRaw, outputAsset, steps: executionSteps });
   const expiresAt = new Date(Date.now() + PURCHASE_INTENT_TTL_MS).toISOString();
 
-  const intent = await insertRedeemIntent(admin, {
+  const intentInput: CreateRedeemIntentInput = {
     userId: session.userId,
     walletAddress: session.walletAddress,
     bagId,
@@ -193,7 +213,22 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
     status: allSwapsQuoted ? 'READY' : 'FAILED',
     failureCode: allSwapsQuoted ? null : (firstFailure?.failureCode ?? 'UNKNOWN_ERROR'),
     expiresAt,
-  });
+  };
+  let intent: RedeemIntent;
+  if (composer) {
+    try {
+      intent = await insertRedeemIntent(admin, { ...intentInput, composerTransaction: composer.composerTransaction });
+    } catch {
+      // Database without migration 0047 (no composer_transaction column): keep the per-asset sale.
+      const sequential = await buildPurchaseIntentSteps(executionSteps, session.walletAddress, outputAssetRecord.decimals);
+      if (!sequential.allSwapsQuoted && sequential.firstFailure) {
+        return { ok: false, error: { kind: 'QUOTE_FAILED', failureCode: sequential.firstFailure.failureCode, message: sequential.firstFailure.message } };
+      }
+      intent = await insertRedeemIntent(admin, { ...intentInput, steps: sequential.steps });
+    }
+  } else {
+    intent = await insertRedeemIntent(admin, intentInput);
+  }
 
   if (!allSwapsQuoted && firstFailure) {
     return { ok: false, error: { kind: 'QUOTE_FAILED', failureCode: firstFailure.failureCode, message: firstFailure.message } };
@@ -429,7 +464,9 @@ export async function verifyRedeemExecution(
     return { ok: false, error: { kind: 'INVALID_STATE', status: intent.status } };
   }
 
-  const verifiedSteps: RedeemIntentStepRecord[] = await Promise.all(
+  const verifiedSteps: RedeemIntentStepRecord[] = intent.composerTransaction
+    ? await verifyComposerRedeemSteps(intent, intent.composerTransaction)
+    : await Promise.all(
     intent.steps.map(async (step): Promise<RedeemIntentStepRecord> => {
       if (step.action === 'KEEP' || step.status === 'COMPLETED' || step.status === 'FAILED') return step;
       if (!step.txHash) return step;
@@ -535,6 +572,36 @@ export async function verifyRedeemExecution(
     executedAt: new Date().toISOString(),
   });
   return { ok: true, value: completed ?? intent };
+}
+
+/**
+ * Verifies a one-transaction (Composer) redemption: one receipt covers every SWAP leg, so they complete or fail
+ * together. The reported hash must be exactly the transaction built for this intent (composer-status.ts), it
+ * must have succeeded, every sold token must have left the wallet in full, and the output token must have
+ * arrived. What arrived is split across the legs for display; accounting debits inputs, never outputs.
+ */
+async function verifyComposerRedeemSteps(
+  intent: RedeemIntent,
+  composerTransaction: NonNullable<RedeemIntent['composerTransaction']>
+): Promise<RedeemIntentStepRecord[]> {
+  const swaps = intent.steps.filter((s) => s.action === 'SWAP');
+  if (swaps.every((s) => s.status === 'COMPLETED' || s.status === 'FAILED')) return intent.steps;
+  const txHash = swaps.find((s) => s.txHash)?.txHash;
+  if (!txHash) return intent.steps;
+
+  const outcome = await trackComposerTransaction({ txHash, chain: swaps[0].sourceChain, recipient: intent.walletAddress, expectedTransaction: composerTransaction });
+  const markSwaps = (patch: Partial<RedeemIntentStepRecord>) => intent.steps.map((s) => (s.action === 'SWAP' ? { ...s, txHash: s.txHash ?? txHash, ...patch } : s));
+  if (outcome.kind === 'PENDING') return markSwaps({ status: 'CONFIRMING' });
+  if (outcome.kind === 'FAILED') return markSwaps({ status: 'FAILED', failureCode: outcome.failureCode });
+
+  const soldInFull = swaps.every((s) => BigInt(outcome.sentAmountsByAddress[s.inputAsset.address.toLowerCase()] ?? '0') >= BigInt(s.inputAmountRaw));
+  const received = BigInt(outcome.receivedAmountsByAddress[intent.outputAsset.address.toLowerCase()] ?? '0');
+  if (!soldInFull || received <= BigInt(0)) return markSwaps({ status: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
+
+  const parts = splitReceivedAcrossLegs(received, swaps.map((s) => s.outputAmountRaw));
+  return intent.steps.map((s) =>
+    s.action === 'SWAP' ? { ...s, txHash: s.txHash ?? txHash, status: 'COMPLETED', providerSubstatus: 'COMPLETED', outputAmountRaw: parts[swaps.indexOf(s)] } : s
+  );
 }
 
 /**

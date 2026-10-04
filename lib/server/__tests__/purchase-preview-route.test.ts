@@ -62,9 +62,13 @@ vi.mock('@/lib/server/asset-repo', () => ({
   listAssets: (...args: unknown[]) => listAssetsMock(...args),
 }));
 
+const navSafeOverride: { value: unknown } = { value: null };
+const priceHoldingsIndividuallyMock = vi.fn();
 vi.mock('@/lib/server/bag-nav', () => ({
   getBagNav: (...args: unknown[]) => getBagNavMock(...args),
-  getBagNavSafe: async (...args: unknown[]) => ({ ok: true, nav: await getBagNavMock(...args) }),
+  getBagNavSafe: async (...args: unknown[]) => navSafeOverride.value ?? { ok: true, nav: await getBagNavMock(...args) },
+  getBagAssetHoldings: async () => [],
+  priceHoldingsIndividually: (...args: unknown[]) => priceHoldingsIndividuallyMock(...args),
 }));
 
 vi.mock('@/lib/server/bag-share-state-repo', () => ({
@@ -194,6 +198,8 @@ beforeEach(() => {
   getShareSupplyMock.mockReset().mockResolvedValue(shareSupply());
   quoteExecutionPlanMock.mockReset().mockResolvedValue(mockExecutionResult());
   checkRateLimitMock.mockReset().mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
+  navSafeOverride.value = null;
+  priceHoldingsIndividuallyMock.mockReset().mockResolvedValue({ prices: new Map(), failures: [] });
 });
 
 afterEach(() => {
@@ -269,5 +275,31 @@ describe('POST /api/bags/:id/purchase-preview', () => {
     // factory above) — there is no execute/sign/send method for this route
     // to call even if it wanted to, and it never calls anything beyond it.
     expect(quoteExecutionPlanMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('POST /api/bags/:id/purchase-preview — market price unavailable (e.g. Stock Tokens on a weekend)', () => {
+  it('still returns the allocation preview (200) and names each holding that has no usable price, and why', async () => {
+    navSafeOverride.value = { ok: false, reason: 'PRICE_UNAVAILABLE', message: 'x', asset: { chain: 'ethereum', address: NVDA_ADDRESS }, cause: 'SPREAD_TOO_WIDE' };
+    listAssetsMock.mockResolvedValue([USDC, { ...USDC, id: 'asset_nvda', address: NVDA_ADDRESS, symbol: 'NVDA', decimals: 18, assetType: 'stock' }]);
+    priceHoldingsIndividuallyMock.mockResolvedValue({ prices: new Map(), failures: [{ asset: { chain: 'ethereum', address: NVDA_ADDRESS }, cause: 'MARKET_CLOSED_OR_HALTED' }] });
+
+    const res = await POST(postRequest({ inputAssetId: 'asset_usdc', amount: '100' }), { params: Promise.resolve({ id: 'bag_1' }) });
+    expect(res.status).toBe(200);
+    const { preview } = await res.json();
+    expect(preview.depositQuote).toBeNull();
+    expect(preview.shareValuation).toBe('EXECUTION_QUOTE');
+    expect(preview.depositPlan.allocations).toHaveLength(2);
+    expect(preview.executionPlan.steps.length).toBeGreaterThan(0);
+    expect(preview.valuation).toEqual({ available: false, unavailable: [{ chain: 'ethereum', address: NVDA_ADDRESS, symbol: 'NVDA', cause: 'MARKET_CLOSED_OR_HALTED' }] });
+  });
+
+  it('with prices available, the response is unchanged (oracle shares, valuation available)', async () => {
+    const res = await POST(postRequest({ inputAssetId: 'asset_usdc', amount: '100' }), { params: Promise.resolve({ id: 'bag_1' }) });
+    const { preview } = await res.json();
+    expect(preview.shareValuation).toBe('ORACLE_NAV');
+    expect(preview.depositQuote).not.toBeNull();
+    expect(preview.valuation).toEqual({ available: true });
+    expect(priceHoldingsIndividuallyMock).not.toHaveBeenCalled();
   });
 });

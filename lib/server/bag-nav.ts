@@ -1,8 +1,9 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { NavResult } from '@/types/basket-protocol';
+import { AssetHolding, AssetIdentity, AssetPrice, NavResult } from '@/types/basket-protocol';
+import { assetIdentityKey } from '@/lib/domain/basket-protocol/asset-identity';
 import { bagHoldingsToAssetHoldings } from '@/lib/domain/basket-protocol/bag-holdings';
 import { CalculateNavOptions, calculateNav } from '@/lib/domain/basket-protocol/nav';
-import { PriceUnavailableError } from '@/lib/domain/basket-protocol/pricing/provider';
+import { PriceUnavailableCause, PriceUnavailableError } from '@/lib/domain/basket-protocol/pricing/provider';
 import { StalePriceError } from '@/lib/domain/basket-protocol/nav/nav';
 import { PriceProvider } from '@/lib/domain/basket-protocol/pricing';
 import { getBagHoldings } from '@/lib/server/bag-holdings-repo';
@@ -41,7 +42,14 @@ export async function getBagNav(
 
 export type BagNavOutcome =
   | { ok: true; nav: NavResult }
-  | { ok: false; reason: 'PRICE_UNAVAILABLE' | 'STALE_PRICE'; message: string };
+  | {
+      ok: false;
+      reason: 'PRICE_UNAVAILABLE' | 'STALE_PRICE';
+      message: string;
+      /** The first holding that could not be priced, and why (for a truthful message; never used to accept a price). */
+      asset: AssetIdentity;
+      cause: PriceUnavailableCause | 'STALE_PRICE';
+    };
 
 export async function getBagNavSafe(
   admin: SupabaseClient,
@@ -54,11 +62,48 @@ export async function getBagNavSafe(
     return { ok: true, nav };
   } catch (err) {
     if (err instanceof PriceUnavailableError) {
-      return { ok: false, reason: 'PRICE_UNAVAILABLE', message: err.message };
+      return { ok: false, reason: 'PRICE_UNAVAILABLE', message: err.message, asset: err.asset, cause: err.cause };
     }
     if (err instanceof StalePriceError) {
-      return { ok: false, reason: 'STALE_PRICE', message: err.message };
+      return { ok: false, reason: 'STALE_PRICE', message: err.message, asset: err.asset, cause: 'STALE_PRICE' };
     }
     throw err;
   }
+}
+
+export interface HoldingPriceFailure {
+  asset: AssetIdentity;
+  cause: PriceUnavailableCause;
+}
+
+/**
+ * Prices each distinct holding on its own, never failing as a whole: the prices that could be obtained, and
+ * every holding that could not be priced with its cause. Used when the all-or-nothing NAV fails, to say which
+ * assets are affected and to price holdings a purchase's own quote does not cover. Same provider, same
+ * fail-closed rules per asset; nothing is estimated.
+ */
+export async function priceHoldingsIndividually(
+  holdings: AssetHolding[],
+  priceProvider: PriceProvider
+): Promise<{ prices: Map<string, AssetPrice>; failures: HoldingPriceFailure[] }> {
+  const unique = new Map<string, AssetIdentity>();
+  for (const h of holdings) unique.set(assetIdentityKey(h.asset), h.asset);
+  const prices = new Map<string, AssetPrice>();
+  const failures: HoldingPriceFailure[] = [];
+  await Promise.all(
+    [...unique.entries()].map(async ([key, asset]) => {
+      try {
+        prices.set(key, await priceProvider.getPrice(asset));
+      } catch (err) {
+        if (err instanceof PriceUnavailableError) failures.push({ asset, cause: err.cause });
+        else failures.push({ asset, cause: 'SOURCE_UNAVAILABLE' });
+      }
+    })
+  );
+  return { prices, failures };
+}
+
+/** The Bag's holdings as NAV-engine inputs (same conversion `getBagNav()` uses). */
+export async function getBagAssetHoldings(admin: SupabaseClient, bagId: string): Promise<AssetHolding[]> {
+  return bagHoldingsToAssetHoldings(await getBagHoldings(admin, bagId));
 }

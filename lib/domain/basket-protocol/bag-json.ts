@@ -1,6 +1,6 @@
 import { keccak256, stringToHex } from 'viem';
 import type { BasketRecipe } from '@/types/basket-protocol';
-import { BAG_JSON_HASH_DOMAIN, BagDefinition, BagDefinitionAsset } from '@/types/strategy';
+import { BAG_JSON_HASH_DOMAIN, BagAssetDisplay, BagDefinition, BagDefinitionAsset } from '@/types/strategy';
 import { normalizeAssetAddress } from './asset-identity';
 
 // -----------------------------------------------------------------------------
@@ -48,7 +48,7 @@ const byCodeUnits = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 /** Canonical copy of a definition: normalized addresses, assets in (chain, address) order. Idempotent. */
 export function normalizeDefinition(def: BagDefinition): BagDefinition {
   const assets: BagDefinitionAsset[] = def.assets
-    .map((a) => ({ chain: a.chain, address: normalizeAssetAddress(a.chain, a.address), symbol: a.symbol, decimals: a.decimals, weightBps: a.weightBps }))
+    .map((a) => ({ chain: a.chain, address: normalizeAssetAddress(a.chain, a.address), decimals: a.decimals, weightBps: a.weightBps }))
     .sort((a, b) => byCodeUnits(a.chain, b.chain) || byCodeUnits(a.address, b.address));
   const r = def.rules;
   return {
@@ -94,8 +94,16 @@ export function decimalString(n: unknown): string | null {
 const intOrNull = (n: unknown): number | null => (typeof n === 'number' && Number.isFinite(n) ? n : null);
 
 /**
- * The definition a stored recipe commits to. A field the recipe does not carry is `null`, never a default.
- * Slippage follows `deriveStrategyPolicy`: only a positive value counts as the creator's choice.
+ * The definition a stored recipe commits to.
+ *
+ * `null` means "not set by the creator in this version": the field is absent from the stored recipe. It is
+ * never replaced by today's default (the policy view says which default applies), so a stored version's
+ * hash never moves when a default changes. An explicit value, including 0 where 0 is valid (e.g.
+ * `performanceFeeBps: 0`), is kept as is and hashes differently from `null`.
+ *
+ * One normalization: `swapSlippageBps` is `null` unless the recipe's `rebalanceRule.maxSlippageBps` is a
+ * positive number. 0 or a negative value is not a usable slippage (recipe validation rejects it, and
+ * `deriveStrategyPolicy` applies the protocol default instead), so it is recorded as "not set".
  */
 export function definitionFromRecipe(recipe: Partial<BasketRecipe> & Pick<BasketRecipe, 'chain' | 'assets'>): BagDefinition {
   const rr = recipe.rebalanceRule;
@@ -105,7 +113,7 @@ export function definitionFromRecipe(recipe: Partial<BasketRecipe> & Pick<Basket
     kind: recipe.strategyType ?? null,
     chain: recipe.chain,
     mutability: recipe.mutability ?? null,
-    assets: recipe.assets.map((a) => ({ chain: a.chain, address: a.address, symbol: a.symbol, decimals: a.decimals, weightBps: a.weightBps })),
+    assets: recipe.assets.map((a) => ({ chain: a.chain, address: a.address, decimals: a.decimals, weightBps: a.weightBps })),
     rules: {
       weightBounds: { minBps: intOrNull(recipe.minWeightBps), maxBps: intOrNull(recipe.maxWeightBps) },
       maxAssets: intOrNull(recipe.maxAssets),
@@ -116,4 +124,11 @@ export function definitionFromRecipe(recipe: Partial<BasketRecipe> & Pick<Basket
       noRouteAssetPolicy: recipe.unroutablePolicy ?? null,
     },
   });
+}
+
+/** Display names of the recipe's assets, in definition order. Not part of the definition or its hash. */
+export function assetDisplayFromRecipe(recipe: Pick<BasketRecipe, 'assets'>): BagAssetDisplay[] {
+  return recipe.assets
+    .map((a) => ({ chain: a.chain, address: normalizeAssetAddress(a.chain, a.address), symbol: a.symbol }))
+    .sort((a, b) => byCodeUnits(a.chain, b.chain) || byCodeUnits(a.address, b.address));
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth/require-session';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
-import { countRecentDraftBags, createBag, DRAFT_WINDOW_MS, getBagById, getCurrentBagVersion, MAX_RECENT_DRAFTS } from '@/lib/server/bag-repo';
+import { countRecentDraftBags, createForkBag, DRAFT_WINDOW_MS, getBagById, getCurrentBagVersion, MAX_RECENT_DRAFTS } from '@/lib/server/bag-repo';
 import { mapBagRecordToApiResponse } from '@/lib/mappers/bag-mapper';
 import { loadRecipeAssets } from '@/lib/server/bag-asset-context';
 import { loadCreatorProfiles } from '@/lib/server/user-profile-repo';
@@ -13,16 +13,17 @@ const FORK_RATE_LIMIT = { windowSeconds: 3600, maxRequests: 30 };
 // -----------------------------------------------------------------------------
 // Fork a Bag: copy the source bag's CURRENT recipe into a brand-new Bag
 // owned by the caller, reusing the existing parent_bag_id/root_bag_id
-// columns `createBag()` already accepts — no new fork table, per the plan.
+// columns — no new fork table, per the plan.
 //
 //   1. load source bag (404 if missing)
 //   2. visibility check — only ACTIVE bags are forkable by someone other
 //      than the creator; a creator can fork their own DRAFT
 //   3. new owner = the caller's session
-//   4. parentBagId = source.id, rootBagId = source.rootBagId ?? source.id
+//   4. lineage derived from the server-loaded source only (createForkBag ->
+//      forkLineageOf): parent = source.id, root = source.rootBagId ?? source.id
 //   5. copy the current version's recipe verbatim, except name/symbol,
 //      which the caller may override
-//   6. createBag() re-validates the copied recipe and writes a fresh v1
+//   6. createForkBag() re-validates the copied recipe and writes a fresh v1
 //      version for the new bag (a fork is a new lineage, not a shared
 //      version history)
 // -----------------------------------------------------------------------------
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       .slice(0, 8)
       .toUpperCase() || 'BAG';
 
-  const result = await createBag(admin, {
+  const result = await createForkBag(admin, {
     slug: `${source.slug}-fork-${crypto.randomUUID().slice(0, 6)}`,
     creatorId: auth.session.userId,
     mutability: source.mutability,
@@ -81,8 +82,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // lib/mappers/bag-mapper.ts's mapCreateBagRequestToRecipeInput().
     status: 'DRAFT',
     reason: body.reason?.trim() || `Forked from ${source.name}`,
-    parentBagId: source.id,
-    rootBagId: source.rootBagId ?? source.id,
     recipe: {
       name,
       symbol,
@@ -106,7 +105,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // reward from this field.
       performanceFeeBps: 0,
     },
-  });
+  }, source);
 
   if (!result.ok) {
     switch (result.error) {

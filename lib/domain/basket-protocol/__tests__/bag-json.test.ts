@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import vectors from '@/docs/schemas/bag-json.v1.vectors.json';
-import { canonicalJson, computeDefinitionHash, decimalString, definitionFromRecipe, definitionHashPreimage, normalizeDefinition } from '../bag-json';
+import { assetDisplayFromRecipe, canonicalJson, computeDefinitionHash, decimalString, definitionFromRecipe, definitionHashPreimage, normalizeDefinition } from '../bag-json';
 import type { BagDefinition } from '@/types/strategy';
 import type { BasketRecipe } from '@/types/basket-protocol';
 
@@ -58,7 +58,6 @@ describe('definitionHash', () => {
     const h = computeDefinitionHash(definitionFromRecipe(recipe));
     const variants: Partial<BasketRecipe>[] = [
       { assets: [{ ...recipe.assets[0], weightBps: 5000 }, { ...recipe.assets[1], weightBps: 5000 }] },
-      { assets: [{ ...recipe.assets[0], symbol: 'TSLX' }, recipe.assets[1]] },
       { assets: [{ ...recipe.assets[0], decimals: 6 }, recipe.assets[1]] },
       { maxWeightBps: 6900 },
       { minWeightBps: 400 },
@@ -76,9 +75,28 @@ describe('definitionHash', () => {
     expect(new Set(hashes).size).toBe(hashes.length);
   });
 
-  it('display metadata is not part of the definition', () => {
+  it('display metadata is not part of the definition: Bag name/symbol/description and asset symbols', () => {
+    const h = computeDefinitionHash(definitionFromRecipe(recipe));
     const renamed = { ...recipe, name: 'Other', symbol: 'OTH', description: 'changed' } as BasketRecipe;
-    expect(computeDefinitionHash(definitionFromRecipe(renamed))).toBe(computeDefinitionHash(definitionFromRecipe(recipe)));
+    expect(computeDefinitionHash(definitionFromRecipe(renamed))).toBe(h);
+    // Identity is chain + address: a token shown as "TSLA", "Tesla" or "TSLA-RH" is the same asset.
+    const relabeled = { ...recipe, assets: recipe.assets.map((a, i) => ({ ...a, symbol: ['Tesla', 'Apple Inc.'][i] })) } as BasketRecipe;
+    expect(computeDefinitionHash(definitionFromRecipe(relabeled))).toBe(h);
+    expect(JSON.stringify(definitionFromRecipe(recipe))).not.toContain('TSLA');
+    expect(assetDisplayFromRecipe(recipe)).toEqual([
+      { chain: 'robinhood', address: A.toLowerCase(), symbol: 'AAPL' },
+      { chain: 'robinhood', address: B.toLowerCase(), symbol: 'TSLA' },
+    ]);
+  });
+
+  it('numbers are canonical by value: 1 and 1.0 in the submitted JSON text hash the same', () => {
+    const asText = (weight: string) =>
+      `{"kind":null,"chain":"robinhood","mutability":null,"assets":[{"chain":"robinhood","address":"${A}","decimals":18,"weightBps":${weight}}],` +
+      `"rules":{"weightBounds":{"minBps":null,"maxBps":null},"maxAssets":null,"minInvestment":null,"swapSlippageBps":null,"rebalance":null,"performanceFeeBps":null,"noRouteAssetPolicy":null}}`;
+    const h = computeDefinitionHash(JSON.parse(asText('10000')));
+    expect(computeDefinitionHash(JSON.parse(asText('10000.0')))).toBe(h);
+    expect(computeDefinitionHash(JSON.parse(asText('1e4')))).toBe(h);
+    expect(definitionHashPreimage(JSON.parse(asText('10000.0')))).toContain('"weightBps":10000}');
   });
 });
 
@@ -90,8 +108,8 @@ describe('definitionFromRecipe', () => {
       chain: 'robinhood',
       mutability: 'MUTABLE',
       assets: [
-        { chain: 'robinhood', address: A.toLowerCase(), symbol: 'AAPL', decimals: 18, weightBps: 4000 },
-        { chain: 'robinhood', address: B.toLowerCase(), symbol: 'TSLA', decimals: 18, weightBps: 6000 },
+        { chain: 'robinhood', address: A.toLowerCase(), decimals: 18, weightBps: 4000 },
+        { chain: 'robinhood', address: B.toLowerCase(), decimals: 18, weightBps: 6000 },
       ],
       rules: {
         weightBounds: { minBps: 500, maxBps: 7000 },
@@ -117,9 +135,15 @@ describe('definitionFromRecipe', () => {
     expect(computeDefinitionHash(d)).not.toBe(computeDefinitionHash(definitionFromRecipe({ ...legacy, unroutablePolicy: 'BLOCK' } as BasketRecipe)));
   });
 
-  it('slippage counts as set only when positive (same rule as the policy view)', () => {
+  it('slippage counts as set only when positive (same rule as the policy view); this is the only 0 → null normalization', () => {
     const zero = { ...recipe, rebalanceRule: { ...recipe.rebalanceRule, maxSlippageBps: 0 } } as BasketRecipe;
     expect(definitionFromRecipe(zero).rules.swapSlippageBps).toBeNull();
+    // Elsewhere an explicit 0 is a real value and differs from "not set".
+    const zeroFee = definitionFromRecipe({ ...recipe, performanceFeeBps: 0 } as BasketRecipe);
+    const unsetFee = definitionFromRecipe({ ...recipe, performanceFeeBps: undefined } as unknown as BasketRecipe);
+    expect(zeroFee.rules.performanceFeeBps).toBe(0);
+    expect(unsetFee.rules.performanceFeeBps).toBeNull();
+    expect(computeDefinitionHash(zeroFee)).not.toBe(computeDefinitionHash(unsetFee));
   });
 
   it('keeps non-EVM addresses as-is (case-sensitive)', () => {

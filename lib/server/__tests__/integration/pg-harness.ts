@@ -127,6 +127,14 @@ export async function createTestDatabase(
       await service.end();
       await admin.end();
       const cleanup = new Pool({ connectionString: adminUrl, max: 1 });
+      // Pool.end() can resolve while a client is still closing its socket. Forcing the drop then
+      // terminates that client (57P01), and the dying client's 'error' event surfaces as an
+      // uncaught exception. Wait (bounded) until the database has no backends left first.
+      for (let i = 0; i < 50; i++) {
+        const { rows } = await cleanup.query('select count(*)::int as n from pg_stat_activity where datname = $1', [name]);
+        if (rows[0].n === 0) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
       await cleanup.query(`drop database if exists ${name} with (force)`);
       await cleanup.end();
     },

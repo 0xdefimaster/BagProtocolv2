@@ -135,8 +135,22 @@ export interface CreateBagInput {
   /** Everything the initial `BasketRecipe` needs except identity fields the repo assigns itself (`id`, `bagId`, `version`, `createdAt`). */
   recipe: Omit<BasketRecipe, 'id' | 'bagId' | 'version' | 'createdAt'>;
   reason: string;
-  parentBagId?: string;
-  rootBagId?: string;
+}
+
+/**
+ * Fork lineage. Never taken from a request: `createForkBag()` derives it from a source Bag the caller
+ * loaded server-side. Lineage is economic state, not display: `root_bag_id` decides who is paid the fork
+ * royalty (purchase-execution.ts), so a client-chosen value would let anyone pick the royalty recipient.
+ * The database enforces the same rule at insert and keeps lineage immutable (0046_bag_lineage_integrity.sql).
+ */
+export interface ForkLineage {
+  parentBagId: string;
+  rootBagId: string;
+}
+
+/** The lineage a fork of `source` must have: parent = the source, root = the source's root (or the source itself). */
+export function forkLineageOf(source: Pick<BagRecord, 'id' | 'rootBagId'>): ForkLineage {
+  return { parentBagId: source.id, rootBagId: source.rootBagId ?? source.id };
 }
 
 export type CreateBagResult =
@@ -153,6 +167,15 @@ export type CreateBagResult =
  * creation, matching Phase 2's error/warning split.
  */
 export async function createBag(admin: SupabaseClient, input: CreateBagInput): Promise<CreateBagResult> {
+  return insertBag(admin, input, null);
+}
+
+/** Creates a fork of `source` (a Bag the caller loaded server-side). Same validation as `createBag()`; lineage comes only from `source`. */
+export async function createForkBag(admin: SupabaseClient, input: CreateBagInput, source: Pick<BagRecord, 'id' | 'rootBagId'>): Promise<CreateBagResult> {
+  return insertBag(admin, input, forkLineageOf(source));
+}
+
+async function insertBag(admin: SupabaseClient, input: CreateBagInput, lineage: ForkLineage | null): Promise<CreateBagResult> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
@@ -186,8 +209,8 @@ export async function createBag(admin: SupabaseClient, input: CreateBagInput): P
     p_recipe: recipe,
     p_composition_hash: compositionHash,
     p_reason: input.reason,
-    p_parent_bag_id: input.parentBagId ?? null,
-    p_root_bag_id: input.rootBagId ?? null,
+    p_parent_bag_id: lineage?.parentBagId ?? null,
+    p_root_bag_id: lineage?.rootBagId ?? null,
   });
 
   if (error) {

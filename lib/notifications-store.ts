@@ -14,34 +14,20 @@ const STORAGE_KEY = 'bag-protocol:notifications';
 const LOCAL_EVENT = 'bag-protocol:notifications-updated';
 const MAX_ITEMS = 20;
 
-function seedNotifications(): NotificationItem[] {
-  const now = Date.now();
-  return [
-    {
-      id: 'n-seed-1',
-      title: 'Protocol Labs published a new Bag',
-      body: '"DeFi Blue Chips" just went live — you follow this creator.',
-      timestamp: now - 5 * 60 * 60 * 1000,
-      read: false,
-    },
-    {
-      id: 'n-seed-2',
-      title: 'Arbitrum DAO forked your bag',
-      body: '"L2 Ecosystem" was forked into "L2 Ecosystem (Conservative)".',
-      timestamp: now - 26 * 60 * 60 * 1000,
-      read: true,
-    },
-  ];
-}
+// No demo seed: an earlier version filled an empty list with invented
+// notifications ("Arbitrum DAO forked your bag"). Stored seed entries are dropped.
+const isSeed = (item: NotificationItem) => typeof item.id === 'string' && item.id.startsWith('n-seed-');
 
 function readNotifications(): NotificationItem[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as NotificationItem[];
-    const seeded = seedNotifications();
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded));
-    return seeded;
+    if (!raw) return [];
+    const items = JSON.parse(raw) as NotificationItem[];
+    if (!Array.isArray(items)) return [];
+    const real = items.filter((i) => !isSeed(i));
+    if (real.length !== items.length) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(real));
+    return real;
   } catch {
     return [];
   }

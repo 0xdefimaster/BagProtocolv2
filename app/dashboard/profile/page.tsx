@@ -2,7 +2,7 @@
 
 import { CreatorAvatar } from '@/components/creator/CreatorAvatar';
 import { ProfileEditor } from '@/components/profile/ProfileEditor';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { mockUser, mockBags } from '@/lib/mock-data';
 import { isDemoModeEnabled } from '@/lib/config/demo-mode';
@@ -10,6 +10,7 @@ import { usePublicBags } from '@/hooks/usePublicBags';
 import { useUserBags } from '@/lib/user-bags-store';
 import { useMyBags } from '@/hooks/useMyBags';
 import { useActivity } from '@/lib/activity-store';
+import { useServerActivity } from '@/hooks/useServerActivity';
 import { useCreatorFollows } from '@/lib/creator-follow-store';
 import { useWallet, shortenAddress } from '@/lib/wallet-context';
 import { useXConnection } from '@/lib/x-connect-store';
@@ -39,9 +40,16 @@ const BAG_FILTERS: { id: BagFilter; label: string }[] = [
 
 export default function ProfilePage() {
   const { userBags, hydrated } = useUserBags();
-  const { activity } = useActivity();
+  const { activity: localActivity } = useActivity();
   const { following: followingRaw } = useCreatorFollows();
   const { isConnected, isConnecting, hasProvider, walletAddress, chainName, connect, disconnect, authUser } = useWallet();
+  // Real money activity (purchases, redemptions, fees, royalties) from the server, merged with this
+  // browser's own local log (create / fork / follow), newest first.
+  const serverActivity = useServerActivity(Boolean(authUser));
+  const activity = useMemo(
+    () => [...serverActivity, ...localActivity].sort((a, b) => b.timestamp - a.timestamp).slice(0, 30),
+    [serverActivity, localActivity]
+  );
   const { handle, isConnected: xConnected, connectHandle, disconnectHandle } = useXConnection();
   // Production-hardening P1-12 (mock data audit) — same isolation
   // Dashboard.tsx/FeaturedBags.tsx already apply: a real, connected user's

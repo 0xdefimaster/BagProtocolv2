@@ -162,7 +162,7 @@ export class LiFiPriceProvider implements PriceProvider {
       result = await this.data.getTokenWithTime(asset.chain, asset.address);
     } catch (err) {
       if (err instanceof LiFiTokenUnavailableError && err.kind === 'NOT_FOUND') throw new PriceDataGapError(asset, 'lifi', 'token unknown to LI.FI');
-      throw new PriceUnavailableError(asset);
+      throw new PriceUnavailableError(asset, 'SOURCE_UNAVAILABLE');
     }
     if (!result.token.priceUSD) throw new PriceDataGapError(asset, 'lifi', 'no priceUSD');
     return {

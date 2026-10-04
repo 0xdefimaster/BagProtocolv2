@@ -38,6 +38,8 @@ export type ComposerTxOutcome =
       kind: 'DONE';
       /** Lowercased ERC-20 token address -> raw amount received by `recipient` in this transaction, summed across every matching Transfer log (a token that pays out via more than one transfer to the recipient — unusual, but not disallowed — is still counted correctly). */
       receivedAmountsByAddress: Record<string, string>;
+      /** Same, for amounts the recipient SENT in this transaction (what a sale took from the wallet). */
+      sentAmountsByAddress: Record<string, string>;
     }
   | { kind: 'FAILED'; failureCode: PurchaseIntentFailureCode; message: string };
 
@@ -113,6 +115,7 @@ export async function trackComposerTransaction(input: TrackComposerTransactionIn
   }
 
   const receivedAmountsByAddress: Record<string, string> = {};
+  const sentAmountsByAddress: Record<string, string> = {};
   for (const log of receipt.logs) {
     let decoded;
     try {
@@ -124,12 +127,13 @@ export async function trackComposerTransaction(input: TrackComposerTransactionIn
       continue;
     }
     if (decoded.eventName !== 'Transfer') continue;
-    if (decoded.args.to.toLowerCase() !== input.recipient.toLowerCase()) continue;
-
     const token = log.address.toLowerCase();
-    const previous = BigInt(receivedAmountsByAddress[token] ?? '0');
-    receivedAmountsByAddress[token] = (previous + decoded.args.value).toString();
+    const add = (into: Record<string, string>) => {
+      into[token] = (BigInt(into[token] ?? '0') + decoded.args.value).toString();
+    };
+    if (decoded.args.to.toLowerCase() === input.recipient.toLowerCase()) add(receivedAmountsByAddress);
+    if (decoded.args.from.toLowerCase() === input.recipient.toLowerCase()) add(sentAmountsByAddress);
   }
 
-  return { kind: 'DONE', receivedAmountsByAddress };
+  return { kind: 'DONE', receivedAmountsByAddress, sentAmountsByAddress };
 }

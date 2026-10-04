@@ -29,6 +29,8 @@ interface RedeemIntentRow {
   share_price_at_quote: string;
   redeem_value_quote: string;
   steps: RedeemIntentStepRecord[];
+  /** 0047; absent on a database without that migration. */
+  composer_transaction?: RedeemIntent['composerTransaction'];
   status: RedeemIntentStatus;
   failure_code: RedeemIntentFailureCode | null;
   created_at: string;
@@ -53,6 +55,7 @@ function fromRow(row: RedeemIntentRow): RedeemIntent {
     sharePriceAtQuote: row.share_price_at_quote,
     redeemValueQuote: row.redeem_value_quote,
     steps: row.steps,
+    composerTransaction: row.composer_transaction ?? null,
     status: row.status,
     failureCode: row.failure_code,
     createdAt: row.created_at,
@@ -76,6 +79,7 @@ export interface CreateRedeemIntentInput {
   sharePriceAtQuote: string;
   redeemValueQuote: string;
   steps: RedeemIntentStepRecord[];
+  composerTransaction?: RedeemIntent['composerTransaction'];
   status: RedeemIntentStatus;
   failureCode: RedeemIntentFailureCode | null;
   expiresAt: string;
@@ -98,6 +102,8 @@ export async function createRedeemIntent(admin: SupabaseClient, input: CreateRed
       share_price_at_quote: input.sharePriceAtQuote,
       redeem_value_quote: input.redeemValueQuote,
       steps: input.steps,
+      // Only written when set, so per-asset redemptions keep working on a database without migration 0047.
+      ...(input.composerTransaction ? { composer_transaction: input.composerTransaction } : {}),
       status: input.status,
       failure_code: input.failureCode,
       expires_at: input.expiresAt,
@@ -127,6 +133,32 @@ export async function getRedeemIntentForUser(
   if (!intent) return { ok: false, error: 'NOT_FOUND' };
   if (intent.userId !== userId) return { ok: false, error: 'FORBIDDEN' };
   return { ok: true, intent };
+}
+
+/** One user's redemptions with a transaction on chain that are not final yet (SUBMITTED/CONFIRMING), newest first. */
+export async function listUnsettledRedeemIntentsForUser(admin: SupabaseClient, userId: string, limit: number): Promise<RedeemIntent[]> {
+  const { data, error } = await admin
+    .from('redeem_intents')
+    .select()
+    .eq('user_id', userId)
+    .in('status', ['SUBMITTED', 'CONFIRMING'])
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as RedeemIntentRow[]).map(fromRow);
+}
+
+/** Same as `listUnsettledPurchaseIntents()` for redemptions (SUBMITTED/CONFIRMING, oldest first). Scheduled reconciler only. */
+export async function listUnsettledRedeemIntents(admin: SupabaseClient, olderThanIso: string, limit: number): Promise<RedeemIntent[]> {
+  const { data, error } = await admin
+    .from('redeem_intents')
+    .select()
+    .in('status', ['SUBMITTED', 'CONFIRMING'])
+    .lt('updated_at', olderThanIso)
+    .order('updated_at', { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as RedeemIntentRow[]).map(fromRow);
 }
 
 /** Finds any non-terminal redeem intent this user already has open for this bag — same "don't let two redemptions race" guard `findActivePurchaseIntentForBag()` gives deposits. */
@@ -234,4 +266,13 @@ export async function listRedeemIntentsForUserBag(
     .limit(limit);
   if (error) throw new Error(error.message);
   return ((data ?? []) as RedeemIntentRow[]).map(fromRow);
+}
+
+/**
+ * Marks a still-unsettled intent as just checked (updated_at = now) so the reconciler's oldest-first batch moves
+ * on to others instead of re-checking the same never-mined transactions forever. Only touches SUBMITTED/CONFIRMING.
+ */
+export async function touchUnsettledRedeemIntent(admin: SupabaseClient, id: string): Promise<void> {
+  const { error } = await admin.from('redeem_intents').update({ updated_at: new Date().toISOString() }).eq('id', id).in('status', ['SUBMITTED', 'CONFIRMING']);
+  if (error) throw new Error(error.message);
 }

@@ -6,6 +6,8 @@ import { RedeemIntent, RedeemIntentFailureCode, RedeemIntentStepRecord } from '@
 import { getBrowserLiFiClient } from '@/lib/blockchain/lifi-wallet-client';
 import { ensureRouterAllowance, sendRedeemTransaction, collectRequiredApprovals } from '@/lib/blockchain/redeem-fee-router-client';
 import type { FeeAttestation } from '@/lib/server/redeem-fee-attestation';
+import { executeWalletSweep } from '@/lib/blockchain/wallet-sweep-client';
+import { describeWalletError } from '@/lib/blockchain/wallet-error';
 
 // -----------------------------------------------------------------------------
 // Phase 21 — exit-side counterpart to hooks/use-purchase-execution.ts.
@@ -23,6 +25,11 @@ import type { FeeAttestation } from '@/lib/server/redeem-fee-attestation';
 // configured, the legacy LI.FI path (`runLegacyLiFiFlow`) is NEVER reached
 // for a real redemption — it exists only as the pre-router fallback for a
 // deployment that hasn't configured the router/vault yet.
+//
+// Within that fallback, an intent built as ONE Composer transaction
+// (`intent.composerTransaction`, lib/server/redeem-composer.ts) is signed
+// once (`executeComposerSale`; approvals batched into the same confirmation
+// when the wallet supports EIP-5792) instead of one LI.FI route per asset.
 // -----------------------------------------------------------------------------
 
 function getConfiguredRedeemFeeRouterAddress(): `0x${string}` | null {
@@ -83,6 +90,13 @@ async function reportStep(
 ): Promise<RedeemIntent> {
   const { intent } = await postJson<{ intent: RedeemIntent }>(`/api/redeem-intent/${intentId}/step/${stepIndex}/report`, event);
   return intent;
+}
+
+/** One report per step, in order: concurrent reports for the same intent would overwrite each other's step updates. */
+async function reportStepsInOrder(intentId: string, steps: RedeemIntentStepRecord[], event: Parameters<typeof reportStep>[2]): Promise<void> {
+  for (const step of steps) {
+    await reportStep(intentId, step.stepIndex, event).catch(() => {});
+  }
 }
 
 async function verifyIntent(intentId: string): Promise<RedeemIntent> {
@@ -182,6 +196,44 @@ export function useRedeemExecution() {
     }
   }, []);
 
+  /**
+   * One-transaction sale (`intent.composerTransaction`, lib/server/redeem-composer.ts): the exact-amount approvals
+   * and the Composer transaction, in ONE wallet confirmation when the wallet supports atomic batching (EIP-5792),
+   * otherwise approvals first and then the one sale. The same hash is reported for every SWAP step; the server
+   * verifies it against exactly the transaction it built.
+   */
+  const executeComposerSale = useCallback(
+    async (intentId: string, composerTransaction: NonNullable<RedeemIntent['composerTransaction']>, swapSteps: RedeemIntentStepRecord[], walletAddress: string) => {
+      setState((s) => ({ ...s, activeStepIndex: null, phase: 'awaiting_signature' }));
+      const awaitingReported = reportStepsInOrder(intentId, swapSteps, { type: 'AWAITING_SIGNATURE' });
+      let reportedSubmitted = false;
+      try {
+        await executeWalletSweep(
+          walletAddress,
+          { transaction: composerTransaction, approvals: composerTransaction.approvals },
+          (step) => {
+            if (step === 'confirming') setState((s) => ({ ...s, phase: 'confirming' }));
+          },
+          {
+            onSubmitted: async (txHash) => {
+              reportedSubmitted = true;
+              await awaitingReported;
+              await reportStepsInOrder(intentId, swapSteps, { type: 'SUBMITTED', txHash });
+            },
+          }
+        );
+      } catch (err) {
+        if (!reportedSubmitted) {
+          const { message, rejected } = describeWalletError(err);
+          await awaitingReported;
+          await reportStepsInOrder(intentId, swapSteps, rejected ? { type: 'REJECTED' } : { type: 'FAILED', failureCode: 'UNKNOWN_ERROR', message });
+        }
+        throw err;
+      }
+    },
+    []
+  );
+
   const runRouterFlow = useCallback(async (intentId: string, walletAddress: string, routerAddress: `0x${string}`): Promise<void> => {
     // V11 — the enforced-fee path. Everything from here to the tx receipt
     // is one server-attested, one-atomic-transaction flow: the server
@@ -243,8 +295,12 @@ export function useRedeemExecution() {
         setState((s) => ({ ...s, intent: prepared }));
 
         const swapSteps = prepared.steps.filter((s) => s.action === 'SWAP');
-        for (const step of swapSteps) {
-          await executeOneStep(prepared.id, step, walletAddress);
+        if (prepared.composerTransaction) {
+          await executeComposerSale(prepared.id, prepared.composerTransaction, swapSteps, walletAddress);
+        } else {
+          for (const step of swapSteps) {
+            await executeOneStep(prepared.id, step, walletAddress);
+          }
         }
       } catch (err) {
         if (createdIntentId === null || err instanceof RedeemExecutionHttpError) {
@@ -292,7 +348,7 @@ export function useRedeemExecution() {
         }
       }
     },
-    [executeOneStep, runRouterFlow, fail, reset]
+    [executeOneStep, executeComposerSale, runRouterFlow, fail, reset]
   );
 
   return { state, start, reset };

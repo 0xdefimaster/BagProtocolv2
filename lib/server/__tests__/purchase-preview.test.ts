@@ -84,7 +84,7 @@ describe('computePurchasePreview', () => {
     expect(outcome.depositPlan.unallocatedRaw).toBe('0');
     expect(outcome.executionPlan.steps).toHaveLength(2);
     expect(outcome.executionPlan.steps.every((s) => s.action === 'SWAP')).toBe(true);
-    expect(outcome.depositQuote.isBootstrap).toBe(true);
+    expect(outcome.depositQuote!.isBootstrap).toBe(true);
     expect(outcome.isBootstrap).toBe(true);
   });
 
@@ -228,8 +228,8 @@ describe('computePurchasePreview', () => {
     });
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
-    expect(outcome.depositQuote.sharePrice).toBe('1');
-    expect(BigInt(outcome.depositQuote.sharesRaw)).toBe(BigInt(1000) * BigInt(10) ** BigInt(outcome.depositQuote.shareDecimals));
+    expect(outcome.depositQuote!.sharePrice).toBe('1');
+    expect(BigInt(outcome.depositQuote!.sharesRaw)).toBe(BigInt(1000) * BigInt(10) ** BigInt(outcome.depositQuote!.shareDecimals));
   });
 
   it('residual: total allocated + unallocated equals the input amount exactly', () => {
@@ -279,7 +279,7 @@ describe('computePurchasePreview', () => {
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     expect(outcome.isBootstrap).toBe(false);
-    expect(outcome.depositQuote.sharePrice).toBe('10.000000000000000000');
-    expect(BigInt(outcome.depositQuote.sharesRaw)).toBe(BigInt(25) * BigInt(10) ** BigInt(18));
+    expect(outcome.depositQuote!.sharePrice).toBe('10.000000000000000000');
+    expect(BigInt(outcome.depositQuote!.sharesRaw)).toBe(BigInt(25) * BigInt(10) ** BigInt(18));
   });
 });

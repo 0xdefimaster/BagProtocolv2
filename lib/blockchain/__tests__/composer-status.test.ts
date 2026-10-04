@@ -25,10 +25,10 @@ const TX = `0x${'ab'.repeat(32)}`;
 const DATA = '0xdeadbeef';
 const TRANSFER = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)');
 
-function transferLog(to: string, value: bigint) {
+function transferLog(to: string, value: bigint, from = COMPOSER, address = TOKEN) {
   return {
-    address: TOKEN,
-    topics: encodeEventTopics({ abi: [TRANSFER], eventName: 'Transfer', args: { from: COMPOSER as `0x${string}`, to: to as `0x${string}` } }),
+    address,
+    topics: encodeEventTopics({ abi: [TRANSFER], eventName: 'Transfer', args: { from: from as `0x${string}`, to: to as `0x${string}` } }),
     data: encodeAbiParameters([{ type: 'uint256' }], [value]),
   };
 }
@@ -43,7 +43,16 @@ beforeEach(() => {
 describe('trackComposerTransaction', () => {
   it('verifies the exact transaction built for the intent', async () => {
     const outcome = await trackComposerTransaction(input);
-    expect(outcome).toEqual({ kind: 'DONE', receivedAmountsByAddress: { [TOKEN]: '500' } });
+    expect(outcome).toEqual({ kind: 'DONE', receivedAmountsByAddress: { [TOKEN]: '500' }, sentAmountsByAddress: {} });
+  });
+
+  it('also reports what the wallet sent (what a sale took), per token, summed', async () => {
+    const SOLD = '0x6666666666666666666666666666666666666666';
+    getReceiptMock.mockResolvedValue({
+      status: 'success',
+      logs: [transferLog(COMPOSER, BigInt(70), WALLET, SOLD), transferLog(COMPOSER, BigInt(30), WALLET, SOLD), transferLog(WALLET, BigInt(500))],
+    });
+    expect(await trackComposerTransaction(input)).toEqual({ kind: 'DONE', receivedAmountsByAddress: { [TOKEN]: '500' }, sentAmountsByAddress: { [SOLD]: '100' } });
   });
 
   const cases: [string, Record<string, unknown>][] = [

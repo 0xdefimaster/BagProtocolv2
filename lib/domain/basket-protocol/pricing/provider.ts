@@ -12,10 +12,33 @@ export interface PriceProvider {
   getPrice(asset: AssetIdentity): Promise<AssetPrice>;
 }
 
+/**
+ * Why a price was refused, so callers can tell a buyer something true ("market closed") instead of a generic
+ * "try again". Never used to accept a price: every cause still means "no price".
+ * - `MARKET_CLOSED_OR_HALTED`: the source reports trading halted (e.g. Stock Tokens outside market hours).
+ * - `SPREAD_TOO_WIDE`: bid/ask too far apart (or zero/crossed) to trust the mid.
+ * - `STALE_QUOTE`: the source's last quote is older than allowed.
+ * - `NOT_LISTED`: the source does not list this asset.
+ * - `SOURCES_DISAGREE`: two independent sources disagree beyond the allowed deviation.
+ * - `SOURCE_UNAVAILABLE`: the source could not be reached or answered unexpectedly.
+ * - `NO_PRICE`: the source answered but has no price for this asset.
+ */
+export type PriceUnavailableCause =
+  | 'MARKET_CLOSED_OR_HALTED'
+  | 'SPREAD_TOO_WIDE'
+  | 'STALE_QUOTE'
+  | 'NOT_LISTED'
+  | 'SOURCES_DISAGREE'
+  | 'SOURCE_UNAVAILABLE'
+  | 'NO_PRICE';
+
 /** Thrown by a `PriceProvider` implementation when no price can be produced for an asset (unknown to the source, delisted, RPC failure, etc). Not thrown by `MockPriceProvider`, which always returns a deterministic price — reserved for real providers. */
 export class PriceUnavailableError extends Error {
-  constructor(public readonly asset: AssetIdentity) {
-    super(`No price available for ${asset.chain}:${asset.address}`);
+  constructor(
+    public readonly asset: AssetIdentity,
+    public readonly cause: PriceUnavailableCause = 'NO_PRICE'
+  ) {
+    super(`No price available for ${asset.chain}:${asset.address} (${cause})`);
     this.name = 'PriceUnavailableError';
   }
 }
@@ -27,7 +50,7 @@ export class PriceUnavailableError extends Error {
  */
 export class PriceDataGapError extends PriceUnavailableError {
   constructor(asset: AssetIdentity, public readonly source: string, public readonly reason: string) {
-    super(asset);
+    super(asset, 'NO_PRICE');
     this.name = 'PriceDataGapError';
     this.message = `${source} has no price for ${asset.chain}:${asset.address} (${reason})`;
   }

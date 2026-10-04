@@ -11,11 +11,12 @@ import {
   StrategyVersionSummary,
   StrategyVersionsResponse,
 } from '@/types/strategy';
-import { computeDefinitionHash, definitionFromRecipe, normalizeDefinition } from '@/lib/domain/basket-protocol/bag-json';
+import { assetDisplayFromRecipe, computeDefinitionHash, definitionFromRecipe, normalizeDefinition } from '@/lib/domain/basket-protocol/bag-json';
 import { computeOnChainCompositionHash } from '@/lib/domain/basket-protocol/onchain';
 import { assetIdentityKey } from '@/lib/domain/basket-protocol/asset-identity';
 import { BAG_CHAINS, BagChain } from '@/lib/config/chains';
 import { loadStrategyPassport } from '@/lib/server/strategy-passport';
+import { getBagById, listBags } from '@/lib/server/bag-repo';
 import { ValidateBagInputError, ValidateBagRequest, ValidationFinding, parseValidateBagRequest, validateBag } from '@/lib/server/validate-bag';
 
 // -----------------------------------------------------------------------------
@@ -51,17 +52,31 @@ export async function loadStrategyVersionRows(admin: SupabaseClient, bagId: stri
 
 const chainIdOf = (chain: ChainId): number | null => (BAG_CHAINS as Partial<Record<string, (typeof BAG_CHAINS)[BagChain]>>)[chain]?.chainId ?? null;
 
+/**
+ * The recorded hash is written only by record_onchain_bag_version, after BAG verified the version's
+ * transaction receipt and events (lib/server/bag-versioning.ts). Comparing it with a hash recomputed from
+ * the stored recipe is BAG's own check; this response never reads the chain.
+ */
 function commitmentsOf(row: StrategyVersionRow): BagJson['commitments'] {
   const recorded = row.onchain_composition_hash;
-  let committed: boolean | null = null;
-  if (recorded) {
-    try {
-      committed = computeOnChainCompositionHash(row.recipe.assets).toLowerCase() === recorded.toLowerCase();
-    } catch {
-      committed = false;
-    }
+  if (!recorded) {
+    return {
+      onchainCompositionHash: null,
+      onchainTxHash: row.onchain_tx_hash ?? null,
+      onchainComposition: { status: 'NOT_RECORDED', recordedFrom: null, comparedBy: null, readFromChainThisRequest: false },
+    };
   }
-  return { onchainCompositionHash: recorded ?? null, onchainTxHash: row.onchain_tx_hash ?? null, compositionCommittedOnchain: committed };
+  let matches = false;
+  try {
+    matches = computeOnChainCompositionHash(row.recipe.assets).toLowerCase() === recorded.toLowerCase();
+  } catch {
+    matches = false;
+  }
+  return {
+    onchainCompositionHash: recorded,
+    onchainTxHash: row.onchain_tx_hash ?? null,
+    onchainComposition: { status: matches ? 'MATCHES_RECORDED' : 'MISMATCH', recordedFrom: 'VERIFIED_TX_RECEIPT', comparedBy: 'BAG', readFromChainThisRequest: false },
+  };
 }
 
 /** bag.json for one stored version. Pure. */
@@ -73,7 +88,7 @@ export function buildBagJson(bag: BagRecord, row: StrategyVersionRow): BagJson {
     definitionHash: computeDefinitionHash(definition),
     ref: { strategyId: bag.id, version: row.version, parentVersion: row.version > 1 ? row.version - 1 : null, createdAt: row.created_at },
     network: { chainId: chainIdOf(definition.chain) },
-    metadata: { name: row.recipe.name ?? '', symbol: row.recipe.symbol ?? '', description: row.recipe.description ?? '' },
+    metadata: { name: row.recipe.name ?? '', symbol: row.recipe.symbol ?? '', description: row.recipe.description ?? '', assets: assetDisplayFromRecipe(row.recipe) },
     commitments: commitmentsOf(row),
     forkedFrom: bag.parentBagId ? { strategyId: bag.parentBagId, version: null } : null,
   };
@@ -153,7 +168,7 @@ export async function loadStrategyObject(admin: SupabaseClient, bag: BagRecord, 
 
 const DEFINITION_KEYS = ['kind', 'chain', 'mutability', 'assets', 'rules'];
 const RULE_KEYS = ['weightBounds', 'maxAssets', 'minInvestment', 'swapSlippageBps', 'rebalance', 'performanceFeeBps', 'noRouteAssetPolicy'];
-const ASSET_KEYS = ['chain', 'address', 'symbol', 'decimals', 'weightBps'];
+const ASSET_KEYS = ['chain', 'address', 'decimals', 'weightBps'];
 const DECIMAL_RE = /^\d+(\.\d+)?$/;
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -195,11 +210,11 @@ export function parseDefinition(body: unknown): BagDefinition {
     if (!isObject(a)) throw new ValidateBagInputError(`${at} must be an object.`);
     exactKeys(a, ASSET_KEYS, at);
     if (typeof a.chain !== 'string' || !(SUPPORTED_CHAINS as readonly string[]).includes(a.chain)) throw new ValidateBagInputError(`${at}.chain is not a supported chain.`);
-    if (typeof a.address !== 'string' || typeof a.symbol !== 'string') throw new ValidateBagInputError(`${at}.address and .symbol must be strings.`);
+    if (typeof a.address !== 'string') throw new ValidateBagInputError(`${at}.address must be a string.`);
     if (typeof a.decimals !== 'number' || typeof a.weightBps !== 'number' || !Number.isFinite(a.decimals) || !Number.isFinite(a.weightBps)) {
       throw new ValidateBagInputError(`${at}.decimals and .weightBps must be numbers.`);
     }
-    return { chain: a.chain as ChainId, address: a.address, symbol: a.symbol, decimals: a.decimals, weightBps: a.weightBps };
+    return { chain: a.chain as ChainId, address: a.address, decimals: a.decimals, weightBps: a.weightBps };
   });
 
   const r = raw.rules;
@@ -257,7 +272,7 @@ export function definitionToValidateRequest(def: BagDefinition): ValidateBagRequ
   if (r.rebalance && r.rebalance.driftThresholdBps !== null) policy.driftThresholdBps = r.rebalance.driftThresholdBps;
   return parseValidateBagRequest({
     chain: def.chain,
-    assets: def.assets.map((a) => ({ chain: a.chain, address: a.address, symbol: a.symbol, weightBps: a.weightBps })),
+    assets: def.assets.map((a) => ({ chain: a.chain, address: a.address, weightBps: a.weightBps })),
     policy,
     ...(def.mutability ? { mutability: def.mutability } : {}),
   });
@@ -295,7 +310,7 @@ export function validateDefinition(def: BagDefinition, registry: CanonicalAsset[
         rule: 'registry',
         field: `assets[${i}].decimals`,
         message: `assets[${i}] declares ${a.decimals} decimals; the asset registry records ${reg.decimals}.`,
-        asset: { chain: a.chain, address: a.address, symbol: a.symbol },
+        asset: { chain: a.chain, address: a.address, symbol: reg.symbol },
         requested: a.decimals,
         allowed: reg.decimals,
       });
@@ -309,4 +324,44 @@ export function validateDefinition(def: BagDefinition, registry: CanonicalAsset[
     definition,
     validation: { ...result, valid: errors.length === 0, errors, warnings: result.warnings.map(remapField), info: result.info.map(remapField), checks },
   };
+}
+
+// ----------------------------- public (anonymous) access -----------------------
+
+/**
+ * A strategy as an anonymous reader may see it: ACTIVE Bags only. Malformed ids, missing Bags and non-public
+ * Bags are all null, so a caller cannot tell them apart. Used by the MCP server, which never reads a session.
+ */
+export async function loadPublicStrategy(admin: SupabaseClient, id: string): Promise<BagRecord | null> {
+  if (!isStrategyId(id)) return null;
+  const bag = await getBagById(admin, id.toLowerCase());
+  return bag && bag.status === 'ACTIVE' ? bag : null;
+}
+
+export interface StrategyListItem {
+  strategyId: string;
+  name: string;
+  symbol: string;
+  chain: ChainId;
+  currentVersion: number | null;
+  createdAt: string;
+  links: { self: string; versions: string };
+}
+
+export const MAX_STRATEGY_LIST = 50;
+
+/** Newest public (ACTIVE) strategies. Display fields only; the Strategy object has the rest. */
+export async function listPublicStrategies(admin: SupabaseClient, limit: number): Promise<StrategyListItem[]> {
+  const bags = await listBags(admin, { status: 'ACTIVE', limit: Math.min(Math.max(Math.trunc(limit), 1), MAX_STRATEGY_LIST) });
+  return bags
+    .filter((b) => b.status === 'ACTIVE')
+    .map((b) => ({
+      strategyId: b.id,
+      name: b.name,
+      symbol: b.symbol,
+      chain: b.chain,
+      currentVersion: b.currentVersionId ? b.currentVersion : null,
+      createdAt: b.createdAt,
+      links: { self: `/api/strategies/${b.id}`, versions: `/api/strategies/${b.id}/versions` },
+    }));
 }
