@@ -67,6 +67,7 @@ interface BagRow {
   contract_address: string | null;
   parent_bag_id: string | null;
   root_bag_id: string | null;
+  parent_bag_version?: number | null;
   performance_fee_locked_at?: string | null;
   performance_fee_bps_locked?: number | null;
   created_at: string;
@@ -105,6 +106,7 @@ function bagFromRow(row: BagRow): BagRecord {
     contractAddress: row.contract_address,
     parentBagId: row.parent_bag_id,
     rootBagId: row.root_bag_id,
+    parentBagVersion: row.parent_bag_version ?? null,
     performanceFeeLockedAt: row.performance_fee_locked_at ?? null,
     performanceFeeBpsLocked: row.performance_fee_bps_locked ?? null,
     createdAt: row.created_at,
@@ -146,11 +148,13 @@ export interface CreateBagInput {
 export interface ForkLineage {
   parentBagId: string;
   rootBagId: string;
+  /** The source's version the fork was made from (fork provenance, 0052). */
+  parentBagVersion: number;
 }
 
-/** The lineage a fork of `source` must have: parent = the source, root = the source's root (or the source itself). */
-export function forkLineageOf(source: Pick<BagRecord, 'id' | 'rootBagId'>): ForkLineage {
-  return { parentBagId: source.id, rootBagId: source.rootBagId ?? source.id };
+/** The lineage a fork of `source` at `sourceVersion` must have: parent = the source, root = the source's root (or the source itself). */
+export function forkLineageOf(source: Pick<BagRecord, 'id' | 'rootBagId'>, sourceVersion: number): ForkLineage {
+  return { parentBagId: source.id, rootBagId: source.rootBagId ?? source.id, parentBagVersion: sourceVersion };
 }
 
 export type CreateBagResult =
@@ -170,9 +174,17 @@ export async function createBag(admin: SupabaseClient, input: CreateBagInput): P
   return insertBag(admin, input, null);
 }
 
-/** Creates a fork of `source` (a Bag the caller loaded server-side). Same validation as `createBag()`; lineage comes only from `source`. */
-export async function createForkBag(admin: SupabaseClient, input: CreateBagInput, source: Pick<BagRecord, 'id' | 'rootBagId'>): Promise<CreateBagResult> {
-  return insertBag(admin, input, forkLineageOf(source));
+/**
+ * Creates a fork of `source` at `sourceVersion` (both loaded server-side by the caller). Same validation as
+ * `createBag()`; lineage comes only from `source`, and the exact parent version is recorded (fork provenance).
+ */
+export async function createForkBag(
+  admin: SupabaseClient,
+  input: CreateBagInput,
+  source: Pick<BagRecord, 'id' | 'rootBagId'>,
+  sourceVersion: number
+): Promise<CreateBagResult> {
+  return insertBag(admin, input, forkLineageOf(source, sourceVersion));
 }
 
 async function insertBag(admin: SupabaseClient, input: CreateBagInput, lineage: ForkLineage | null): Promise<CreateBagResult> {
@@ -211,6 +223,7 @@ async function insertBag(admin: SupabaseClient, input: CreateBagInput, lineage: 
     p_reason: input.reason,
     p_parent_bag_id: lineage?.parentBagId ?? null,
     p_root_bag_id: lineage?.rootBagId ?? null,
+    p_parent_bag_version: lineage?.parentBagVersion ?? null,
   });
 
   if (error) {

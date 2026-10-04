@@ -37,13 +37,32 @@ describe.each(['fresh', 'upgrade'] as const)('fork lineage integrity (%s)', (mod
     const original = await bag(db, alice);
     expect(await lineage(db, original.id)).toEqual({ parent_bag_id: null, root_bag_id: null });
 
-    const fork = await createForkBag(db.client, { slug: `f-${n++}`, creatorId: bob, mutability: 'MUTABLE', recipe: validRecipeInput(), reason: 'fork' }, original);
+    const fork = await createForkBag(db.client, { slug: `f-${n++}`, creatorId: bob, mutability: 'MUTABLE', recipe: validRecipeInput(), reason: 'fork' }, original, 1);
     if (!fork.ok) throw new Error(JSON.stringify(fork));
     expect(await lineage(db, fork.bag.id)).toEqual({ parent_bag_id: original.id, root_bag_id: original.id });
 
-    const forkOfFork = await createForkBag(db.client, { slug: `ff-${n++}`, creatorId: alice, mutability: 'MUTABLE', recipe: validRecipeInput(), reason: 'fork' }, fork.bag);
+    const forkOfFork = await createForkBag(db.client, { slug: `ff-${n++}`, creatorId: alice, mutability: 'MUTABLE', recipe: validRecipeInput(), reason: 'fork' }, fork.bag, 1);
     if (!forkOfFork.ok) throw new Error(JSON.stringify(forkOfFork));
     expect(await lineage(db, forkOfFork.bag.id)).toEqual({ parent_bag_id: fork.bag.id, root_bag_id: original.id });
+    // Fork provenance (0052): the exact parent version is recorded.
+    const v = async (id: string) => (await db.admin.query('select parent_bag_version from bags where id = $1', [id])).rows[0].parent_bag_version;
+    expect([await v(original.id), await v(fork.bag.id), await v(forkOfFork.bag.id)]).toEqual([null, 1, 1]);
+  });
+
+  it('fork provenance: the parent version must exist, needs a parent, and never changes', async () => {
+    const db = dbs[mode]!;
+    const u = await insertUser(db, wallet());
+    const a = await bag(db, u);
+    const bad = await createForkBag(db.client, { slug: `pv-${n++}`, creatorId: u, mutability: 'MUTABLE', recipe: validRecipeInput(), reason: 'fork' }, a, 7);
+    expect(bad).toMatchObject({ ok: false, error: 'DB_ERROR' });
+    expect(JSON.stringify(bad)).toMatch(/BAG_LINEAGE_INVALID/);
+    await expect(
+      db.admin.query(`insert into bags (id, slug, name, symbol, description, creator_id, chain, mutability, status, parent_bag_version) values (gen_random_uuid(), $1, 'x', 'X', '', $2, 'robinhood', 'MUTABLE', 'DRAFT', 1)`, [`pvn-${n++}`, u])
+    ).rejects.toThrow(/BAG_LINEAGE_INVALID/);
+    const fork = await createForkBag(db.client, { slug: `pvi-${n++}`, creatorId: u, mutability: 'MUTABLE', recipe: validRecipeInput(), reason: 'fork' }, a, 1);
+    if (!fork.ok) throw new Error('fork');
+    await expect(db.admin.query('update bags set parent_bag_version = null where id = $1', [fork.bag.id])).rejects.toThrow(/BAG_LINEAGE_IMMUTABLE/);
+    await expect(db.admin.query('update bags set parent_bag_version = 2 where id = $1', [fork.bag.id])).rejects.toThrow(/BAG_LINEAGE_IMMUTABLE/);
   });
 
   it('the database refuses forged lineage at insert', async () => {
@@ -64,7 +83,7 @@ describe.each(['fresh', 'upgrade'] as const)('fork lineage integrity (%s)', (mod
     const u = await insertUser(db, wallet());
     const a = await bag(db, u);
     const b = await bag(db, u);
-    const fork = await createForkBag(db.client, { slug: `im-${n++}`, creatorId: u, mutability: 'MUTABLE', recipe: validRecipeInput(), reason: 'fork' }, a);
+    const fork = await createForkBag(db.client, { slug: `im-${n++}`, creatorId: u, mutability: 'MUTABLE', recipe: validRecipeInput(), reason: 'fork' }, a, 1);
     if (!fork.ok) throw new Error('fork');
     await expect(db.admin.query('update bags set root_bag_id = $2 where id = $1', [fork.bag.id, b.id])).rejects.toThrow(/BAG_LINEAGE_IMMUTABLE/);
     await expect(db.admin.query('update bags set parent_bag_id = null, root_bag_id = null where id = $1', [fork.bag.id])).rejects.toThrow(/BAG_LINEAGE_IMMUTABLE/);
@@ -78,7 +97,7 @@ describe.each(['fresh', 'upgrade'] as const)('fork lineage integrity (%s)', (mod
     const db = dbs[mode]!;
     const u = await insertUser(db, wallet());
     const a = await bag(db, u);
-    const fork = await createForkBag(db.client, { slug: `del-${n++}`, creatorId: u, mutability: 'MUTABLE', recipe: validRecipeInput(), reason: 'fork' }, a);
+    const fork = await createForkBag(db.client, { slug: `del-${n++}`, creatorId: u, mutability: 'MUTABLE', recipe: validRecipeInput(), reason: 'fork' }, a, 1);
     if (!fork.ok) throw new Error('fork');
     await db.admin.query('delete from bags where id = $1', [a.id]);
     expect(await lineage(db, fork.bag.id)).toEqual({ parent_bag_id: null, root_bag_id: null });

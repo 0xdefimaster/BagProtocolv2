@@ -62,6 +62,11 @@ const validStrategy = ajv.getSchema('https://bagprotocol.com/schemas/strategy.v1
 const validVersions = ajv.getSchema('https://bagprotocol.com/schemas/strategy.v1.json#/definitions/versions')!;
 const validValidation = ajv.getSchema('https://bagprotocol.com/schemas/strategy.v1.json#/definitions/validation')!;
 
+const NOT_REGISTERED = {
+  status: 'NOT_REGISTERED', chainId: null, registryAddress: null, registryStrategyId: null, creator: null, txHash: null, blockNumber: null,
+  forkOf: null, recordedFrom: null, verifiedBy: null, readFromChainThisRequest: false,
+};
+
 describe('bag.json for a stored version', () => {
   it('carries the version-time definition and metadata, identity, chainId from config and the on-chain commitment', () => {
     const doc = buildBagJson(bag(), rows[1]);
@@ -77,6 +82,7 @@ describe('bag.json for a stored version', () => {
       onchainCompositionHash: rows[1].onchain_composition_hash,
       onchainTxHash: rows[1].onchain_tx_hash,
       onchainComposition: { status: 'MATCHES_RECORDED', recordedFrom: 'VERIFIED_TX_RECEIPT', comparedBy: 'BAG', readFromChainThisRequest: false },
+      registry: NOT_REGISTERED,
     });
     expect(doc.definition.assets.map((a) => a.address)).toEqual([NVDA.toLowerCase(), AMD].sort());
     expect(doc.forkedFrom).toBeNull();
@@ -89,6 +95,7 @@ describe('bag.json for a stored version', () => {
     expect(buildBagJson(bag(), rows[0]).commitments).toEqual({
       onchainCompositionHash: null, onchainTxHash: null,
       onchainComposition: { status: 'NOT_RECORDED', recordedFrom: null, comparedBy: null, readFromChainThisRequest: false },
+      registry: NOT_REGISTERED,
     });
     // Never claims a chain read.
     expect(JSON.stringify(buildBagJson(bag(), rows[1]))).not.toMatch(/"readFromChainThisRequest":true/);
@@ -100,6 +107,26 @@ describe('bag.json for a stored version', () => {
     const doc = buildBagJson(changed, rows[1]);
     expect(doc.definitionHash).toBe(h);
     expect(doc.forkedFrom).toEqual({ strategyId: PARENT, version: null });
+  });
+
+  it('StrategyRegistry: a verified registration of exactly this hash is REGISTERED (with fork origin); any other hash is not', () => {
+    const hash = buildBagJson(bag(), rows[0]).definitionHash;
+    const registration = {
+      bag_id: ID, version: 1, chain: 'robinhood', registry_address: '0x' + 'aa'.repeat(20), registry_strategy_id: '0x' + 'bb'.repeat(32),
+      definition_hash: hash, creator_wallet: '0x' + 'cc'.repeat(20), fork_of_registry_strategy_id: '0x' + 'dd'.repeat(32), fork_of_version: 3,
+      tx_hash: '0x' + 'ee'.repeat(32), block_number: 42, log_index: 1,
+    };
+    const doc = buildBagJson(bag({ parentBagId: PARENT, parentBagVersion: 3 }), { ...rows[0], registration });
+    expect(doc.commitments.registry).toEqual({
+      status: 'REGISTERED', chainId: 4663, registryAddress: registration.registry_address, registryStrategyId: registration.registry_strategy_id,
+      creator: registration.creator_wallet, txHash: registration.tx_hash, blockNumber: 42,
+      forkOf: { registryStrategyId: registration.fork_of_registry_strategy_id, version: 3 },
+      recordedFrom: 'VERIFIED_TX_RECEIPT', verifiedBy: 'BAG', readFromChainThisRequest: false,
+    });
+    expect(doc.forkedFrom).toEqual({ strategyId: PARENT, version: 3 });
+    expect(validBagJson(doc)).toBe(true);
+    // A recorded commitment that is not this version's hash is never shown as registered.
+    expect(buildBagJson(bag(), { ...rows[0], registration: { ...registration, definition_hash: '0x' + '12'.repeat(32) } }).commitments.registry).toEqual(NOT_REGISTERED);
   });
 
   it('legacy fields the recipe never had stay null (v1 had no fee set)', () => {

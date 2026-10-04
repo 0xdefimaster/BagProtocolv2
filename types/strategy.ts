@@ -77,9 +77,38 @@ export interface BagJson {
     onchainCompositionHash: string | null;
     onchainTxHash: string | null;
     onchainComposition: OnchainCompositionCheck;
+    /** This version's StrategyRegistry commitment, as BAG verified it (docs/STRATEGY_REGISTRY_DESIGN.md). */
+    registry: RegistryCommitment;
   };
-  /** The Bag this one was forked from. Fork records do not store the parent version, so it is always null. */
-  forkedFrom: { strategyId: string; version: null } | null;
+  /**
+   * The Bag this one was forked from, and the exact parent version it was forked from. `version` is null only
+   * for forks made before BAG recorded it (migration 0052): never inferred.
+   */
+  forkedFrom: { strategyId: string; version: number | null } | null;
+}
+
+/**
+ * What BAG can say about this version's StrategyRegistry commitment:
+ * - `REGISTERED`: BAG verified a creator-signed registry transaction whose committed definitionHash equals this
+ *   version's bag.json hash (`recordedFrom: VERIFIED_TX_RECEIPT`). Anyone can re-check it on-chain
+ *   (scripts/verify-strategy-commitment.ts) without trusting BAG.
+ * - `NOT_REGISTERED`: no verified registration is recorded for this version.
+ * Never a chain read made by this response.
+ */
+export interface RegistryCommitment {
+  status: 'REGISTERED' | 'NOT_REGISTERED';
+  chainId: number | null;
+  registryAddress: string | null;
+  /** keccak256(abi.encode(creator, offChainRef)) — the creator-bound id in the registry. */
+  registryStrategyId: string | null;
+  creator: string | null;
+  txHash: string | null;
+  blockNumber: number | null;
+  /** Set on a fork's version 1: the registered parent and version it was forked from. */
+  forkOf: { registryStrategyId: string; version: number } | null;
+  recordedFrom: 'VERIFIED_TX_RECEIPT' | null;
+  verifiedBy: 'BAG' | null;
+  readFromChainThisRequest: false;
 }
 
 /**
