@@ -1,23 +1,26 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
+import { formatDecimalStringUsd } from '@/lib/format';
 import { useWallet } from '@/lib/wallet-context';
 
 // -----------------------------------------------------------------------------
-// The signed-in user's REAL position in one Bag (bag_investor_positions +
-// live NAV, via GET /api/portfolio/positions — the same numbers the Portfolio
-// page shows). Replaces the old paper-trading block, which listed play-money
-// trades that never touched a chain.
+// The signed-in user's REAL position in one Bag, via GET
+// /api/portfolio/positions — the same numbers the Portfolio page shows. A4:
+// valued from holdings (exposure vs what the wallet really holds, drift
+// flagged), cost basis and realized P&L from the ledger; never shares × NAV.
 // -----------------------------------------------------------------------------
 
 interface PositionView {
   bagId: string;
-  sharesRaw: string;
-  shareDecimals: number;
-  costBasis: string;
-  currentValue: string | null;
+  strategyExposure: string | null;
+  effectivePosition: string | null;
+  hasDrift: boolean;
+  costBasis: string | null;
+  realizedPnl: string | null;
 }
+
+const usdOrDash = (v: string | null) => (v === null ? '—' : formatDecimalStringUsd(v));
 
 export function MyBagPosition({ bagId, refreshKey }: { bagId: string; refreshKey?: unknown }) {
   const { authUser } = useWallet();
@@ -47,8 +50,7 @@ export function MyBagPosition({ bagId, refreshKey }: { bagId: string; refreshKey
 
   if (!authUser) return null;
 
-  const value = position?.currentValue != null ? Number(position.currentValue) : null;
-  const pnl = position && value !== null ? value - Number(position.costBasis) : null;
+  const pnl = position && position.strategyExposure !== null && position.costBasis !== null ? Number(position.strategyExposure) - Number(position.costBasis) : null;
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 p-6">
@@ -60,16 +62,24 @@ export function MyBagPosition({ bagId, refreshKey }: { bagId: string; refreshKey
       ) : position === null ? (
         <p className="text-sm text-white/50">You don&apos;t hold this Bag yet.</p>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Stat label="Shares" value={formatRawAmount(position.sharesRaw, position.shareDecimals, { maxFractionDigits: 4 })} />
-          <Stat label="Invested" value={formatDecimalStringUsd(position.costBasis)} />
-          <Stat label="Value" value={value === null ? '—' : formatDecimalStringUsd(position.currentValue!)} />
-          <Stat
-            label="PnL"
-            value={pnl === null ? '—' : `${pnl >= 0 ? '+' : '-'}${formatDecimalStringUsd(Math.abs(pnl).toFixed(2))}`}
-            tone={pnl === null ? undefined : pnl >= 0 ? 'up' : 'down'}
-          />
-        </div>
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <Stat label="Invested" value={usdOrDash(position.costBasis)} />
+            <Stat label="Exposure" value={usdOrDash(position.strategyExposure)} />
+            <Stat label="In wallet" value={usdOrDash(position.effectivePosition)} />
+            <Stat
+              label="Unrealized"
+              value={pnl === null ? '—' : `${pnl >= 0 ? '+' : '-'}${formatDecimalStringUsd(Math.abs(pnl).toFixed(2))}`}
+              tone={pnl === null ? undefined : pnl >= 0 ? 'up' : 'down'}
+            />
+            <Stat label="Realized" value={usdOrDash(position.realizedPnl)} />
+          </div>
+          {position.hasDrift && (
+            <p className="mt-3 text-xs text-amber-300">
+              Your wallet holds less than BAG tracks for this strategy. Only what is in the wallet can be sold.
+            </p>
+          )}
+        </>
       )}
     </div>
   );

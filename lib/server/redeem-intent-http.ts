@@ -20,7 +20,7 @@ export function redeemExecutionErrorResponse(error: RedeemExecutionError): NextR
       return NextResponse.json({ error: 'You have no position in this Bag to redeem.' }, { status: 409 });
     case 'INSUFFICIENT_POSITION':
       return NextResponse.json(
-        { error: `Cannot redeem ${error.requestedRaw} raw shares — you only hold ${error.ownedRaw}.` },
+        { error: `Cannot redeem ${error.requestedRaw} — you only hold ${error.ownedRaw}.` },
         { status: 422 }
       );
     case 'ZERO_SUPPLY':
@@ -37,7 +37,7 @@ export function redeemExecutionErrorResponse(error: RedeemExecutionError): NextR
       return NextResponse.json({ error: 'This redemption quote has expired. Start a new redemption.' }, { status: 409 });
     case 'ROUTE_CHANGED':
       return NextResponse.json(
-        { error: 'Your position in this Bag changed since this redemption was quoted. Start a new redemption.' },
+        { error: 'Your position or wallet balance changed since this sale was quoted. Start a new sale.' },
         { status: 409 }
       );
     case 'INVALID_STATE':
@@ -51,6 +51,12 @@ export function redeemExecutionErrorResponse(error: RedeemExecutionError): NextR
         { error: 'This Bag charges a performance fee, so it can only be redeemed through the on-chain fee router.' },
         { status: 409 }
       );
+    case 'INVALID_FRACTION':
+      return NextResponse.json({ error: 'Choose how much of the position to sell (between 0.01% and 100%).' }, { status: 400 });
+    case 'NOTHING_TO_SELL':
+      return NextResponse.json({ error: 'Your wallet holds nothing of this position that can be sold.' }, { status: 409 });
+    case 'BALANCE_UNAVAILABLE':
+      return NextResponse.json({ error: 'Your wallet balances could not be read right now. Please try again shortly.' }, { status: 503 });
     default: {
       const _exhaustive: never = error;
       return _exhaustive;

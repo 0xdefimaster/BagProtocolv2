@@ -1,6 +1,6 @@
 # Accounting V2 — design draft
 
-Status: **design approved, decisions locked (§13). A1, A2 and A3 implemented** (migrations 0048–0050); A4–A6 not started.
+Status: **design approved, decisions locked (§13). A1, A2, A3 and A4 implemented** (migrations 0048–0051); A5–A6 not started.
 Scope: V2 only. V1 (bagprotocol.com) is not changed by anything in this document.
 
 Architecture decision this builds on (2026-10-04): **BAG stays non-custodial
@@ -170,6 +170,65 @@ Decision D1 (recommended): **retire pooled shares as the economic quantity.**
   the numbers; real and illustrative series are never mixed.
 - `bag_share_state` and `shares_raw` stay readable during migration and are
   then dropped from the UI and API.
+
+### 4.1 A4 as implemented: four numbers, never one
+
+| Number | Meaning | Source |
+|---|---|---|
+| **Strategy exposure** | what BAG tracks for this strategy, at verified prices | `bag_investor_holdings` × display price |
+| **Observed in wallet** | what of that is still in the wallet: min(observed, tracked) per asset | `balanceOf` at one block × price |
+| **Effective position** | the wallet's balance attributed to this strategy (D3 pro rata), i.e. what can be sold | `effectiveQuantityRaw` × price |
+| **Estimated proceeds** | what selling would return after price impact and fees; plus the guaranteed minimum | the real route quote only (never computed from prices) |
+
+Example: exposure $10,000 · in wallet $8,700 · effective $8,700 · estimated
+proceeds $8,641. The first three come from
+`lib/domain/basket-protocol/accounting/position-value.ts` (pure) and
+`lib/server/position-valuation.ts` (reads); the fourth from the redeem intent's
+quoted legs (`redeem/proceeds.ts`). Realized P&L is a fifth thing: it comes only
+from verified receipt proceeds (A3), never from any of the four above.
+
+**Sell path.** `POST /api/bags/:id/redeem-intent { fractionBps, outputAssetId }`
+(1..10000). The allocation sells `floor(effective × bps / 10000)` of each asset
+(all of it at 10000), capped at tracked. Balances are read at one block and an
+unreadable balance refuses the quote (`BALANCE_UNAVAILABLE`, 503) — it is never
+treated as 0 nor as "still there". Before the wallet signs, `prepareRedeemExecution`
+re-reads and requires every leg to be covered by both tracked and effective
+quantities (`saleStillCovered`); otherwise the intent fails as `ROUTE_CHANGED`.
+With tracked 100 and a wallet of 60, a full exit sells 60; the missing 40 stays
+tracked until the reconciler books it as an external outflow (basis exited
+externally, no gain or loss). One leg failing next to a completed one ends as
+`PARTIAL_SUCCESS → RECONCILIATION_REQUIRED` (only the sold leg is removed,
+shares untouched) and the UI shows "partially sold", never "sold".
+
+**Shares.** Still burned in the same proportion (`sharesToBurnForFraction`)
+only so the legacy columns keep their invariants; 0051 allows a zero burn so
+holdings that outlived their shares can still be sold.
+
+**Fee basis.** `redeem_intents.redeem_value_quote` stays the legacy fee basis of
+`apply_redeem_execution`. For a performance-fee Bag it is still NAV-based
+(RedeemFeeRouter attests against it; D4 changes fee semantics in its own PR).
+For a no-fee Bag it is the route's estimated proceeds, so selling no longer
+needs NAV at all (e.g. when display prices are unavailable at the weekend).
+
+#### What is no longer authoritative
+
+| Column / value | Status after A4 | Read by |
+|---|---|---|
+| `bag_investor_positions.shares_raw` | **not authoritative.** Mechanical counter, moved in proportion to sales. Never used for value. | legacy fee path (router attestation), ledger projection check |
+| `bag_investor_positions.cost_basis_quote` | **not authoritative.** Share-proportional basis; the ledger's per-asset average cost (A3) is the cost basis shown. | `apply_redeem_execution`'s legacy profit/fee basis only |
+| `bag_share_state.total_shares_raw` | **not authoritative.** | NAV per share (legacy fee basis only) |
+| NAV per share / `getRedeemQuote` | **not authoritative for positions.** Not used for portfolio value nor for no-fee sales. | performance-fee redemptions only |
+| `redeem_intents.shares_raw`, `share_price_at_quote`, `redeem_value_quote` | **audit / legacy fee basis.** For no-fee sales `share_price_at_quote` is derived from the estimate. Never realized P&L. | `apply_redeem_execution`, router attestation |
+| `bag_holdings` (bag aggregate) | **aggregate only.** Not a source of any user's value; follows fills and confirmed outflows. | NAV snapshots / TVL (moves to reconciled view later, §8) |
+| `bag_investor_holdings.quantity_raw` | **authoritative for tracked exposure** (what BAG bought and has not seen leave). | everything above |
+| `ledger_events` | **authoritative record** (cost basis, realized P&L, outflows). | P&L engine, rebuild check |
+
+The share fields are gone from the portfolio API and UI (`/api/portfolio/positions`,
+the redeem preview, `MyBagPosition`); they remain in the database until §10's
+final step drops them.
+
+Not in A4: the stored position state machine (§7) and TVL/NAV snapshots from the
+reconciled view (§8) — positions are valued live, snapshots still use `bag_holdings`.
 
 ### 3.4 Ledger events are not chain events
 
@@ -344,7 +403,7 @@ Dropped (after migration and a release with both): `bag_share_state`,
 | A1 ✅ | `ledger_events` (insert-only, `seq` total order) + ledger writes in all five accounting RPCs + opening balances (stored state minus existing events) + `ledger_projection_mismatches()` + `GET /api/users/me/ledger`. Every economics and concurrency integration test now also asserts the ledger rebuilds the investor tables exactly. `definition_hash` stays null until the hash is computed server-side at intent time (A3). |
 | A2 ✅ | `apply_wallet_observation` (0049): drift recorded with its pro-rata allocation, booked as `EXTERNAL_OUTFLOW` only when still short ≥ 2 minutes later, resolved when the balance returns; skipped while a redemption is in flight or for a stale block. Balances read at one block, unreadable reads skipped (never 0). Triggers: Alchemy ADDRESS_ACTIVITY webhook (signed, payload only says which wallet to re-read) + 5-minute `/api/cron/reconcile-wallets` pass. `GET /api/users/me/reconciliation`. TVL follows confirmed outflows (bag aggregate reduced). Portfolio display from holdings moves to A4 with the share retirement; drift UI with it. |
 | A3 ✅ | Ledger legs carry `costQuote` (fills: cost basis split by input spent, exact) and `proceedsQuote` (sales: verified receipt output; router: reported swapOutput split by quoted output) — 0050. Pure engine `computePositionPnl` (average cost per asset, realized P&L only from verified proceeds, external outflows realize nothing, unknowns stay null, fee base above the realized high-water mark). `GET /api/users/me/positions/:strategyId/pnl`. Fees actually charged and the on-chain fee path are unchanged (D4). |
-| A4 | Redeem by fraction; position value from holdings; shares removed from UI/API |
+| A4 ✅ | Redeem by fraction of the **effective** holdings (`fractionBps`), never more than the wallet holds; balances read at one block, fail-closed; re-checked before signing. Position value from holdings: exposure / in wallet / effective kept apart from estimated proceeds (route quote) and realized P&L (receipts). Partial sale shown as partial. Shares and NAV removed from the portfolio API/UI and from no-fee sales; non-authoritative columns listed in §4.1. 0051: zero legacy share burn allowed. Acceptance tests: partial exit, drift 60/100, failed leg, receipt-only realized P&L, idempotency (`a4-acceptance.integration.test.ts`). |
 | A5 | External exit classification v2.1 |
 | A6 | Strategy Performance Index + `/strategies/:id/performance` |
 | C1 (separate) | RedeemFeeRouter: fee computed on-chain from realized output (needs audit) |
@@ -377,3 +436,5 @@ P&L → closed).
 - Blockscout API availability and rate limits for Robinhood Chain.
 - Whether every historical intent's receipt has enough data to replay it
   exactly; where it does not, the opening balance comes from the current tables.
+- A4 sell path against a live wallet and live LI.FI route (drift exit, partial
+  exit, failed leg): covered by unit and real-Postgres tests only; not run on chain.

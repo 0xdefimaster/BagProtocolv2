@@ -254,6 +254,10 @@ export function getDepositQuote(
  *
  * `grossValue = sharesRaw / 10^shareDecimals × sharePrice`, exact bigint
  * arithmetic, truncated at `NAV_VALUE_DECIMALS` (spec section 10).
+ *
+ * Accounting V2 / A4: NOT a position value (docs/ACCOUNTING_V2_DESIGN.md §4.1).
+ * Used only as the legacy fee basis of performance-fee redemptions; positions
+ * are valued from holdings (accounting/position-value.ts).
  */
 export function getRedeemQuote(nav: NavResult, shareSupply: ShareSupply, sharesRaw: string): RedeemQuote {
   const requested = parseSharesRaw(sharesRaw);
