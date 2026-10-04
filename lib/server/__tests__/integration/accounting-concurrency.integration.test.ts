@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createBag } from '@/lib/server/bag-repo';
 import { TestDatabase, createTestDatabase, insertUser, validRecipeInput } from './pg-harness';
 import { ASSET, insertPurchaseIntent, newWallet, sumPositionShares, totalShares } from './economics-harness';
@@ -14,6 +14,10 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await db?.drop();
+});
+afterEach(async () => {
+  // 0048: concurrent fills leave a ledger the investor tables can be rebuilt from exactly.
+  expect((await db.service.query('select * from ledger_projection_mismatches()')).rows).toEqual([]);
 });
 
 const apply = (intentId: string, bagId: string, userId: string, sharesRaw: string, costBasis: string, holdingRaw: string) =>

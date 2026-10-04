@@ -1,6 +1,6 @@
 # Accounting V2 — design draft
 
-Status: **design approved, decisions locked (§13); A1 in progress.** Not implemented yet.
+Status: **design approved, decisions locked (§13). A1 implemented** (migration 0048); A2–A6 not started.
 Scope: V2 only. V1 (bagprotocol.com) is not changed by anything in this document.
 
 Architecture decision this builds on (2026-10-04): **BAG stays non-custodial
@@ -325,7 +325,7 @@ Dropped (after migration and a release with both): `bag_share_state`,
 
 | PR | Content |
 |---|---|
-| A1 | `ledger_events` + dual write in both RPCs + backfill + rebuild-equals-stored check |
+| A1 ✅ | `ledger_events` (insert-only, `seq` total order) + ledger writes in all five accounting RPCs + opening balances (stored state minus existing events) + `ledger_projection_mismatches()` + `GET /api/users/me/ledger`. Every economics and concurrency integration test now also asserts the ledger rebuilds the investor tables exactly. `definition_hash` stays null until the hash is computed server-side at intent time (A3). |
 | A2 | Wallet observations + reconciliation v2.0 (balance diff) + effective exposure in portfolio and TVL |
 | A3 | Realized P&L and fees from verified proceeds (off-chain books) + loss carry-forward |
 | A4 | Redeem by fraction; position value from holdings; shares removed from UI/API |
