@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
 import { requireSession } from '@/lib/auth/require-session';
-import { signFeeAttestation, RouterNotConfiguredError, NoLiquidityError } from '@/lib/server/redeem-fee-attestation';
+import { signFeeAttestation, RouterNotConfiguredError, NoLiquidityError, SaleNoLongerCoveredError, BalanceUnavailableError } from '@/lib/server/redeem-fee-attestation';
 import { checkRateLimit, rateLimitedResponseBody } from '@/lib/server/rate-limit';
 
 // Production-hardening P1-10 — signs a real, one-time-use fee attestation
@@ -52,6 +52,12 @@ export async function POST(_req: Request, { params }: { params: Promise<{ intent
     return NextResponse.json({ attestation });
   } catch (err) {
     if (err instanceof RouterNotConfiguredError) {
+      return NextResponse.json({ error: err.message }, { status: 503 });
+    }
+    if (err instanceof SaleNoLongerCoveredError) {
+      return NextResponse.json({ error: err.message, failureCode: 'ROUTE_EXPIRED' }, { status: 409 });
+    }
+    if (err instanceof BalanceUnavailableError) {
       return NextResponse.json({ error: err.message }, { status: 503 });
     }
     if (err instanceof NoLiquidityError) {
