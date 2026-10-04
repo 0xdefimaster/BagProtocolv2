@@ -13,7 +13,8 @@ import {
   REDEEM_FEE_ROUTER_EIP712_DOMAIN_VERSION,
   computeLegsHash,
 } from '@/lib/blockchain/redeem-fee-router-eip712';
-import { getRedeemIntentForUser } from '@/lib/server/redeem-intent-repo';
+import { getRedeemIntentForUser, updateRedeemIntentStatus } from '@/lib/server/redeem-intent-repo';
+import { checkSaleCoverage } from '@/lib/server/sale-coverage';
 import { getInvestorPosition } from '@/lib/server/bag-investor-position-repo';
 import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
 
@@ -63,6 +64,22 @@ export class NoLiquidityError extends Error {
   constructor(tokenIn: string, tokenOut: string) {
     super(`No Uniswap v3 pool (fee tiers ${COMMON_FEE_TIERS.join(', ')}) quoted a price for ${tokenIn} -> ${tokenOut} on Robinhood Chain — cannot safely attest this redemption's fee.`);
     this.name = 'NoLiquidityError';
+  }
+}
+
+/** A4: the wallet or the books no longer cover this intent's legs; the intent is failed and nothing is signed. */
+export class SaleNoLongerCoveredError extends Error {
+  constructor() {
+    super('Your position or wallet balance changed since this sale was quoted. Start a new sale.');
+    this.name = 'SaleNoLongerCoveredError';
+  }
+}
+
+/** A4: wallet balances could not be read right now; nothing is signed and the intent stays as it is. */
+export class BalanceUnavailableError extends Error {
+  constructor() {
+    super('Your wallet balances could not be read right now. Please try again shortly.');
+    this.name = 'BalanceUnavailableError';
   }
 }
 
@@ -138,6 +155,15 @@ export async function signFeeAttestation(admin: SupabaseClient, userId: string, 
   if (redeemerErr) throw new Error(redeemerErr.message);
   const redeemerWallet = (redeemerRow as { wallet_address: string } | null)?.wallet_address;
   if (!redeemerWallet) throw new Error(`User ${userId} has no wallet_address on file.`);
+
+  // A4 pre-sign check (lib/server/sale-coverage.ts), the same one the legacy path runs: the attestation is
+  // what lets the wallet sign, so a sale no longer covered by the wallet and the books is never attested.
+  const coverage = await checkSaleCoverage(admin, { userId, walletAddress: redeemerWallet }, intent);
+  if (coverage === 'BALANCE_UNAVAILABLE') throw new BalanceUnavailableError();
+  if (coverage === 'NOT_COVERED') {
+    await updateRedeemIntentStatus(admin, { id: intent.id, from: intent.status, to: 'FAILED', failureCode: 'ROUTE_EXPIRED' });
+    throw new SaleNoLongerCoveredError();
+  }
 
   // The position's shares/cost-basis BEFORE this specific redemption —
   // reconstructed from the CURRENT (already-quoted, not-yet-executed)

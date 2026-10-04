@@ -1,7 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createBag } from '@/lib/server/bag-repo';
 import { computePositionPnl, PnlEvent } from '@/lib/domain/basket-protocol/accounting/position-pnl';
-import { effectiveQuantityRaw } from '@/lib/domain/basket-protocol/accounting/position-value';
+import { effectiveQuantityRaw, valuePosition } from '@/lib/domain/basket-protocol/accounting/position-value';
+import fs from 'node:fs';
+import path from 'node:path';
 import { calculateRedeemAllocation, sharesToBurnForFraction } from '@/lib/domain/basket-protocol/redeem/allocation';
 import { summarizeSale } from '@/lib/domain/basket-protocol/redeem/proceeds';
 import { TestDatabase, createTestDatabase, validRecipeInput } from './pg-harness';
@@ -199,5 +201,68 @@ describe('A4 acceptance', () => {
     const a1 = await allocate(u, b.bagId, 2500, { [ASSET.address]: '70' });
     const a2 = await allocate(u, b.bagId, 2500, { [ASSET.address]: '70' });
     expect(a1).toEqual(a2);
+  });
+  it('6. round trip: buy → partial sell → external exit → remaining position → full exit → P&L → ledger', async () => {
+    const b = await bag();
+    const u = await newWallet(db);
+    // Buy: 100 ASSET for 100, 200 OTHER for 100.
+    await buy(u, b.bagId, [{ asset: ASSET, delta: '100', cost: '100' }, { asset: OTHER, delta: '200', cost: '100' }], '200', '200');
+
+    // Partial sell, 25 %: 25 ASSET → 35, 50 OTHER → 25 (basis consumed 25 + 25 → realized +10).
+    let legs = await allocate(u, b.bagId, 2500, { [ASSET.address]: '100', [OTHER.address]: '200' }, [ASSET, OTHER]);
+    expect(legs.map((l) => l.sellQuantityRaw)).toEqual(['25', '50']);
+    await applySale(u, b, [{ address: ASSET.address, qty: '25', proceeds: '35' }, { address: OTHER.address, qty: '50', proceeds: '25' }], sharesToBurnForFraction(await shares(u, b.bagId), 2500), '60');
+    expect([await tracked(u, b.bagId, ASSET), await tracked(u, b.bagId, OTHER)]).toEqual(['75', '150']);
+
+    // External exit: 30 ASSET leave the wallet outside BAG. While unconfirmed it is drift: exposure and effective differ.
+    expect((await observe(u, '45')).status).toBe('DRIFT');
+    const drift = valuePosition([
+      { chain: 'robinhood', address: ASSET.address, decimals: 0, trackedRaw: '75', trackedAllStrategiesRaw: '75', observedRaw: '45', price: '1' },
+      { chain: 'robinhood', address: OTHER.address, decimals: 0, trackedRaw: '150', trackedAllStrategiesRaw: '150', observedRaw: '150', price: '1' },
+    ]);
+    expect(drift).toMatchObject({ strategyExposureQuote: '225', effectivePositionQuote: '195', hasDrift: true });
+    await db.admin.query(`update reconciliation_records set created_at = now() - interval '3 minutes' where user_id = $1 and status = 'DRIFT'`, [u.userId]);
+    expect((await observe(u, '45')).status).toBe('CONFIRMED_OUTFLOW');
+
+    // Remaining position: 45 ASSET (basis 45) and 150 OTHER (basis 75), still open.
+    let p = computePositionPnl(await events(u, b.bagId));
+    expect(p.costBasisQuote).toBe('120');
+    expect(p.realizedPnlQuote).toBe('10');
+    expect(p.basisExitedExternallyQuote).toBe('30');
+
+    // Full exit of what is really there: 45 ASSET → 50 (+5), 150 OTHER → 70 (−5).
+    legs = await allocate(u, b.bagId, 10_000, { [ASSET.address]: '45', [OTHER.address]: '150' }, [ASSET, OTHER]);
+    expect(legs.map((l) => l.sellQuantityRaw)).toEqual(['45', '150']);
+    await applySale(u, b, [{ address: ASSET.address, qty: '45', proceeds: '50' }, { address: OTHER.address, qty: '150', proceeds: '70' }], sharesToBurnForFraction(await shares(u, b.bagId), 10_000), '120');
+
+    // P&L and ledger: closed, realized only from receipts, the external exit is neither gain nor loss.
+    expect([await tracked(u, b.bagId, ASSET), await tracked(u, b.bagId, OTHER), await shares(u, b.bagId)]).toEqual(['0', '0', '0']);
+    const ev = await events(u, b.bagId);
+    p = computePositionPnl(ev);
+    expect(p.assets).toEqual([]);
+    expect(p.realizedPnlQuote).toBe('10');
+    expect(p.basisExitedExternallyQuote).toBe('30');
+    expect(ev.map((e) => e.kind)).toEqual(['PURCHASE_FILL', 'REDEEM_FILL', 'EXTERNAL_OUTFLOW', 'REDEEM_FILL']);
+  });
+
+  it('0051 applied over existing data changes no row (it only replaces a function)', async () => {
+    const b = await bag();
+    const u = await newWallet(db);
+    await buy(u, b.bagId, [{ asset: ASSET, delta: '100', cost: '100' }], '100', '100');
+    await applySale(u, b, [{ address: ASSET.address, qty: '40', proceeds: '44' }], '40', '44');
+    const snapshot = async () => {
+      const q = async (sql: string) => (await db.admin.query(sql)).rows;
+      return {
+        positions: await q('select user_id, bag_id, shares_raw, cost_basis_quote from bag_investor_positions order by user_id, bag_id'),
+        holdings: await q('select user_id, bag_id, chain, address, quantity_raw from bag_investor_holdings order by user_id, bag_id, address'),
+        bagHoldings: await q('select bag_id, address, quantity_raw from bag_holdings order by bag_id, address'),
+        shareState: await q('select bag_id, total_shares_raw from bag_share_state order by bag_id'),
+        ledger: await q('select seq, kind, legs, quote from ledger_events order by seq'),
+        intents: await q('select id, status, accounting_applied_at from redeem_intents order by id'),
+      };
+    };
+    const before = await snapshot();
+    await db.admin.query(fs.readFileSync(path.resolve(__dirname, '../../../../supabase/migrations/0051_fraction_redeem.sql'), 'utf8'));
+    expect(await snapshot()).toEqual(before);
   });
 });

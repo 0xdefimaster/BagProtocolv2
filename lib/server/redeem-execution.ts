@@ -19,11 +19,11 @@ import {
   calculateRedeemAllocation,
   buildRedeemExecutionSteps,
   sharesToBurnForFraction,
-  type RedeemHoldingInput,
 } from '@/lib/domain/basket-protocol/redeem/allocation';
 import { estimatedProceedsRaw } from '@/lib/domain/basket-protocol/redeem/proceeds';
 import { observeUserHoldings, sellableHoldingsForBag } from '@/lib/server/position-valuation';
 import { getChainPublicClient } from '@/lib/blockchain/rpc/clients';
+import { checkSaleCoverage, saleStillCovered } from '@/lib/server/sale-coverage';
 import { computeRedeemFingerprint } from '@/lib/domain/basket-protocol/redeem/fingerprint';
 import {
   assertValidPurchaseIntentStepTransition,
@@ -270,21 +270,7 @@ function isExpired(intent: RedeemIntent): boolean {
   return new Date(intent.expiresAt).getTime() < Date.now();
 }
 
-/**
- * Every leg's sell amount is still covered by what BAG tracks AND what the wallet effectively holds for this
- * strategy, and the legacy share burn still fits. Pure; exported for tests.
- */
-export function saleStillCovered(intent: Pick<RedeemIntent, 'steps' | 'sharesRaw'>, sellable: RedeemHoldingInput[], positionSharesRaw: string): boolean {
-  if (BigInt(intent.sharesRaw) > BigInt(positionSharesRaw)) return false;
-  const byKey = new Map(sellable.map((h) => [`${h.chain}:${h.address.toLowerCase()}`, h]));
-  for (const step of intent.steps) {
-    const h = byKey.get(`${step.inputAsset.chain}:${step.inputAsset.address.toLowerCase()}`);
-    if (!h) return false;
-    const need = BigInt(step.inputAmountRaw);
-    if (need > BigInt(h.quantityRaw) || need > BigInt(h.sellableRaw)) return false;
-  }
-  return true;
-}
+export { saleStillCovered };
 
 // ----------------------------- 2. Execute (idempotent) ------------------------
 
@@ -331,17 +317,11 @@ export async function prepareRedeemExecution(
     if (feeBps > 0) return { ok: false, error: { kind: 'FEE_ROUTER_REQUIRED' } };
   }
 
-  // A4: what can go stale between quote and signature is the wallet itself (tokens moved out) or the books
-  // (another purchase/redemption settled). Re-read both, at one block, and refuse to sign a sale of anything
-  // that is no longer really there — never sell non-existent balance. An unreadable balance does not fail
-  // the intent; the user can retry once the chain answers.
-  const [position, observed] = await Promise.all([
-    getInvestorPosition(admin, session.userId, intent.bagId),
-    observeUserHoldings(admin, getChainPublicClient('robinhood'), session),
-  ]);
-  const sellable = sellableHoldingsForBag(observed, intent.bagId);
-  if (!sellable) return { ok: false, error: { kind: 'BALANCE_UNAVAILABLE' } };
-  if (!saleStillCovered(intent, sellable, position.sharesRaw)) {
+  // A4: refuse to sign a sale of anything that is no longer really there (lib/server/sale-coverage.ts). An
+  // unreadable balance does not fail the intent; the user can retry once the chain answers.
+  const coverage = await checkSaleCoverage(admin, session, intent);
+  if (coverage === 'BALANCE_UNAVAILABLE') return { ok: false, error: { kind: 'BALANCE_UNAVAILABLE' } };
+  if (coverage === 'NOT_COVERED') {
     await updateRedeemIntentStatus(admin, { id: intentId, from: intent.status, to: 'FAILED', failureCode: 'ROUTE_EXPIRED' });
     return { ok: false, error: { kind: 'ROUTE_CHANGED' } };
   }

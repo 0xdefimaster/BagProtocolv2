@@ -177,23 +177,32 @@ Decision D1 (recommended): **retire pooled shares as the economic quantity.**
 |---|---|---|
 | **Strategy exposure** | what BAG tracks for this strategy, at verified prices | `bag_investor_holdings` × display price |
 | **Observed in wallet** | what of that is still in the wallet: min(observed, tracked) per asset | `balanceOf` at one block × price |
-| **Effective position** | the wallet's balance attributed to this strategy (D3 pro rata), i.e. what can be sold | `effectiveQuantityRaw` × price |
-| **Estimated proceeds** | what selling would return after price impact and fees; plus the guaranteed minimum | the real route quote only (never computed from prices) |
+| **Effective position** | the wallet's balance attributed to this strategy (D3 pro rata): the *value* of what can be sold, at market prices | `effectiveQuantityRaw` × price |
+| **Estimated proceeds** | the *sellable amount*: what selling would return after price impact and fees | the real route quote only (never computed from prices) |
+| **Minimum proceeds** | the least the sale may return; below it the transaction reverts | the route's enforced minimum (`minOutputRaw` / Composer `providerEnforcedMinOutputRaw`) |
+
+These five terms are part of BAG's domain model, not display labels: they are
+never merged into one number, and code never substitutes one for another.
+Effective position is a value; sellable amount is a quote.
 
 Example: exposure $10,000 · in wallet $8,700 · effective $8,700 · estimated
-proceeds $8,641. The first three come from
+proceeds $8,641 · minimum $8,580. The first three come from
 `lib/domain/basket-protocol/accounting/position-value.ts` (pure) and
 `lib/server/position-valuation.ts` (reads); the fourth from the redeem intent's
-quoted legs (`redeem/proceeds.ts`). Realized P&L is a fifth thing: it comes only
-from verified receipt proceeds (A3), never from any of the four above.
+quoted legs (`redeem/proceeds.ts`). Realized P&L is something else again: it
+comes only from verified receipt proceeds (A3), never from any of the above.
 
 **Sell path.** `POST /api/bags/:id/redeem-intent { fractionBps, outputAssetId }`
 (1..10000). The allocation sells `floor(effective × bps / 10000)` of each asset
 (all of it at 10000), capped at tracked. Balances are read at one block and an
 unreadable balance refuses the quote (`BALANCE_UNAVAILABLE`, 503) — it is never
-treated as 0 nor as "still there". Before the wallet signs, `prepareRedeemExecution`
-re-reads and requires every leg to be covered by both tracked and effective
-quantities (`saleStillCovered`); otherwise the intent fails as `ROUTE_CHANGED`.
+treated as 0 nor as "still there". Before the wallet signs, **on every sell
+path**, the one shared primitive `checkSaleCoverage` (`lib/server/sale-coverage.ts`)
+re-reads the position and the wallet at one block and requires every leg to be
+covered by both tracked and effective quantities; otherwise the intent fails as
+`ROUTE_CHANGED` and nothing is signed. Legacy / Composer path: in
+`prepareRedeemExecution`. RedeemFeeRouter path: in `signFeeAttestation`, so a
+fee is never attested (and the wallet can never sign) for a sale no longer covered.
 With tracked 100 and a wallet of 60, a full exit sells 60; the missing 40 stays
 tracked until the reconciler books it as an external outflow (basis exited
 externally, no gain or loss). One leg failing next to a completed one ends as
@@ -222,6 +231,11 @@ needs NAV at all (e.g. when display prices are unavailable at the weekend).
 | `bag_holdings` (bag aggregate) | **aggregate only.** Not a source of any user's value; follows fills and confirmed outflows. | NAV snapshots / TVL (moves to reconciled view later, §8) |
 | `bag_investor_holdings.quantity_raw` | **authoritative for tracked exposure** (what BAG bought and has not seen leave). | everything above |
 | `ledger_events` | **authoritative record** (cost basis, realized P&L, outflows). | P&L engine, rebuild check |
+
+`lib/server/__tests__/a4-authority-guard.test.ts` locks this: position value /
+P&L code may not read shares, NAV per share or the legacy position row, and
+NAV-per-share valuation may be reached only on the performance-fee branch of a
+redemption.
 
 The share fields are gone from the portfolio API and UI (`/api/portfolio/positions`,
 the redeem preview, `MyBagPosition`); they remain in the database until §10's
@@ -404,6 +418,7 @@ Dropped (after migration and a release with both): `bag_share_state`,
 | A2 ✅ | `apply_wallet_observation` (0049): drift recorded with its pro-rata allocation, booked as `EXTERNAL_OUTFLOW` only when still short ≥ 2 minutes later, resolved when the balance returns; skipped while a redemption is in flight or for a stale block. Balances read at one block, unreadable reads skipped (never 0). Triggers: Alchemy ADDRESS_ACTIVITY webhook (signed, payload only says which wallet to re-read) + 5-minute `/api/cron/reconcile-wallets` pass. `GET /api/users/me/reconciliation`. TVL follows confirmed outflows (bag aggregate reduced). Portfolio display from holdings moves to A4 with the share retirement; drift UI with it. |
 | A3 ✅ | Ledger legs carry `costQuote` (fills: cost basis split by input spent, exact) and `proceedsQuote` (sales: verified receipt output; router: reported swapOutput split by quoted output) — 0050. Pure engine `computePositionPnl` (average cost per asset, realized P&L only from verified proceeds, external outflows realize nothing, unknowns stay null, fee base above the realized high-water mark). `GET /api/users/me/positions/:strategyId/pnl`. Fees actually charged and the on-chain fee path are unchanged (D4). |
 | A4 ✅ | Redeem by fraction of the **effective** holdings (`fractionBps`), never more than the wallet holds; balances read at one block, fail-closed; re-checked before signing. Position value from holdings: exposure / in wallet / effective kept apart from estimated proceeds (route quote) and realized P&L (receipts). Partial sale shown as partial. Shares and NAV removed from the portfolio API/UI and from no-fee sales; non-authoritative columns listed in §4.1. 0051: zero legacy share burn allowed. Acceptance tests: partial exit, drift 60/100, failed leg, receipt-only realized P&L, idempotency (`a4-acceptance.integration.test.ts`). |
+| A4.1 ✅ | Hardening (P0): one pre-sign coverage check (`checkSaleCoverage`) on every sell path, including RedeemFeeRouter's `signFeeAttestation`; guard test that share/NAV values cannot become a position source; round-trip regression (buy → partial sell → external exit → full exit → P&L → ledger); 0051 shown to change no row when applied over existing data. |
 | A5 | External exit classification v2.1 |
 | A6 | Strategy Performance Index + `/strategies/:id/performance` |
 | C1 (separate) | RedeemFeeRouter: fee computed on-chain from realized output (needs audit) |
@@ -436,5 +451,6 @@ P&L → closed).
 - Blockscout API availability and rate limits for Robinhood Chain.
 - Whether every historical intent's receipt has enough data to replay it
   exactly; where it does not, the opening balance comes from the current tables.
-- A4 sell path against a live wallet and live LI.FI route (drift exit, partial
-  exit, failed leg): covered by unit and real-Postgres tests only; not run on chain.
+- A4 sell path against a live wallet and live LI.FI route / RedeemFeeRouter
+  (drift exit, partial exit, failed leg, pre-sign re-check): covered by unit and
+  real-Postgres tests only; not run on chain.
