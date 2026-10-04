@@ -135,6 +135,13 @@ both).
 - Performance fee base: **realized gain above the position's high-water mark of
   cumulative realized P&L** (loss carry-forward). A user who realized a loss
   earlier pays no fee until that loss is recovered.
+- **Two different numbers, never to be confused:**
+  - *accounting fee basis* — what the ledger says the fee SHOULD be based on
+    (realized gain above the high-water mark, A3, `feeBaseQuote`). Computed,
+    not charged.
+  - *protocol-enforced fee* — what was actually taken (attested amount through
+    RedeemFeeRouter, recorded as `FEE_CHARGED`). Until the separate, audited
+    contract PR (D4), the two can differ, and both are shown as they are.
 - Enforceability (documented, not a bug): a fee can only be collected on exits
   executed through BAG. If the user sells the tokens elsewhere, BAG cannot and
   does not charge.
