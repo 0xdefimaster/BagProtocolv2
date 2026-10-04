@@ -5,6 +5,7 @@ import {
   BAG_JSON_FORMAT_VERSION,
   BagDefinition,
   BagJson,
+  RegistryCommitment,
   STRATEGY_API_SCHEMA_VERSION,
   StrategyObject,
   StrategyValidationResponse,
@@ -17,6 +18,7 @@ import { assetIdentityKey } from '@/lib/domain/basket-protocol/asset-identity';
 import { BAG_CHAINS, BagChain } from '@/lib/config/chains';
 import { loadStrategyPassport } from '@/lib/server/strategy-passport';
 import { getBagById, listBags } from '@/lib/server/bag-repo';
+import { loadRegistrations, type RegistrationRow } from '@/lib/server/strategy-registration-repo';
 import { ValidateBagInputError, ValidateBagRequest, ValidationFinding, parseValidateBagRequest, validateBag } from '@/lib/server/validate-bag';
 
 // -----------------------------------------------------------------------------
@@ -42,12 +44,18 @@ export interface StrategyVersionRow {
   recipe: BasketRecipe;
   onchain_tx_hash: string | null;
   onchain_composition_hash: string | null;
+  /** The verified StrategyRegistry registration of this version, if any (strategy_registrations, 0052). */
+  registration?: RegistrationRow | null;
 }
 
 export async function loadStrategyVersionRows(admin: SupabaseClient, bagId: string): Promise<StrategyVersionRow[]> {
-  const { data, error } = await admin.from('bag_versions').select(STRATEGY_VERSION_COLUMNS).eq('bag_id', bagId).order('version', { ascending: false });
+  const [{ data, error }, registrations] = await Promise.all([
+    admin.from('bag_versions').select(STRATEGY_VERSION_COLUMNS).eq('bag_id', bagId).order('version', { ascending: false }),
+    loadRegistrations(admin, bagId),
+  ]);
   if (error) throw new Error(error.message);
-  return (data ?? []) as StrategyVersionRow[];
+  const byVersion = new Map(registrations.map((r) => [r.version, r]));
+  return ((data ?? []) as StrategyVersionRow[]).map((r) => ({ ...r, registration: byVersion.get(r.version) ?? null }));
 }
 
 const chainIdOf = (chain: ChainId): number | null => (BAG_CHAINS as Partial<Record<string, (typeof BAG_CHAINS)[BagChain]>>)[chain]?.chainId ?? null;
@@ -57,13 +65,48 @@ const chainIdOf = (chain: ChainId): number | null => (BAG_CHAINS as Partial<Reco
  * transaction receipt and events (lib/server/bag-versioning.ts). Comparing it with a hash recomputed from
  * the stored recipe is BAG's own check; this response never reads the chain.
  */
-function commitmentsOf(row: StrategyVersionRow): BagJson['commitments'] {
+const NOT_REGISTERED: RegistryCommitment = {
+  status: 'NOT_REGISTERED',
+  chainId: null,
+  registryAddress: null,
+  registryStrategyId: null,
+  creator: null,
+  txHash: null,
+  blockNumber: null,
+  forkOf: null,
+  recordedFrom: null,
+  verifiedBy: null,
+  readFromChainThisRequest: false,
+};
+
+/** A registration is shown as REGISTERED only when its committed hash is this version's bag.json hash. */
+function registryOf(row: StrategyVersionRow, definitionHash: string): RegistryCommitment {
+  const r = row.registration;
+  if (!r || r.definition_hash.toLowerCase() !== definitionHash.toLowerCase()) return NOT_REGISTERED;
+  return {
+    status: 'REGISTERED',
+    chainId: chainIdOf(r.chain as ChainId),
+    registryAddress: r.registry_address,
+    registryStrategyId: r.registry_strategy_id,
+    creator: r.creator_wallet,
+    txHash: r.tx_hash,
+    blockNumber: Number(r.block_number),
+    forkOf: r.fork_of_registry_strategy_id && r.fork_of_version ? { registryStrategyId: r.fork_of_registry_strategy_id, version: r.fork_of_version } : null,
+    recordedFrom: 'VERIFIED_TX_RECEIPT',
+    verifiedBy: 'BAG',
+    readFromChainThisRequest: false,
+  };
+}
+
+function commitmentsOf(row: StrategyVersionRow, definitionHash: string): BagJson['commitments'] {
+  const registry = registryOf(row, definitionHash);
   const recorded = row.onchain_composition_hash;
   if (!recorded) {
     return {
       onchainCompositionHash: null,
       onchainTxHash: row.onchain_tx_hash ?? null,
       onchainComposition: { status: 'NOT_RECORDED', recordedFrom: null, comparedBy: null, readFromChainThisRequest: false },
+      registry,
     };
   }
   let matches = false;
@@ -76,21 +119,23 @@ function commitmentsOf(row: StrategyVersionRow): BagJson['commitments'] {
     onchainCompositionHash: recorded,
     onchainTxHash: row.onchain_tx_hash ?? null,
     onchainComposition: { status: matches ? 'MATCHES_RECORDED' : 'MISMATCH', recordedFrom: 'VERIFIED_TX_RECEIPT', comparedBy: 'BAG', readFromChainThisRequest: false },
+    registry,
   };
 }
 
 /** bag.json for one stored version. Pure. */
 export function buildBagJson(bag: BagRecord, row: StrategyVersionRow): BagJson {
   const definition = definitionFromRecipe({ ...row.recipe, chain: row.recipe.chain ?? bag.chain });
+  const definitionHash = computeDefinitionHash(definition);
   return {
     bagJson: BAG_JSON_FORMAT_VERSION,
     definition,
-    definitionHash: computeDefinitionHash(definition),
+    definitionHash,
     ref: { strategyId: bag.id, version: row.version, parentVersion: row.version > 1 ? row.version - 1 : null, createdAt: row.created_at },
     network: { chainId: chainIdOf(definition.chain) },
     metadata: { name: row.recipe.name ?? '', symbol: row.recipe.symbol ?? '', description: row.recipe.description ?? '', assets: assetDisplayFromRecipe(row.recipe) },
-    commitments: commitmentsOf(row),
-    forkedFrom: bag.parentBagId ? { strategyId: bag.parentBagId, version: null } : null,
+    commitments: commitmentsOf(row, definitionHash),
+    forkedFrom: bag.parentBagId ? { strategyId: bag.parentBagId, version: bag.parentBagVersion ?? null } : null,
   };
 }
 

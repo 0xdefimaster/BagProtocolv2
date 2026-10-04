@@ -1,8 +1,7 @@
 # StrategyRegistry — design
 
-Status: **contract, off-chain verifier and tests implemented; not deployed.**
-App wiring (signing a registration from the UI, recording it, showing it in
-bag.json / the Strategy API) is the next PR.
+Status: **contract, off-chain verifier, user-signed registration flow and fork
+provenance implemented; contract not deployed.**
 
 ## 1. What it is for
 
@@ -114,18 +113,51 @@ fee, policies) in a canonical form anyone can reproduce. They are independent:
 a strategy can be registered without a deployed Bag, and the registry never
 reads the factory.
 
-## 8. Next (app wiring PR)
+## 8. App wiring (user-signed registration)
 
-- Creator signs `registerStrategy` / `publishVersion` from the UI; the server
-  verifies the receipt (event, creator, hash equals the stored version's
-  recomputed hash) and records it — never signs.
-- `bag.json.commitments.registry` and the Strategy API show the registry id,
-  the version's on-chain status and the tx.
-- **Prerequisite for forks:** BAG's fork records do not store the parent
-  version today (`forkedFrom.version` is always null). `registerFork` needs it,
-  so fork creation must start recording the parent's current version first.
+**Flow.** `POST /api/bags/:id/registry/prepare` builds the next transaction for
+the creator's wallet — `registerStrategy` (v1), `registerFork` (v1 of a fork) or
+`publishVersions` (every stored version after the last registered one). The
+creator's wallet signs and sends it. `POST /api/bags/:id/registry/confirm
+{ txHash }` then verifies the mined receipt and records it in
+`strategy_registrations` (0052, insert-only). The panel on the Bag page
+(`StrategyRegistryPanel`) loops prepare → sign → confirm until nothing is left.
+`GET /api/bags/:id/registry` is the public status.
+
+**Confirm records nothing unless every check holds:** sent from the creator's
+session wallet to the configured registry (`STRATEGY_REGISTRY_ADDRESS_<CHAIN>`),
+succeeded, the strategy id is the creator-bound id of this Bag, a fork names
+exactly its recorded parent registration and version, and every published
+definitionHash equals the stored version's bag.json hash. A commitment that
+differs (e.g. sent directly to the contract with another hash) is refused and
+the version stays `NOT_REGISTERED` in BAG. Confirm is idempotent; a
+transaction cannot be claimed by two Bags. BAG's server never signs.
+
+**Fork provenance.** Forks now record the exact parent version they were made
+from (`bags.parent_bag_version`, 0052; checked to exist at insert, immutable
+afterwards, same rules as the rest of the lineage). bag.json `forkedFrom.version`
+shows it. A fork registers with `registerFork(parentRegistryId, parentVersion)`
+only once that parent version is registered; until then prepare returns
+`PARENT_NOT_REGISTERED`. Forks made before 0052 keep `parent_bag_version = NULL`
+— it is never inferred — and cannot be registered (`FORK_PARENT_VERSION_UNKNOWN`):
+registering them as non-forks would lose their provenance. Whether to let their
+creators register them some other way is an open decision.
+
+**bag.json.** `commitments.registry` per version: `REGISTERED` (with registry
+address, registry id, creator, tx, block and, on a fork's v1, `forkOf`) only
+when the recorded commitment is exactly this version's definitionHash;
+otherwise `NOT_REGISTERED`. `recordedFrom: VERIFIED_TX_RECEIPT`, never a chain
+read by the response. Schema: `docs/schemas/bag.v1.schema.json`.
+
+**Tests.** Real Postgres + the real StrategyRegistry on Hardhat's in-process
+EVM (`strategy-registration-local-evm.integration.test.ts`): register v1 →
+publish v2 → bag.json REGISTERED → a third party verifies on-chain; wrong hash
+and wrong sender recorded as nothing; fork registers against the exact parent
+version only after it is registered, and the chain shows the same fork origin;
+pre-0052 fork refused; only the creator; registry must be configured.
 
 ## 9. Not verified
 
 - Not deployed to Robinhood Chain or any public network; no live transaction.
+- The registration panel has not been exercised against a real wallet extension.
 - Gas costs measured only on the in-process EVM.

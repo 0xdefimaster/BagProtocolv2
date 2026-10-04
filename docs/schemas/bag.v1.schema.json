@@ -105,7 +105,8 @@
       "required": [
         "onchainCompositionHash",
         "onchainTxHash",
-        "onchainComposition"
+        "onchainComposition",
+        "registry"
       ],
       "properties": {
         "onchainCompositionHash": {
@@ -162,6 +163,134 @@
               "const": false
             }
           }
+        },
+        "registry": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "chainId",
+            "registryAddress",
+            "registryStrategyId",
+            "creator",
+            "txHash",
+            "blockNumber",
+            "forkOf",
+            "recordedFrom",
+            "verifiedBy",
+            "readFromChainThisRequest"
+          ],
+          "description": "This version's StrategyRegistry commitment. REGISTERED: BAG verified a creator-signed registry transaction committing exactly this version's definitionHash (re-checkable on-chain by anyone). NOT_REGISTERED: none recorded. Never a chain read by this response.",
+          "properties": {
+            "status": {
+              "enum": [
+                "REGISTERED",
+                "NOT_REGISTERED"
+              ]
+            },
+            "chainId": {
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "registryAddress": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "pattern": "^0x[0-9a-f]{40}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "registryStrategyId": {
+              "oneOf": [
+                {
+                  "$ref": "#/definitions/bytes32"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "creator": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "pattern": "^0x[0-9a-f]{40}$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "txHash": {
+              "oneOf": [
+                {
+                  "$ref": "#/definitions/bytes32"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "blockNumber": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "forkOf": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "registryStrategyId",
+                    "version"
+                  ],
+                  "properties": {
+                    "registryStrategyId": {
+                      "$ref": "#/definitions/bytes32"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "recordedFrom": {
+              "enum": [
+                "VERIFIED_TX_RECEIPT",
+                null
+              ]
+            },
+            "verifiedBy": {
+              "enum": [
+                "BAG",
+                null
+              ]
+            },
+            "readFromChainThisRequest": {
+              "const": false
+            }
+          }
         }
       }
     },
@@ -180,7 +309,16 @@
               "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
             },
             "version": {
-              "type": "null"
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The parent version this fork was made from; null only for forks made before BAG recorded it (never inferred)."
             }
           }
         },

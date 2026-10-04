@@ -86,9 +86,10 @@ BAG's claim about itself and can change with a release), or execution data.
   "commitments": {
     "onchainCompositionHash": "0x…" | null,
     "onchainTxHash": "0x…" | null,
-    "compositionCommittedOnchain": true | false | null   // BAG re-derived the hash from this version's stored recipe
+    "compositionCommittedOnchain": true | false | null,  // BAG re-derived the hash from this version's stored recipe
+    "registry": { "status": "REGISTERED" | "NOT_REGISTERED", … }  // StrategyRegistry commitment of this definitionHash (docs/STRATEGY_REGISTRY_DESIGN.md §8)
   },
-  "forkedFrom": { "strategyId": "uuid", "version": null } | null   // fork records do not store the parent version
+  "forkedFrom": { "strategyId": "uuid", "version": 3 } | null   // the parent version the fork was made from (0052); null only for forks made before it was recorded
 }
 ```
 

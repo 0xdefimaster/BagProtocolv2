@@ -154,6 +154,7 @@ const toError = (err: unknown) => ({ message: err instanceof Error ? err.message
 
 class ShimQuery {
   private filters: Array<[string, unknown]> = [];
+  private orders: Array<[string, boolean]> = [];
   constructor(private readonly pool: Pool, private readonly table: string) {}
   select(_columns?: string) {
     return this;
@@ -162,10 +163,38 @@ class ShimQuery {
     this.filters.push([assertIdent(column), value]);
     return this;
   }
+  order(column: string, opts: { ascending?: boolean } = {}) {
+    this.orders.push([assertIdent(column), opts.ascending !== false]);
+    return this;
+  }
   private async run(): Promise<Record<string, unknown>[]> {
     const where = this.filters.map(([c], i) => `${c} = $${i + 1}`).join(' and ');
-    const sql = `select * from ${assertIdent(this.table)}${where ? ` where ${where}` : ''}`;
+    const orderBy = this.orders.map(([c, asc]) => `${c} ${asc ? 'asc' : 'desc'}`).join(', ');
+    const sql = `select * from ${assertIdent(this.table)}${where ? ` where ${where}` : ''}${orderBy ? ` order by ${orderBy}` : ''}`;
     return (await this.pool.query(sql, this.filters.map(([, v]) => v))).rows;
+  }
+  /** `await from(t).select().eq()…` resolves to every matching row, like supabase-js. */
+  then<R1 = Result<Record<string, unknown>[]>, R2 = never>(
+    onfulfilled?: ((value: Result<Record<string, unknown>[]>) => R1 | PromiseLike<R1>) | null,
+    onrejected?: ((reason: unknown) => R2 | PromiseLike<R2>) | null
+  ): Promise<R1 | R2> {
+    return this.run()
+      .then((rows) => ({ data: rows, error: null }), (err) => ({ data: null, error: toError(err) }))
+      .then(onfulfilled, onrejected);
+  }
+  /** One multi-row INSERT statement (atomic), like supabase-js `insert(rows)`. */
+  async insert(values: Record<string, unknown> | Record<string, unknown>[]): Promise<Result<null>> {
+    const rows = Array.isArray(values) ? values : [values];
+    if (rows.length === 0) return { data: null, error: null };
+    const cols = Object.keys(rows[0]).map(assertIdent);
+    const params: unknown[] = [];
+    const tuples = rows.map((r) => `(${cols.map((c) => (params.push(r[c] !== null && typeof r[c] === 'object' ? JSON.stringify(r[c]) : r[c]), `$${params.length}`)).join(', ')})`);
+    try {
+      await this.pool.query(`insert into ${assertIdent(this.table)} (${cols.join(', ')}) values ${tuples.join(', ')}`, params);
+      return { data: null, error: null };
+    } catch (err) {
+      return { data: null, error: toError(err) };
+    }
   }
   async maybeSingle<T = unknown>(): Promise<Result<T>> {
     try {
@@ -183,7 +212,7 @@ class ShimQuery {
   }
 }
 
-/** Only what the deployment code paths use: `rpc(fn, namedArgs)` and `from(t).select().eq()….maybeSingle()/single()`. */
+/** Only what the server code paths under test use: `rpc(fn, namedArgs)`, `from(t).select().eq().order()` (awaited, or `.maybeSingle()/.single()`) and `from(t).insert(rows)`. */
 export function pgSupabaseShim(pool: Pool): SupabaseClient {
   const shim = {
     from: (table: string) => new ShimQuery(pool, table),

@@ -705,6 +705,8 @@ export interface BagRecord {
   currentVersionId: string | null;
   parentBagId: string | null;
   rootBagId: string | null;
+  /** The parent's version this fork was made from (0052). Null for non-forks and for forks made before it was recorded. */
+  parentBagVersion?: number | null;
   /** Nullable — no chain integration exists yet (lib/blockchain/adapter.ts is still a mock). Populated once a Bag is deployed (Phase 4+). */
   registryId: string | null;
   contractAddress: string | null;

@@ -167,3 +167,65 @@ export async function readRegistryRecord(client: RegistryReader, registry: Hex, 
     fork: s.forkOfStrategyId.toLowerCase() === ZERO32 ? null : { parentStrategyId: s.forkOfStrategyId, parentVersion: Number(s.forkOfVersion) },
   };
 }
+
+/** Write functions and events of StrategyRegistry.sol used by BAG's registration flow (kept in sync by a contract test). */
+export const STRATEGY_REGISTRY_WRITE_ABI = [
+  {
+    type: 'function',
+    name: 'registerStrategy',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'offChainRef', type: 'bytes32' },
+      { name: 'definitionHash', type: 'bytes32' },
+      { name: 'uri', type: 'string' },
+    ],
+    outputs: [{ name: 'strategyId', type: 'bytes32' }],
+  },
+  {
+    type: 'function',
+    name: 'registerFork',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'offChainRef', type: 'bytes32' },
+      { name: 'parentStrategyId', type: 'bytes32' },
+      { name: 'parentVersion', type: 'uint32' },
+      { name: 'definitionHash', type: 'bytes32' },
+      { name: 'uri', type: 'string' },
+    ],
+    outputs: [{ name: 'strategyId', type: 'bytes32' }],
+  },
+  {
+    type: 'function',
+    name: 'publishVersions',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'strategyId', type: 'bytes32' },
+      { name: 'firstVersion', type: 'uint32' },
+      { name: 'definitionHashes', type: 'bytes32[]' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'event',
+    name: 'StrategyRegistered',
+    anonymous: false,
+    inputs: [
+      { name: 'strategyId', type: 'bytes32', indexed: true },
+      { name: 'creator', type: 'address', indexed: true },
+      { name: 'offChainRef', type: 'bytes32', indexed: false },
+      { name: 'forkOfStrategyId', type: 'bytes32', indexed: true },
+      { name: 'forkOfVersion', type: 'uint32', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'VersionPublished',
+    anonymous: false,
+    inputs: [
+      { name: 'strategyId', type: 'bytes32', indexed: true },
+      { name: 'version', type: 'uint32', indexed: true },
+      { name: 'definitionHash', type: 'bytes32', indexed: false },
+      { name: 'uri', type: 'string', indexed: false },
+    ],
+  },
+] as const;

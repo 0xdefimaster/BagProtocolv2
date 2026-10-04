@@ -32,6 +32,7 @@ import { StrategyPassportView } from '@/components/bags/StrategyPassportView';
 import { ExecutionHistory } from '@/components/bags/ExecutionHistory';
 import { MyBagPosition } from '@/components/bags/MyBagPosition';
 import { DeployBagPanel } from '@/components/bags/DeployBagPanel';
+import { StrategyRegistryPanel } from '@/components/bags/StrategyRegistryPanel';
 import { StockQuote } from '@/components/bags/StockQuote';
 import { useStockQuotes } from '@/hooks/useStockQuotes';
 
@@ -216,6 +217,12 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
                   }
                 }}
               />
+            </div>
+          )}
+
+          {bag.status === 'ACTIVE' && (
+            <div className="mb-8">
+              <StrategyRegistryPanel bagId={bag.id} />
             </div>
           )}
 

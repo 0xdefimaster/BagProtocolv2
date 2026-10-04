@@ -31,7 +31,7 @@ const call = (body: unknown) =>
 beforeEach(() => {
   [getBagById, getCurrentBagVersion, createForkBag].forEach((m) => m.mockReset());
   getBagById.mockResolvedValue(source);
-  getCurrentBagVersion.mockResolvedValue({ recipe: { description: '', chain: 'robinhood', strategyType: 'STATIC_BASKET', assets: [{}], rebalanceRule: {}, minInvestment: 1, maxAssets: 10, minWeightBps: 0, maxWeightBps: 10000 } });
+  getCurrentBagVersion.mockResolvedValue({ version: 3, recipe: { description: '', chain: 'robinhood', strategyType: 'STATIC_BASKET', assets: [{}], rebalanceRule: {}, minInvestment: 1, maxAssets: 10, minWeightBps: 0, maxWeightBps: 10000 } });
   createForkBag.mockResolvedValue({ ok: true, bag: { id: 'new', creatorId: 'forker' }, version: {} });
 });
 
@@ -39,15 +39,17 @@ describe('POST /api/bags/:id/fork lineage', () => {
   it('passes the server-loaded source, ignoring any lineage in the body', async () => {
     const res = await call({ name: 'Mine', parentBagId: 'evil-parent', rootBagId: 'evil-root' });
     expect(res.status).toBe(201);
-    const [, input, passedSource] = createForkBag.mock.calls[0];
+    const [, input, passedSource, passedVersion] = createForkBag.mock.calls[0];
     expect(passedSource).toBe(source);
+    // Fork provenance: the exact source version the fork copied, from the server-loaded current version.
+    expect(passedVersion).toBe(3);
     expect(input).not.toHaveProperty('parentBagId');
     expect(input).not.toHaveProperty('rootBagId');
     expect(JSON.stringify(input)).not.toContain('evil');
   });
 
   it('forkLineageOf: parent is the source, root is the source\'s root (or the source itself)', () => {
-    expect(forkLineageOf({ id: 'source', rootBagId: 'original' })).toEqual({ parentBagId: 'source', rootBagId: 'original' });
-    expect(forkLineageOf({ id: 'original', rootBagId: null })).toEqual({ parentBagId: 'original', rootBagId: 'original' });
+    expect(forkLineageOf({ id: 'source', rootBagId: 'original' }, 3)).toEqual({ parentBagId: 'source', rootBagId: 'original', parentBagVersion: 3 });
+    expect(forkLineageOf({ id: 'original', rootBagId: null }, 1)).toEqual({ parentBagId: 'original', rootBagId: 'original', parentBagVersion: 1 });
   });
 });

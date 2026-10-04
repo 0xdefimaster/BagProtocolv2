@@ -105,7 +105,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // reward from this field.
       performanceFeeBps: 0,
     },
-  }, source);
+  }, source, sourceVersion.version);
 
   if (!result.ok) {
     switch (result.error) {

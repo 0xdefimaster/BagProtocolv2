@@ -217,7 +217,8 @@ describe('fork behavior (explicit)', () => {
     const fork = await createForkBag(
       db.client,
       { slug: `fork-${Date.now()}`, creatorId: forker.userId, mutability: 'MUTABLE', recipe: validRecipeInput({ performanceFeeBps: 0 }), reason: 'fork' },
-      parent.bag
+      parent.bag,
+      1
     );
     if (!fork.ok) throw new Error('fork');
     expect(await feeLock(db, fork.bag.id)).toEqual({ performance_fee_locked_at: null, performance_fee_bps_locked: null });
