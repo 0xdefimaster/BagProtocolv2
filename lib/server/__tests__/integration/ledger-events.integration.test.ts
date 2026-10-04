@@ -59,7 +59,7 @@ describe('purchase', () => {
       strategy_version: 1,
       quote: { sharesDeltaRaw: units(10), costBasisDeltaQuote: '10.00', shareDecimals: 18 },
     });
-    expect(ev[0].legs).toEqual([{ chain: ASSET.chain, address: ASSET.address, decimals: 18, deltaRaw: units(7) }]);
+    expect(ev[0].legs).toEqual([{ chain: ASSET.chain, address: ASSET.address, decimals: 18, deltaRaw: units(7), costQuote: null }]);
   });
 
   it('applying the same intent again adds nothing (RPC idempotency and the unique key agree)', async () => {
@@ -127,7 +127,7 @@ describe('redeem', () => {
     const ev = await events(inv.userId, b.bagId);
     expect(ev.map((e) => e.kind)).toEqual(['PURCHASE_FILL', 'REDEEM_FILL', 'FEE_CHARGED']);
     const fill = ev[1];
-    expect(fill.legs).toEqual([{ chain: ASSET.chain, address: ASSET.address, decimals: 18, deltaRaw: `-${units(4)}` }]);
+    expect(fill.legs).toEqual([{ chain: ASSET.chain, address: ASSET.address, decimals: 18, deltaRaw: `-${units(4)}`, proceedsQuote: null }]);
     expect(fill.quote).toMatchObject({ sharesDeltaRaw: `-${units(4)}`, redeemValueQuote: '6' });
     expect(Number(fill.quote.costBasisDeltaQuote)).toBe(-4);
     expect(Number(fill.quote.profitQuote)).toBe(2);

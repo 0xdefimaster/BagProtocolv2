@@ -29,6 +29,7 @@ import { trackStepStatus } from '@/lib/blockchain/lifi-status';
 import { trackComposerTransaction } from '@/lib/blockchain/composer-status';
 import { DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
 import { buildRedeemComposer, splitReceivedAcrossLegs } from '@/lib/server/redeem-composer';
+import { rawToDecimalString } from '@/lib/domain/basket-protocol/accounting/decimal';
 import {
   createRedeemIntent as insertRedeemIntent,
   findActiveRedeemIntentForBag,
@@ -649,16 +650,28 @@ async function applyRedeemAccountingIdempotently(admin: SupabaseClient, intent: 
   // (unlike a purchase, where the CREDITED side is the swap's output —
   // here the DEBITED side is the swap's input, fixed at quote time, not
   // something on-chain execution can vary).
+  // A3: each sold leg carries what it actually returned (verified receipt output, in the output asset).
   const soldFromSwaps = intent.steps
     .filter((s) => s.action === 'SWAP' && s.status === 'COMPLETED')
-    .map((s) => ({ chain: s.inputAsset.chain, address: s.inputAsset.address, quantity_raw: s.inputAmountRaw }));
+    .map((s) => ({
+      chain: s.inputAsset.chain,
+      address: s.inputAsset.address,
+      quantity_raw: s.inputAmountRaw,
+      ...(s.outputAmountRaw && /^\d+$/.test(s.outputAmountRaw) ? { proceeds_quote: rawToDecimalString(s.outputAmountRaw, intent.outputDecimals) } : {}),
+    }));
 
   // KEEP legs also remove exactly what was earmarked (already the output
   // asset — nothing was swapped, but the depositor's holding of it is
   // still leaving their position on this redemption).
   const soldFromKeeps = intent.steps
     .filter((s) => s.action === 'KEEP')
-    .map((s) => ({ chain: s.inputAsset.chain, address: s.inputAsset.address, quantity_raw: s.inputAmountRaw }));
+    .map((s) => ({
+      chain: s.inputAsset.chain,
+      address: s.inputAsset.address,
+      quantity_raw: s.inputAmountRaw,
+      // A KEEP leg already is the output asset: it returns itself.
+      proceeds_quote: rawToDecimalString(s.inputAmountRaw, intent.outputDecimals),
+    }));
 
   const holdingsSold = [...soldFromSwaps, ...soldFromKeeps];
 

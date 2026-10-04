@@ -77,3 +77,19 @@ export async function findLedgerMismatches(admin: SupabaseClient): Promise<Ledge
     })
   );
 }
+
+/** Every event of one (user, strategy), oldest first. Capped: a position with more events than this is refused rather than half-read. */
+export const MAX_POSITION_EVENTS = 5000;
+
+export async function listAllLedgerEventsForPosition(admin: SupabaseClient, userId: string, bagId: string): Promise<LedgerEvent[]> {
+  const out: LedgerEvent[] = [];
+  let before: string | undefined;
+  for (;;) {
+    const page = await listLedgerEventsForUser(admin, userId, { bagId, before, limit: MAX_LEDGER_PAGE });
+    out.push(...page.events);
+    if (out.length > MAX_POSITION_EVENTS) throw new Error(`Position has more than ${MAX_POSITION_EVENTS} ledger events.`);
+    if (!page.nextBefore) break;
+    before = page.nextBefore;
+  }
+  return out.reverse();
+}

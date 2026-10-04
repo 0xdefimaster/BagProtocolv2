@@ -129,9 +129,10 @@ describe('verifyRedeemExecution — one-transaction (Composer) redemption', () =
       ['COMPLETED', HASH, '5940000'],
       ['COMPLETED', HASH, '3960000'],
     ]);
+    // A3: each sold leg carries what it actually returned (here: the received total split across legs).
     expect(accountingCall()?.[1].p_holdings_sold).toEqual([
-      { chain: 'robinhood', address: MSFT, quantity_raw: '1000' },
-      { chain: 'robinhood', address: NVDA, quantity_raw: '2000' },
+      { chain: 'robinhood', address: MSFT, quantity_raw: '1000', proceeds_quote: '5.94' },
+      { chain: 'robinhood', address: NVDA, quantity_raw: '2000', proceeds_quote: '3.96' },
     ]);
     expect(markRedeemAccountingAppliedMock).toHaveBeenCalledTimes(1);
   });

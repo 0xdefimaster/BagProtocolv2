@@ -1,6 +1,6 @@
 # Accounting V2 — design draft
 
-Status: **design approved, decisions locked (§13). A1 and A2 implemented** (migrations 0048, 0049); A3–A6 not started.
+Status: **design approved, decisions locked (§13). A1, A2 and A3 implemented** (migrations 0048–0050); A4–A6 not started.
 Scope: V2 only. V1 (bagprotocol.com) is not changed by anything in this document.
 
 Architecture decision this builds on (2026-10-04): **BAG stays non-custodial
@@ -119,13 +119,29 @@ both).
   This removes the NAV dependency from redeem accounting (fixes P2 and the
   weekend redeem).
 - **External outflow** removes quantity and its cost basis but records **no**
-  realized P&L: BAG does not know the proceeds and does not guess.
+  realized P&L: BAG does not know the proceeds and does not guess. Semantics
+  (fixed): an external outflow is an asset leaving the position, **not** a
+  sale, gain or loss. Its basis is reported separately
+  (`basisExitedExternallyQuote`); performance figures, the Strategy
+  Performance Index, fee bases and leaderboards must never treat it as a
+  realized result.
+- **Exactness:** leg costs sum exactly to the intent's cost basis, leg
+  proceeds sum exactly to the verified total (raw integer split, remainder to
+  the last leg), and realized P&L = Σ proceeds − Σ allocated basis, all in
+  exact decimal arithmetic (18 places, no floats).
 
 ### 3.3 Fees
 
 - Performance fee base: **realized gain above the position's high-water mark of
   cumulative realized P&L** (loss carry-forward). A user who realized a loss
   earlier pays no fee until that loss is recovered.
+- **Two different numbers, never to be confused:**
+  - *accounting fee basis* — what the ledger says the fee SHOULD be based on
+    (realized gain above the high-water mark, A3, `feeBaseQuote`). Computed,
+    not charged.
+  - *protocol-enforced fee* — what was actually taken (attested amount through
+    RedeemFeeRouter, recorded as `FEE_CHARGED`). Until the separate, audited
+    contract PR (D4), the two can differ, and both are shown as they are.
 - Enforceability (documented, not a bug): a fee can only be collected on exits
   executed through BAG. If the user sells the tokens elsewhere, BAG cannot and
   does not charge.
@@ -327,7 +343,7 @@ Dropped (after migration and a release with both): `bag_share_state`,
 |---|---|
 | A1 ✅ | `ledger_events` (insert-only, `seq` total order) + ledger writes in all five accounting RPCs + opening balances (stored state minus existing events) + `ledger_projection_mismatches()` + `GET /api/users/me/ledger`. Every economics and concurrency integration test now also asserts the ledger rebuilds the investor tables exactly. `definition_hash` stays null until the hash is computed server-side at intent time (A3). |
 | A2 ✅ | `apply_wallet_observation` (0049): drift recorded with its pro-rata allocation, booked as `EXTERNAL_OUTFLOW` only when still short ≥ 2 minutes later, resolved when the balance returns; skipped while a redemption is in flight or for a stale block. Balances read at one block, unreadable reads skipped (never 0). Triggers: Alchemy ADDRESS_ACTIVITY webhook (signed, payload only says which wallet to re-read) + 5-minute `/api/cron/reconcile-wallets` pass. `GET /api/users/me/reconciliation`. TVL follows confirmed outflows (bag aggregate reduced). Portfolio display from holdings moves to A4 with the share retirement; drift UI with it. |
-| A3 | Realized P&L and fees from verified proceeds (off-chain books) + loss carry-forward |
+| A3 ✅ | Ledger legs carry `costQuote` (fills: cost basis split by input spent, exact) and `proceedsQuote` (sales: verified receipt output; router: reported swapOutput split by quoted output) — 0050. Pure engine `computePositionPnl` (average cost per asset, realized P&L only from verified proceeds, external outflows realize nothing, unknowns stay null, fee base above the realized high-water mark). `GET /api/users/me/positions/:strategyId/pnl`. Fees actually charged and the on-chain fee path are unchanged (D4). |
 | A4 | Redeem by fraction; position value from holdings; shares removed from UI/API |
 | A5 | External exit classification v2.1 |
 | A6 | Strategy Performance Index + `/strategies/:id/performance` |
