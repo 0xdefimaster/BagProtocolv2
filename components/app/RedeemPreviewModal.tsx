@@ -555,7 +555,10 @@ function RedeemExecutionPanel({
   let label: string;
   if (state.phase === 'creating') label = 'Preparing your redemption…';
   else if (state.phase === 'preparing') label = 'Wallet confirmation required…';
-  else if (state.phase === 'awaiting_signature') {
+  else if (state.phase === 'awaiting_signature' && state.intent?.composerTransaction) {
+    const names = swapSteps.map((s) => s.targetSymbol).filter(Boolean).join(', ');
+    label = `Confirm the sale${names ? ` of ${names}` : ''} in your wallet (one transaction)`;
+  } else if (state.phase === 'awaiting_signature') {
     const step = swapSteps[activeSwapIndex] ?? swapSteps[0];
     const position = swapSteps.length > 1 && activeSwapIndex >= 0 ? ` (${activeSwapIndex + 1}/${swapSteps.length})` : '';
     label = step ? `Confirm sale of ${step.targetSymbol} in your wallet${position}` : 'Confirm in your wallet…';

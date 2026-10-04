@@ -4789,3 +4789,7 @@ create trigger trg_guard_bag_lineage
 
 revoke all on function guard_bag_lineage() from public, anon, authenticated;
 grant execute on function guard_bag_lineage() to service_role;
+
+-- 0047_redeem_composer_transaction.sql
+alter table redeem_intents
+  add column if not exists composer_transaction jsonb;

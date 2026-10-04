@@ -29,6 +29,8 @@ interface RedeemIntentRow {
   share_price_at_quote: string;
   redeem_value_quote: string;
   steps: RedeemIntentStepRecord[];
+  /** 0047; absent on a database without that migration. */
+  composer_transaction?: RedeemIntent['composerTransaction'];
   status: RedeemIntentStatus;
   failure_code: RedeemIntentFailureCode | null;
   created_at: string;
@@ -53,6 +55,7 @@ function fromRow(row: RedeemIntentRow): RedeemIntent {
     sharePriceAtQuote: row.share_price_at_quote,
     redeemValueQuote: row.redeem_value_quote,
     steps: row.steps,
+    composerTransaction: row.composer_transaction ?? null,
     status: row.status,
     failureCode: row.failure_code,
     createdAt: row.created_at,
@@ -76,6 +79,7 @@ export interface CreateRedeemIntentInput {
   sharePriceAtQuote: string;
   redeemValueQuote: string;
   steps: RedeemIntentStepRecord[];
+  composerTransaction?: RedeemIntent['composerTransaction'];
   status: RedeemIntentStatus;
   failureCode: RedeemIntentFailureCode | null;
   expiresAt: string;
@@ -98,6 +102,8 @@ export async function createRedeemIntent(admin: SupabaseClient, input: CreateRed
       share_price_at_quote: input.sharePriceAtQuote,
       redeem_value_quote: input.redeemValueQuote,
       steps: input.steps,
+      // Only written when set, so per-asset redemptions keep working on a database without migration 0047.
+      ...(input.composerTransaction ? { composer_transaction: input.composerTransaction } : {}),
       status: input.status,
       failure_code: input.failureCode,
       expires_at: input.expiresAt,

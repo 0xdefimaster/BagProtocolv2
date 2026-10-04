@@ -185,4 +185,21 @@ describe('executeWalletSweep', () => {
     expect(mocks.simulate).toHaveBeenCalled();
     expect(mocks.send).toHaveBeenCalled();
   });
+
+  it('onSubmitted gets the sale hash: before the receipt wait on the sequential path, and for a batch', async () => {
+    wallet({ caps: { '0x1237': { atomic: { status: 'unsupported' } } } });
+    const order: string[] = [];
+    await executeWalletSweep(WALLET, plan, (s) => order.push(s), { onSubmitted: (h) => void order.push(`submitted:${h}`) });
+    expect(order).toEqual(['approving', 'simulating', 'signing', `submitted:${SALE_HASH}`, 'confirming']);
+
+    wallet({ caps: { '0x1237': { atomic: { status: 'supported' } } } });
+    const seen: string[] = [];
+    await executeWalletSweep(WALLET, plan, () => {}, { onSubmitted: (h) => void seen.push(h) });
+    expect(seen).toEqual([SALE_HASH]);
+  });
+
+  it('a failing onSubmitted (bookkeeping) never fails the sale', async () => {
+    wallet({ caps: { '0x1237': { atomic: { status: 'unsupported' } } } });
+    expect(await executeWalletSweep(WALLET, plan, () => {}, { onSubmitted: async () => { throw new Error('offline'); } })).toBe(SALE_HASH);
+  });
 });

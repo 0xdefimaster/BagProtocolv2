@@ -134,11 +134,24 @@ export async function sendSweepBatch(
   }
 }
 
+export interface WalletSweepOptions {
+  /** Called once with the sale's hash as soon as it is known (before its receipt on the sequential path), e.g. to record it server-side. Errors are ignored. */
+  onSubmitted?: (hash: Hex) => Promise<unknown> | void;
+}
+
 export async function executeWalletSweep(
   walletAddress: string,
   plan: SweepTransactionPlan,
-  onProgress: (step: SweepProgress) => void = () => {}
+  onProgress: (step: SweepProgress) => void = () => {},
+  options: WalletSweepOptions = {}
 ): Promise<Hex> {
+  const submitted = async (hash: Hex) => {
+    try {
+      await options.onSubmitted?.(hash);
+    } catch {
+      // bookkeeping only
+    }
+  };
   const { transaction } = plan;
 
   if (plan.approvals.length > 0) {
@@ -149,7 +162,9 @@ export async function executeWalletSweep(
       if (needed.length > 0 && (await walletSupportsAtomicBatch(provider, walletAddress, transaction.chainId))) {
         onProgress('batching');
         try {
-          return await sendSweepBatch(provider, walletAddress, plan, needed);
+          const batchHash = await sendSweepBatch(provider, walletAddress, plan, needed);
+          await submitted(batchHash);
+          return batchHash;
         } catch (err) {
           if (!(err instanceof BatchUnsupportedError)) throw err;
           // Wallet advertised batching but refused it: fall through to one approval at a time.
@@ -166,6 +181,7 @@ export async function executeWalletSweep(
   await simulateTransactionOnChain(walletAddress, transaction.chainId, transaction, 'sale');
   onProgress('signing');
   const hash = await sendComposerTransaction(walletAddress, transaction);
+  await submitted(hash);
   onProgress('confirming');
   const provider = getEthereumProvider();
   if (!provider) throw new Error('Wallet disconnected before the sale confirmed.');
