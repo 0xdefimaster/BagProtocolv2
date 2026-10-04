@@ -135,6 +135,19 @@ export async function getRedeemIntentForUser(
   return { ok: true, intent };
 }
 
+/** One user's redemptions with a transaction on chain that are not final yet (SUBMITTED/CONFIRMING), newest first. */
+export async function listUnsettledRedeemIntentsForUser(admin: SupabaseClient, userId: string, limit: number): Promise<RedeemIntent[]> {
+  const { data, error } = await admin
+    .from('redeem_intents')
+    .select()
+    .eq('user_id', userId)
+    .in('status', ['SUBMITTED', 'CONFIRMING'])
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as RedeemIntentRow[]).map(fromRow);
+}
+
 /** Same as `listUnsettledPurchaseIntents()` for redemptions (SUBMITTED/CONFIRMING, oldest first). Scheduled reconciler only. */
 export async function listUnsettledRedeemIntents(admin: SupabaseClient, olderThanIso: string, limit: number): Promise<RedeemIntent[]> {
   const { data, error } = await admin
