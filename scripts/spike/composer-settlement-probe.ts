@@ -12,6 +12,7 @@
  *   P   push     USDG → core.transfer to the probe → core.call probe without a resource (amount 0)
  *   S   swap     --swap-token → lifi.swap → USDG → core.call probe (pull; amount = the swap's runtime output)
  *   SP  swap+push --swap-token → lifi.swap → USDG → core.transfer to the probe → call the probe (push)
+ *   SP2 two legs  --swap-token and --swap-token2 → two lifi.swaps → core.merge → USDG → core.transfer → call (push)
  *   R   revert   like T with minReceived = amount + 1: the simulation must revert (atomicity)
  *   T2  repeat   T compiled again: is userProxy the same address for the same signer?
  * Every probe call sends to `context.sender`, so the event's `recipient` also shows what that resolves to.
@@ -22,11 +23,11 @@
  * core.transfer to the probe (P, SP) is a tracked output, so push flows keep Composer's default guard.
  *
  *   npx tsx scripts/spike/composer-settlement-probe.ts --signer 0xWALLET --probe 0xPROBE \
- *     [--usdg-amount 1000000] [--swap-token 0xTOKEN --swap-amount <raw>]
+ *     [--usdg-amount 1000000] [--swap-token 0xTOKEN --swap-amount <raw>] [--swap-token2 0xTOKEN2 --swap-amount2 <raw>]
  *
  * The signer must hold the USDG (and the swap token, for S/SP): the server simulates the real transaction.
  *
- * --send T|P|S|SP additionally broadcasts that ONE flow from a DISPOSABLE wallet, only if ALL are set:
+ * --send T|P|S|SP|SP2 additionally broadcasts that ONE flow from a DISPOSABLE wallet, only if ALL are set:
  *   PROBE_PRIVATE_KEY     disposable key (env only; never printed or written; its address must equal --signer)
  *   PROBE_CONFIRM         must equal I_UNDERSTAND_THIS_SPENDS_REAL_FUNDS
  *   PROBE_MAX_INPUT_RAW   hard cap on the flow's input amount (raw units)
@@ -71,7 +72,7 @@ const PROBE_EVENT_ABI = [
   },
 ] as const;
 
-type Variant = 'T' | 'P' | 'S' | 'SP' | 'R' | 'T2';
+type Variant = 'T' | 'P' | 'S' | 'SP' | 'SP2' | 'R' | 'T2';
 const PULL: readonly Variant[] = ['T', 'S', 'R', 'T2'];
 const SWAP: readonly Variant[] = ['S', 'SP'];
 const isAddress = (v: string | undefined): v is `0x${string}` => !!v && /^0x[0-9a-fA-F]{40}$/.test(v);
@@ -98,6 +99,9 @@ interface FlowSpec {
   variant: Variant;
   inputToken: `0x${string}`;
   inputAmount: bigint;
+  /** SP2 only: the second leg. */
+  inputToken2?: `0x${string}`;
+  inputAmount2?: bigint;
 }
 
 async function compileFlow(sdk: ReturnType<typeof createComposeSdk>, signer: `0x${string}`, probe: `0x${string}`, spec: FlowSpec): Promise<ComposeCompileResult> {
@@ -105,7 +109,13 @@ async function compileFlow(sdk: ReturnType<typeof createComposeSdk>, signer: `0x
   const minReceived = variant === 'R' ? spec.inputAmount + BigInt(1) : BigInt(0);
   const b = sdk.flow(ROBINHOOD_CHAIN_ID, {
     name: `composer-settlement-probe-${variant}`,
-    inputs: { amountIn: resources.erc20(spec.inputToken, ROBINHOOD_CHAIN_ID), probeAddress: 'address', zero: 'uint256', minReceived: 'uint256' },
+    inputs: {
+      amountIn: resources.erc20(spec.inputToken, ROBINHOOD_CHAIN_ID),
+      ...(variant === 'SP2' ? { amountIn2: resources.erc20(spec.inputToken2!, ROBINHOOD_CHAIN_ID) } : {}),
+      probeAddress: 'address',
+      zero: 'uint256',
+      minReceived: 'uint256',
+    },
   } as const);
 
   let usdg = b.inputs.amountIn as Parameters<typeof b.core.call>[1]['resource'];
@@ -116,6 +126,18 @@ async function compileFlow(sdk: ReturnType<typeof createComposeSdk>, signer: `0x
       guards: [guards.slippage({ port: 'unspentIn', bps: 100 })],
     });
     usdg = swap.amountOut;
+  }
+  if (variant === 'SP2') {
+    // Basket-style fan-in: each leg sold into USDG, the two outputs merged into one amount.
+    const toUsdg = (id: string, amountIn: Parameters<typeof b.lifi.swap>[1]['bind']['amountIn']) =>
+      b.lifi.swap(id, {
+        bind: { amountIn },
+        config: { resourceOut: { kind: 'erc20', token: USDG, chainId: ROBINHOOD_CHAIN_ID }, slippage: 0.01 },
+        guards: [guards.slippage({ port: 'unspentIn', bps: 100 })],
+      }).amountOut;
+    const a = toUsdg('swap', b.inputs.amountIn);
+    const c = toUsdg('swap2', (b.inputs as unknown as Record<string, typeof b.inputs.amountIn>).amountIn2);
+    usdg = b.core.merge('merge', { bind: { a, b: c } }).merged;
   }
   if (PULL.includes(variant)) {
     b.core.call('probe', {
@@ -136,6 +158,7 @@ async function compileFlow(sdk: ReturnType<typeof createComposeSdk>, signer: `0x
     signer,
     inputs: {
       amountIn: materialisers.directDeposit({ amount: spec.inputAmount }),
+      ...(variant === 'SP2' ? { amountIn2: materialisers.directDeposit({ amount: spec.inputAmount2! }) } : {}),
       probeAddress: probe,
       zero: '0',
       minReceived: minReceived.toString(),
@@ -182,12 +205,16 @@ async function main() {
   const usdgAmount = arg('usdg-amount') ?? '1000000';
   const swapToken = arg('swap-token');
   const swapAmount = arg('swap-amount');
+  const swapToken2 = arg('swap-token2');
+  const swapAmount2 = arg('swap-amount2');
   const send = arg('send') as Variant | undefined;
   if (!apiKey) finish(2, 'BLOCKED: LIFI_API_KEY is not set (Composer rejects unauthenticated requests).');
   if (!isAddress(signer) || !isAddress(probe)) finish(2, 'BLOCKED: pass --signer 0x… and --probe 0x… (the deployed ComposerSettlementProbe).');
   if (!isRaw(usdgAmount)) finish(2, 'BLOCKED: --usdg-amount must be a positive raw integer (6 decimals: 1000000 = 1 USDG).');
   if (swapToken !== undefined && (!isAddress(swapToken) || !isRaw(swapAmount))) finish(2, 'BLOCKED: --swap-token needs an address and --swap-amount a positive raw integer.');
-  if (send !== undefined && !['T', 'P', 'S', 'SP'].includes(send)) finish(2, 'BLOCKED: --send takes T, P, S or SP.');
+  if (swapToken2 !== undefined && (!swapToken || !isAddress(swapToken2) || !isRaw(swapAmount2) || swapToken2.toLowerCase() === swapToken.toLowerCase())) finish(2, 'BLOCKED: --swap-token2 needs --swap-token, a different address and a positive --swap-amount2.');
+  if (send === 'SP2' && !swapToken2) finish(2, 'BLOCKED: --send SP2 needs --swap-token2 and --swap-amount2.');
+  if (send !== undefined && !['T', 'P', 'S', 'SP', 'SP2'].includes(send)) finish(2, 'BLOCKED: --send takes T, P, S, SP or SP2.');
   if ((send === 'S' || send === 'SP') && !swapToken) finish(2, `BLOCKED: --send ${send} needs --swap-token and --swap-amount.`);
 
   const pub = createPublicClient({ transport: http(rpcUrl) });
@@ -216,6 +243,9 @@ async function main() {
     { variant: 'T', inputToken: USDG, inputAmount: BigInt(usdgAmount) },
     { variant: 'P', inputToken: USDG, inputAmount: BigInt(usdgAmount) },
     ...(swapToken ? SWAP.map((variant) => ({ variant, inputToken: swapToken as `0x${string}`, inputAmount: BigInt(swapAmount as string) })) : []),
+    ...(swapToken2
+      ? [{ variant: 'SP2' as const, inputToken: swapToken as `0x${string}`, inputAmount: BigInt(swapAmount as string), inputToken2: swapToken2 as `0x${string}`, inputAmount2: BigInt(swapAmount2 as string) }]
+      : []),
     { variant: 'R', inputToken: USDG, inputAmount: BigInt(usdgAmount) },
     { variant: 'T2', inputToken: USDG, inputAmount: BigInt(usdgAmount) },
   ];
@@ -237,6 +267,7 @@ async function main() {
     'push model builds (P)': (compiles.P as { ok?: boolean })?.ok ?? false,
     'swap output into core.call builds (S, pull)': swapToken ? ((compiles.S as { ok?: boolean })?.ok ?? false) : 'not run',
     'swap output pushed to the probe builds (SP)': swapToken ? ((compiles.SP as { ok?: boolean })?.ok ?? false) : 'not run',
+    'two swaps merged and pushed to the probe builds (SP2)': swapToken2 ? ((compiles.SP2 as { ok?: boolean })?.ok ?? false) : 'not run',
     // Only a simulation revert counts: R failing for any other reason (e.g. request validation) proves nothing.
     'a reverting probe call fails the whole simulation (R)': r ? !r.ok && /revert/.test(r.error?.kind ?? '') : 'not run',
     'R failure kind': r?.error?.kind ?? null,
@@ -258,7 +289,7 @@ async function sendOne(pub: ReturnType<typeof createPublicClient>, sdk: ReturnTy
   // Funds only ever go to the one probe the operator deployed and pinned; chain id and the probe's token (USDG) were
   // already checked on-chain in main().
   if (allowedProbe.toLowerCase() !== probe.toLowerCase()) finish(2, `SEND_REFUSED: --probe ${probe} is not PROBE_ALLOWED_ADDRESS ${allowedProbe}.`);
-  if (spec.inputAmount > BigInt(cap)) finish(2, `SEND_REFUSED: input ${spec.inputAmount} is above PROBE_MAX_INPUT_RAW ${cap}.`);
+  if (spec.inputAmount > BigInt(cap) || (spec.inputAmount2 ?? BigInt(0)) > BigInt(cap)) finish(2, `SEND_REFUSED: an input is above PROBE_MAX_INPUT_RAW ${cap}.`);
   const account = privateKeyToAccount(key);
   if (account.address.toLowerCase() !== signer.toLowerCase()) finish(2, 'SEND_REFUSED: PROBE_PRIVATE_KEY does not belong to --signer.');
 
@@ -275,16 +306,19 @@ async function sendOne(pub: ReturnType<typeof createPublicClient>, sdk: ReturnTy
   if (tx.chainId !== undefined && Number(tx.chainId) !== ROBINHOOD_CHAIN_ID) finish(1, `VALIDATION_FAILED: transaction is for chain ${tx.chainId}.`);
   if (!tx.data.toLowerCase().includes(probe.slice(2).toLowerCase())) finish(1, 'VALIDATION_FAILED: the probe address does not appear in the compiled calldata.');
   const approvals = (r.approvals ?? []).map((a) => ({ token: a.token as `0x${string}`, spender: a.spender as `0x${string}`, amount: BigInt(a.amount) }));
+  const inputLimits = new Map<string, bigint>([[spec.inputToken.toLowerCase(), spec.inputAmount]]);
+  if (spec.inputToken2) inputLimits.set(spec.inputToken2.toLowerCase(), spec.inputAmount2!);
   for (const a of approvals) {
-    if (a.token.toLowerCase() !== spec.inputToken.toLowerCase()) finish(1, `VALIDATION_FAILED: approval asked for ${a.token}, not the input token.`);
-    if (!isAddress(a.spender) || a.amount > spec.inputAmount) finish(1, 'VALIDATION_FAILED: approval spender invalid or amount above the input.');
+    const limit = inputLimits.get(a.token.toLowerCase());
+    if (limit === undefined) finish(1, `VALIDATION_FAILED: approval asked for ${a.token}, not an input token.`);
+    if (!isAddress(a.spender) || a.amount > limit) finish(1, 'VALIDATION_FAILED: approval spender invalid or amount above the input.');
   }
 
   const chain = defineChain({ id: ROBINHOOD_CHAIN_ID, name: 'Robinhood Chain', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } });
   const wallet = createWalletClient({ account, chain, transport: http(rpcUrl) });
   const bal = (token: `0x${string}`, owner: `0x${string}`) => pub.readContract({ address: token, abi: erc20Abi, functionName: 'balanceOf', args: [owner] });
   const allowance = (token: `0x${string}`, owner: `0x${string}`, spender: `0x${string}`) => pub.readContract({ address: token, abi: erc20Abi, functionName: 'allowance', args: [owner, spender] });
-  const before = { usdg: await bal(USDG, signer), input: await bal(spec.inputToken, signer) };
+  const before = { usdg: await bal(USDG, signer), input: await bal(spec.inputToken, signer), ...(spec.inputToken2 ? { input2: await bal(spec.inputToken2, signer) } : {}) };
 
   const sent: Record<string, unknown> = { variant: spec.variant, userProxy: r.userProxy, txTo: tx.to, approvals };
   report.send = sent;
@@ -315,7 +349,7 @@ async function sendOne(pub: ReturnType<typeof createPublicClient>, sdk: ReturnTy
   const probed = parseEventLogs({ abi: PROBE_EVENT_ABI, logs: receipt.logs.filter((l) => l.address.toLowerCase() === probe.toLowerCase()), eventName: 'Probed' });
   if (probed.length !== 1) finish(1, `UNEXPECTED: ${probed.length} Probed events in ${hash}.`);
   const e = probed[0].args;
-  const after = { usdg: await bal(USDG, signer), input: await bal(spec.inputToken, signer) };
+  const after = { usdg: await bal(USDG, signer), input: await bal(spec.inputToken, signer), ...(spec.inputToken2 ? { input2: await bal(spec.inputToken2, signer) } : {}) };
   const leftover = {
     probeUsdgBalance: await bal(USDG, probe),
     allowanceMsgSenderToProbe: await allowance(USDG, e.msgSender, probe),
@@ -340,7 +374,8 @@ async function sendOne(pub: ReturnType<typeof createPublicClient>, sdk: ReturnTy
     '7 inline approval left after the call (msg.sender → probe)': leftover.allowanceMsgSenderToProbe,
     'probe kept nothing': leftover.probeUsdgBalance === BigInt(0),
     // T shows Composer can call a contract; only S shows a swap's actual output reaching BAG's contract in the same tx.
-    'P1 complete (swap output → probe, same tx)': SWAP.includes(spec.variant) && e.received > BigInt(0),
+    'P1 complete (swap output → probe, same tx)': (SWAP.includes(spec.variant) || spec.variant === 'SP2') && e.received > BigInt(0),
+    'two-leg fan-in (SP2)': spec.variant === 'SP2',
   };
   console.log(`\nAnswers: ${JSON.stringify(sent.answers, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2)}`);
   finish(0, `SENT ${hash}: see answers.`);
