@@ -10,23 +10,29 @@
  * against the live chain (simulationPolicy 'strict', simulateUserProgram). Flows:
  *   T   pull     USDG → core.call probe (resource + inline approval to the probe; amount = the USDG resource)
  *   P   push     USDG → core.transfer to the probe → core.call probe without a resource (amount 0)
- *   S   swap     --swap-token → lifi.swap → USDG → core.call probe (amount = the swap's runtime output)
+ *   S   swap     --swap-token → lifi.swap → USDG → core.call probe (pull; amount = the swap's runtime output)
+ *   SP  swap+push --swap-token → lifi.swap → USDG → core.transfer to the probe → call the probe (push)
  *   R   revert   like T with minReceived = amount + 1: the simulation must revert (atomicity)
  *   T2  repeat   T compiled again: is userProxy the same address for the same signer?
  * Every probe call sends to `context.sender`, so the event's `recipient` also shows what that resolves to.
  *
+ * Price impact: Composer prices only tracked resources. USDG consumed by core.call (pull: T, R, T2, S) is not one, so
+ * the flow reads as "$1 in, $0 out" and the default 5% price-impact guard rejects it (observed live 2026-10-05).
+ * Those flows compile with the guard off (maxPriceImpactBps 10000); the swap in S keeps its own on-chain minimum. A
+ * core.transfer to the probe (P, SP) is a tracked output, so push flows keep Composer's default guard.
+ *
  *   npx tsx scripts/spike/composer-settlement-probe.ts --signer 0xWALLET --probe 0xPROBE \
  *     [--usdg-amount 1000000] [--swap-token 0xTOKEN --swap-amount <raw>]
  *
- * The signer must hold the USDG (and the swap token, for S): the server simulates the real transaction.
+ * The signer must hold the USDG (and the swap token, for S/SP): the server simulates the real transaction.
  *
- * --send T|P|S additionally broadcasts that ONE flow from a DISPOSABLE wallet, only if ALL are set:
+ * --send T|P|S|SP additionally broadcasts that ONE flow from a DISPOSABLE wallet, only if ALL are set:
  *   PROBE_PRIVATE_KEY     disposable key (env only; never printed or written; its address must equal --signer)
  *   PROBE_CONFIRM         must equal I_UNDERSTAND_THIS_SPENDS_REAL_FUNDS
  *   PROBE_MAX_INPUT_RAW   hard cap on the flow's input amount (raw units)
  *   PROBE_ALLOWED_ADDRESS the deployed probe; --probe must equal it (a wrong .env cannot send funds elsewhere)
  * and it checks the chain id, the probe's token (USDG) and that the probe address is in the compiled calldata.
- * Order: --send T first (msg.sender, allowance, delivery model), then --send S — P1 is complete only when S passes.
+ * Order: --send T first (msg.sender, allowance, delivery model), then --send S or SP — P1 is complete only when one of them passes.
  * It sends exactly the approvals the compile returned (only for the input token, never above the input), pre-checks
  * the transaction with eth_call (revoking those approvals if it would revert), sends it, and reads the answers from
  * the receipt and from chain state afterwards.
@@ -65,7 +71,9 @@ const PROBE_EVENT_ABI = [
   },
 ] as const;
 
-type Variant = 'T' | 'P' | 'S' | 'R' | 'T2';
+type Variant = 'T' | 'P' | 'S' | 'SP' | 'R' | 'T2';
+const PULL: readonly Variant[] = ['T', 'S', 'R', 'T2'];
+const SWAP: readonly Variant[] = ['S', 'SP'];
 const isAddress = (v: string | undefined): v is `0x${string}` => !!v && /^0x[0-9a-fA-F]{40}$/.test(v);
 const isRaw = (v: string | undefined): v is string => !!v && /^\d+$/.test(v) && BigInt(v) > BigInt(0);
 const arg = (name: string) => {
@@ -100,26 +108,27 @@ async function compileFlow(sdk: ReturnType<typeof createComposeSdk>, signer: `0x
     inputs: { amountIn: resources.erc20(spec.inputToken, ROBINHOOD_CHAIN_ID), probeAddress: 'address', zero: 'uint256', minReceived: 'uint256' },
   } as const);
 
-  if (variant === 'P') {
-    b.core.transfer('push', { bind: { amount: b.inputs.amountIn, recipient: b.inputs.probeAddress }, config: {} });
-    b.core.call('probe', {
-      bind: { recipient: b.context.sender, amount: b.inputs.zero, minReceived: b.inputs.minReceived } as never,
-      config: { target: probe, functionSignature: PROBE_SIG },
+  let usdg = b.inputs.amountIn as Parameters<typeof b.core.call>[1]['resource'];
+  if (SWAP.includes(variant)) {
+    const swap = b.lifi.swap('swap', {
+      bind: { amountIn: b.inputs.amountIn },
+      config: { resourceOut: { kind: 'erc20', token: USDG, chainId: ROBINHOOD_CHAIN_ID }, slippage: 0.01 },
+      guards: [guards.slippage({ port: 'unspentIn', bps: 100 })],
     });
-  } else {
-    let usdg = b.inputs.amountIn as Parameters<typeof b.core.call>[1]['resource'];
-    if (variant === 'S') {
-      const swap = b.lifi.swap('swap', {
-        bind: { amountIn: b.inputs.amountIn },
-        config: { resourceOut: { kind: 'erc20', token: USDG, chainId: ROBINHOOD_CHAIN_ID }, slippage: 0.01 },
-        guards: [guards.slippage({ port: 'unspentIn', bps: 100 })],
-      });
-      usdg = swap.amountOut;
-    }
+    usdg = swap.amountOut;
+  }
+  if (PULL.includes(variant)) {
     b.core.call('probe', {
       resource: usdg,
       bind: { recipient: b.context.sender, amount: usdg, minReceived: b.inputs.minReceived } as never,
       config: { target: probe, functionSignature: PROBE_SIG, approvals: [{ spender: probe }] },
+    });
+  } else {
+    // Push: hand the USDG to the probe first, then call it without a resource (amount 0: nothing to pull).
+    b.core.transfer('push', { bind: { amount: usdg as never, recipient: b.inputs.probeAddress }, config: {} });
+    b.core.call('probe', {
+      bind: { recipient: b.context.sender, amount: b.inputs.zero, minReceived: b.inputs.minReceived } as never,
+      config: { target: probe, functionSignature: PROBE_SIG },
     });
   }
 
@@ -132,8 +141,10 @@ async function compileFlow(sdk: ReturnType<typeof createComposeSdk>, signer: `0x
       minReceived: minReceived.toString(),
     } as never,
     // Composer refuses sweepTo when nothing is left on the proxy to sweep ("no proxy-held terminal resources"): T/R/T2's
-    // core.call consumes the whole USDG. P (transfer remainder) and S (the swap's unspent input) leave something.
-    ...(variant === 'P' || variant === 'S' ? { sweepTo: { $ref: 'context.sender' } } : {}),
+    // core.call consumes the whole USDG. P/SP (transfer remainder) and S/SP (the swap's unspent input) leave something.
+    ...(variant === 'T' || variant === 'R' || variant === 'T2' ? {} : { sweepTo: { $ref: 'context.sender' } }),
+    // See the header: USDG consumed by core.call is invisible to Composer's price-impact check.
+    ...(PULL.includes(variant) ? { maxPriceImpactBps: 10000 } : {}),
     simulationPolicy: 'strict',
     simulateUserProgram: true,
     checkOnChainAllowances: false,
@@ -176,8 +187,8 @@ async function main() {
   if (!isAddress(signer) || !isAddress(probe)) finish(2, 'BLOCKED: pass --signer 0x… and --probe 0x… (the deployed ComposerSettlementProbe).');
   if (!isRaw(usdgAmount)) finish(2, 'BLOCKED: --usdg-amount must be a positive raw integer (6 decimals: 1000000 = 1 USDG).');
   if (swapToken !== undefined && (!isAddress(swapToken) || !isRaw(swapAmount))) finish(2, 'BLOCKED: --swap-token needs an address and --swap-amount a positive raw integer.');
-  if (send !== undefined && !['T', 'P', 'S'].includes(send)) finish(2, 'BLOCKED: --send takes T, P or S.');
-  if (send === 'S' && !swapToken) finish(2, 'BLOCKED: --send S needs --swap-token and --swap-amount.');
+  if (send !== undefined && !['T', 'P', 'S', 'SP'].includes(send)) finish(2, 'BLOCKED: --send takes T, P, S or SP.');
+  if ((send === 'S' || send === 'SP') && !swapToken) finish(2, `BLOCKED: --send ${send} needs --swap-token and --swap-amount.`);
 
   const pub = createPublicClient({ transport: http(rpcUrl) });
   const chainId = await pub.getChainId().catch((e: Error) => finish(2, `RPC_UNREACHABLE: ${scrub(e.message.split('\n')[0])}`));
@@ -204,7 +215,7 @@ async function main() {
   const specs: FlowSpec[] = [
     { variant: 'T', inputToken: USDG, inputAmount: BigInt(usdgAmount) },
     { variant: 'P', inputToken: USDG, inputAmount: BigInt(usdgAmount) },
-    ...(swapToken ? [{ variant: 'S' as const, inputToken: swapToken as `0x${string}`, inputAmount: BigInt(swapAmount as string) }] : []),
+    ...(swapToken ? SWAP.map((variant) => ({ variant, inputToken: swapToken as `0x${string}`, inputAmount: BigInt(swapAmount as string) })) : []),
     { variant: 'R', inputToken: USDG, inputAmount: BigInt(usdgAmount) },
     { variant: 'T2', inputToken: USDG, inputAmount: BigInt(usdgAmount) },
   ];
@@ -224,7 +235,8 @@ async function main() {
   report.compileAnswers = {
     'core.call builds on Robinhood (T)': t?.ok ?? false,
     'push model builds (P)': (compiles.P as { ok?: boolean })?.ok ?? false,
-    'swap output into core.call builds (S)': swapToken ? ((compiles.S as { ok?: boolean })?.ok ?? false) : 'not run',
+    'swap output into core.call builds (S, pull)': swapToken ? ((compiles.S as { ok?: boolean })?.ok ?? false) : 'not run',
+    'swap output pushed to the probe builds (SP)': swapToken ? ((compiles.SP as { ok?: boolean })?.ok ?? false) : 'not run',
     // Only a simulation revert counts: R failing for any other reason (e.g. request validation) proves nothing.
     'a reverting probe call fails the whole simulation (R)': r ? !r.ok && /revert/.test(r.error?.kind ?? '') : 'not run',
     'R failure kind': r?.error?.kind ?? null,
@@ -328,7 +340,7 @@ async function sendOne(pub: ReturnType<typeof createPublicClient>, sdk: ReturnTy
     '7 inline approval left after the call (msg.sender → probe)': leftover.allowanceMsgSenderToProbe,
     'probe kept nothing': leftover.probeUsdgBalance === BigInt(0),
     // T shows Composer can call a contract; only S shows a swap's actual output reaching BAG's contract in the same tx.
-    'P1 complete (swap output → probe, same tx)': spec.variant === 'S' && e.received > BigInt(0),
+    'P1 complete (swap output → probe, same tx)': SWAP.includes(spec.variant) && e.received > BigInt(0),
   };
   console.log(`\nAnswers: ${JSON.stringify(sent.answers, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2)}`);
   finish(0, `SENT ${hash}: see answers.`);
