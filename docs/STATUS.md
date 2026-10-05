@@ -76,7 +76,7 @@ prove behavior against a local chain, never against Robinhood Chain.
 | Item | Where |
 |---|---|
 | Redemption fee: B0 charges on the guaranteed minimum (never above the fee on the actual result); live validation pending; on-chain computation from actual output is the separate contract PR (B) | `docs/FEE_ECONOMICS_DESIGN.md` |
-| Fee-paying sales through LI.FI Composer (the venue that can sell the live Bag) into a settlement contract: feasibility study done, POSSIBLE-BUT-UNVERIFIED; PoC P1 (compile/simulate only) next. Router not deployed | `docs/LIFI_COMPOSER_FEE_SETTLEMENT_FEASIBILITY.md` |
+| Fee-paying sales through LI.FI Composer (the venue that can sell the live Bag) into a settlement contract: feasibility study done (POSSIBLE-BUT-UNVERIFIED). P1 probe built (`ComposerSettlementProbe` + `composer-settlement-probe.ts`); **not yet run against Robinhood Chain**: it needs `LIFI_API_KEY` and a probe deployment on the operator's machine. Router not deployed | `docs/LIFI_COMPOSER_FEE_SETTLEMENT_FEASIBILITY.md` |
 | B0 live validation is blocked on: (1) Uniswap v3 executability of the Bag's tokens (run the checker), (2) `RedeemFeeRouter` + `CreatorRewardsVault` deployed and configured for V2, (3) a non-creator wallet selling a fee-paying Bag | `scripts/check-fee-router-liquidity.ts` |
 | Multi-signature sales on wallets without EIP-5792 (Rabby): one approval per token + the sale | proposal: opt-in persistent approval to the user's own Composer proxy |
 | A redemption does not store the fraction sold (receipts show what was sold per asset instead) | `supabase/migrations/0051_fraction_redeem.sql` |

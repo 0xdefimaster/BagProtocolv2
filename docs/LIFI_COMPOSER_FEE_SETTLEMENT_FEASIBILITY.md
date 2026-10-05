@@ -1,6 +1,9 @@
 # LI.FI Composer → BAG fee settlement: feasibility study
 
 Status: **STUDY**. No code or contract changes. 2026-10-05.
+Updated after review: who `msg.sender` is at the settlement contract, and how
+the tokens get there, are **not assumed** anywhere below. They are the first
+thing P1 measures (§6).
 
 ## 0. Question and answer
 
@@ -64,9 +67,9 @@ Not done:
 | 2 | Swap output into the next contract call | **SUPPORTED** (docs); BAG flow on 4663 unverified | S1: `core.call` "Invoke a smart contract function, optionally spending a token resource", wire format `core.call` with `bind: { input: <resourceRef> }`. S3 `swapAndZap.ts`: "The swap's amountOut feeds directly into the zap's amountIn". S3 `approveAndDeposit.ts`: a resource consumed by `core.call` into an ERC-4626 vault. S4: "Every intermediate step settles inside the proxy in the same transaction." |
 | 3 | Dynamic calldata injection | **SUPPORTED** (docs); BAG flow on 4663 unverified | S1 `CoreCallConfig.args`: positional values or `{ $ref }`. `SignatureBind` turns named signature parameters into refs to flow inputs or node outputs, resolved at execution time. S3 `callContract.ts` binds the consumed resource itself as the `shares` argument. The SDK also has `materialisers.call` ("measures a balance delta after an arbitrary contract call"), `core.staticCall` (read at execution time) and `core.balanceOf`. Allowed argument types (S2 `SolTypeSchema`): uint8–uint256, int128/int256, address, bool, bytes, bytes4, bytes32, string. So a `bytes` attestation signature fits. Return value: only `uint256` or none (S1 `CoreCallResult`). |
 | 4 | Arbitrary or permissioned contract interaction | **POSSIBLE-BUT-UNVERIFIED** | S1/S4: "Call an arbitrary contract … without a dedicated typed op". `core.rawCall` takes pre-encoded calldata. Neither the SDK nor the spec contains a target allowlist (searched S1/S2/S4 for allowlist, whitelist and permission: none). But the backend simulates every flow before returning calldata (`simulationPolicy: 'strict'` by default) and can refuse with `validation_error`, `resolution_rejected`, `verification_error` and others (S2 `ComposeErrorKind`). Whether it accepts a target outside its catalog on 4663 is a server-side policy only a compile call shows. |
-| 5 | Actual output measured in the settlement contract | **SUPPORTED** — by our contract, given 2 and 3 | The contract measures its own balance delta: it pulls `amount` from `msg.sender` and reads `balanceOf(this)` before and after. That is the pattern `RedeemFeeRouter` (`swapOutput`) and `CreatorRewardsVault.settleReward` (`received != amount` → revert) already use (S6). Composer only has to deliver the tokens and the runtime amount, which is items 2 and 3. The amount Composer passes is a hint; the delta is authoritative. |
+| 5 | Actual output measured in the settlement contract | **SUPPORTED** — by our contract, given 2 and 3 | The contract measures its own balance delta (`balanceOf(this)` before and after the tokens arrive), whether they are pulled from the caller or pushed before the call. Which of the two Composer does is measured in P1. That is the pattern `RedeemFeeRouter` (`swapOutput`) and `CreatorRewardsVault.settleReward` (`received != amount` → revert) already use (S6). Composer only has to deliver the tokens and the runtime amount, which is items 2 and 3. The amount Composer passes is a hint; the delta is authoritative. |
 | 6 | User/creator split in the same transaction | **SUPPORTED** — by our contract, given 2 | Inside the one `core.call`: fee to `CreatorRewardsVault.settleReward(creator, fee, redemptionId)`, the rest to the user. Same code path as today's router (S6). The call is one step of the one Composer transaction, so the split is atomic with the swaps. The vault must grant the new contract its settler role. |
-| 7 | Partial execution semantics | **SUPPORTED**: all-or-nothing, with three caveats | S1/S2 and the docs excerpt: "compile it into EVM calldata that executes atomically on-chain". It is one EVM transaction, so any revert (a guard, the swap's own `amountOutMin`, our contract) reverts everything. Caveats: (a) `status: 'partial'` is a **compile-time simulation** result, returned only with `simulationPolicy: 'allow-revert'` (S1 README) — not a partially executed transaction. (b) Async routes (`availability: 'future'`) are off unless `allowAsyncRoutes: true` (S2, S4); by default every produced resource is `availability: 'now'`. BAG must keep it off and reject any `future` resource. (c) A `lifi.swap` may leave **unspent input** (`unspentIn` port), which is swept to `sweepTo`. The transaction still succeeds with less than the full amount sold (S1, S4: "the swap can leave unspent input in the proxy"). BAG's accounting must record the input actually sold, not the input requested. Today's Composer redeem verification already requires that "each sold token left the wallet in full" (S6), which would fail closed. |
+| 7 | Partial execution semantics | **SUPPORTED per docs**: the documented model is one atomic transaction ("no partial failures"). Not yet observed on 4663 for this flow (P1 R / P2). Three caveats | S1/S2 and the docs excerpt: "compile it into EVM calldata that executes atomically on-chain". It is one EVM transaction, so any revert (a guard, the swap's own `amountOutMin`, our contract) reverts everything. Caveats: (a) `status: 'partial'` is a **compile-time simulation** result, returned only with `simulationPolicy: 'allow-revert'` (S1 README) — not a partially executed transaction. (b) Async routes (`availability: 'future'`) are off unless `allowAsyncRoutes: true` (S2, S4); by default every produced resource is `availability: 'now'`. BAG must keep it off and reject any `future` resource. (c) A `lifi.swap` may leave **unspent input** (`unspentIn` port), which is swept to `sweepTo`. The transaction still succeeds with less than the full amount sold (S1, S4: "the swap can leave unspent input in the proxy"). BAG's accounting must record the input actually sold, not the input requested. Today's Composer redeem verification already requires that "each sold token left the wallet in full" (S6), which would fail closed. |
 | 8 | Approval/allowance semantics | **SUPPORTED** for the mechanism; amount and revocation **UNVERIFIED** | User → proxy: compile returns the ERC-20 approvals the signer must send first (`approvals`, `checkOnChainAllowances`). BAG already uses this live and refuses any approval for another token or above the amount sold (S5, S6). Proxy → settlement contract: `CoreCallConfig.approvals: [{ spender }]` grants the call target an allowance inline (S1; S3 `callContract.ts` "grants the vault allowance inline"). Neither doc says whether that allowance is exactly the resource amount, or whether it is reset afterwards. So the contract must pull exactly `amount` and never rely on a leftover allowance. The proxy is the user's Composer execution address (`userProxy`, `context.executionAddress`). Whether it is fixed per user (deterministic) is not documented. BAG still bars unlimited approvals until that is proven on-chain (`docs/STATUS.md` §3). |
 | 9 | This flow on Robinhood Chain | **POSSIBLE-BUT-UNVERIFIED** (swaps alone: **SUPPORTED**) | Swaps plus sweep on 4663: **live** — the BAG purchase and the 50% redeem, each one Composer transaction (S5). LI.FI announced Composer on Robinhood Chain at launch (S8, search excerpt only). `core.call` / `core.merge` to a BAG contract on 4663 has not been compiled. S4: "A chain is listed once the VM contract is confirmed deployed on it", and `core.*` ops run in that VM, so nothing documented excludes them. But only `getChains()` plus a compile against 4663 proves it. |
 
@@ -109,8 +112,9 @@ compile in step P1 (§6).
 | Concern | `RedeemFeeRouter` today | Composer + settlement contract |
 |---|---|---|
 | Swap venue | Allowlisted targets: Uniswap v3 SwapRouter02 on 4663 | LI.FI aggregator through Composer: the venue that bought and sold the live Bag |
-| Who calls the contract | The user (EOA) | The user's Composer proxy. `msg.sender` is not the user. |
-| Where proceeds go | `msg.sender` | An attested `user` address. Never `msg.sender`, which is the proxy. |
+| Who calls the contract | The user (EOA) | **Unknown until P1.** Expected: the user's Composer execution proxy (`context.executionAddress`), but it could be another LI.FI executor or router. `settle` must not be designed around `msg.sender` before P1 shows who it is. |
+| Where proceeds go | `msg.sender` | An attested `user` address, never `msg.sender`, because `msg.sender` is not the user in any Composer model. |
+| How the USDG arrives | `transferFrom` from the user | **Unknown until P1.** Model 1 (push): Composer transfers the USDG to the contract before calling it. Model 2 (pull): Composer approves the contract and the contract pulls. The approval and security reasoning differs between the two, so the interface in §5 is fixed only after P1. |
 | Swap calldata bound in the attestation (`legsHash`) | Yes | Not possible: Composer compiles the swaps after BAG signs, so the contract sees only USDG arriving. Safety comes from the on-chain floor (`minUserProceeds`, below) plus Composer's per-swap `amountOutMin` and slippage guards. The contract never calls a swap target and needs no swap-target or input-token allowlist. |
 | Price quality (#16) | Best Uniswap tier within `FEE_REDEEM_MAX_PRICE_DEVIATION_BPS` of BAG's verified price, otherwise no attestation | **Kept.** The same rule (`redeem-quote-quality.ts`) applied to Composer's quoted per-leg output (`producedResources[*].simulated`): more than 5% below the verified value → no attestation. `minUserProceeds` is derived from that checked quote and enforced on-chain. |
 | Fee | B0: attested `feeAmount` from the guaranteed minimum | B0 unchanged (attested `feeAmount`), or B: computed on-chain from the measured amount and the attested basis, carry and rate (§5) |
@@ -125,8 +129,18 @@ from a compile. So the backend has to:
 4. Compile the final flow with the `settle` node.
 
 Step 4 re-quotes. If the price moves against the user, the contract reverts on
-`minUserProceeds`. A better price helps the user. Verification of the
-submitted transaction stays as today (sender, target, calldata, value, success)
+`minUserProceeds`. A better price helps the user. What the signature has to bind is the economic boundary, not the route:
+
+- the redemption and its Bag/strategy version;
+- the user;
+- the creator;
+- the output token;
+- the minimum guaranteed proceeds;
+- the deadline;
+- the fee semantics (B0: the amount; B: basis, carry and rate).
+
+The route's calldata does not need to be signed, because the contract's floor
+is set on the actual output. Verification of the submitted transaction stays as today (sender, target, calldata, value, success)
 and reads the authoritative numbers from the settlement contract's event in
 the receipt.
 
@@ -169,8 +183,11 @@ Composer accepts only a `uint256` or void return.
 2. `redemptionId` unused.
 3. Signature recovers to `feeAttestor`.
 4. Mark `redemptionId` used before any external call.
-5. Pull exactly `amount` of USDG from `msg.sender`. Measure `received` by this
-   contract's own balance delta.
+5. Take delivery of the USDG and measure `received` by this contract's own
+   balance delta. Model 2 (pull): pull exactly `amount` from the caller.
+   Model 1 (push): count what arrived before the call. Which one applies is
+   decided by P1; the contract must never rely on a leftover allowance either
+   way.
 6. Compute the fee: B0 → `feeAmount`; B → `floor(max(0, received − consumedBasis − lossCarry) × rateBps / 10000)`.
 7. Require `fee ≤ received` and `received − fee ≥ minUserProceeds`.
 8. If the fee is non-zero: approve the vault for exactly the fee, then
@@ -205,25 +222,62 @@ Decide after P1.
 
 **P0 — done here.** Offline flow, schema OK.
 
-**P1 — compile and simulate only, no funds moved.**
+**P1 — the probe (built: `contracts/spike/ComposerSettlementProbe.sol`,
+`scripts/spike/composer-settlement-probe.ts`, `scripts/spike/deploy-composer-probe.ts`).**
 
-- On the user's machine, with `LIFI_API_KEY`:
-  - `getChains()` contains 4663;
-  - compile the §3 flow against a minimal **test** contract;
-  - read `transactionRequest`, `approvals`, `userProxy`, and `producedResources`
-    (every one `availability: 'now'`);
-  - `simulateUserProgram: true`;
-  - compile twice for the same signer and compare `userProxy`.
-- The test contract only records its inputs and its balance delta, then pays
-  the full amount back to `user`, with no fee and no vault. Deploying it costs
-  gas only.
-- Answers items 4, 8 (proxy determinism) and 9, plus whether the backend
-  accepts `bytes` and a `$ref` amount in `args`.
+The probe contract takes no fee and holds nothing. For each call it records
+`msg.sender`, `tx.origin`, the calldata amount, its allowance, how much
+arrived (pushed before the call or pulled) and the allowance left afterwards.
+Then it forwards everything to the recipient.
 
-**P2 — one real transaction, very small (about $1).**
+| # | P1 question | How it is answered |
+|---|---|---|
+| 1 | Does `core.call` build on Robinhood Chain? | `getChains()` lists 4663; flows T/P/S compile with `simulationPolicy: 'strict'` and `simulateUserProgram` |
+| 2 | Does LI.FI allow this target? | Same compiles: a non-catalog contract either compiles or is refused with an error kind |
+| 3 | Can the dynamic amount be bound to the next call? | Flow S: the swap's runtime `amountOut` is the probe's `amount` argument; the event's `amountArg` shows the value that arrived |
+| 4 | Does the actual token reach the contract? | Event `received`; the probe ends with zero balance |
+| 5 | Can the balance delta be measured in the same tx? | Event `pulled` / `pushedBeforeCall` against `amountArg` |
+| 6 | Who is `msg.sender`, and who is the final recipient? | Event `msgSender` and `txOrigin`, compared with `userProxy` and the signer; `recipient` shows what `context.sender` resolves to |
+| 7 | Which spender gets the approval? | The compile's `approvals` (user → spender); the inline approval left on `msgSender → probe` after the call |
+| 8 | Is the whole flow atomic? | Flow R (minimum set above the input) must fail simulation; a reverted send must leave every token in the wallet |
+
+Flows: T (USDG → `core.call`, pull), P (USDG → `core.transfer` to the probe,
+then a call without a resource: push), S (token → `lifi.swap` → USDG →
+`core.call`), R (T with an impossible minimum), and T2 (T again: is `userProxy`
+the same address?).
+
+**P1a — compile and simulate only, no funds moved.** Run on the operator's
+machine, which needs `LIFI_API_KEY` and network access:
+
+```
+npx hardhat compile
+npx tsx scripts/spike/deploy-composer-probe.ts                  # gas only; needs PROBE_PRIVATE_KEY + PROBE_CONFIRM
+npx tsx scripts/spike/composer-settlement-probe.ts --signer 0xWALLET --probe 0xPROBE \
+  --usdg-amount 1000000 [--swap-token 0xTOKEN --swap-amount <raw>]
+```
+
+The signer must hold the USDG (and the swap token, for S), because Composer
+simulates the real transaction. P1a reads, for each flow:
+
+- the compile status, or the error kind if it fails;
+- `userProxy` and the transaction target;
+- `approvals` (token, spender, amount);
+- `producedResources` (all must be `availability: 'now'`);
+- the user-program simulation.
+
+Not covered by the probe: a `bytes` argument (the attestation). That belongs to
+the B contract's own test.
+
+**P1b — one real transaction, very small (about $1), with `--send T|P|S`.**
+It is sent from a disposable wallet on the operator's own machine and refused
+unless the key, a confirmation phrase and an input cap are all set. BAG signs
+nothing. The answers to questions 4–8 come from the receipt and from chain
+state afterwards.
+
+**P2 — the same with a stock token that has no Uniswap v3 route.**
 
 - One leg of a token with no Uniswap v3 route (e.g. AMKR) → USDG → test
-  contract → user.
+  contract → user: `--swap-token <AMKR> --swap-amount <raw> --send S`.
 - Check on-chain: the delta equals the event's `received`; the user receives
   everything; the contract ends at zero.
 - Check the inline approval left behind (item 8).
