@@ -24,6 +24,9 @@
  *   PROBE_PRIVATE_KEY     disposable key (env only; never printed or written; its address must equal --signer)
  *   PROBE_CONFIRM         must equal I_UNDERSTAND_THIS_SPENDS_REAL_FUNDS
  *   PROBE_MAX_INPUT_RAW   hard cap on the flow's input amount (raw units)
+ *   PROBE_ALLOWED_ADDRESS the deployed probe; --probe must equal it (a wrong .env cannot send funds elsewhere)
+ * and it checks the chain id, the probe's token (USDG) and that the probe address is in the compiled calldata.
+ * Order: --send T first (msg.sender, allowance, delivery model), then --send S — P1 is complete only when S passes.
  * It sends exactly the approvals the compile returned (only for the input token, never above the input), pre-checks
  * the transaction with eth_call (revoking those approvals if it would revert), sends it, and reads the answers from
  * the receipt and from chain state afterwards.
@@ -233,7 +236,13 @@ async function main() {
 async function sendOne(pub: ReturnType<typeof createPublicClient>, sdk: ReturnType<typeof createComposeSdk>, signer: `0x${string}`, probe: `0x${string}`, spec: FlowSpec) {
   const key = process.env.PROBE_PRIVATE_KEY as Hex | undefined;
   const cap = process.env.PROBE_MAX_INPUT_RAW;
-  if (!key || process.env.PROBE_CONFIRM !== CONFIRM_PHRASE || !isRaw(cap)) finish(2, `SEND_REFUSED: set PROBE_PRIVATE_KEY, PROBE_CONFIRM=${CONFIRM_PHRASE} and PROBE_MAX_INPUT_RAW.`);
+  const allowedProbe = process.env.PROBE_ALLOWED_ADDRESS;
+  if (!key || process.env.PROBE_CONFIRM !== CONFIRM_PHRASE || !isRaw(cap) || !isAddress(allowedProbe)) {
+    finish(2, `SEND_REFUSED: set PROBE_PRIVATE_KEY, PROBE_CONFIRM=${CONFIRM_PHRASE}, PROBE_MAX_INPUT_RAW and PROBE_ALLOWED_ADDRESS.`);
+  }
+  // Funds only ever go to the one probe the operator deployed and pinned; chain id and the probe's token (USDG) were
+  // already checked on-chain in main().
+  if (allowedProbe.toLowerCase() !== probe.toLowerCase()) finish(2, `SEND_REFUSED: --probe ${probe} is not PROBE_ALLOWED_ADDRESS ${allowedProbe}.`);
   if (spec.inputAmount > BigInt(cap)) finish(2, `SEND_REFUSED: input ${spec.inputAmount} is above PROBE_MAX_INPUT_RAW ${cap}.`);
   const account = privateKeyToAccount(key);
   if (account.address.toLowerCase() !== signer.toLowerCase()) finish(2, 'SEND_REFUSED: PROBE_PRIVATE_KEY does not belong to --signer.');
@@ -248,6 +257,8 @@ async function sendOne(pub: ReturnType<typeof createPublicClient>, sdk: ReturnTy
   if (r.status !== 'success' || !r.transactionRequest) finish(1, 'SEND_COMPILE_FAILED: no successful transaction.');
   const tx = r.transactionRequest;
   if (BigInt(tx.value ?? '0') !== BigInt(0)) finish(1, 'VALIDATION_FAILED: the transaction would spend native ETH.');
+  if (tx.chainId !== undefined && Number(tx.chainId) !== ROBINHOOD_CHAIN_ID) finish(1, `VALIDATION_FAILED: transaction is for chain ${tx.chainId}.`);
+  if (!tx.data.toLowerCase().includes(probe.slice(2).toLowerCase())) finish(1, 'VALIDATION_FAILED: the probe address does not appear in the compiled calldata.');
   const approvals = (r.approvals ?? []).map((a) => ({ token: a.token as `0x${string}`, spender: a.spender as `0x${string}`, amount: BigInt(a.amount) }));
   for (const a of approvals) {
     if (a.token.toLowerCase() !== spec.inputToken.toLowerCase()) finish(1, `VALIDATION_FAILED: approval asked for ${a.token}, not the input token.`);
@@ -313,6 +324,8 @@ async function sendOne(pub: ReturnType<typeof createPublicClient>, sdk: ReturnTy
     '7 user approval spender equals userProxy': approvals.map((a) => lc(a.spender) === lc(r.userProxy)),
     '7 inline approval left after the call (msg.sender → probe)': leftover.allowanceMsgSenderToProbe,
     'probe kept nothing': leftover.probeUsdgBalance === BigInt(0),
+    // T shows Composer can call a contract; only S shows a swap's actual output reaching BAG's contract in the same tx.
+    'P1 complete (swap output → probe, same tx)': spec.variant === 'S' && e.received > BigInt(0),
   };
   console.log(`\nAnswers: ${JSON.stringify(sent.answers, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2)}`);
   finish(0, `SENT ${hash}: see answers.`);

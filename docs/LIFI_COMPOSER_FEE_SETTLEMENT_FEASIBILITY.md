@@ -239,7 +239,7 @@ Then it forwards everything to the recipient.
 | 5 | Can the balance delta be measured in the same tx? | Event `pulled` / `pushedBeforeCall` against `amountArg` |
 | 6 | Who is `msg.sender`, and who is the final recipient? | Event `msgSender` and `txOrigin`, compared with `userProxy` and the signer; `recipient` shows what `context.sender` resolves to |
 | 7 | Which spender gets the approval? | The compile's `approvals` (user → spender); the inline approval left on `msgSender → probe` after the call |
-| 8 | Is the whole flow atomic? | Flow R (minimum set above the input) must fail simulation; a reverted send must leave every token in the wallet |
+| 8 | Is the whole flow atomic? | Flow R (minimum set above the input) must fail simulation; a reverted send must leave every token in the wallet. A pass is recorded as "this flow was tested atomically on Robinhood Chain", not as a general guarantee for every Composer operation (async routes, for one, behave differently) |
 
 Flows: T (USDG → `core.call`, pull), P (USDG → `core.transfer` to the probe,
 then a call without a resource: push), S (token → `lifi.swap` → USDG →
@@ -268,9 +268,25 @@ simulates the real transaction. P1a reads, for each flow:
 Not covered by the probe: a `bytes` argument (the attestation). That belongs to
 the B contract's own test.
 
-**P1b — one real transaction, very small (about $1), with `--send T|P|S`.**
+**What each result proves.** T, P and S compiling shows that Composer can
+*express* the flow. A real S transaction shows that a swap's actual output
+reaches a BAG contract and is measured there in the same transaction. Only the
+second answers the question in §0. Do not start the B contract before seeing a
+real S transaction.
+
+**Order for the real runs:**
+
+1. T compile.
+2. T real, about $1. Read `msg.sender`, the allowance and the delivery model.
+   This decides Model 1 or Model 2 for §5. If T's pull fails, run P.
+3. S compile.
+4. S real, about $1. This is the one that matters.
+5. R: compile only.
+
+**P1b — one real transaction per step, very small (about $1), with `--send T|P|S`.**
 It is sent from a disposable wallet on the operator's own machine and refused
-unless the key, a confirmation phrase and an input cap are all set. BAG signs
+unless the key, a confirmation phrase, an input cap and the pinned probe
+address (`PROBE_ALLOWED_ADDRESS`) are all set. BAG signs
 nothing. The answers to questions 4–8 come from the receipt and from chain
 state afterwards.
 
