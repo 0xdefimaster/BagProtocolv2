@@ -48,13 +48,35 @@ vi.mock('@/lib/server/ledger-repo', () => ({
 vi.mock('@/lib/server/fee-redemption-lock', () => ({ purchaseInFlightFor: async () => purchaseInFlight }));
 vi.mock('@/lib/blockchain/robinhood-public-client', () => ({ getRobinhoodPublicClient: () => ({}) }));
 // Each leg quotes 60 USDG; with 1% slippage its minimum is 59.40 → grossMinimumProceeds 118.80.
-vi.mock('@/lib/blockchain/robinhood-uniswap-quoter', () => ({ createRobinhoodUniswapQuoter: () => async () => ({ amountOut: BigInt(60_000_000) }) }));
+// Per fee tier: what each leg quotes. Default: every tier quotes 60 USDG (= the leg's verified value, below).
+let tierQuote: (feeTier: number) => bigint | null = () => BigInt(60_000_000);
+vi.mock('@/lib/blockchain/robinhood-uniswap-quoter', () => ({
+  createRobinhoodUniswapQuoter: () => async ({ feeTier }: { feeTier: number }) => {
+    const out = tierQuote(feeTier);
+    return out === null ? null : { amountOut: out };
+  },
+}));
+// Each leg sells 1000 units of a 0-decimal token at a verified $0.06 → a verified value of $60.
+let legPrice: string | Error = '0.06';
+vi.mock('@/lib/server/asset-repo', () => ({
+  getAssetsByIdentities: async (_admin: unknown, ids: { chain: string; address: string }[]) => ids.map((i) => ({ ...i, decimals: 0 })),
+}));
+vi.mock('@/lib/server/price-provider', () => ({
+  getPriceProvider: () => ({
+    getPrice: async () => {
+      if (legPrice instanceof Error) throw legPrice;
+      return { price: legPrice, quoteCurrency: 'USD', timestamp: '', source: 'test' };
+    },
+  }),
+}));
 vi.mock('@/lib/blockchain/robinhood-swap-builder', () => ({
-  COMMON_FEE_TIERS: [3000],
+  COMMON_FEE_TIERS: [3000, 500, 10000],
   buildRobinhoodSwapLeg: (i: { inputToken: string }) => ({ swapTarget: '0x00000000000000000000000000000000000000e1', swapCallData: `0x${i.inputToken.slice(2, 10)}` }),
 }));
 
-const { signFeeAttestation, PositionBusyError, FeeBasisUnavailableError, SaleQuoteExpiredError } = await import('../redeem-fee-attestation');
+const { signFeeAttestation, PositionBusyError, FeeBasisUnavailableError, SaleQuoteExpiredError, ExecutionPriceTooLowError, PriceUnavailableForSaleError } = await import(
+  '../redeem-fee-attestation'
+);
 
 const admin = {
   from: () => ({ select: () => ({ eq: (_c: string, id: string) => ({ maybeSingle: async () => ({ data: { wallet_address: id === 'creator' ? '0x2222222222222222222222222222222222222222' : '0x1111111111111111111111111111111111111111' }, error: null }) }) }) }),
@@ -85,6 +107,8 @@ beforeEach(() => {
   ledgerEvents = [buy('1', '50')]; // basis $100 for everything being sold
   purchaseInFlight = null;
   ledgerCalls.mockClear();
+  tierQuote = () => BigInt(60_000_000);
+  legPrice = '0.06';
 });
 
 describe('signFeeAttestation — B0 floor-based fee', () => {
@@ -163,4 +187,37 @@ describe('signFeeAttestation — B0 floor-based fee', () => {
     ledgerEvents = [];
     await expect(signFeeAttestation(admin, 'investor', intent.id)).rejects.toBeInstanceOf(FeeBasisUnavailableError);
   });
+
+  describe('price quality (redeem-quote-quality.ts)', () => {
+    it('quotes every tier and uses the BEST one, not the first that answers', async () => {
+      // 0.3% answers first but worse; 0.05% is better → the leg is built on 0.05%, minimum 99% of 60.
+      tierQuote = (t) => (t === 3000 ? BigInt(58_000_000) : t === 500 ? BigInt(60_000_000) : null);
+      const a = await signFeeAttestation(admin, 'investor', intent.id);
+      expect(a.feeBreakdown.grossMinimumProceeds).toBe('118800000');
+    });
+
+    it('the live AAOI case — the only quote is a near-empty 1% pool: refused, nothing signed', async () => {
+      tierQuote = (t) => (t === 10000 ? BigInt(180_000) : null);
+      await expect(signFeeAttestation(admin, 'investor', intent.id)).rejects.toMatchObject({ name: 'ExecutionPriceTooLowError', deviationBps: 9970, maxDeviationBps: 500 });
+    });
+
+    it('even the best tier more than 5% below the verified value is refused; within 5% passes', async () => {
+      tierQuote = () => BigInt(56_900_000); // 5.17% below $60
+      await expect(signFeeAttestation(admin, 'investor', intent.id)).rejects.toBeInstanceOf(ExecutionPriceTooLowError);
+      tierQuote = () => BigInt(57_000_000); // exactly 5%
+      await expect(signFeeAttestation(admin, 'investor', intent.id)).resolves.toMatchObject({ feeBreakdown: { method: 'B0_FLOOR' } });
+    });
+
+    it('no verified price → the sale price cannot be checked → nothing signed', async () => {
+      legPrice = new Error('MARKET_CLOSED_OR_HALTED');
+      await expect(signFeeAttestation(admin, 'investor', intent.id)).rejects.toBeInstanceOf(PriceUnavailableForSaleError);
+    });
+
+    it("applies to the creator's own (fee-free) router sale too: the price check protects every seller", async () => {
+      bag = { ...bag, creatorId: 'investor' };
+      tierQuote = (t) => (t === 10000 ? BigInt(180_000) : null);
+      await expect(signFeeAttestation(admin, 'investor', intent.id)).rejects.toBeInstanceOf(ExecutionPriceTooLowError);
+    });
+  });
 });
+

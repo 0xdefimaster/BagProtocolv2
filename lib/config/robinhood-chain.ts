@@ -77,16 +77,16 @@ export const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
  * features (fee-on-transfer support, native ETH legs) this protocol
  * doesn't need for a Bag redemption (all Bag holdings are ERC-20s).
  */
-export const UNISWAP_ROUTER_ADDRESS: `0x${string}` | null = '0xcAF681a66D020601342297493863E78c959e5cB2';
+export const UNISWAP_ROUTER_ADDRESS: `0x${string}` | null = '0xCaf681a66D020601342297493863E78C959E5cb2';
 
 /** VERIFIED — Uniswap v3 UniversalRouter on Robinhood Chain, same source as above. Not used by `robinhood-swap-builder.ts` today (see UNISWAP_ROUTER_ADDRESS's doc) — kept here, verified, for any future caller that needs it rather than leaving it undocumented. */
-export const UNISWAP_UNIVERSAL_ROUTER_ADDRESS: `0x${string}` = '0x8876789976DECbFCBBbE364623c63652DB8c0904';
+export const UNISWAP_UNIVERSAL_ROUTER_ADDRESS: `0x${string}` = '0x8876789976dEcBfCbBbe364623C63652db8C0904';
 
 /** VERIFIED — Uniswap v3 Factory on Robinhood Chain, same source as above. Needed to resolve a pool address (`getPool(tokenA, tokenB, fee)`) before building `exactInputSingle` calldata. */
-export const UNISWAP_V3_FACTORY_ADDRESS: `0x${string}` = '0x1F7d7550b1B028F7571E69A784071F0205fD2eFa';
+export const UNISWAP_V3_FACTORY_ADDRESS: `0x${string}` = '0x1f7d7550B1b028f7571E69A784071F0205FD2EfA';
 
 /** VERIFIED — Uniswap v3 QuoterV2 on Robinhood Chain, same source as above. Off-chain (staticcall/simulate) quoting, never itself part of an executed redemption transaction. */
-export const UNISWAP_QUOTER_V2_ADDRESS: `0x${string}` = '0x33E885Ed0Ec9Bf04ecfB19341582AadCb4c8a9e7';
+export const UNISWAP_QUOTER_V2_ADDRESS: `0x${string}` = '0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7';
 
 /**
  * Deployed protocol contract addresses, read from env at call time (never

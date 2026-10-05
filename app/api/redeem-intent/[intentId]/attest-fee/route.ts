@@ -10,6 +10,8 @@ import {
   PositionBusyError,
   FeeBasisUnavailableError,
   SaleQuoteExpiredError,
+  ExecutionPriceTooLowError,
+  PriceUnavailableForSaleError,
 } from '@/lib/server/redeem-fee-attestation';
 import { checkRateLimit, rateLimitedResponseBody } from '@/lib/server/rate-limit';
 
@@ -71,6 +73,12 @@ export async function POST(_req: Request, { params }: { params: Promise<{ intent
     }
     if (err instanceof NoLiquidityError) {
       return NextResponse.json({ error: err.message }, { status: 422 });
+    }
+    if (err instanceof ExecutionPriceTooLowError) {
+      return NextResponse.json({ error: err.message, code: 'EXECUTION_PRICE_TOO_LOW', deviationBps: err.deviationBps, maxDeviationBps: err.maxDeviationBps }, { status: 422 });
+    }
+    if (err instanceof PriceUnavailableForSaleError) {
+      return NextResponse.json({ error: err.message, code: 'PRICE_UNAVAILABLE' }, { status: 422 });
     }
     if (err instanceof SaleQuoteExpiredError) {
       return NextResponse.json({ error: err.message, failureCode: 'ROUTE_EXPIRED' }, { status: 409 });
