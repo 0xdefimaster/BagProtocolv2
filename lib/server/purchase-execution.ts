@@ -17,6 +17,7 @@ import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
 import { claimNewlyVerifiedTxHashes, TX_HASH_RE } from '@/lib/server/intent-tx-claims';
 import { paymentAssetsFor } from '@/lib/server/payment-assets';
 import { FORK_ROYALTY_BPS } from '@/lib/config/rewards';
+import { cancelPurchaseIfFeeSaleOpen, openFeeRedemptionFor } from '@/lib/server/fee-redemption-lock';
 import { getBagAssetHoldings, getBagNavSafe, priceHoldingsIndividually } from '@/lib/server/bag-nav';
 import { EXECUTION_QUOTE_PRICE_SOURCE, executionPricesFromLegs, navAtExecutionPrices } from '@/lib/domain/basket-protocol/shares/execution-valuation';
 import { getDepositQuote, OrphanedNavError, ZeroNavError } from '@/lib/domain/basket-protocol/shares/shares';
@@ -263,6 +264,8 @@ export type PurchaseExecutionError =
   | { kind: 'VALUATION_UNAVAILABLE'; assets: AssetIdentity[]; labels: string[] }
   | { kind: 'QUOTE_FAILED'; failureCode: PurchaseIntentFailureCode; message: string; composerFallback?: ComposerFallbackNotice }
   | { kind: 'PURCHASE_IN_PROGRESS'; intentId: string }
+  /** B0 (docs/FEE_ECONOMICS_DESIGN.md §5.6): a fee-paying sale of this position is open; its attested basis must not move under it. */
+  | { kind: 'REDEEM_IN_PROGRESS'; intentId: string }
   | { kind: 'PROVIDER_SELECTION_UNAVAILABLE' }
   | { kind: 'NOT_FOUND' }
   | { kind: 'FORBIDDEN' }
@@ -627,6 +630,9 @@ export async function createPurchaseIntentForUser(
   if (!prepared.ok) return prepared;
   const { bag, version, outputIdentityKeys, inputAsset, identity, nav: oracleNav, shareSupply, outcome, fallback } = prepared.value;
 
+  const openFeeSale = await openFeeRedemptionFor(admin, session.userId, bag, version);
+  if (openFeeSale) return { ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: openFeeSale.id } };
+
   // THE Phase 17 step: quote every SWAP step against the real, connected,
   // session-authenticated wallet — never PLACEHOLDER_ADDRESS (spec Aşama
   // 1/4). `session.walletAddress` is signed into the JWT cookie at sign-in
@@ -829,6 +835,13 @@ export async function createPurchaseIntentForUser(
     };
   }
 
+  // B0 (§5.6), the second half of the lock: the purchase is written FIRST, then the open fee-paying sale is looked
+  // up. The fee attestation does the mirror image (its sale intent is written before it looks for purchases), so of a
+  // racing purchase and fee sale at least one always sees the other — never both proceed. If a sale won, this
+  // purchase is cancelled before it can be signed.
+  const blocked = await cancelPurchaseIfFeeSaleOpen(admin, intent, bag, version);
+  if (blocked) return { ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: blocked.id } };
+
   return { ok: true, value: intent };
 }
 
@@ -1001,6 +1014,10 @@ export async function prepareExecution(
     await updatePurchaseIntentStatus(admin, { id: intentId, from: intent.status, to: 'FAILED', failureCode: 'UNSUPPORTED_ROUTE' });
     return { ok: false, error: { kind: 'ROUTE_CHANGED' } };
   }
+
+  // B0 (§5.6): no purchase of a position while a fee-paying sale of it is open.
+  const openFeeSale = await openFeeRedemptionFor(admin, session.userId, bag, version);
+  if (openFeeSale) return { ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: openFeeSale.id } };
 
   // Same registry re-verification the preview/create routes run — never
   // trust that a Bag verified at creation time is still verified now.

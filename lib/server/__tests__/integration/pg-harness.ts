@@ -153,7 +153,9 @@ type Result<T> = { data: T | null; error: { message: string; code?: string } | n
 const toError = (err: unknown) => ({ message: err instanceof Error ? err.message : String(err), code: (err as { code?: string })?.code });
 
 class ShimQuery {
-  private filters: Array<[string, unknown]> = [];
+  /** [column, value, op]: `=` (eq) or `in` (value is an array). */
+  private filters: Array<[string, unknown, '=' | 'in']> = [];
+  private patch: Record<string, unknown> | null = null;
   private orders: Array<[string, boolean]> = [];
   private maxRows: number | null = null;
   private withCount = false;
@@ -167,7 +169,16 @@ class ShimQuery {
     return this;
   }
   eq(column: string, value: unknown) {
-    this.filters.push([assertIdent(column), value]);
+    this.filters.push([assertIdent(column), value, '=']);
+    return this;
+  }
+  in(column: string, values: unknown[]) {
+    this.filters.push([assertIdent(column), values, 'in']);
+    return this;
+  }
+  /** `update(patch).eq()….select().maybeSingle()` → one `UPDATE … RETURNING *`, like supabase-js. */
+  update(patch: Record<string, unknown>) {
+    this.patch = patch;
     return this;
   }
   order(column: string, opts: { ascending?: boolean } = {}) {
@@ -175,10 +186,20 @@ class ShimQuery {
     return this;
   }
   private async run(): Promise<Record<string, unknown>[]> {
-    const where = this.filters.map(([c], i) => `${c} = $${i + 1}`).join(' and ');
+    const params: unknown[] = [];
+    const setSql = this.patch
+      ? Object.entries(this.patch)
+          .map(([c, v]) => (params.push(v !== null && typeof v === 'object' ? JSON.stringify(v) : v), `${assertIdent(c)} = $${params.length}`))
+          .join(', ')
+      : '';
+    const where = this.filters.map(([c, v, op]) => (params.push(v), op === 'in' ? `${c} = any($${params.length})` : `${c} = $${params.length}`)).join(' and ');
+    if (this.patch) {
+      return (await this.pool.query(`update ${assertIdent(this.table)} set ${setSql}${where ? ` where ${where}` : ''} returning *`, params)).rows;
+    }
     const orderBy = this.orders.map(([c, asc]) => `${c} ${asc ? 'asc' : 'desc'}`).join(', ');
-    const sql = `select * from ${assertIdent(this.table)}${where ? ` where ${where}` : ''}${orderBy ? ` order by ${orderBy}` : ''}`;
-    return (await this.pool.query(sql, this.filters.map(([, v]) => v))).rows;
+    const limit = this.maxRows !== null && !this.withCount ? ` limit ${Number(this.maxRows)}` : '';
+    const sql = `select * from ${assertIdent(this.table)}${where ? ` where ${where}` : ''}${orderBy ? ` order by ${orderBy}` : ''}${limit}`;
+    return (await this.pool.query(sql, params)).rows;
   }
   /** `await from(t).select().eq()…` resolves to the matching rows (up to `limit`), like supabase-js; `count: 'exact'` counts every match. */
   then<R1 = Result<Record<string, unknown>[]> & { count: number | null }, R2 = never>(

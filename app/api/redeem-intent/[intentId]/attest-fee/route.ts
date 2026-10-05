@@ -1,7 +1,16 @@
 import { NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
 import { requireSession } from '@/lib/auth/require-session';
-import { signFeeAttestation, RouterNotConfiguredError, NoLiquidityError, SaleNoLongerCoveredError, BalanceUnavailableError } from '@/lib/server/redeem-fee-attestation';
+import {
+  signFeeAttestation,
+  RouterNotConfiguredError,
+  NoLiquidityError,
+  SaleNoLongerCoveredError,
+  BalanceUnavailableError,
+  PositionBusyError,
+  FeeBasisUnavailableError,
+  SaleQuoteExpiredError,
+} from '@/lib/server/redeem-fee-attestation';
 import { checkRateLimit, rateLimitedResponseBody } from '@/lib/server/rate-limit';
 
 // Production-hardening P1-10 — signs a real, one-time-use fee attestation
@@ -62,6 +71,15 @@ export async function POST(_req: Request, { params }: { params: Promise<{ intent
     }
     if (err instanceof NoLiquidityError) {
       return NextResponse.json({ error: err.message }, { status: 422 });
+    }
+    if (err instanceof SaleQuoteExpiredError) {
+      return NextResponse.json({ error: err.message, failureCode: 'ROUTE_EXPIRED' }, { status: 409 });
+    }
+    if (err instanceof PositionBusyError) {
+      return NextResponse.json({ error: err.message, code: 'PURCHASE_IN_PROGRESS' }, { status: 409 });
+    }
+    if (err instanceof FeeBasisUnavailableError) {
+      return NextResponse.json({ error: err.message, code: 'FEE_BASIS_UNAVAILABLE', reason: err.reason }, { status: 422 });
     }
     const message = err instanceof Error ? err.message : 'Failed to sign fee attestation.';
     return NextResponse.json({ error: message }, { status: 500 });

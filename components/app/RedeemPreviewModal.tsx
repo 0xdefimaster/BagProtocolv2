@@ -73,6 +73,14 @@ interface RedeemPreviewResponse {
   fractionBps: number;
   /** Position value of the slice at verified prices — not what the sale returns. */
   sliceValueQuote: string | null;
+  /** Null when this sale pays no performance fee (fee-free Bag, or the creator's own sale). */
+  performanceFee?: {
+    rateBps: number;
+    basisAvailable: boolean;
+    consumedBasisQuote: string | null;
+    lossCarryQuote: string | null;
+    estimatedFeeQuote: string | null;
+  } | null;
   allocation: RedeemAllocationView[];
 }
 
@@ -467,6 +475,27 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
                   At current prices, before price impact and fees. Estimated proceeds and the guaranteed minimum come from the real route,
                   shown before you sign.
                 </p>
+                {preview.performanceFee && (
+                  <div data-testid="performance-fee" style={{ marginBottom: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 12.5 }}>
+                      <span style={{ color: 'var(--ink-soft, #B4AEA2)' }}>
+                        Performance fee ({(preview.performanceFee.rateBps / 100).toString()}% of realized gain)
+                      </span>
+                      <span style={{ fontWeight: 600 }}>
+                        {preview.performanceFee.basisAvailable ? `≈ ${usdOrDash(preview.performanceFee.estimatedFeeQuote)}` : 'Unavailable'}
+                      </span>
+                    </div>
+                    <p style={{ marginTop: 4, fontSize: 11.5, color: 'var(--ink-soft, #B4AEA2)' }}>
+                      {preview.performanceFee.basisAvailable
+                        ? `Estimated at current prices on your cost basis (${usdOrDash(preview.performanceFee.consumedBasisQuote)})` +
+                          (preview.performanceFee.lossCarryQuote && preview.performanceFee.lossCarryQuote !== '0'
+                            ? ` after earlier losses still to recover (${usdOrDash(preview.performanceFee.lossCarryQuote)})`
+                            : '') +
+                          '. The exact fee is set when you sign, on the guaranteed minimum you receive — never more than this rate of the gain you actually realize, and nothing on a loss.'
+                        : 'Your records cannot give the cost basis of what you are selling, so the fee cannot be computed and this sale cannot go through BAG right now.'}
+                    </p>
+                  </div>
+                )}
               </>
             )}
           </>

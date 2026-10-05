@@ -27,12 +27,13 @@ vi.mock('@/lib/server/redeem-intent-repo', () => ({
   updateRedeemIntentStatus: (...a: unknown[]) => updateStatusMock(...a),
 }));
 vi.mock('@/lib/server/sale-coverage', () => ({ checkSaleCoverage: (...a: unknown[]) => coverageMock(...a) }));
-vi.mock('@/lib/server/bag-investor-position-repo', () => ({ getInvestorPosition: async () => ({ sharesRaw: '100', costBasisQuote: '100' }) }));
+vi.mock('@/lib/server/fee-redemption-lock', () => ({ purchaseInFlightFor: async () => null }));
 vi.mock('@/lib/server/bag-repo', () => ({
   getBagById: async () => ({ id: 'bag_1', creatorId: 'creator', performanceFeeBpsLocked: 1000 }),
   getCurrentBagVersion: async () => ({ recipe: { performanceFeeBps: 1000 } }),
 }));
-vi.mock('@/lib/domain/basket-protocol/redeem/performance-fee-preview', () => ({ previewPerformanceFee: () => previewMock() }));
+// The first step after the coverage check is reading the position's ledger for the fee basis (B0).
+vi.mock('@/lib/server/ledger-repo', () => ({ listAllLedgerEventsForPosition: async () => previewMock() }));
 
 const { signFeeAttestation, SaleNoLongerCoveredError, BalanceUnavailableError } = await import('../redeem-fee-attestation');
 

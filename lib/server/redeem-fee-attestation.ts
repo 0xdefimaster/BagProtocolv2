@@ -1,8 +1,9 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { privateKeyToAccount } from 'viem/accounts';
 import { computeOnChainBagId } from '@/lib/domain/basket-protocol/onchain';
-import { previewPerformanceFee } from '@/lib/domain/basket-protocol/redeem/performance-fee-preview';
-import { quoteDecimalToRewardTokenRaw, ROBINHOOD_CHAIN_ID, ROBINHOOD_REWARD_TOKEN, DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
+import { computeB0Fee, decimalToRawCeil, feeBasisFromPositionPnl } from '@/lib/domain/basket-protocol/redeem/performance-fee-b0';
+import { computePositionPnl } from '@/lib/domain/basket-protocol/accounting/position-pnl';
+import { ROBINHOOD_CHAIN_ID, ROBINHOOD_REWARD_TOKEN, DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
 import { buildRobinhoodSwapLeg, COMMON_FEE_TIERS } from '@/lib/blockchain/robinhood-swap-builder';
 import { createRobinhoodUniswapQuoter } from '@/lib/blockchain/robinhood-uniswap-quoter';
 import { getRobinhoodPublicClient } from '@/lib/blockchain/robinhood-public-client';
@@ -15,7 +16,8 @@ import {
 } from '@/lib/blockchain/redeem-fee-router-eip712';
 import { getRedeemIntentForUser, updateRedeemIntentStatus } from '@/lib/server/redeem-intent-repo';
 import { checkSaleCoverage } from '@/lib/server/sale-coverage';
-import { getInvestorPosition } from '@/lib/server/bag-investor-position-repo';
+import { listAllLedgerEventsForPosition } from '@/lib/server/ledger-repo';
+import { purchaseInFlightFor } from '@/lib/server/fee-redemption-lock';
 import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
 
 // -----------------------------------------------------------------------------
@@ -83,6 +85,30 @@ export class BalanceUnavailableError extends Error {
   }
 }
 
+/** The sale's quote expired before the fee was attested; nothing is signed. */
+export class SaleQuoteExpiredError extends Error {
+  constructor() {
+    super('This sale quote has expired. Start a new sale.');
+    this.name = 'SaleQuoteExpiredError';
+  }
+}
+
+/** B0 (§5.6): a purchase of the same position is in flight; its fill would change the basis being attested. Nothing is signed. */
+export class PositionBusyError extends Error {
+  constructor() {
+    super('A purchase of this Bag is still in progress. Wait for it to finish, then start the sale again.');
+    this.name = 'PositionBusyError';
+  }
+}
+
+/** B0: the books cannot give the basis or realized P&L this fee needs; never guessed, nothing is signed. */
+export class FeeBasisUnavailableError extends Error {
+  constructor(public readonly reason: 'BASIS_UNKNOWN' | 'SOLD_EXCEEDS_BOOKS' | 'REALIZED_PNL_UNKNOWN') {
+    super(`The performance fee for this sale cannot be computed from your records (${reason}). Nothing was signed.`);
+    this.name = 'FeeBasisUnavailableError';
+  }
+}
+
 export class RouterNotConfiguredError extends Error {
   constructor() {
     super('REDEEM_FEE_ROUTER_ADDRESS / CREATOR_REWARDS_VAULT_ADDRESS is not set — the router has not been deployed/configured yet.');
@@ -106,14 +132,28 @@ export interface FeeAttestation {
   minUserProceeds: string; // raw base units, decimal string
   deadline: number; // unix seconds
   signature: `0x${string}`;
+  /**
+   * How `feeAmount` was computed (B0, docs/FEE_ECONOMICS_DESIGN.md): on the guaranteed minimum proceeds, not the
+   * actual result, so the charged fee never exceeds the fee on the actual result. Raw settlement-token units.
+   * Informational: the signature binds `feeAmount` and `minUserProceeds`, not this breakdown.
+   */
+  feeBreakdown: {
+    method: 'B0_FLOOR';
+    rateBps: number;
+    grossMinimumProceeds: string;
+    consumedBasis: string;
+    lossCarry: string;
+    feeBase: string;
+  };
 }
 
 /**
- * Loads every authoritative input, computes the fee via
- * `previewPerformanceFee()` (the exact TypeScript mirror of
- * `apply_redeem_execution()`'s own SQL math), builds one `RedeemLeg` per
- * distinct asset actually held in this redemption, and signs the
- * resulting EIP-712 attestation with `REDEEM_FEE_ATTESTOR_PRIVATE_KEY`.
+ * Loads every authoritative input, builds one `RedeemLeg` per distinct asset
+ * actually held in this redemption (each with a real on-chain quote and its
+ * minimum output), computes the B0 fee on the resulting
+ * grossMinimumProceeds (`computeB0Fee`: A3 basis of the quantities sold, loss
+ * carried forward, raw units, floor), and signs the EIP-712 attestation with
+ * `REDEEM_FEE_ATTESTOR_PRIVATE_KEY`.
  * Callers MUST have already verified the requesting session owns
  * `redeemIntentId` (mirrors every other redeem-intent route's
  * `getRedeemIntentForUser()` ownership check).
@@ -138,7 +178,7 @@ export async function signFeeAttestation(admin: SupabaseClient, userId: string, 
     throw new Error(`Redeem intent ${redeemIntentId} has no non-zero asset steps — nothing to redeem.`);
   }
 
-  const [position, bag] = await Promise.all([getInvestorPosition(admin, userId, intent.bagId), getBagById(admin, intent.bagId)]);
+  const bag = await getBagById(admin, intent.bagId);
   if (!bag) throw new Error(`Bag ${intent.bagId} not found.`);
 
   const version = await getCurrentBagVersion(admin, intent.bagId);
@@ -165,20 +205,28 @@ export async function signFeeAttestation(admin: SupabaseClient, userId: string, 
     throw new SaleNoLongerCoveredError();
   }
 
-  // The position's shares/cost-basis BEFORE this specific redemption —
-  // reconstructed from the CURRENT (already-quoted, not-yet-executed)
-  // position, since this intent's own accounting hasn't been applied yet.
-  // See performance-fee-preview.ts's own doc on why bit-for-bit parity
-  // with apply_redeem_execution()'s SQL math matters here.
-  const fee = previewPerformanceFee({
-    positionCostBasisQuote: position.costBasisQuote,
-    positionSharesRaw: position.sharesRaw,
-    sharesBurnRaw: intent.sharesRaw,
-    redeemValueQuote: intent.redeemValueQuote,
-    performanceFeeBps,
-    creatorIsRedeemer: bag.creatorId === userId,
-  });
-  const feeAmountRaw = quoteDecimalToRewardTokenRaw(fee.feeAmountQuote);
+  // B0 (§5.6): the basis below is read from the ledger now; a purchase of the same position landing before this
+  // sale executes would change it. Refuse while one is in flight (a purchase is likewise refused while this
+  // fee-paying sale is open — lib/server/fee-redemption-lock.ts).
+  const creatorIsRedeemer = bag.creatorId === userId;
+  const feeApplies = !creatorIsRedeemer && performanceFeeBps > 0;
+  if (feeApplies && (await purchaseInFlightFor(admin, userId, intent.bagId))) throw new PositionBusyError();
+
+  // B0 (F2, F4): basis of exactly the quantities sold at the A3 average cost, and the loss carried forward, from
+  // the position's ledger. Only needed when a fee applies; unknown values are never guessed.
+  let consumedBasisRaw = BigInt(0);
+  let lossCarryRaw = BigInt(0);
+  if (feeApplies) {
+    const pnl = computePositionPnl(await listAllLedgerEventsForPosition(admin, userId, intent.bagId));
+    const basis = feeBasisFromPositionPnl(
+      pnl,
+      assetSteps.map((s) => ({ chain: s.inputAsset.chain, address: s.inputAsset.address, quantityRaw: s.inputAmountRaw }))
+    );
+    if (!basis.ok) throw new FeeBasisUnavailableError(basis.reason);
+    // Rounded UP into raw units: a smaller fee base, in the user's favour (§5.7).
+    consumedBasisRaw = decimalToRawCeil(basis.consumedBasisQuote, ROBINHOOD_REWARD_TOKEN.decimals);
+    lossCarryRaw = decimalToRawCeil(basis.lossCarryQuote, ROBINHOOD_REWARD_TOKEN.decimals);
+  }
 
   const routerAddress = DEPLOYED_CONTRACTS.redeemFeeRouter;
   const quote = createRobinhoodUniswapQuoter(getRobinhoodPublicClient());
@@ -247,19 +295,24 @@ export async function signFeeAttestation(admin: SupabaseClient, userId: string, 
     });
   }
 
-  // The router's own on-chain check is `swapOutput >= minUserProceeds +
-  // feeAmount` against the REAL combined result — this is the off-chain
-  // mirror of that floor, built from the same per-leg quotes just used to
-  // set each leg's own `minOutput`, not a second independent guess.
-  // Clamped at 0 rather than allowed to go negative: a negative value here
-  // would mean the attested fee exceeds even the worst-case (post-
-  // slippage) quoted output, which previewPerformanceFee()'s own "fee is a
-  // fraction of PROFIT, not of total redemption value" arithmetic should
-  // never produce in practice, but this must never be allowed to encode as
-  // a negative uint256 in the signed attestation.
-  const minUserProceedsRaw = totalMinOutputRaw > feeAmountRaw ? totalMinOutputRaw - feeAmountRaw : BigInt(0);
+  // B0: the fee is computed on grossMinimumProceeds — Σ the per-leg minimum outputs just quoted, the floor the
+  // router enforces (`swapOutput ≥ minUserProceeds + feeAmount` = `swapOutput ≥ grossMinimumProceeds`). Actual
+  // proceeds are never below it, so the fee never exceeds the fee on the actual result.
+  const fee = computeB0Fee({
+    grossMinimumProceedsRaw: totalMinOutputRaw,
+    consumedBasisRaw,
+    lossCarryRaw,
+    rateBps: performanceFeeBps,
+    creatorIsRedeemer,
+  });
+  const feeAmountRaw = fee.feeRaw;
+  const minUserProceedsRaw = fee.minUserProceedsRaw;
 
-  const deadline = Math.floor((Date.now() + ATTESTATION_TTL_MS) / 1000);
+  // Never valid past the intent's own expiry: the purchase lock (§5.6) is released when the intent expires, so an
+  // attestation outliving it could execute after a purchase changed the basis it was computed from.
+  const deadlineMs = Math.min(Date.now() + ATTESTATION_TTL_MS, new Date(intent.expiresAt).getTime());
+  if (!(deadlineMs > Date.now())) throw new SaleQuoteExpiredError();
+  const deadline = Math.floor(deadlineMs / 1000);
   const redemptionId = computeOnChainBagId(intent.id); // same UUID -> bytes32 convention as Bag ids (onchain.ts).
 
   const legsHash = computeLegsHash(
@@ -301,5 +354,13 @@ export async function signFeeAttestation(admin: SupabaseClient, userId: string, 
     minUserProceeds: minUserProceedsRaw.toString(),
     deadline,
     signature,
+    feeBreakdown: {
+      method: 'B0_FLOOR',
+      rateBps: feeApplies ? performanceFeeBps : 0,
+      grossMinimumProceeds: totalMinOutputRaw.toString(),
+      consumedBasis: consumedBasisRaw.toString(),
+      lossCarry: lossCarryRaw.toString(),
+      feeBase: fee.feeBaseRaw.toString(),
+    },
   };
 }

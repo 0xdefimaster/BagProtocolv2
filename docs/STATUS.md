@@ -38,14 +38,14 @@ project and Netlify site from the V1 demo.
 |---|---|---|
 | Does a real sale work on V2? | **Resolved** | 50% Composer redeem completed live (§1) |
 | Which execution path did the live purchase use? | **Resolved**: legacy path | No execution-plan hash on its receipt; compiler flag not set |
-| Redeem receipt showed "Unknown provider" / "Not recorded" | **Resolved in code** (PR #12); live check after deploy | `execution-receipts.test.ts` models the live redeem |
-| Passport showed the deployed composition as "not recorded on-chain" | **Resolved in code** (PR #12), no migration; live check after deploy | `bag-deployment-local-evm.integration.test.ts`: deploy tx → BagCreated → Bag address → `compositionHash()` → Passport → bag.json; ambiguous history → null |
+| Redeem receipt showed "Unknown provider" / "Not recorded" | **Resolved, verified live** (PR #12): LI.FI Composer, "Received 2.45405 USDG · read from the tx receipt" | `execution-receipts.test.ts` models the live redeem |
+| Passport showed the deployed composition as "not recorded on-chain" | **Resolved, verified live** (PR #12), no migration: on-chain version 1 shows its composition hash | `bag-deployment-local-evm.integration.test.ts`: deploy tx → BagCreated → Bag address → `compositionHash()` → Passport → bag.json; ambiguous history → null |
 | `StrategyRegistry` deployed and verified by a third party on Robinhood Chain | **Open** | Local EVM only |
 | Registry panel with a real wallet extension | **Open** | — |
 | Realized P&L after a partial sale, checked live | **Open** | — |
 | Price authority guard checks against live data | **Open** | `docs/ROBINHOOD_PRICE_AUTHORITY.md` |
 | Permit2 / embedded-wallet batching on Robinhood Chain | **Open** | — |
-| Redemption fee on actual proceeds | **Open** — design first | §4 |
+| Redemption fee on actual proceeds | **Design approved** (`docs/FEE_ECONOMICS_DESIGN.md`, F1–F7); **B0 implemented**, live validation pending; B (contract) not started | §4 |
 
 ## 2. Tests (on `main`)
 
@@ -74,7 +74,7 @@ prove behavior against a local chain, never against Robinhood Chain.
 
 | Item | Where |
 |---|---|
-| Redemption fee is computed on the quoted redemption value, not on the proceeds actually received | `docs/PROTOCOL_ECONOMICS.md` |
+| Redemption fee: B0 charges on the guaranteed minimum (never above the fee on the actual result); live validation pending; on-chain computation from actual output is the separate contract PR (B) | `docs/FEE_ECONOMICS_DESIGN.md` |
 | Multi-signature sales on wallets without EIP-5792 (Rabby): one approval per token + the sale | proposal: opt-in persistent approval to the user's own Composer proxy |
 | A redemption does not store the fraction sold (receipts show what was sold per asset instead) | `supabase/migrations/0051_fraction_redeem.sql` |
 
@@ -94,6 +94,7 @@ prove behavior against a local chain, never against Robinhood Chain.
 | `docs/PRICE_AND_DATA_LAYER.md` | CURRENT | Chains, RPC, assets, prices |
 | `docs/ROBINHOOD_PRICE_AUTHORITY.md` | CURRENT | Live verification still open |
 | `docs/PROTOCOL_ECONOMICS.md` | CURRENT | Invariants; see its A4 notes |
+| `docs/FEE_ECONOMICS_DESIGN.md` | CURRENT | Performance fee design, F1–F7 locked; B0 implemented |
 | `docs/EXECUTION_CANDIDATE_DESIGN.md` | CURRENT | Candidate ranking (compiler path) |
 | `lib/execution/README.md` | CURRENT | Provider compiler; disabled live (§1, §3) |
 | `docs/CREATOR_REWARDS_SETTLEMENT.md` | CURRENT | Rewards ledger → `CreatorRewardsVault` |

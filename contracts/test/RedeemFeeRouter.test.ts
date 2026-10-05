@@ -9,6 +9,7 @@ import {
   zeroAddress,
 } from 'viem';
 import { computeLegsHash } from '../../lib/blockchain/redeem-fee-router-eip712';
+import { computeB0Fee } from '../../lib/domain/basket-protocol/redeem/performance-fee-b0';
 
 // -----------------------------------------------------------------------------
 // V11: RedeemFeeRouter now supports N input-asset legs in one atomic
@@ -522,3 +523,57 @@ describe('RedeemFeeRouter (multi-asset, V11)', () => {
     );
   });
 });
+
+// -----------------------------------------------------------------------------
+// B0 (docs/FEE_ECONOMICS_DESIGN.md §3): the fee the server attests is computed
+// on grossMinimumProceeds, and the REAL router enforces
+// swapOutput ≥ minUserProceeds + fee = grossMinimumProceeds. Run against the
+// deployed contract: for every actual output the router accepts, the charged
+// fee is ≤ rate × max(0, actual − basis − carry).
+// -----------------------------------------------------------------------------
+describe('RedeemFeeRouter with B0 floor-based fees', () => {
+  const RATE_BPS = 1000; // 10%
+  const pct = (v: bigint, bps: number) => (v * BigInt(bps)) / 10000n;
+
+  async function redeemWithB0(grossMinimumProceedsRaw: bigint, consumedBasisRaw: bigint, lossCarryRaw = 0n) {
+    const ctx = await setup();
+    const legs = ctx.defaultLegs();
+    const b0 = computeB0Fee({ grossMinimumProceedsRaw, consumedBasisRaw, lossCarryRaw, rateBps: RATE_BPS, creatorIsRedeemer: false });
+    const { message, signature } = await ctx.signAttestation(legs, { feeAmount: b0.feeRaw, minUserProceeds: b0.minUserProceedsRaw });
+    return { ctx, legs, b0, send: () => ctx.routerAsUser.write.redeem([ctx.buildParams(message, signature, legs)]) };
+  }
+
+  it('actual above the floor: the fee is the floor-based one, the user gets actual − fee, and fee ≤ the fee on the actual result', async () => {
+    // Actual output 1000; floor 990 (1%); basis 800 → B0 fee = 10% × 190 = 19 (the fee on the actual result would be 20).
+    const { ctx, b0, send } = await redeemWithB0(parseUnits('990', 18), parseUnits('800', 18));
+    assert.equal(b0.feeRaw, parseUnits('19', 18));
+    await send();
+    assert.equal((await ctx.vault.read.balanceOf([ctx.creator.account.address])) as bigint, b0.feeRaw);
+    assert.equal((await ctx.quoteToken.read.balanceOf([ctx.user.account.address])) as bigint, TOTAL_OUTPUT - b0.feeRaw);
+    assert.ok(b0.feeRaw <= pct(TOTAL_OUTPUT - parseUnits('800', 18), RATE_BPS));
+  });
+
+  it('floor below the basis (a loss is possible): no fee, the whole output goes to the user', async () => {
+    const { ctx, b0, send } = await redeemWithB0(parseUnits('990', 18), parseUnits('995', 18));
+    assert.equal(b0.feeRaw, 0n);
+    await send();
+    assert.equal((await ctx.vault.read.balanceOf([ctx.creator.account.address])) as bigint, 0n);
+    assert.equal((await ctx.quoteToken.read.balanceOf([ctx.user.account.address])) as bigint, TOTAL_OUTPUT);
+  });
+
+  it('loss carried forward lowers the fee to what lifts realized P&L above its high-water mark', async () => {
+    // Floor 990, basis 800, earlier realized loss 150 → fee base 40 → fee 4.
+    const { ctx, b0, send } = await redeemWithB0(parseUnits('990', 18), parseUnits('800', 18), parseUnits('150', 18));
+    assert.equal(b0.feeRaw, parseUnits('4', 18));
+    await send();
+    assert.equal((await ctx.vault.read.balanceOf([ctx.creator.account.address])) as bigint, parseUnits('4', 18));
+  });
+
+  it('actual below the floor: the router reverts, nothing is sold and no fee is taken', async () => {
+    const { ctx, send } = await redeemWithB0(TOTAL_OUTPUT + 1n, parseUnits('800', 18));
+    await assert.rejects(send(), /InsufficientSwapOutput/);
+    assert.equal((await ctx.vault.read.balanceOf([ctx.creator.account.address])) as bigint, 0n);
+    assert.equal((await ctx.quoteToken.read.balanceOf([ctx.user.account.address])) as bigint, 0n);
+  });
+});
+

@@ -15,7 +15,10 @@ vi.mock('@/lib/server/price-provider', () => ({
   getDisplayPriceProvider: () => ({ getPrice: async (a: { address: string }) => ({ price: a.address.toLowerCase() === '0xmsft' ? '400' : '1' }) }),
 }));
 vi.mock('@/lib/blockchain/rpc/clients', () => ({ getChainPublicClient: () => ({}) }));
-vi.mock('@/lib/server/bag-repo', () => ({ getBagById: async () => ({ id: 'b1', chain: 'robinhood', name: 'AI', symbol: 'AI' }) }));
+let bagRow: Record<string, unknown> = { id: 'b1', chain: 'robinhood', name: 'AI', symbol: 'AI', creatorId: 'creator', performanceFeeBpsLocked: null };
+let ledgerEvents: unknown[] = [];
+vi.mock('@/lib/server/bag-repo', () => ({ getBagById: async () => bagRow, getCurrentBagVersion: async () => ({ recipe: { performanceFeeBps: 0 } }) }));
+vi.mock('@/lib/server/ledger-repo', () => ({ listAllLedgerEventsForPosition: async () => ledgerEvents }));
 vi.mock('@/lib/server/asset-repo', () => ({ listAssets: (...a: unknown[]) => listAssets(...a) }));
 vi.mock('@/lib/server/payment-assets', () => ({ paymentAssetsFor: (assets: { symbol: string }[]) => assets.filter((a) => a.symbol === 'USDG') }));
 vi.mock('@/lib/server/position-valuation', async (orig) => ({
@@ -32,6 +35,8 @@ const post = (body: unknown) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  bagRow = { id: 'b1', chain: 'robinhood', name: 'AI', symbol: 'AI', creatorId: 'creator', performanceFeeBpsLocked: null };
+  ledgerEvents = [];
   listAssets.mockResolvedValue([
     { id: 'usdg', chain: 'robinhood', address: '0xUSDG', symbol: 'USDG', decimals: 6, name: 'Global Dollar', status: 'VERIFIED' },
     { id: 'msft', chain: 'robinhood', address: '0xmsft', symbol: 'MSFT', decimals: 6, name: 'Microsoft', status: 'VERIFIED' },
@@ -72,6 +77,34 @@ describe('POST /api/bags/:id/redeem-preview', () => {
     expect((await post({ fractionBps: 0, outputAssetId: 'usdg' })).status).toBe(422);
     expect((await post({ fractionBps: 10_001, outputAssetId: 'usdg' })).status).toBe(422);
     expect((await post({ sharesToRedeemRaw: '10', outputAssetId: 'usdg' })).status).toBe(400);
+  });
+
+  it('a fee-free sale shows no performance fee', async () => {
+    const { preview } = await (await post({ fractionBps: 10_000, outputAssetId: 'usdg' })).json();
+    expect(preview.performanceFee).toBeNull();
+  });
+
+  it('B0: a fee-paying sale shows the estimated fee on the A3 basis of what is sold, after earlier losses', async () => {
+    bagRow = { ...bagRow, performanceFeeBpsLocked: 1000 };
+    // Bought 100 MSFT for $20,000 and 5 USDG for $5; an earlier sale realized −$500 (sold 50 MSFT for $9,500 of $10,000 basis) and was bought back.
+    ledgerEvents = [
+      { seq: '1', kind: 'PURCHASE_FILL', quote: {}, legs: [{ chain: 'robinhood', address: '0xMSFT', deltaRaw: '100000000', costQuote: '20000' }, { chain: 'robinhood', address: '0xusdg', deltaRaw: '5000000', costQuote: '5' }] },
+      { seq: '2', kind: 'REDEEM_FILL', quote: {}, legs: [{ chain: 'robinhood', address: '0xMSFT', deltaRaw: '-50000000', proceedsQuote: '9500' }] },
+      { seq: '3', kind: 'PURCHASE_FILL', quote: {}, legs: [{ chain: 'robinhood', address: '0xMSFT', deltaRaw: '50000000', costQuote: '10000' }] },
+    ];
+    const { preview } = await (await post({ fractionBps: 10_000, outputAssetId: 'usdg' })).json();
+    // Sells 60 MSFT (basis 60 × $200 = $12,000) + 5 USDG ($5); slice value $24,005; carry $500 → gain $11,500 → 10% = $1,150.
+    expect(preview.performanceFee).toEqual({ rateBps: 1000, basisAvailable: true, consumedBasisQuote: '12005', lossCarryQuote: '500', estimatedFeeQuote: '1150' });
+  });
+
+  it("B0: the creator's own sale pays no fee; unknown basis is reported, never guessed", async () => {
+    bagRow = { ...bagRow, performanceFeeBpsLocked: 1000, creatorId: 'u1' };
+    expect((await (await post({ fractionBps: 10_000, outputAssetId: 'usdg' })).json()).preview.performanceFee).toBeNull();
+    bagRow = { ...bagRow, creatorId: 'creator' };
+    ledgerEvents = [];
+    expect((await (await post({ fractionBps: 10_000, outputAssetId: 'usdg' })).json()).preview.performanceFee).toEqual({
+      rateBps: 1000, basisAvailable: false, consumedBasisQuote: null, lossCarryQuote: null, estimatedFeeQuote: null,
+    });
   });
 
   it('only a VERIFIED payment asset can be the output', async () => {
