@@ -75,6 +75,25 @@ export class SettlementNotConfiguredError extends Error {
     this.name = 'SettlementNotConfiguredError';
   }
 }
+
+/** A configured value that cannot be used (e.g. a malformed attestor key). Never includes the value itself. */
+export class SettlementMisconfiguredError extends Error {
+  constructor(what: string) {
+    super(`${what} — RedeemSettlement is misconfigured on this deployment. Nothing was signed.`);
+    this.name = 'SettlementMisconfiguredError';
+  }
+}
+
+/**
+ * The attestor key as an operator pastes it into a dashboard: surrounding whitespace or quotes and a missing `0x` are
+ * tolerated; anything that is not then exactly 32 bytes of hex is refused with a message that never contains it.
+ */
+export function attestorKeyFromEnv(raw: string): `0x${string}` {
+  let k = raw.trim().replace(/^['"]|['"]$/g, '').trim();
+  k = /^0x/i.test(k) ? `0x${k.slice(2)}` : `0x${k}`;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(k)) throw new SettlementMisconfiguredError('REDEEM_SETTLEMENT_ATTESTOR_PRIVATE_KEY is not a 32-byte hex private key');
+  return k.toLowerCase() as `0x${string}`;
+}
 /** The redemption has nothing to swap (only USDG holdings): there is no Composer quote to check, so nothing is planned. */
 export class NothingToSettleError extends Error {
   constructor() {
@@ -401,7 +420,7 @@ export async function attestSettlement(admin: SupabaseClient, userId: string, in
     minUserProceeds: BigInt(plan.minUserProceedsRaw),
     deadline: BigInt(deadline),
   };
-  const signature = await privateKeyToAccount(privateKey as `0x${string}`).signTypedData({
+  const signature = await privateKeyToAccount(attestorKeyFromEnv(privateKey)).signTypedData({
     domain: settlementDomain(ROBINHOOD_CHAIN_ID, settlement),
     types: SETTLEMENT_TYPES,
     primaryType: 'Settlement',
