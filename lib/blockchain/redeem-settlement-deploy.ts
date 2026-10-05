@@ -1,4 +1,4 @@
-import { getAddress, isAddress, zeroAddress, type PublicClient } from 'viem';
+import { getAddress, isAddress, zeroAddress, type Hex, type PublicClient } from 'viem';
 import { REDEEM_SETTLEMENT_EIP712_DOMAIN_NAME, REDEEM_SETTLEMENT_EIP712_DOMAIN_VERSION } from './redeem-settlement-eip712';
 
 // -----------------------------------------------------------------------------
@@ -75,6 +75,37 @@ export interface SettlementExpectation {
   usdg: string;
   owner: string;
   attestor: string;
+  /** The owner is meant to be a contract (e.g. a Safe). Otherwise an owner with contract code fails the check. */
+  allowContractOwner?: boolean;
+}
+
+/**
+ * What an address is, from its code:
+ *  - EOA: no code.
+ *  - EOA_7702: an EOA with an EIP-7702 delegation (code = 0xef0100 ‖ 20-byte delegate, 23 bytes), e.g. a MetaMask
+ *    smart account. Its own key still produces ECDSA signatures that recover to it, so it can be the attestor.
+ *  - CONTRACT: anything else. It cannot produce an ECDSA signature (the contract does not use ERC-1271), so it can
+ *    never be the attestor; as owner it can only act through its own code — fine for a Safe, fatal for anything else
+ *    (the first live deployment got a probe contract as owner this way and is unmanageable).
+ */
+export type AccountKind = 'EOA' | 'EOA_7702' | 'CONTRACT';
+
+export function classifyAccountCode(code: Hex | undefined | null): AccountKind {
+  if (!code || code === '0x') return 'EOA';
+  if (/^0xef0100[0-9a-fA-F]{40}$/.test(code)) return 'EOA_7702';
+  return 'CONTRACT';
+}
+
+export async function accountKind(client: PublicClient, address: `0x${string}`): Promise<AccountKind> {
+  return classifyAccountCode(await client.getCode({ address }));
+}
+
+/** Problems with the owner/attestor accounts themselves (an attestor must be able to sign; an owner must be able to act). */
+export function accountKindProblems(kinds: { owner: AccountKind; attestor: AccountKind }, allowContractOwner = false): string[] {
+  const problems: string[] = [];
+  if (kinds.attestor === 'CONTRACT') problems.push('attestor is a contract and can never sign a settlement');
+  if (kinds.owner === 'CONTRACT' && !allowContractOwner) problems.push('owner is a contract (set the explicit contract-owner confirmation only for a Safe/multisig)');
+  return problems;
 }
 
 export interface DeploymentCheck {
@@ -107,6 +138,8 @@ export async function verifySettlementDeployment(client: PublicClient, address: 
   ]);
   const [, name, version, domainChainId, verifyingContract] = domain;
   const balance = await client.readContract({ address: usdg, abi: ERC20_BALANCE_ABI, functionName: 'balanceOf', args: [address] });
+  const [ownerKind, attestorKind] = await Promise.all([accountKind(client, owner), accountKind(client, attestor)]);
+  const signable = (k: string) => k === 'EOA' || k === 'EOA_7702';
 
   return [
     check('chain', String(chainId), String(expected.chainId)),
@@ -119,5 +152,7 @@ export async function verifySettlementDeployment(client: PublicClient, address: 
     check('EIP-712 chainId', String(domainChainId), String(expected.chainId)),
     check('EIP-712 verifyingContract', verifyingContract, address),
     check('USDG balance held', String(balance), '0'),
+    check('owner account', ownerKind, expected.allowContractOwner ? 'EOA, EOA_7702 or CONTRACT' : 'EOA or EOA_7702', (a) => signable(a) || (expected.allowContractOwner === true && a === 'CONTRACT')),
+    check('attestor account', attestorKind, 'EOA or EOA_7702', (a) => signable(a)),
   ];
 }

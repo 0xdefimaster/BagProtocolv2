@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { network } from 'hardhat';
-import { validateSettlementDeployConfig, verifySettlementDeployment } from '../../lib/blockchain/redeem-settlement-deploy';
+import { accountKindProblems, classifyAccountCode, validateSettlementDeployConfig, verifySettlementDeployment } from '../../lib/blockchain/redeem-settlement-deploy';
 
 // scripts/deploy-redeem-settlement.ts's checks, against a real RedeemSettlement deployment: the read-back passes for
 // a correct deployment and names every value that differs from the intent; the pre-deploy config check refuses the
@@ -29,7 +29,7 @@ describe('RedeemSettlement deployment checks (scripts/deploy-redeem-settlement.t
     assert.deepEqual(failed(checks), []);
     assert.deepEqual(
       checks.map((c) => c.name),
-      ['chain', 'usdg', 'owner', 'attestor', 'MAX_FEE_RATE_BPS', 'EIP-712 name', 'EIP-712 version', 'EIP-712 chainId', 'EIP-712 verifyingContract', 'USDG balance held']
+      ['chain', 'usdg', 'owner', 'attestor', 'MAX_FEE_RATE_BPS', 'EIP-712 name', 'EIP-712 version', 'EIP-712 chainId', 'EIP-712 verifyingContract', 'USDG balance held', 'owner account', 'attestor account']
     );
   });
 
@@ -56,6 +56,22 @@ describe('RedeemSettlement deployment checks (scripts/deploy-redeem-settlement.t
     const { publicClient, expected } = await deployed();
     const checks = await verifySettlementDeployment(publicClient as never, A('1') as `0x${string}`, expected);
     assert.deepEqual(failed(checks), ['contract code']);
+  });
+
+  it('a contract as owner fails unless explicitly allowed (Safe); a contract as attestor always fails — the first live deploy got a probe contract as owner', async () => {
+    const { viem, publicClient, usdg } = await deployed();
+    const [, attestorW] = await viem.getWalletClients();
+    const probeLike = await viem.deployContract('HookERC20', []);
+    const withContractOwner = await viem.deployContract('RedeemSettlement', [usdg.address, attestorW.account.address, probeLike.address]);
+    const chainId = await publicClient.getChainId();
+    const expected = { chainId, usdg: usdg.address, owner: probeLike.address, attestor: attestorW.account.address };
+    assert.deepEqual(failed(await verifySettlementDeployment(publicClient as never, withContractOwner.address, expected)), ['owner account']);
+    assert.deepEqual(failed(await verifySettlementDeployment(publicClient as never, withContractOwner.address, { ...expected, allowContractOwner: true })), []);
+
+    const [ownerW] = await viem.getWalletClients();
+    const withContractAttestor = await viem.deployContract('RedeemSettlement', [usdg.address, probeLike.address, ownerW.account.address]);
+    const exp2 = { chainId, usdg: usdg.address, owner: ownerW.account.address, attestor: probeLike.address, allowContractOwner: true };
+    assert.deepEqual(failed(await verifySettlementDeployment(publicClient as never, withContractAttestor.address, exp2)), ['attestor account']);
   });
 
   it('after the owner rotates the attestor, the old expectation no longer verifies', async () => {
@@ -85,5 +101,23 @@ describe('validateSettlementDeployConfig (pre-deploy, operational guards)', () =
     assert.match(validateSettlementDeployConfig({ ...ok, chainId: 1 }).join(), /chain 1 is not the expected 4663/);
     assert.match(validateSettlementDeployConfig({ ...ok, owner: A('0') }).join(), /owner is the zero address/);
     assert.match(validateSettlementDeployConfig({ ...ok, attestor: '0x1234' }).join(), /attestor is not an address/);
+  });
+});
+
+describe('account kinds (pre-deploy: owner and attestor must be able to act and sign)', () => {
+  const delegate = 'ab'.repeat(20);
+  it('classifies no code as EOA, an EIP-7702 delegation (0xef0100 + 20 bytes, e.g. a MetaMask smart account) as EOA_7702, anything else as CONTRACT', () => {
+    assert.equal(classifyAccountCode('0x'), 'EOA');
+    assert.equal(classifyAccountCode(undefined), 'EOA');
+    assert.equal(classifyAccountCode(`0xef0100${delegate}`), 'EOA_7702');
+    assert.equal(classifyAccountCode(`0xef0100${delegate}00`), 'CONTRACT');
+    assert.equal(classifyAccountCode('0x6080604052'), 'CONTRACT');
+  });
+
+  it('refuses a contract attestor always, a contract owner unless confirmed; 7702 accounts pass', () => {
+    assert.deepEqual(accountKindProblems({ owner: 'EOA', attestor: 'EOA_7702' }), []);
+    assert.match(accountKindProblems({ owner: 'CONTRACT', attestor: 'EOA' }).join(), /owner is a contract/);
+    assert.deepEqual(accountKindProblems({ owner: 'CONTRACT', attestor: 'EOA' }, true), []);
+    assert.match(accountKindProblems({ owner: 'EOA', attestor: 'CONTRACT' }, true).join(), /attestor is a contract/);
   });
 });

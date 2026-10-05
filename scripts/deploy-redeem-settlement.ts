@@ -12,7 +12,9 @@
  *   REDEEM_SETTLEMENT_ATTESTOR_ADDRESS       the backend signer's ADDRESS — never its key
  *   REDEEM_SETTLEMENT_DEPLOY_CONFIRM         must equal I_UNDERSTAND_THIS_DEPLOYS_TO_ROBINHOOD_CHAIN
  * Owner and attestor go straight into the constructor: the deployer keeps no power after the deploy.
- * Operational guards (not contract rules): deployer, owner and attestor must be three different addresses.
+ * Operational guards (not contract rules): deployer, owner and attestor must be three different addresses, and both
+ * must be accounts (an EOA, or an EOA with an EIP-7702 delegation such as a MetaMask smart account). A contract owner
+ * (a Safe) needs REDEEM_SETTLEMENT_OWNER_IS_CONTRACT=yes; a contract attestor is always refused (it cannot sign).
  *
  * --verify also accepts REDEEM_SETTLEMENT_ATTESTOR_PRIVATE_KEY (the server secret) when it is in the environment: it
  * then checks that the key the backend will sign with belongs to the on-chain attestor. Only the match is printed.
@@ -27,7 +29,7 @@ import { createPublicClient, createWalletClient, defineChain, getAddress, http, 
 import { privateKeyToAccount } from 'viem/accounts';
 import { ROBINHOOD_CHAIN_ID, ROBINHOOD_REWARD_TOKEN, ROBINHOOD_RPC_URL } from '../lib/config/robinhood-chain';
 import { redactRpcUrl } from '../lib/domain/basket-protocol/redeem/fee-router-executability';
-import { validateSettlementDeployConfig, verifySettlementDeployment, type DeploymentCheck } from '../lib/blockchain/redeem-settlement-deploy';
+import { accountKind, accountKindProblems, validateSettlementDeployConfig, verifySettlementDeployment, type DeploymentCheck } from '../lib/blockchain/redeem-settlement-deploy';
 
 const CONFIRM_PHRASE = 'I_UNDERSTAND_THIS_DEPLOYS_TO_ROBINHOOD_CHAIN';
 
@@ -63,7 +65,13 @@ async function connectedChainId(pub: PublicClient): Promise<number> {
 }
 
 async function verify(pub: PublicClient, address: `0x${string}`, owner: `0x${string}`, attestor: `0x${string}`): Promise<boolean> {
-  const checks = await verifySettlementDeployment(pub, address, { chainId: ROBINHOOD_CHAIN_ID, usdg: ROBINHOOD_REWARD_TOKEN.address, owner, attestor });
+  const checks = await verifySettlementDeployment(pub, address, {
+    chainId: ROBINHOOD_CHAIN_ID,
+    usdg: ROBINHOOD_REWARD_TOKEN.address,
+    owner,
+    attestor,
+    allowContractOwner: process.env.REDEEM_SETTLEMENT_OWNER_IS_CONTRACT === 'yes',
+  });
   let ok = printChecks(checks);
   const serverKey = process.env.REDEEM_SETTLEMENT_ATTESTOR_PRIVATE_KEY as Hex | undefined;
   if (serverKey) {
@@ -107,6 +115,9 @@ async function main() {
     attestor,
   });
   if (problems.length > 0) refuse(problems.join('; '));
+  const kinds = { owner: await accountKind(pub, owner), attestor: await accountKind(pub, attestor) };
+  const kindProblems = accountKindProblems(kinds, process.env.REDEEM_SETTLEMENT_OWNER_IS_CONTRACT === 'yes');
+  if (kindProblems.length > 0) refuse(kindProblems.join('; '));
 
   // The settlement token must be the real USDG here: it is immutable in the contract.
   const usdgCode = await pub.getCode({ address: ROBINHOOD_REWARD_TOKEN.address });

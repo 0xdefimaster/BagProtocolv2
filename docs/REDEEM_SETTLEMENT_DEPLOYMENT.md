@@ -1,9 +1,22 @@
 # RedeemSettlement — deployment runbook
 
-Status: **NOT DEPLOYED.** This page describes how `contracts/RedeemSettlement.sol` is deployed and switched on, and
+Status: **DEPLOYED on Robinhood Chain (2026-10-06), NOT SWITCHED ON** — see §0. This page describes how `contracts/RedeemSettlement.sol` is deployed and switched on, and
 what has to be true before and after. Script: `scripts/deploy-redeem-settlement.ts`. Checks:
 `lib/blockchain/redeem-settlement-deploy.ts`, tested against a real deployment in
 `contracts/test/RedeemSettlementDeploy.test.ts`.
+
+## 0. Deployments (Robinhood Chain, 4663)
+
+| Address | Status | Owner | Attestor | Deploy tx |
+|---|---|---|---|---|
+| `0x1B365C5325Eb511935F60B7aeA184a3fABedF6f6` | **Current.** `VERIFIED` by the script; not yet configured anywhere (switching on is §4) | `0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46` (EOA) | `0xa1BAf6072301DB78e48BBAeB82a85b9753ACBE5F` (EOA with an EIP-7702 delegation — a MetaMask smart account; signs normally) | `0x48628c32932620179cf9fe6f64560612876104c9aa5aced48c9535b7e4635167`, block 81147074 |
+| `0x0FB961dd2844091361C6bFcCd92D8f0457DC984d` | **Abandoned — never configure.** Its owner is the P1 probe contract (`0x7bEB…5e3C`), which cannot call `setAttestor`/`setOwner`: unmanageable. Holds nothing. | `0x7bEB437538BC71A95dad6624Aa04bF3594525e3C` (contract) | same | `0x6de197c76918bdef94540ba25f47a84dfb57da497f8382383a3e142f7a8ddb8d`, block 81144647 |
+
+Deployer of both: the P1 disposable wallet `0xb193…56b8` (no power after deployment). The abandoned deployment is
+why the script now refuses a contract owner without an explicit confirmation, and a contract attestor always.
+
+The current owner is also BagFactory's owner: one admin key for both contracts. Acceptable for the ~$1 test; move
+both to a Safe before real volume.
 
 ## 1. What the contract takes and allows
 
@@ -31,7 +44,9 @@ Owner and attestor are passed straight to the constructor, so the deployer has n
 no ownership transfer step.
 
 **Operational guards vs contract invariants.** The script refuses `deployer == owner`, `deployer == attestor` and
-`owner == attestor`. These are BAG's deployment discipline, not rules of the contract: the contract would accept
+`owner == attestor`, an attestor with contract code (it could never sign; the contract does not use ERC-1271), and an
+owner with contract code unless `REDEEM_SETTLEMENT_OWNER_IS_CONTRACT=yes` (for a Safe). An EOA with an EIP-7702
+delegation (code `0xef0100` + 20 bytes, e.g. a MetaMask smart account) counts as an account. These are BAG's deployment discipline, not rules of the contract: the contract would accept
 them. What the contract itself enforces is non-zero addresses and the fixed token/domain.
 
 ## 3. Deploy
