@@ -585,3 +585,156 @@ Mutation check: each of the following makes at least one test fail:
   price-quality rule; the `contextHash` preimage; the creator freeze
   preflight.
 - Deployment and a real ~$1 fee-bearing redemption on Robinhood Chain.
+
+## 9. Two-phase settlement attestation (backend)
+
+`lib/server/redeem-settlement-attestation.ts`, with the shared EIP-712 /
+context code in `lib/blockchain/redeem-settlement-eip712.ts`. The routes are
+`POST /api/redeem-intent/:id/settlement-quote` (phase 1) and
+`…/settlement-attest` (phase 2). The request carries only the intent id;
+every other value is read on the server.
+
+**The backend is not the fee authority.** It never computes a "fee to pay"
+and never sends one to the contract; the contract computes the fee from what
+arrives (§8). The backend attests only what it owns:
+
+- who the user, creator and executor are;
+- the ledger's basis and loss carry, and the Bag's locked rate;
+- the user's floor;
+- one hash of the state it checked.
+
+**Flow:**
+
+1. Intent created (existing).
+2. **Phase 1, `quoteSettlement`. Signs nothing.**
+   - Intent `READY` and not expired.
+   - Sale coverage (A4).
+   - Purchase lock (§5.6).
+   - Ledger basis and carry, rounded up.
+   - A Composer quote of the same sales, giving per-leg simulated and
+     enforced minimum outputs, and the user's Composer proxy.
+   - The **#16 price-quality rule** per leg: refuse if more than 5% below the
+     value at BAG's verified price.
+   - `grossMinimum = Σ` enforced minimums, plus USDG legs at 1:1.
+   - `minUserProceeds = grossMinimum − fee(grossMinimum)`. This is the floor,
+     not a fee sent anywhere: the user gets at least this if and only if at
+     least `grossMinimum` arrives, because `received − fee(received)` only
+     grows with `received`.
+   - Records the **plan**: context hash, executor, user, creator, basis,
+     carry, rate, gross minimum, floor, and expiry, never later than the
+     intent's (`redeem_intents.settlement_plan`, migration 0053).
+3. **Phase 2, `attestSettlement`.**
+   - Reads the whole state **again from scratch** and recomputes the context
+     hash. Refuses (`SETTLEMENT_STATE_CHANGED`) unless it equals the plan's,
+     and unless the plan's user, creator, basis, carry and rate equal the
+     fresh values. This is the TOCTOU guard.
+   - The intent must still be `READY` and unexpired. Coverage and the
+     purchase lock are re-checked. The plan must exist and be unexpired.
+   - Creator freeze preflight: USDG `isFrozen`; frozen means refuse. It is
+     only a preflight; the contract's revert is the guarantee. If the freeze
+     state cannot be read, phase 2 proceeds.
+   - `deadline = min(now + 5 min, intent expiry, plan expiry)`.
+   - Signs one `Settlement` struct with `REDEEM_SETTLEMENT_ATTESTOR_PRIVATE_KEY`.
+   - Compiles the **final Composer flow**: swaps, merge, transfer to the
+     settlement contract, then `settleFlat` (§8; static arguments, signature
+     in EIP-2098 form).
+   - **Refuses unless the compiled flow's proxy equals the attested executor**
+     (`EXECUTOR_MISMATCH`).
+   - Checks the transaction spends no ETH, approvals are only for the sold
+     tokens and never above the amounts, and the settlement address is in the
+     calldata.
+   - Records the transaction, guarded on the intent status **and** on the
+     plan's context hash, so a plan replaced in between is never paired with
+     a signature made for another.
+4. The user signs the approvals and the one transaction.
+5. LI.FI executes.
+6. `RedeemSettlement` settles and computes the B fee on what arrived.
+
+**What one signature binds:**
+
+| Field | Source |
+|---|---|
+| `redemptionId` | The intent UUID → bytes32 (one redemption) |
+| `user` | The user's wallet on file, equal to the intent's wallet |
+| `creator` | The Bag creator's wallet on file |
+| `executor` | The user's Composer proxy from phase 1, re-verified against the final compile (one executor) |
+| `contextHash` | See below |
+| `consumedBasis`, `lossCarry` | The ledger (A3), rounded up |
+| `feeRateBps` | The Bag's locked rate; 0 when the creator sells their own Bag |
+| `minUserProceeds` | Phase 1's floor |
+| `deadline` | Never past the intent or the plan |
+
+**`contextHash` is canonical.** It is a fixed, versioned ABI schema
+(`BAG_SETTLEMENT_CONTEXT_V1`) of static types only, covering:
+
+- chain id and settlement contract;
+- Bag id, Bag contract, strategy version, and keccak of the composition hash;
+- redemption, user, creator, and shares sold;
+- the legs (token, amount), **sorted by address, duplicates refused**;
+- the ledger head (sequence and event count);
+- basis, carry and rate.
+
+There is no JSON and no key order, so one logical state has exactly one
+encoding. Integers are validated: a decimal, a negative number or `1e18` is
+refused. Anything that comes from a quote (floor, executor) is deliberately
+**outside** the context, so phase 2 can recompute it from state alone.
+
+**Contract addition:** `settleFlat`, the same `_settle` reached with flat
+static arguments. Composer `core.call` relies only on static types, so there
+is no tuple and no dynamic `bytes`. The executor is `msg.sender`: a different
+caller recovers a different signer. The signature is EIP-2098 `(r, vs)`,
+which keeps the function within the legacy code generator's stack limit
+without switching the project to via-IR.
+
+**Tests:**
+
+- **`redeem-settlement-attestation.test.ts` (12):**
+  - phase 1 records the plan and signs nothing;
+  - #16 refusal;
+  - lock, basis, and expiry refusals;
+  - the plan never outlives the intent;
+  - phase 2 signs exactly the struct fields, and the attestor recovers from
+    them;
+  - no fee field anywhere in the final build;
+  - deadline clamps;
+  - TOCTOU: a new ledger event, a different basis, carry, rate, version,
+    creator wallet or quantity are each refused, with nothing compiled or
+    recorded;
+  - a purchase started between the phases is refused;
+  - no plan, or an expired plan, is refused;
+  - an executor mismatch is refused;
+  - freeze preflight;
+  - a creator selling their own Bag signs rate 0.
+- **Mutation check:** removing any one of these makes a test fail:
+  - the context-hash equality;
+  - the executor check;
+  - the plan expiry;
+  - the deadline clamp;
+  - the freeze preflight;
+  - the #16 check;
+  - the purchase lock.
+- **`redeem-settlement-eip712.test.ts`:**
+  - leg order and address case do not change the hash;
+  - each of 17 state fields does;
+  - ambiguous input is refused;
+  - the type string matches the contract.
+- **`composer-settlement-redeem.test.ts`:**
+  - the final flow's node order and `settleFlat` arguments;
+  - it decodes against `FlowSchema`;
+  - no price-impact override is sent;
+  - approval and ETH refusals.
+- **`RedeemSettlement.test.ts` (24):**
+  - the contract's `SETTLEMENT_TYPEHASH` equals the library's type string;
+  - a struct signed by the backend's own code (raw attestor key, canonical
+    context, compact signature) settles through `settleFlat` on Hardhat;
+  - `settleFlat` equivalence and tampering.
+
+**Not done yet (needed before the real ~$1 run):**
+
+- The frontend calling the two routes.
+- The execution-status / receipt path recognizing a settlement transaction:
+  the wallet receives `received − fee`, and the fee goes to the creator.
+- Deployment of `RedeemSettlement` with its owner and attestor.
+- A real run on Robinhood Chain. Composer's acceptance of `settleFlat` with
+  these argument types has been checked offline against the schema, but not
+  compiled live yet.

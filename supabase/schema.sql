@@ -7315,3 +7315,7 @@ begin
 end $$;
 
 revoke all on function guard_strategy_registrations_immutable() from public;
+
+-- 0053_redeem_settlement_plan.sql
+alter table redeem_intents
+  add column if not exists settlement_plan jsonb;

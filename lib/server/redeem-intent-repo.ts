@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { AssetIdentity, ChainId } from '@/types/basket-protocol';
-import { RedeemIntent, RedeemIntentFailureCode, RedeemIntentStatus, RedeemIntentStepRecord } from '@/types/redeem-intent';
+import { RedeemIntent, RedeemIntentFailureCode, RedeemIntentStatus, RedeemIntentStepRecord, RedeemSettlementPlan } from '@/types/redeem-intent';
 import { assertValidPurchaseIntentTransition } from '@/lib/domain/basket-protocol/purchase-intent/state-machine';
 
 // -----------------------------------------------------------------------------
@@ -31,6 +31,8 @@ interface RedeemIntentRow {
   steps: RedeemIntentStepRecord[];
   /** 0047; absent on a database without that migration. */
   composer_transaction?: RedeemIntent['composerTransaction'];
+  /** 0053; absent on a database without that migration. */
+  settlement_plan?: RedeemSettlementPlan | null;
   status: RedeemIntentStatus;
   failure_code: RedeemIntentFailureCode | null;
   created_at: string;
@@ -56,6 +58,7 @@ function fromRow(row: RedeemIntentRow): RedeemIntent {
     redeemValueQuote: row.redeem_value_quote,
     steps: row.steps,
     composerTransaction: row.composer_transaction ?? null,
+    settlementPlan: row.settlement_plan ?? null,
     status: row.status,
     failureCode: row.failure_code,
     createdAt: row.created_at,
@@ -275,4 +278,51 @@ export async function listRedeemIntentsForUserBag(
 export async function touchUnsettledRedeemIntent(admin: SupabaseClient, id: string): Promise<void> {
   const { error } = await admin.from('redeem_intents').update({ updated_at: new Date().toISOString() }).eq('id', id).in('status', ['SUBMITTED', 'CONFIRMING']);
   if (error) throw new Error(error.message);
+}
+
+/**
+ * Records phase 1's settlement plan (0053). Same race guard as the other updates: only while the intent is still in
+ * `expectedStatus`. Clears any composer transaction an earlier attestation left, so a re-quote never pairs a new
+ * plan with an old signature.
+ */
+export async function setRedeemSettlementPlan(
+  admin: SupabaseClient,
+  id: string,
+  expectedStatus: RedeemIntentStatus,
+  plan: RedeemSettlementPlan
+): Promise<RedeemIntent | null> {
+  const { data, error } = await admin
+    .from('redeem_intents')
+    .update({ settlement_plan: plan, composer_transaction: null, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('status', expectedStatus)
+    .select()
+    .maybeSingle<RedeemIntentRow>();
+  if (error) throw new Error(error.message);
+  return data ? fromRow(data) : null;
+}
+
+/**
+ * Records phase 2's result: the attested plan and the one Composer transaction the wallet signs. Guarded on the
+ * status AND on the plan phase 2 attested (its context hash), so a plan replaced in between is never overwritten
+ * with a signature made for another one.
+ */
+export async function setRedeemSettlementAttested(
+  admin: SupabaseClient,
+  id: string,
+  expectedStatus: RedeemIntentStatus,
+  expectedContextHash: string,
+  plan: RedeemSettlementPlan,
+  composerTransaction: NonNullable<RedeemIntent['composerTransaction']>
+): Promise<RedeemIntent | null> {
+  const { data, error } = await admin
+    .from('redeem_intents')
+    .update({ settlement_plan: plan, composer_transaction: composerTransaction, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('status', expectedStatus)
+    .eq('settlement_plan->>contextHash', expectedContextHash)
+    .select()
+    .maybeSingle<RedeemIntentRow>();
+  if (error) throw new Error(error.message);
+  return data ? fromRow(data) : null;
 }

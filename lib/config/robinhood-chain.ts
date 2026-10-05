@@ -104,6 +104,10 @@ export const DEPLOYED_CONTRACTS = {
   get redeemFeeRouter(): `0x${string}` | null {
     return (process.env.REDEEM_FEE_ROUTER_ADDRESS as `0x${string}` | undefined) || null;
   },
+  /** contracts/RedeemSettlement.sol — the settlement end of a fee-paying Composer redemption. Null until deployed. */
+  get redeemSettlement(): `0x${string}` | null {
+    return (process.env.REDEEM_SETTLEMENT_ADDRESS as `0x${string}` | undefined) || null;
+  },
   /**
    * Phase 19.X-1/2 — `contracts/BagExecutionRouter.sol`'s deployed address.
    * `null` (never a guessed/placeholder address) until

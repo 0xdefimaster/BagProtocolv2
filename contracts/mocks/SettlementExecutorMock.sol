@@ -19,4 +19,16 @@ contract SettlementExecutorMock {
         if (amount > 0) token.transfer(address(settlement), amount);
         return settlement.settle(s, signature);
     }
+
+    /// The Composer shape: push, then the flat-argument entry (executor = this contract as msg.sender).
+    function pushAndSettleFlat(IERC20 token, RedeemSettlement settlement, uint256 amount, bytes calldata flatCall) external returns (bytes memory) {
+        if (amount > 0) token.transfer(address(settlement), amount);
+        (bool ok, bytes memory ret) = address(settlement).call(flatCall);
+        if (!ok) {
+            assembly {
+                revert(add(ret, 32), mload(ret))
+            }
+        }
+        return ret;
+    }
 }

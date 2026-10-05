@@ -79,6 +79,11 @@ export interface RedeemIntent {
     chainId: number;
     approvals: { token: string; spender: string; amountRaw: string }[];
   } | null;
+  /**
+   * Two-phase settlement attestation (0053): the plan phase 1 checked, which phase 2 must re-confirm before
+   * signing. Server-written only. Null for every intent that does not settle through RedeemSettlement.
+   */
+  settlementPlan?: RedeemSettlementPlan | null;
   status: RedeemIntentStatus;
   failureCode: RedeemIntentFailureCode | null;
   createdAt: string;
@@ -87,4 +92,32 @@ export interface RedeemIntent {
   executedAt: string | null;
   accountingAppliedAt: string | null;
   reconciliationAppliedAt: string | null;
+}
+
+/**
+ * What phase 1 of the settlement attestation checked and phase 2 re-confirms (lib/server/redeem-settlement-attestation.ts).
+ * Amounts are raw USDG (6 decimals) as decimal strings.
+ */
+export interface RedeemSettlementPlan {
+  schema: 1;
+  settlement: string;
+  /** The settlement context hash (lib/blockchain/redeem-settlement-eip712.ts) of the state phase 1 checked. */
+  contextHash: string;
+  /** The user's Composer execution proxy from phase 1's compile — the only address allowed to call settle. */
+  executor: string;
+  user: string;
+  creator: string;
+  consumedBasisRaw: string;
+  lossCarryRaw: string;
+  feeRateBps: number;
+  /** Σ per-leg provider-enforced minimum outputs (+ USDG legs 1:1). */
+  grossMinimumRaw: string;
+  /** The user's floor after the fee: the user gets at least this iff at least grossMinimumRaw arrives. */
+  minUserProceedsRaw: string;
+  quotedAt: string;
+  /** Never later than the intent's own expiry. */
+  expiresAt: string;
+  /** Set by phase 2. */
+  attestedAt?: string;
+  deadline?: number;
 }

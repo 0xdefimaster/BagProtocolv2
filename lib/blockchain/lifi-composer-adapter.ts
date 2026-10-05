@@ -485,3 +485,153 @@ export async function buildComposerSweep(request: ComposerSweepRequest): Promise
     fees: (result.fees ?? []).map((f) => ({ token: f.token, recipient: f.recipient, bps: f.bps, amount: f.amount })),
   };
 }
+
+// -----------------------------------------------------------------------------
+// Fee-paying redemption through RedeemSettlement (docs/LIFI_COMPOSER_FEE_SETTLEMENT_FEASIBILITY.md §8–§9): every
+// held token sold into USDG (a USDG holding goes in as is), the outputs merged, the merged USDG transferred to the
+// settlement contract, then `settleFlat` called — the push shape proven live (P1 SP/SP2). The settle arguments are
+// flow inputs (static types only: bytes32 / address / uint256), the attestor's signature in EIP-2098 compact form.
+// A core.transfer is a tracked output, so Composer's own price-impact guard stays on. Signs and sends nothing.
+// -----------------------------------------------------------------------------
+
+export const SETTLE_FLAT_SIGNATURE =
+  'function settleFlat(bytes32 redemptionId,address user,address creator,bytes32 contextHash,uint256 consumedBasis,uint256 lossCarry,uint256 feeRateBps,uint256 minUserProceeds,uint256 deadline,bytes32 r,bytes32 vs) returns (uint256)';
+
+export interface ComposerSettlementRedeemRequest {
+  chain: ChainId;
+  inputs: ComposerSweepInput[];
+  /** USDG. */
+  outputTokenAddress: string;
+  settlementAddress: string;
+  settle: {
+    redemptionId: `0x${string}`;
+    user: `0x${string}`;
+    creator: `0x${string}`;
+    contextHash: `0x${string}`;
+    consumedBasis: bigint;
+    lossCarry: bigint;
+    feeRateBps: bigint;
+    minUserProceeds: bigint;
+    deadline: bigint;
+    r: `0x${string}`;
+    vs: `0x${string}`;
+  };
+  signerAddress: string;
+  slippageBps: number;
+  apiKey: string;
+  baseUrl?: string;
+  fetchImpl?: typeof fetch;
+}
+
+export async function buildComposerSettlementRedeem(request: ComposerSettlementRedeemRequest): Promise<ComposerPurchaseResult> {
+  if (!COMPOSER_ELIGIBLE_CHAINS.includes(request.chain) || request.inputs.length === 0) {
+    throw new ComposerIneligibleError(`Chain "${request.chain}" with ${request.inputs.length} token(s) cannot settle through Composer.`);
+  }
+  const output = request.outputTokenAddress.toLowerCase();
+  const seen = new Set<string>();
+  for (const input of request.inputs) {
+    const address = input.address.toLowerCase();
+    if (seen.has(address)) throw new Error(`${input.symbol} is listed twice.`);
+    if (!/^\d+$/.test(input.amountRaw) || BigInt(input.amountRaw) <= BigInt(0)) throw new Error(`${input.symbol}: amount must be a positive integer.`);
+    seen.add(address);
+  }
+
+  const chainId = toLiFiChainId(request.chain);
+  const sdkOptions: ComposeSdkOptions = { baseUrl: request.baseUrl ?? 'https://composer.li.quest', apiKey: request.apiKey };
+  if (request.fetchImpl !== undefined) {
+    (sdkOptions as { fetch?: typeof fetch }).fetch = request.fetchImpl;
+  }
+  const sdk = createComposeSdk(sdkOptions);
+
+  const inputSchema: Record<string, unknown> = {
+    settlementAddress: 'address',
+    redemptionId: 'bytes32',
+    user: 'address',
+    creator: 'address',
+    contextHash: 'bytes32',
+    consumedBasis: 'uint256',
+    lossCarry: 'uint256',
+    feeRateBps: 'uint256',
+    minUserProceeds: 'uint256',
+    deadline: 'uint256',
+    r: 'bytes32',
+    vs: 'bytes32',
+  };
+  request.inputs.forEach((input, i) => {
+    inputSchema[`in_${i}`] = resources.erc20(input.address as `0x${string}`, chainId);
+  });
+  const builder = sdk.flow(chainId, { name: `settlement-redeem-${request.inputs.length}`, inputs: inputSchema as never });
+  const b = builder.inputs as Record<string, Bindable<'resource'>>;
+  const slippage = request.slippageBps / 10000;
+
+  const usdgParts: Bindable<'resource'>[] = request.inputs.map((input, i) => {
+    if (input.address.toLowerCase() === output) return b[`in_${i}`];
+    return builder.lifi.swap(sweepNodeId(i), {
+      bind: { amountIn: b[`in_${i}`] },
+      config: { resourceOut: { kind: 'erc20', token: request.outputTokenAddress as `0x${string}`, chainId }, slippage },
+      guards: [guards.slippage({ port: 'unspentIn', bps: request.slippageBps })],
+    }).amountOut;
+  });
+  let merged = usdgParts[0];
+  for (let i = 1; i < usdgParts.length; i++) {
+    merged = builder.core.merge(`merge_${i}`, { bind: { a: merged, b: usdgParts[i] } }).merged;
+  }
+  builder.core.transfer('push', { bind: { amount: merged, recipient: b.settlementAddress as never }, config: {} });
+  const names = ['redemptionId', 'user', 'creator', 'contextHash', 'consumedBasis', 'lossCarry', 'feeRateBps', 'minUserProceeds', 'deadline', 'r', 'vs'];
+  builder.core.call('settle', {
+    bind: Object.fromEntries(names.map((n) => [n, b[n]])) as never,
+    config: { target: request.settlementAddress as `0x${string}`, functionSignature: SETTLE_FLAT_SIGNATURE },
+  });
+
+  const runInputs: Record<string, unknown> = {
+    settlementAddress: request.settlementAddress,
+    redemptionId: request.settle.redemptionId,
+    user: request.settle.user,
+    creator: request.settle.creator,
+    contextHash: request.settle.contextHash,
+    consumedBasis: request.settle.consumedBasis.toString(),
+    lossCarry: request.settle.lossCarry.toString(),
+    feeRateBps: request.settle.feeRateBps.toString(),
+    minUserProceeds: request.settle.minUserProceeds.toString(),
+    deadline: request.settle.deadline.toString(),
+    r: request.settle.r,
+    vs: request.settle.vs,
+  };
+  request.inputs.forEach((input, i) => {
+    runInputs[`in_${i}`] = materialisers.directDeposit({ amount: BigInt(input.amountRaw) });
+  });
+  const result = await builder.compile({
+    signer: request.signerAddress as `0x${string}`,
+    inputs: runInputs as never,
+    sweepTo: { $ref: 'context.sender' },
+    checkOnChainAllowances: true,
+  } as never);
+
+  if (result.status !== 'success') {
+    throw new Error(`Composer flow compilation failed: ${result.error.kind} — ${result.error.message}`);
+  }
+  if (!result.transactionRequest) {
+    throw new Error('Composer flow reported success but returned no transactionRequest.');
+  }
+  if (BigInt(result.transactionRequest.value ?? '0') !== BigInt(0)) {
+    throw new Error('Composer returned a settlement transaction that also spends native ETH.');
+  }
+  const amountByToken = new Map(request.inputs.map((input) => [input.address.toLowerCase(), BigInt(input.amountRaw)]));
+  const approvals: ComposerApproval[] = (result.approvals ?? []).map((a) => ({ token: a.token, spender: a.spender, amountRaw: a.amount }));
+  for (const a of approvals) {
+    const limit = amountByToken.get(a.token.toLowerCase());
+    if (limit === undefined) throw new Error(`Composer requested an approval for ${a.token}, which is not being sold.`);
+    if (!/^0x[0-9a-fA-F]{40}$/.test(a.spender) || !/^\d+$/.test(a.amountRaw) || BigInt(a.amountRaw) > limit) {
+      throw new Error('Composer returned an approval with an invalid spender or an amount above what is being sold.');
+    }
+  }
+  return {
+    approvals,
+    transactionRequest: { to: result.transactionRequest.to, data: result.transactionRequest.data, value: result.transactionRequest.value ?? '0', chainId },
+    userProxy: result.userProxy,
+    producedResources: result.producedResources,
+    gasLimitRaw: result.transactionRequest.gasLimit ?? null,
+    priceImpact: result.priceImpact ?? null,
+    fees: (result.fees ?? []).map((f) => ({ token: f.token, recipient: f.recipient, bps: f.bps, amount: f.amount })),
+  };
+}

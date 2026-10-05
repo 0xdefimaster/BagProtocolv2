@@ -143,14 +143,53 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
     /// @notice Settles one redemption: computes the fee on what actually
     /// arrived, pays it to `s.creator`, and everything else to `s.user`.
     function settle(Settlement calldata s, bytes calldata signature) external nonReentrant returns (uint256 userProceeds) {
+        Settlement memory m = s;
+        return _settle(m, ECDSA.recover(_hashTypedDataV4(_hashSettlement(m)), signature));
+    }
+
+    /// @notice The same settlement with flat, static arguments — the form a
+    /// LI.FI Composer `core.call` can encode (static Solidity types only; a
+    /// tuple or a dynamic `bytes` argument is not relied on). The executor is
+    /// `msg.sender`: the attestor signed the expected executor, so a call from
+    /// anyone else recovers a different signer and is refused. The signature
+    /// is passed in EIP-2098 compact form (r, vs) — one argument fewer than
+    /// (v, r, s), which keeps this within the legacy code generator's stack
+    /// limit without switching the whole project to via-IR.
+    function settleFlat(
+        bytes32 redemptionId,
+        address user,
+        address creator,
+        bytes32 contextHash,
+        uint256 consumedBasis,
+        uint256 lossCarry,
+        uint256 feeRateBps,
+        uint256 minUserProceeds,
+        uint256 deadline,
+        bytes32 r,
+        bytes32 vs
+    ) external nonReentrant returns (uint256 userProceeds) {
+        Settlement memory m = Settlement({
+            redemptionId: redemptionId,
+            user: user,
+            creator: creator,
+            executor: msg.sender,
+            contextHash: contextHash,
+            consumedBasis: consumedBasis,
+            lossCarry: lossCarry,
+            feeRateBps: feeRateBps,
+            minUserProceeds: minUserProceeds,
+            deadline: deadline
+        });
+        return _settle(m, ECDSA.recover(_hashTypedDataV4(_hashSettlement(m)), r, vs));
+    }
+
+    function _settle(Settlement memory s, address recovered) private returns (uint256 userProceeds) {
         if (block.timestamp > s.deadline) revert Expired(s.deadline, block.timestamp);
         if (settled[s.redemptionId]) revert AlreadySettled(s.redemptionId);
         if (msg.sender != s.executor) revert WrongExecutor(msg.sender, s.executor);
         if (s.user == address(0)) revert ZeroAddress();
         if (s.feeRateBps > MAX_FEE_RATE_BPS) revert FeeRateTooHigh(s.feeRateBps);
         if (s.feeRateBps > 0 && s.creator == address(0)) revert ZeroAddress();
-
-        address recovered = ECDSA.recover(_hashTypedDataV4(hashSettlement(s)), signature);
         if (recovered != attestor) revert InvalidSignature(recovered);
 
         // Effects before the external transfers.
@@ -189,7 +228,11 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
 
     /// @notice The EIP-712 struct hash of a settlement (exposed so off-chain
     /// signers and tests hash exactly what the contract verifies).
-    function hashSettlement(Settlement calldata s) public pure returns (bytes32) {
+    function hashSettlement(Settlement calldata s) external pure returns (bytes32) {
+        return _hashSettlement(s);
+    }
+
+    function _hashSettlement(Settlement memory s) private pure returns (bytes32) {
         return keccak256(
             abi.encode(
                 SETTLEMENT_TYPEHASH,
