@@ -1,6 +1,16 @@
 # LI.FI Composer → BAG fee settlement: feasibility study
 
-Status: **STUDY**. No code or contract changes. 2026-10-05.
+Status: **STUDY + P1 RESULTS**. 2026-10-05.
+
+> **P1 result (§7):** on Robinhood Chain, in real transactions, a LI.FI swap of
+> AMKR (a token with no Uniswap v3 route) into USDG delivered its actual output
+> to a BAG-deployed contract, which measured it in the same transaction. This
+> worked both by push (`core.transfer`, then a call) and by pull (`core.call`
+> with an inline approval). `msg.sender` at the contract was the user's own
+> Composer proxy. The study's question is answered **yes for delivery and
+> measurement**. The user/creator split is BAG contract logic that has not run
+> in these transactions; it is the B contract's job (§5) and needs its own
+> tests. Nothing below §6 was changed by these results except where §7 says so.
 Updated after review: who `msg.sender` is at the settlement contract, and how
 the tokens get there, are **not assumed** anywhere below. They are the first
 thing P1 measures (§6).
@@ -312,3 +322,89 @@ to tokens the checker verified, or another architecture. Do not loosen #16 in
 either case.
 
 The router stays undeployed throughout.
+
+## 7. P1 results (Robinhood Chain, 2026-10-05)
+
+| Item | Value |
+|---|---|
+| Probe | `ComposerSettlementProbe` at `0x7beb437538bc71a95dad6624aa04bf3594525e3c` (deploy tx `0x3d7318c61aa9c5744c984f6840d8ce73b79bd7db549311ac415953e40e050984`, block 80917068) |
+| Wallet | Disposable, `0xb193DE199EeB9bd1143607a11AD00999Ceb956b8`; BAG signed nothing |
+| User's Composer proxy | `0xad834b4de0295622a4042a3caa62ce5b961578e7` |
+| Script | `scripts/spike/composer-settlement-probe.ts` (after fixes in PRs #19 and #20) |
+
+### 7.1 Real transactions
+
+| Flow | What ran | Tx | Probe event |
+|---|---|---|---|
+| T (pull) | 1 USDG → `core.call` probe | `0x22c368f822217d8ce1f3d8afa678dcff701dee2d59497970db725588f9d8740a` | received 1000000, pulled 1000000, calldata amount 1000000 |
+| SP (push) | 0.02 AMKR → `lifi.swap` → USDG → `core.transfer` to probe → call probe | `0xf58a19c6b32cbdd737cefe232c0cea7b9038e2dda361f5696f8599e65f2ace19` | received 1129736, pushed before the call; calldata amount 0, as designed. The compile had simulated 1129985: the contract saw the actual amount, not the quote. |
+| S (pull) | 0.02 AMKR → `lifi.swap` → USDG → `core.call` probe | `0x089bec61bd8f1f53924be2891ccb113e3d6b0d086a574bc670740b58bdd8a7aa` | received 1123699, pulled 1123699, calldata amount 1123699: the swap's runtime output was injected into the call |
+
+In all three:
+
+- `msg.sender` at the probe was the user's Composer proxy, equal to the
+  compile's `userProxy`. It was not the wallet and not a shared LI.FI executor.
+- `tx.origin` was the wallet.
+- `context.sender` resolved to the wallet, and the probe paid everything back
+  to it.
+- The user's approval went to the user's own proxy.
+- The proxy's inline approval to the probe was **0 after the call**: none was
+  left behind.
+- The probe ended with zero balance.
+
+### 7.2 Compile and simulation only (no transaction)
+
+- Robinhood Chain (4663) is in Composer's `getChains()` list. A
+  non-catalog target (the probe) was accepted, and every flow's user-program
+  simulation passed.
+- **R (forced revert):** the simulation reverted with the probe's own
+  `BelowMinimum(1000000, 1000001)`. The probe was reached, it had received the
+  full amount, and its revert failed the whole program. A reverting
+  transaction was **not** sent on-chain. Atomicity is therefore shown by
+  simulation for this flow on Robinhood Chain, not by a real revert, and it is
+  not claimed for other Composer operations (async routes, for one).
+- **P (push, USDG only):** compiled and simulated only. Push with a real swap
+  ran on-chain as SP.
+- **`userProxy`:** identical across every compile. The transaction target was
+  a Composer entry contract (`0xaceb…dae`) before the first send, and the
+  proxy itself afterwards. So the proxy address was known before it existed
+  (counterfactual) and is fixed per user. This is what lets B bind the
+  expected proxy.
+
+### 7.3 Findings that change the design
+
+1. **Who calls the settlement contract:** the user's Composer proxy. B
+   authorizes on: an explicit `user` + the expected proxy for that user + the
+   signed redemption context. Never on `tx.origin`; it is only observed.
+2. **Composer's price-impact guard cannot see value handed over by
+   `core.call`.** Live, every pull flow was rejected ("input $1, output $0,
+   impact 10000 bps") until the guard was switched off
+   (`maxPriceImpactBps: 10000`). A `core.transfer` to the contract is a tracked
+   output, so push flows keep the default guard.
+3. **Recommended model for B: push (SP).** Composer transfers the swap output
+   to the settlement contract, then calls it, and the contract counts what
+   arrived. This keeps Composer's own price-impact guard on top of BAG's floor
+   (`minUserProceeds`) and the swaps' on-chain minimums. Pull (S) also works,
+   but only with Composer's guard off. Under push, the contract must count only
+   what arrived in this transaction: it holds nothing between calls, and a
+   stray balance must not be credited to a redemption. That is B's design work.
+4. **Measure, don't trust the quote:** SP's simulated output (1129985) and its
+   actual output (1129736) differed. The fee is computed from the contract's
+   measured balance delta, as §5 already specifies.
+5. **AMKR:** Uniswap v3 has no quote for it (the fee router's venue), yet
+   LI.FI sold it and delivered the output to BAG's contract. The venue
+   limitation in `docs/STATUS.md` is solved by this route, not by more Uniswap
+   liquidity.
+
+### 7.4 Still open (B contract and backend, separate PRs)
+
+- The user/creator split and `CreatorRewardsVault.settleReward` inside the
+  Composer call. This is our own contract logic; it needs Hardhat tests and
+  then one small real run.
+- The push-model accounting rule (only this transaction's arrival counts) and
+  the binding to the user's proxy.
+- The two-phase attestation over Composer quotes, keeping the #16
+  price-quality rule.
+- A multi-leg redemption (several tokens → merge → settlement) on-chain. P1
+  used one leg.
+- Deployment of anything. The router stays undeployed.
