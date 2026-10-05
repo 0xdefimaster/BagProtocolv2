@@ -14,7 +14,8 @@
  * Owner and attestor go straight into the constructor: the deployer keeps no power after the deploy.
  * Operational guards (not contract rules): deployer, owner and attestor must be three different addresses, and both
  * must be accounts (an EOA, or an EOA with an EIP-7702 delegation such as a MetaMask smart account). A contract owner
- * (a Safe) needs REDEEM_SETTLEMENT_OWNER_IS_CONTRACT=yes; a contract attestor is always refused (it cannot sign).
+ * (a Safe) needs REDEEM_SETTLEMENT_OWNER_IS_CONTRACT=yes; a contract attestor is always refused (it cannot sign), and
+ * an attestor with an EIP-7702 delegation needs REDEEM_SETTLEMENT_ATTESTOR_ALLOW_7702=yes (it should be a plain EOA).
  *
  * --verify also accepts REDEEM_SETTLEMENT_ATTESTOR_PRIVATE_KEY (the server secret) when it is in the environment: it
  * then checks that the key the backend will sign with belongs to the on-chain attestor. Only the match is printed.
@@ -71,6 +72,7 @@ async function verify(pub: PublicClient, address: `0x${string}`, owner: `0x${str
     owner,
     attestor,
     allowContractOwner: process.env.REDEEM_SETTLEMENT_OWNER_IS_CONTRACT === 'yes',
+    allow7702Attestor: process.env.REDEEM_SETTLEMENT_ATTESTOR_ALLOW_7702 === 'yes',
   });
   let ok = printChecks(checks);
   const serverKey = process.env.REDEEM_SETTLEMENT_ATTESTOR_PRIVATE_KEY as Hex | undefined;
@@ -116,7 +118,11 @@ async function main() {
   });
   if (problems.length > 0) refuse(problems.join('; '));
   const kinds = { owner: await accountKind(pub, owner), attestor: await accountKind(pub, attestor) };
-  const kindProblems = accountKindProblems(kinds, process.env.REDEEM_SETTLEMENT_OWNER_IS_CONTRACT === 'yes');
+  const kindProblems = accountKindProblems(
+    kinds,
+    process.env.REDEEM_SETTLEMENT_OWNER_IS_CONTRACT === 'yes',
+    process.env.REDEEM_SETTLEMENT_ATTESTOR_ALLOW_7702 === 'yes'
+  );
   if (kindProblems.length > 0) refuse(kindProblems.join('; '));
 
   // The settlement token must be the real USDG here: it is immutable in the contract.

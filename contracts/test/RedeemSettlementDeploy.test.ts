@@ -114,8 +114,10 @@ describe('account kinds (pre-deploy: owner and attestor must be able to act and 
     assert.equal(classifyAccountCode('0x6080604052'), 'CONTRACT');
   });
 
-  it('refuses a contract attestor always, a contract owner unless confirmed; 7702 accounts pass', () => {
-    assert.deepEqual(accountKindProblems({ owner: 'EOA', attestor: 'EOA_7702' }), []);
+  it('refuses a contract attestor always, a contract owner unless confirmed, a 7702 attestor unless confirmed; a 7702 owner passes', () => {
+    assert.deepEqual(accountKindProblems({ owner: 'EOA_7702', attestor: 'EOA' }), []);
+    assert.match(accountKindProblems({ owner: 'EOA', attestor: 'EOA_7702' }).join(), /attestor has an EIP-7702 delegation/);
+    assert.deepEqual(accountKindProblems({ owner: 'EOA', attestor: 'EOA_7702' }, false, true), []);
     assert.match(accountKindProblems({ owner: 'CONTRACT', attestor: 'EOA' }).join(), /owner is a contract/);
     assert.deepEqual(accountKindProblems({ owner: 'CONTRACT', attestor: 'EOA' }, true), []);
     assert.match(accountKindProblems({ owner: 'EOA', attestor: 'CONTRACT' }, true).join(), /attestor is a contract/);
