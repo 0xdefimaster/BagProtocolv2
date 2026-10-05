@@ -354,6 +354,9 @@ the router (not verified).
 ## 10. Not decided here / not verified
 
 - Whether LI.FI Composer can route a fee Bag's output through BAG's router.
+- Whether the Bag tokens are executable on Uniswap v3 at realistic sale sizes:
+  `scripts/check-fee-router-liquidity.ts` answers it read-only (same tier
+  order and 99% floor as the attestation); not yet run against the live chain.
 - Gas cost of on-chain fee computation (Target B).
 - The protocol-share question (F6).
 - No fee-taking redemption has been executed live yet (`docs/STATUS.md`).
