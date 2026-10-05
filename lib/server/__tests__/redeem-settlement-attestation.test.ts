@@ -31,6 +31,11 @@ let legOutputs: Record<number, { amountOut: string; amountOutMin: string }>;
 const savedPlans: Plan[] = [];
 const savedAttested: { plan: Plan; tx: unknown; expectedContext: string }[] = [];
 const finalBuilds: Record<string, unknown>[] = [];
+// Other intents of the same position (besides `intent`), as the repo would return them.
+let otherIntents: Record<string, unknown>[] = [];
+// Called once per check; lets a test make another sale appear only after phase 2's claim.
+let openOthersHook: (() => void) | null = null;
+const callOrder: string[] = [];
 let basisResult: { ok: true; consumedBasisQuote: bigint; lossCarryQuote: bigint } | { ok: false; reason: string };
 const basis = (b: string, c: string) => ({ ok: true as const, consumedBasisQuote: parseDec(b), lossCarryQuote: parseDec(c) });
 
@@ -46,6 +51,24 @@ vi.mock('@/lib/server/redeem-intent-repo', () => ({
   setRedeemSettlementAttested: async (_a: unknown, _id: string, _s: string, expectedContext: string, plan: Plan, tx: unknown) => {
     savedAttested.push({ plan, tx, expectedContext });
     return intent;
+  },
+  claimRedeemSettlementAttestation: async (_a: unknown, _id: string, _s: string, plan: Plan) => {
+    callOrder.push('claim');
+    intent = { ...intent, settlementPlan: plan };
+    return intent;
+  },
+  listOpenRedeemIntentsForBag: async () => {
+    callOrder.push('checkOthers');
+    openOthersHook?.();
+    const all = [intent, ...otherIntents];
+    return all.filter((i) => ['DRAFT', 'QUOTED', 'READY', 'AWAITING_SIGNATURE', 'SUBMITTED', 'CONFIRMING'].includes(i.status as string));
+  },
+  listLiveSettlementAttestations: async () => {
+    const now = Math.floor(Date.now() / 1000);
+    return [intent, ...otherIntents].filter((i) => {
+      const d = (i.settlementPlan as { deadline?: number } | null)?.deadline;
+      return typeof d === 'number' && d >= now;
+    });
   },
 }));
 vi.mock('@/lib/server/sale-coverage', () => ({ checkSaleCoverage: async () => 'COVERED' }));
@@ -83,6 +106,7 @@ vi.mock('@/lib/blockchain/lifi-composer-adapter', async (orig) => ({
     ),
   }),
   buildComposerSettlementRedeem: async (req: Record<string, unknown>) => {
+    callOrder.push('signedAndBuilt');
     finalBuilds.push(req);
     return {
       userProxy: finalProxy,
@@ -129,6 +153,9 @@ beforeEach(() => {
   finalProxy = PROXY;
   legOutputs = { 0: { amountOut: '1129985', amountOutMin: '1118685' }, 1: { amountOut: '1314781', amountOutMin: '1301633' } };
   basisResult = basis('2', '0');
+  otherIntents = [];
+  openOthersHook = null;
+  callOrder.length = 0;
   savedPlans.length = 0;
   savedAttested.length = 0;
   finalBuilds.length = 0;
@@ -289,5 +316,49 @@ describe('phase 2 — attestSettlement: re-check, sign, final transaction', () =
     const a = await attestSettlement(admin, 'user', intent.id as string);
     expect(a.message.feeRateBps).toBe('0');
     expect(a.message.consumedBasis).toBe('0');
+  });
+
+  // ChatGPT's scenario (§9): A is attested, then another valid sale changes the ledger, then A's old signature is
+  // submitted before its deadline. The contract cannot tell the context is stale — so step 2 must be impossible.
+  it('stale-attestation scenario: while A\'s attestation is valid on-chain, no other sale of the position can be quoted or attested — even after A is FAILED in the database', async () => {
+    // 1. A is attested.
+    await quoteSettlement(admin, 'user', intent.id as string);
+    const a = await attestSettlement(admin, 'user', intent.id as string);
+    expect(a.deadline * 1000).toBeGreaterThan(Date.now());
+    // A's transaction reverted (e.g. slippage); the database marks it FAILED. Its signature is still valid until its
+    // deadline and the wallet still holds the transaction.
+    const attestedA: Record<string, unknown> = { ...intent, status: 'FAILED' };
+    // 2. Another sale B of the same position tries to start.
+    otherIntents = [attestedA];
+    intent = { ...intent, id: '6f1c2b3a-0000-4000-8000-0000000000b2', status: 'READY', settlementPlan: null };
+    await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(svc.AnotherSaleOpenError);
+    finalBuilds.length = 0;
+    // Even a B that already has a plan cannot be attested.
+    otherIntents = [];
+    await quoteSettlement(admin, 'user', intent.id as string);
+    otherIntents = [attestedA];
+    await expect(attestSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(svc.AnotherSaleOpenError);
+    expect(finalBuilds).toHaveLength(0);
+    // Once A's deadline has passed, A's signature is dead on-chain and B may proceed.
+    otherIntents = [{ ...attestedA, settlementPlan: { ...(attestedA.settlementPlan as object), deadline: Math.floor(Date.now() / 1000) - 1 } }];
+    await expect(attestSettlement(admin, 'user', intent.id as string)).resolves.toMatchObject({ deadline: expect.any(Number) });
+  });
+
+  it('an open (non-terminal) other sale of the position blocks both phases', async () => {
+    otherIntents = [{ id: 'other', status: 'SUBMITTED', settlementPlan: null }];
+    await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(svc.AnotherSaleOpenError);
+  });
+
+  it('write-then-check: phase 2 records its claim before it looks for other sales and before it signs; a sale appearing after the claim is still caught', async () => {
+    await quoteSettlement(admin, 'user', intent.id as string);
+    callOrder.length = 0;
+    // A concurrent sale B writes its intent just after phase 2 claimed.
+    openOthersHook = () => {
+      if (callOrder.includes('claim')) otherIntents = [{ id: 'concurrent', status: 'READY', settlementPlan: null }];
+    };
+    await expect(attestSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(svc.AnotherSaleOpenError);
+    expect(callOrder.indexOf('claim')).toBeGreaterThan(-1);
+    expect(callOrder.lastIndexOf('checkOthers')).toBeGreaterThan(callOrder.indexOf('claim'));
+    expect(callOrder).not.toContain('signedAndBuilt');
   });
 });

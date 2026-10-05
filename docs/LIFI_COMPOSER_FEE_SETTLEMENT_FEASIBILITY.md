@@ -729,6 +729,73 @@ without switching the project to via-IR.
     context, compact signature) settles through `settleFlat` on Hardhat;
   - `settleFlat` equivalence and tampering.
 
+**Freshness: who keeps a signed context current.** The contract checks the
+signature, the deadline, the executor and that the redemption is settled only
+once. It **cannot** know whether the signed `contextHash` still describes the
+position: it is the fingerprint of the state at signing time, not an on-chain
+check of current state. So freshness is enforced off-chain, by never letting
+the position change while a signature for it can still be used.
+
+**The hole this closes** (found in review). An attestation cannot be
+revoked:
+
+1. A is attested.
+2. A's transaction reverts (for example on slippage). The database marks A
+   `FAILED`, but A's signature stays valid until its deadline, and the wallet
+   still holds the transaction.
+3. The old rule ("one open intent per position") then let a new sale B start,
+   settle, and change the ledger.
+4. The wallet resubmits A's transaction before A's deadline.
+5. The contract accepts A, settled against the old basis and carry.
+
+The same gap let a purchase change the basis in step 3.
+
+**The rule now:** a position is locked while **any** of its intents holds a
+settlement attestation whose signed deadline has not passed, **whatever that
+intent's database status**:
+
+- `createRedeemIntentForUser` refuses a new sale (`REDEEM_IN_PROGRESS`).
+- `openFeeRedemptionFor` / `cancelPurchaseIfFeeSaleOpen` refuse and cancel a
+  purchase.
+- Both settlement phases refuse while any *other* intent of the position is
+  open or holds a live attestation (`ANOTHER_SALE_OPEN`).
+- **Write-then-check in phase 2.** Phase 2 first records the deadline it is
+  about to sign (`claimRedeemSettlementAttestation`), then looks for other
+  sales and purchases, then signs. A sale or purchase starting concurrently
+  either sees the claim, or wrote its own intent first and is seen by phase
+  2's check. Both may refuse; both never proceed. This is the same protocol as
+  the purchase/fee-sale lock (§5.6).
+- **Cost:** if phase 2 fails after its claim (for example the final compile),
+  the position stays locked until that deadline, at most 5 minutes, although
+  no signature was handed out. This is fail-safe.
+
+No on-chain state was added.
+
+**Tests:**
+
+- **Unit:** ChatGPT's scenario step by step. With A attested and then
+  `FAILED`, B can be neither quoted nor attested while A's deadline is live,
+  and B proceeds once it has passed. Also covered:
+  - an open other sale blocks both phases;
+  - phase 2 claims before it checks, and before it signs;
+  - a sale that appears after the claim is still caught.
+- **Real PostgreSQL** (`settlement-attestation-lock.integration.test.ts`):
+  - a `FAILED` intent with a live attestation blocks a new sale and cancels a
+    purchase, and stops blocking once its deadline passes;
+  - other users' attestations, and plans never attested, do not count;
+  - negative control: without the purchase-lock clause, the test fails.
+- **Mutation check:** each of these makes a test fail:
+  - ignoring terminal-but-live attestations;
+  - dropping the re-check after the claim;
+  - dropping the other-sale check.
+
+**Remaining edge, not stale economics:** a wallet can still submit A's own
+transaction after the database marked A `FAILED`, as long as it is before A's
+deadline and no other sale happened in between. A then settles on-chain with
+a context that is still current, but the backend does not track it. The
+settlement-aware receipt path (next) must reconcile `Settled(redemptionId)`
+events, not only reported transaction hashes.
+
 **Not done yet (needed before the real ~$1 run):**
 
 - The frontend calling the two routes.

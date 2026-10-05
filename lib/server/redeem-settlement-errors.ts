@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
+  AnotherSaleOpenError,
   CreatorFrozenError,
   ExecutorMismatchError,
   NothingToSettleError,
@@ -27,6 +28,7 @@ export function settlementErrorResponse(err: unknown) {
   if (err instanceof SettlementPlanMissingError) return NextResponse.json(body('SETTLEMENT_PLAN_MISSING'), { status: 409 });
   if (err instanceof SettlementStateChangedError) return NextResponse.json(body('SETTLEMENT_STATE_CHANGED'), { status: 409 });
   if (err instanceof ExecutorMismatchError) return NextResponse.json(body('EXECUTOR_MISMATCH'), { status: 409 });
+  if (err instanceof AnotherSaleOpenError) return NextResponse.json(body('ANOTHER_SALE_OPEN', { otherIntentId: err.otherIntentId }), { status: 409 });
   if (err instanceof PositionBusyError) return NextResponse.json(body('POSITION_BUSY'), { status: 409 });
   if (err instanceof CreatorFrozenError) return NextResponse.json(body('CREATOR_FROZEN'), { status: 422 });
   if (err instanceof FeeBasisUnavailableError) return NextResponse.json(body('FEE_BASIS_UNAVAILABLE', { reason: err.reason }), { status: 422 });

@@ -18,6 +18,7 @@ vi.mock('@/lib/server/bag-repo', () => ({ getBagById: (...a: unknown[]) => bagMo
 vi.mock('@/lib/server/redeem-intent-repo', () => ({
   createRedeemIntent: (...a: unknown[]) => insertMock(...a),
   findActiveRedeemIntentForBag: async () => null,
+  listLiveSettlementAttestations: async () => [],
   getRedeemIntentForUser: (...a: unknown[]) => getIntentMock(...a),
   updateRedeemIntentStatus: (...a: unknown[]) => updateStatusMock(...a),
   updateRedeemIntentSteps: vi.fn(),

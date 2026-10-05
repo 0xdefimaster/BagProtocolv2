@@ -1,3 +1,4 @@
+import { liveSettlementAttestationFor } from '@/lib/server/fee-redemption-lock';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { recordNavSnapshot } from '@/lib/server/bag-nav-snapshots';
 import { AssetIdentity } from '@/types/basket-protocol';
@@ -115,6 +116,12 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
   const existing = await findActiveRedeemIntentForBag(admin, session.userId, bagId);
   if (existing) {
     return { ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: existing.id } };
+  }
+  // A settlement attestation still valid on-chain (§9) blocks a new sale of the position even when its intent is
+  // already terminal in the database: the old signature could otherwise run after this sale changed the ledger.
+  const liveAttestation = await liveSettlementAttestationFor(admin, session.userId, bagId);
+  if (liveAttestation) {
+    return { ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: liveAttestation.id } };
   }
 
   const bag = await getBagById(admin, bagId);

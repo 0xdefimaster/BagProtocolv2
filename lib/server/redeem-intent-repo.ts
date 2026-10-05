@@ -326,3 +326,61 @@ export async function setRedeemSettlementAttested(
   if (error) throw new Error(error.message);
   return data ? fromRow(data) : null;
 }
+
+/** Statuses an intent can still move from (everything but the terminal ones). */
+const OPEN_REDEEM_STATUSES = ['DRAFT', 'QUOTED', 'READY', 'AWAITING_SIGNATURE', 'SUBMITTED', 'CONFIRMING'] as const;
+
+/** Every non-terminal redeem intent of this user's position (normally at most one). */
+export async function listOpenRedeemIntentsForBag(admin: SupabaseClient, userId: string, bagId: string): Promise<RedeemIntent[]> {
+  const { data, error } = await admin
+    .from('redeem_intents')
+    .select()
+    .eq('user_id', userId)
+    .eq('bag_id', bagId)
+    .in('status', [...OPEN_REDEEM_STATUSES])
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as RedeemIntentRow[]).map(fromRow);
+}
+
+/**
+ * The most recent intents of this user's position whose settlement attestation (phase 2) is still valid on-chain —
+ * its signed deadline has not passed — IN ANY STATUS. An attestation cannot be revoked: an intent marked FAILED or
+ * CANCELLED in the database may still hold one the wallet could submit until its deadline. Attestations live at most
+ * a few minutes, and a new intent of the position cannot start while one is live, so the recent rows suffice.
+ */
+export async function listLiveSettlementAttestations(admin: SupabaseClient, userId: string, bagId: string, nowSec = Math.floor(Date.now() / 1000)): Promise<RedeemIntent[]> {
+  const { data, error } = await admin
+    .from('redeem_intents')
+    .select()
+    .eq('user_id', userId)
+    .eq('bag_id', bagId)
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as RedeemIntentRow[]).map(fromRow).filter((i) => typeof i.settlementPlan?.deadline === 'number' && i.settlementPlan.deadline >= nowSec);
+}
+
+/**
+ * Phase 2's claim, written BEFORE it reads for other sales of the position and before it signs (write-then-check, as
+ * in fee-redemption-lock.ts): records the deadline the attestation will carry. Guarded on the status and on the plan
+ * phase 2 checked.
+ */
+export async function claimRedeemSettlementAttestation(
+  admin: SupabaseClient,
+  id: string,
+  expectedStatus: RedeemIntentStatus,
+  plan: RedeemSettlementPlan
+): Promise<RedeemIntent | null> {
+  const { data, error } = await admin
+    .from('redeem_intents')
+    .update({ settlement_plan: plan, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('status', expectedStatus)
+    .eq('settlement_plan->>contextHash', plan.contextHash)
+    .select()
+    .maybeSingle<RedeemIntentRow>();
+  if (error) throw new Error(error.message);
+  return data ? fromRow(data) : null;
+}

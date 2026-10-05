@@ -20,7 +20,15 @@ import {
   type SettlementContext,
   type SettlementMessage,
 } from '@/lib/blockchain/redeem-settlement-eip712';
-import { getRedeemIntentForUser, setRedeemSettlementAttested, setRedeemSettlementPlan, updateRedeemIntentStatus } from '@/lib/server/redeem-intent-repo';
+import {
+  claimRedeemSettlementAttestation,
+  getRedeemIntentForUser,
+  listLiveSettlementAttestations,
+  listOpenRedeemIntentsForBag,
+  setRedeemSettlementAttested,
+  setRedeemSettlementPlan,
+  updateRedeemIntentStatus,
+} from '@/lib/server/redeem-intent-repo';
 import { checkSaleCoverage } from '@/lib/server/sale-coverage';
 import { listAllLedgerEventsForPosition } from '@/lib/server/ledger-repo';
 import { purchaseInFlightFor } from '@/lib/server/fee-redemption-lock';
@@ -88,6 +96,16 @@ export class SettlementStateChangedError extends Error {
     this.name = 'SettlementStateChangedError';
   }
 }
+/**
+ * Another sale of the same position is open, or holds a settlement attestation still valid on-chain. Its execution
+ * would change the ledger this one is attested against (or this one would change its), so nothing is signed (§9).
+ */
+export class AnotherSaleOpenError extends Error {
+  constructor(public readonly otherIntentId: string) {
+    super('Another sale of this Bag is still open. Wait for it to finish or expire, then try again. Nothing was signed.');
+    this.name = 'AnotherSaleOpenError';
+  }
+}
 /** Phase 2 preflight: USDG reports the creator's address as frozen; the fee transfer would revert. */
 export class CreatorFrozenError extends Error {
   constructor() {
@@ -120,6 +138,14 @@ function settlementAddress(): `0x${string}` {
   const a = DEPLOYED_CONTRACTS.redeemSettlement;
   if (!a) throw new SettlementNotConfiguredError('REDEEM_SETTLEMENT_ADDRESS');
   return getAddress(a);
+}
+
+/** Refuses while any OTHER intent of the position is open or holds a live settlement attestation (§9). */
+async function assertNoOtherSale(admin: SupabaseClient, userId: string, bagId: string, intentId: string): Promise<void> {
+  const open = (await listOpenRedeemIntentsForBag(admin, userId, bagId)).find((i) => i.id !== intentId);
+  if (open) throw new AnotherSaleOpenError(open.id);
+  const live = (await listLiveSettlementAttestations(admin, userId, bagId)).find((i) => i.id !== intentId);
+  if (live) throw new AnotherSaleOpenError(live.id);
 }
 
 /**
@@ -164,6 +190,8 @@ async function loadSettlementState(admin: SupabaseClient, userId: string, intent
 
   // §5.6: a purchase of the same position in flight would change the basis read below.
   if (feeRateBps > 0 && (await purchaseInFlightFor(admin, userId, intent.bagId))) throw new PositionBusyError();
+  // §9: so would another sale of it — open, or already terminal but holding an attestation still valid on-chain.
+  await assertNoOtherSale(admin, userId, intent.bagId, intent.id);
 
   const ledger = await listAllLedgerEventsForPosition(admin, userId, intent.bagId);
   let consumedBasisRaw = BigInt(0);
@@ -352,6 +380,14 @@ export async function attestSettlement(admin: SupabaseClient, userId: string, in
   const deadlineMs = Math.min(Date.now() + ATTESTATION_TTL_MS, new Date(state.intent.expiresAt).getTime(), new Date(plan.expiresAt).getTime());
   if (!(deadlineMs > Date.now())) throw new SaleQuoteExpiredError();
   const deadline = Math.floor(deadlineMs / 1000);
+
+  // Write-then-check (§9): record the deadline this attestation will carry BEFORE looking for other sales of the
+  // position and before signing. A sale starting concurrently either sees this claim (and refuses), or wrote its own
+  // intent first — and then the check below sees it. Never both proceed.
+  const claimed = await claimRedeemSettlementAttestation(admin, state.intent.id, 'READY', { ...plan, deadline });
+  if (!claimed) throw new SettlementStateChangedError();
+  await assertNoOtherSale(admin, userId, state.intent.bagId, state.intent.id);
+  if (state.feeRateBps > 0 && (await purchaseInFlightFor(admin, userId, state.intent.bagId))) throw new PositionBusyError();
 
   const message: SettlementMessage = {
     redemptionId: computeOnChainBagId(state.intent.id),
