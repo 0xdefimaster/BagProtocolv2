@@ -14,18 +14,53 @@
  * Env: RPC_URL_ROBINHOOD (optional; defaults to the public Robinhood Chain RPC). The asset list comes from Supabase
  * (NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in .env.local, read only).
  *
+ * First it verifies on-chain that the configured QuoterV2 and SwapRouter02 exist and point at the configured
+ * UniswapV3Factory (a wrong address would otherwise look like "no liquidity" everywhere).
+ *
  * Exit code: 0 when every checked token is executable at every size, 1 otherwise, 2 on setup errors.
  */
 import './load-env';
 import { writeFileSync } from 'node:fs';
 import { createPublicClient, http, type PublicClient } from 'viem';
-import { ROBINHOOD_CHAIN_ID, ROBINHOOD_REWARD_TOKEN, ROBINHOOD_RPC_URL } from '../lib/config/robinhood-chain';
+import {
+  ROBINHOOD_CHAIN_ID,
+  ROBINHOOD_REWARD_TOKEN,
+  ROBINHOOD_RPC_URL,
+  UNISWAP_QUOTER_V2_ADDRESS,
+  UNISWAP_ROUTER_ADDRESS,
+  UNISWAP_V3_FACTORY_ADDRESS,
+} from '../lib/config/robinhood-chain';
 import { createRobinhoodUniswapQuoter } from '../lib/blockchain/robinhood-uniswap-quoter';
 import { COMMON_FEE_TIERS } from '../lib/blockchain/robinhood-swap-builder';
 import { DEFAULT_COMPOSER_SLIPPAGE_BPS } from '../lib/blockchain/lifi-purchase-quote';
 import { checkFeeRouterExecutability, formatExecutabilityRow, type ExecutabilityResult } from '../lib/domain/basket-protocol/redeem/fee-router-executability';
 import { listAssets } from '../lib/server/asset-repo';
 import { isSupabaseConfigured, supabaseAdmin } from '../lib/supabase/server';
+
+const FACTORY_ABI = [{ type: 'function', name: 'factory', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] }] as const;
+
+/**
+ * Before any quote: the configured QuoterV2 and SwapRouter02 must be deployed contracts that point at the configured
+ * UniswapV3Factory. Otherwise every quote would fail for a configuration reason and be misread as "no liquidity".
+ */
+async function verifyUniswapConfig(client: PublicClient): Promise<void> {
+  const checks: [string, `0x${string}` | null][] = [
+    ['QuoterV2', UNISWAP_QUOTER_V2_ADDRESS],
+    ['SwapRouter02', UNISWAP_ROUTER_ADDRESS],
+  ];
+  if (!(await client.getCode({ address: UNISWAP_V3_FACTORY_ADDRESS }))) {
+    throw new Error(`UniswapV3Factory ${UNISWAP_V3_FACTORY_ADDRESS} has no code on this chain.`);
+  }
+  for (const [name, address] of checks) {
+    if (!address) throw new Error(`${name} address is not configured.`);
+    if (!(await client.getCode({ address }))) throw new Error(`${name} ${address} has no code on this chain.`);
+    const factory = (await client.readContract({ address, abi: FACTORY_ABI, functionName: 'factory' })) as string;
+    if (factory.toLowerCase() !== UNISWAP_V3_FACTORY_ADDRESS.toLowerCase()) {
+      throw new Error(`${name} ${address} points at factory ${factory}, not the configured ${UNISWAP_V3_FACTORY_ADDRESS}.`);
+    }
+  }
+  console.log(`Uniswap config verified on-chain: QuoterV2 ${UNISWAP_QUOTER_V2_ADDRESS} and SwapRouter02 ${UNISWAP_ROUTER_ADDRESS} → factory ${UNISWAP_V3_FACTORY_ADDRESS}`);
+}
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const CONCURRENCY = 4;
@@ -46,6 +81,13 @@ async function main() {
   });
   if (chainId !== ROBINHOOD_CHAIN_ID) {
     console.error(`WRONG_CHAIN: ${rpcUrl} reports chainId ${chainId}, expected ${ROBINHOOD_CHAIN_ID}.`);
+    process.exit(2);
+  }
+
+  try {
+    await verifyUniswapConfig(client);
+  } catch (e) {
+    console.error(`UNISWAP_CONFIG_UNVERIFIED: ${(e as Error).message}`);
     process.exit(2);
   }
 

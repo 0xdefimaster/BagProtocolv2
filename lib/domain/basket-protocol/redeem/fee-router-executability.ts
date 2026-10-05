@@ -84,6 +84,12 @@ export async function checkFeeRouterExecutability(input: ExecutabilityInput): Pr
   }
 }
 
+/** The table shows only the first line of an error, capped; the JSON output keeps the full text. */
+const shortError = (e: string) => {
+  const first = e.split('\n')[0].trim();
+  return first.length > 100 ? `${first.slice(0, 97)}...` : first;
+};
+
 const usd = (raw: string | null, decimals: number) => (raw === null ? '—' : (Number(raw) / 10 ** decimals).toFixed(2));
 
 /** One fixed-width line: TOKEN  PASS/FAIL  TIER  SIZE  QUOTE  GROSS-MIN(99%)  EXECUTABLE  REASON  [round-trip loss]. */
@@ -97,6 +103,6 @@ export function formatExecutabilityRow(r: ExecutabilityResult, usdgDecimals: num
     `$${usd(r.quoteRaw, usdgDecimals)}`.padEnd(11),
     `$${usd(r.grossMinimumRaw, usdgDecimals)}`.padEnd(11),
     (r.executable ? 'YES' : 'NO').padEnd(4),
-    r.reason + (r.roundTripLossBps !== null ? `  round-trip loss ${(r.roundTripLossBps / 100).toFixed(2)}%` : '') + (r.error ? `  (${r.error})` : ''),
+    r.reason + (r.roundTripLossBps !== null ? `  round-trip loss ${(r.roundTripLossBps / 100).toFixed(2)}%` : '') + (r.error ? `  (${shortError(r.error)})` : ''),
   ].join(' ');
 }

@@ -47,6 +47,12 @@ describe('checkFeeRouterExecutability — mirrors signFeeAttestation', () => {
       throw new Error('rpc down');
     };
     expect(await checkFeeRouterExecutability(input(broken))).toMatchObject({ executable: false, reason: 'RPC_ERROR', error: 'rpc down' });
+    const noisy: QuoteFn = async () => {
+      throw new Error(`Address "0x33E885Ed0Ec9Bf04ecfB19341582AadCb4c8a9e7" is invalid.\n\n- Address must match its checksum counterpart.\n${'x'.repeat(500)}`);
+    };
+    const row = formatExecutabilityRow(await checkFeeRouterExecutability(input(noisy)), 6);
+    expect(row).toContain('RPC_ERROR  (Address "0x33E885Ed0Ec9Bf04ecfB19341582AadCb4c8a9e7" is invalid.)');
+    expect(row.split('\n')).toHaveLength(1);
     expect(formatExecutabilityRow(noSell, 6)).toMatch(/^NVDA\s+FAIL\s+—\s+\$100 sell\s+\$—\s+\$—\s+NO\s+NO_SELL_LIQUIDITY$/);
   });
 
