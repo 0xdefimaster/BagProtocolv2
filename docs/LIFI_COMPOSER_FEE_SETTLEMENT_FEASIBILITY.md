@@ -438,21 +438,54 @@ Two things seen inside the route, before the proxy:
   price-quality rule.
 - Deployment of anything. The router stays undeployed.
 
-## 8. `RedeemSettlement` — the settlement primitive, with the B0 creator fee
+## 8. `RedeemSettlement` — the settlement primitive, with the creator fee on actual proceeds (B)
 
-`contracts/RedeemSettlement.sol`. Not deployed. It is the first contract step
-after P1, built in two PRs:
+`contracts/RedeemSettlement.sol`. Not deployed. It was built in three PRs on
+the same security boundary:
 
-- **v1 (no fee):** the security boundary.
-- **B0:** the creator fee on that same boundary.
+- **v1 (#22):** no fee.
+- **B0 (#23):** a signed fee amount, paid straight to the creator.
+- **B (this version):** the contract computes the fee from what actually
+  arrived.
 
-B, where the fee is computed in the contract from the measured amount, comes
-later.
+B replaces B0 in the contract. B0 was never deployed, and `computeB0Fee`
+stays as the backend's preview of the same formula.
 
 **Shape (push, as proven by SP/SP2).** The executor transfers all of the
 redemption's USDG to the contract, then calls
 `settle(Settlement, signature)` in the same transaction. The contract never
 swaps and never calls an executor or a DEX.
+
+**The fee, computed in the contract:**
+
+    fee = floor(max(0, received − consumedBasis − lossCarry) × feeRateBps / 10000)
+
+`received` is **the contract's USDG balance at settlement time**, never a
+quote. Normally that is exactly what this redemption's execution delivered,
+after anything the route kept (§7.1a). Strictly, though, it is not "this
+redemption's execution output":
+
+- **No before/after delta exists in the push model.** The executor's
+  transfer runs no code on the contract, so there is no "before" to read.
+- **Earlier donations are not rolled back.** Every successful settlement ends
+  at 0, and a failed settlement rolls back only its own transaction. USDG
+  that a third party sent in an earlier, separate transaction stays, and is
+  counted into the next settlement's `received`.
+- **Such a donation cannot hurt the user.** The user gets
+  `donation × (1 − rate)`, at least 70% of it; the creator gets the fee on it
+  above basis; the donor alone loses.
+- **Not used, on purpose:**
+  - an amount argument from the executor. It comes from the user's own
+    Composer transaction, so the user could understate it to cut the fee. The
+    balance cannot be understated without sending less, which lowers the
+    user's own proceeds and trips the floor.
+  - an exact `balance == amount pushed` rule, which a 1-unit donation would
+    block. The backend
+no longer computes the fee. It supplies and signs only the inputs it is the
+authority for: the ledger's basis and loss carry, the Bag's locked rate, and
+the creator. `computeFee` is public and pure, and tests check that it equals
+`computeB0Fee` (with gross = the measured amount) on 60 random cases, so the
+preview shown to a user is exactly what the contract charges.
 
 **Signed struct (EIP-712, `BagRedeemSettlement` v1).** No field can be
 supplied unsigned.
@@ -463,23 +496,23 @@ supplied unsigned.
 | `user` | Receives the proceeds; never `msg.sender`, never `tx.origin` |
 | `creator` | Receives the fee. The Bag's creator as BAG's records and the Bag's on-chain identity give it; never chosen by the caller |
 | `executor` | The only allowed `msg.sender`. For Composer: the user's proxy, taken from that redemption's compile result, not assumed |
-| `contextHash` | Binds the state the attestor checked: Bag / definition hash, strategy version, and the accounting snapshot (basis, loss carry). Stale state means a different hash, so the signature fails |
-| `feeAmount` | B0 fee, computed off-chain as `floor(max(0, grossMinimum − basis − lossCarry) × rate)` (`computeB0Fee`). Its inputs are committed through `contextHash`, and the contract does not recompute it. It is 0 for a Bag without a fee or for a creator selling their own Bag |
-| `minUserProceeds` | Floor on what the user receives **after** the fee |
+| `contextHash` | Binds the rest of the state the attestor checked: Bag / definition hash, strategy version, and the ledger snapshot the basis and carry came from. Stale state means a different hash, so the signature fails |
+| `consumedBasis`, `lossCarry` | The ledger's cost basis and loss carry for the shares sold, in USDG raw units, rounded up (§5.7) |
+| `feeRateBps` | The Bag's locked rate, capped at 3000 (MAX_PERFORMANCE_FEE_BPS) even if signed higher. It is 0 for a Bag without a fee or for a creator selling their own Bag |
+| `minUserProceeds` | Floor on what the user receives **after** the fee: `userProceeds = received − fee` and `userProceeds ≥ minUserProceeds`, else revert. Signed like every other field, so it cannot be changed after signing (tampering test) |
 | `deadline` | Attestation expiry |
 
 **Rules.**
 
-- **Settled amount:** USDG is fixed at deployment. The amount is the
-  contract's balance when `settle` runs, never a quote.
-- **Floor:** `received ≥ minUserProceeds + feeAmount`, otherwise the whole
+- **Settled amount:** USDG is fixed at deployment.
+- **Floor:** `received − fee ≥ minUserProceeds`, otherwise the whole
   transaction reverts.
 - **Payouts:** the fee goes **straight to `creator`**. There is no rewards
   vault in between, because the protocol share is 0 (F6); a protocol split or
-  splitter would be its own PR. The user gets `received − feeAmount`.
+  splitter would be its own PR. The user gets `received − fee`.
 - **End balance:** must be 0 again; there is no rescue function. A stray
-  donation is paid to the next settlement's user. It cannot block a
-  settlement; an exact-balance rule could be blocked by a 1-unit donation.
+  donation is counted into the next settlement's `received`. It cannot block
+  a settlement; an exact-balance rule could be blocked by a 1-unit donation.
 - **Frozen creator:** USDG is a Paxos token, and Paxos's terms let it freeze
   addresses. If the fee transfer to a frozen creator is refused, the whole
   settlement reverts, nothing moves, and the user keeps their holdings, which
@@ -495,61 +528,60 @@ supplied unsigned.
   (expected: a multisig) can only rotate the attestor or the owner. There is
   no upgrade and no proxy.
 
-**Tests** (`contracts/test/RedeemSettlement.test.ts`, 19 tests). Each item
-below must fail closed:
+**Invariants every successful settlement keeps (each covered by tests):**
+
+1. The contract holds 0 USDG afterwards; even 1 unit left reverts.
+2. Fee + user proceeds = the USDG that actually arrived.
+3. The fee is the formula above applied to what arrived. The same signature
+   charges more when more arrives and less when the route kept some.
+4. Creator, basis, carry, rate, user, redemption, context (Bag / definition
+   hash, version, ledger state) and expiry are covered by one signature.
+5. That signature cannot be reused for another redemption, executor or
+   deployment.
+6. A failed creator payout fails the whole settlement; nothing is left on the
+   contract for later.
+
+**Tests** (`contracts/test/RedeemSettlement.test.ts`, 22 tests). Fee
+behaviour:
+
+- the fee on actual proceeds;
+- the fee follows the arrival, including a route that kept 249 units;
+- no gain, or a loss, pays no fee;
+- the floor is checked after the fee;
+- a rate above 30% is refused even if signed;
+- a rate with no creator is refused;
+- `computeFee` equals the backend preview;
+- a frozen creator: nothing moves.
+
+Each item below must fail closed:
 
 - wrong executor, or a direct EOA call;
-- any signed field changed after signing (redemption, user, creator, fee,
-  context, floor, deadline);
+- any signed field changed after signing (redemption, user, creator, basis,
+  carry, rate, context, floor, deadline);
 - the signature reused for another redemption;
 - a signature from a non-attestor or for another deployment;
 - replay;
 - an expired attestation;
-- proceeds below `floor + fee`, or nothing received;
-- a fee with no creator;
-- a frozen creator, where nothing moves and the redemption stays open;
 - the wrong output token;
 - reentrancy through a token callback;
 - a unit left behind;
 - non-owner admin calls, and zero addresses.
 
-There is also a 40-case randomized property test: it settles if and only if
-`received > 0` and `received ≥ floor + fee`; the creator gets exactly the
-fee; the user gets exactly the rest; the contract ends at 0.
+There is also a 40-case randomized property test over amounts, bases,
+carries, rates, floors and stray balances.
 
 Mutation check: each of the following makes at least one test fail:
 
-- removing the executor check, the leftover check, the replay mark, the
-  reentrancy guard, or the zero-creator check;
-- leaving `contextHash` or `creator` out of the signed hash;
-- not counting the fee in the floor;
-- not deducting the fee.
-
-**B0 and B stay separate.**
-
-| | B0 (this contract) | B (later version) |
-|---|---|---|
-| Who computes the fee | The attestor, off-chain | The contract |
-| Gross amount | The guaranteed minimum (`grossMinimum`) | The amount the contract measured |
-| Basis, loss carry, rate | Committed in `contextHash` | Explicit signed fields |
-
-B matters because the route can keep a few units (§7.1a), so the quote and
-the arrival differ.
-
-**Invariants every successful settlement keeps (each covered by tests):**
-
-1. The contract holds 0 USDG afterwards; even 1 unit left reverts.
-2. Fee + user proceeds = the USDG that actually arrived.
-3. Creator, fee, user, redemption, context (Bag / definition hash, version,
-   accounting state) and expiry are covered by one signature.
-4. That signature cannot be reused for another redemption, executor or
-   deployment.
-5. A failed creator payout fails the whole settlement; nothing is left on the
-   contract for later.
+- ignoring the loss carry, or rounding the fee up;
+- removing the rate cap;
+- leaving the loss carry out of the signed hash;
+- not deducting the fee, or checking the floor before the fee;
+- the v1 and B0 mutations: the executor, leftover, replay, reentrancy and
+  zero-creator checks, and `contextHash` or `creator` in the signed hash.
 
 **Not yet.**
 
-- B (fee computed from the measured amount).
-- The backend: signing, the creator freeze preflight, and the `contextHash`
-  preimage.
-- Deployment.
+- The backend: two-phase attestation over Composer quotes, keeping the #16
+  price-quality rule; the `contextHash` preimage; the creator freeze
+  preflight.
+- Deployment and a real ~$1 fee-bearing redemption on Robinhood Chain.
