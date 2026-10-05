@@ -26,7 +26,7 @@ describe('checkFeeRouterExecutability — the attestation rule: best tier, verif
     expect(formatExecutabilityRow(r, 6)).toMatch(/UNSAFE\s+1%\s+\$25 sell\s+\$0\.18\s+\$25\.00\s+\$—\s+NO\s+PRICE_DEVIATION\s+99\.28% below verified$/);
   });
 
-  it('FAIL: no quote on any tier; no verified price (nothing is quoted then); RPC error', async () => {
+  it('FAIL: no quote on any tier; no verified price (nothing is quoted then) · INDETERMINATE: RPC error (no result, not "impossible")', async () => {
     expect(await checkFeeRouterExecutability(input(quoter({})))).toMatchObject({ status: 'FAIL', reason: 'NO_QUOTE' });
     const q = quoter({ 3000: BigInt(1) });
     expect(await checkFeeRouterExecutability(input(q, { priceUsd: null, priceError: 'MARKET_CLOSED_OR_HALTED' }))).toMatchObject({ status: 'FAIL', reason: 'PRICE_UNAVAILABLE', error: 'MARKET_CLOSED_OR_HALTED' });
@@ -35,7 +35,7 @@ describe('checkFeeRouterExecutability — the attestation rule: best tier, verif
       throw new Error(`HTTP request failed.\n\nURL: https://rpc.example/v2/KEY\n${'x'.repeat(300)}`);
     };
     const r = await checkFeeRouterExecutability(input(broken));
-    expect(r).toMatchObject({ status: 'FAIL', reason: 'RPC_ERROR' });
+    expect(r).toMatchObject({ status: 'INDETERMINATE', reason: 'RPC_ERROR' });
     const row = formatExecutabilityRow(r, 6);
     expect(row).toContain('RPC_ERROR  (HTTP request failed.)');
     expect(row).not.toContain('KEY');

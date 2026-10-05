@@ -13,7 +13,8 @@
  *
  * Each sale leg is judged by the attestation's own rule (redeem-quote-quality.ts): best Uniswap v3 tier, compared
  * with BAG's verified price. STATUS: PASS (would be signed) · UNSAFE (a quote exists but is too far below the
- * verified price — refused) · FAIL (no quote, no verified price, or RPC error). The RPC URL is never printed.
+ * verified price — refused) · FAIL (no quote or no verified price) · INDETERMINATE (RPC error: no result either way,
+ * re-run). The RPC URL is never printed.
  *
  * Env: RPC_URL_ROBINHOOD (optional; defaults to the public Robinhood Chain RPC). The asset list comes from Supabase
  * (NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in .env.local, read only).
@@ -177,7 +178,7 @@ async function main() {
   console.log(
     `Robinhood Chain ${chainId} via ${rpcLabel} · best of Uniswap v3 tiers ${COMMON_FEE_TIERS.join('/')} · refused when more than ${maxDeviationBps / 100}% below BAG's verified price · min = quote × ${(10000 - DEFAULT_COMPOSER_SLIPPAGE_BPS) / 100}%`
   );
-  console.log(['TOKEN'.padEnd(8), 'STATUS'.padEnd(6), 'TIER'.padEnd(6), 'SIZE'.padEnd(11), 'QUOTE'.padEnd(11), 'VERIFIED'.padEnd(11), 'GROSS MIN'.padEnd(11), 'SIGN', 'REASON'].join(' '));
+  console.log(['TOKEN'.padEnd(8), 'STATUS'.padEnd(13), 'TIER'.padEnd(6), 'SIZE'.padEnd(11), 'QUOTE'.padEnd(11), 'VERIFIED'.padEnd(11), 'GROSS MIN'.padEnd(11), 'SIGN', 'REASON'].join(' '));
   for (const r of results) console.log(formatExecutabilityRow(r, usdg.decimals));
 
   const pass = results.filter((r) => r.status === 'PASS').length;
@@ -186,7 +187,7 @@ async function main() {
       .map(([k, v]) => `${k} ${v}`)
       .join(' · ');
   console.log(`\n${pass}/${results.length} PASS · ${count((r) => r.status)} · reasons: ${count((r) => r.reason)}`);
-  console.log('PASS = the attestation would sign it · UNSAFE = a quote exists but is too far below the verified price: refused · FAIL = no quote, no verified price, or RPC error.');
+  console.log('PASS = the attestation would sign it · UNSAFE = a quote exists but is too far below the verified price: refused · FAIL = no quote or no verified price · INDETERMINATE = RPC error, re-run.');
   console.log('Read-only: no transaction was sent. Results are a snapshot; prices and pools move.');
 
   const out = arg('out');

@@ -16,7 +16,8 @@ import { referenceValueRaw, selectRedeemLegQuote, tokenAmountForValue, type Tier
 //   UNSAFE  a quote exists but is too far below the verified value — refused
 //           (before the price-quality rule, the first run on 2026-10-05 showed
 //           such sales would have been signed at up to a ~99% loss)
-//   FAIL    no quote at all, no verified price, or an RPC error
+//   FAIL    no quote at all (NO_QUOTE), or no verified price (PRICE_UNAVAILABLE)
+//   INDETERMINATE  the RPC failed: no reliable result either way — not "impossible"
 // -----------------------------------------------------------------------------
 
 export type QuoteFn = (args: { tokenIn: `0x${string}`; tokenOut: `0x${string}`; amountIn: bigint; feeTier: number }) => Promise<{ amountOut: bigint } | null>;
@@ -37,7 +38,7 @@ export interface ExecutabilityInput {
 }
 
 export type ExecutabilityReason = 'OK' | 'SETTLEMENT_TOKEN' | 'PRICE_DEVIATION' | 'NO_QUOTE' | 'PRICE_UNAVAILABLE' | 'RPC_ERROR';
-export type ExecutabilityStatus = 'PASS' | 'UNSAFE' | 'FAIL';
+export type ExecutabilityStatus = 'PASS' | 'UNSAFE' | 'FAIL' | 'INDETERMINATE';
 
 export interface ExecutabilityResult {
   symbol: string;
@@ -91,7 +92,7 @@ export async function checkFeeRouterExecutability(input: ExecutabilityInput): Pr
       grossMinimumRaw: ((s.quoteRaw * BigInt(10000 - slippageBps)) / BigInt(10000)).toString(),
     };
   } catch (e) {
-    return { ...base, ...sized, status: 'FAIL', executable: false, reason: 'RPC_ERROR', error: (e as Error).message };
+    return { ...base, ...sized, status: 'INDETERMINATE', executable: false, reason: 'RPC_ERROR', error: (e as Error).message };
   }
 }
 
@@ -108,7 +109,7 @@ const tierLabel = (t: number | null) => (t === null ? '—' : `${(t / 10000).toS
 export function formatExecutabilityRow(r: ExecutabilityResult, usdgDecimals: number): string {
   return [
     r.symbol.padEnd(8),
-    r.status.padEnd(6),
+    r.status.padEnd(13),
     tierLabel(r.feeTier).padEnd(6),
     `$${r.sizeUsd} sell`.padEnd(11),
     `$${usd(r.quoteRaw, usdgDecimals)}`.padEnd(11),
