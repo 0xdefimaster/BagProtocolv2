@@ -10,8 +10,16 @@ import {ERC20} from '@openzeppelin/contracts/token/ERC20/ERC20.sol';
 ///     `hookTarget` with `hookData` mid-transfer and bubbles its revert —
 ///     used to attempt re-entering `settle`;
 ///   - `skim`: when `hookFrom` sends tokens, 1 unit stays behind — used to
-///     check the "nothing left after settlement" invariant.
+///     check the "nothing left after settlement" invariant;
+///   - `frozen`: transfers to a frozen address revert, like a Paxos-issued
+///     token (USDG) freezing an address.
 contract HookERC20 is ERC20 {
+    mapping(address => bool) public frozen;
+
+    function setFrozen(address account, bool value) external {
+        frozen[account] = value;
+    }
+
     address public hookFrom;
     address public hookTarget;
     bytes public hookData;
@@ -35,6 +43,7 @@ contract HookERC20 is ERC20 {
     }
 
     function _update(address from, address to, uint256 value) internal override {
+        require(!frozen[to], 'HookERC20: frozen');
         if (from != address(0) && from == hookFrom && to != address(0)) {
             if (skim && value > 0) value -= 1;
             if (hookTarget != address(0)) {

@@ -4,7 +4,7 @@ import { network } from 'hardhat';
 import { encodeFunctionData, getAddress, keccak256, parseEventLogs, toFunctionSelector, toHex, zeroAddress, type Hex } from 'viem';
 
 // -----------------------------------------------------------------------------
-// RedeemSettlement v1 (no fee): the settlement primitive behind a Composer
+// RedeemSettlement (B0 fee): the settlement primitive behind a Composer
 // redemption. The executor mock plays the user's Composer proxy: it pushes
 // USDG to the contract and calls settle in one transaction — the shape proven
 // live on Robinhood Chain (docs/LIFI_COMPOSER_FEE_SETTLEMENT_FEASIBILITY.md §7).
@@ -14,8 +14,10 @@ import { encodeFunctionData, getAddress, keccak256, parseEventLogs, toFunctionSe
 type Settlement = {
   redemptionId: Hex;
   user: `0x${string}`;
+  creator: `0x${string}`;
   executor: `0x${string}`;
   contextHash: Hex;
+  feeAmount: bigint;
   minUserProceeds: bigint;
   deadline: bigint;
 };
@@ -24,8 +26,10 @@ const TYPES = {
   Settlement: [
     { name: 'redemptionId', type: 'bytes32' },
     { name: 'user', type: 'address' },
+    { name: 'creator', type: 'address' },
     { name: 'executor', type: 'address' },
     { name: 'contextHash', type: 'bytes32' },
+    { name: 'feeAmount', type: 'uint256' },
     { name: 'minUserProceeds', type: 'uint256' },
     { name: 'deadline', type: 'uint256' },
   ],
@@ -51,7 +55,7 @@ const err = (...names: string[]) => new RegExp(names.flatMap((n) => [n, toFuncti
 async function setup() {
   const { viem } = await network.connect();
   const publicClient = await viem.getPublicClient();
-  const [ownerW, attestorW, user, otherUser, stranger] = await viem.getWalletClients();
+  const [ownerW, attestorW, user, otherUser, stranger, creator] = await viem.getWalletClients();
   const usdg = await viem.deployContract('HookERC20', []);
   const settlement = await viem.deployContract('RedeemSettlement', [usdg.address, attestorW.account.address, ownerW.account.address]);
   const executor = await viem.deployContract('SettlementExecutorMock', []);
@@ -66,8 +70,10 @@ async function setup() {
   const base = (over: Partial<Settlement> = {}): Settlement => ({
     redemptionId: id('redemption-1'),
     user: user.account.address,
+    creator: creator.account.address,
     executor: executor.address,
     contextHash: id('bag-v3|basis=100|carry=0'),
+    feeAmount: 0n,
     minUserProceeds: 1_000_000n,
     deadline: now + 300n,
     ...over,
@@ -76,22 +82,64 @@ async function setup() {
     const hash = await via.write.pushAndSettle([usdg.address, settlement.address, amount, s, sig]);
     return publicClient.waitForTransactionReceipt({ hash });
   };
-  return { viem, publicClient, ownerW, attestorW, user, otherUser, stranger, usdg, settlement, executor, otherExecutor, sign, base, run, now };
+  return { viem, publicClient, ownerW, attestorW, user, otherUser, stranger, creator, usdg, settlement, executor, otherExecutor, sign, base, run, now };
 }
 
-describe('RedeemSettlement v1 — no fee', () => {
-  it('happy path: pays the measured amount to the user, emits it, keeps nothing', async () => {
-    const { usdg, settlement, executor, user, sign, base, run } = await setup();
+describe('RedeemSettlement — settlement primitive with the B0 creator fee', () => {
+  it('no fee: pays the whole measured amount to the user, emits it, keeps nothing', async () => {
+    const { usdg, settlement, executor, user, creator, sign, base, run } = await setup();
     const s = base();
     const receipt = await run(s, await sign(s), 1_234_567n);
     const [e] = parseEventLogs({ abi: settlement.abi, logs: receipt.logs, eventName: 'Settled' });
     assert.deepEqual(
-      [e.args.redemptionId, e.args.user, e.args.executor, e.args.contextHash, e.args.received, e.args.userProceeds],
-      [s.redemptionId, getAddress(user.account.address), getAddress(executor.address), s.contextHash, 1_234_567n, 1_234_567n]
+      [e.args.redemptionId, e.args.user, e.args.creator, e.args.executor, e.args.contextHash, e.args.received, e.args.feeAmount, e.args.userProceeds],
+      [s.redemptionId, getAddress(user.account.address), getAddress(creator.account.address), getAddress(executor.address), s.contextHash, 1_234_567n, 0n, 1_234_567n]
     );
     assert.equal(await usdg.read.balanceOf([user.account.address]), 1_234_567n);
+    assert.equal(await usdg.read.balanceOf([creator.account.address]), 0n);
     assert.equal(await usdg.read.balanceOf([settlement.address]), 0n);
     assert.equal(await settlement.read.settled([s.redemptionId]), true);
+  });
+
+  it('B0 fee: the signed fee goes straight to the signed creator, the rest to the user, nothing stays', async () => {
+    const { usdg, settlement, user, creator, sign, base, run } = await setup();
+    const s = base({ feeAmount: 50_000n, minUserProceeds: 2_000_000n });
+    const receipt = await run(s, await sign(s), 2_150_000n);
+    const [e] = parseEventLogs({ abi: settlement.abi, logs: receipt.logs, eventName: 'Settled' });
+    assert.deepEqual([e.args.received, e.args.feeAmount, e.args.userProceeds], [2_150_000n, 50_000n, 2_100_000n]);
+    assert.equal(await usdg.read.balanceOf([creator.account.address]), 50_000n);
+    assert.equal(await usdg.read.balanceOf([user.account.address]), 2_100_000n);
+    assert.equal(await usdg.read.balanceOf([settlement.address]), 0n);
+  });
+
+  it('B0 fee: the user floor holds after the fee — received < minUserProceeds + fee reverts', async () => {
+    const { usdg, settlement, user, creator, sign, base, run } = await setup();
+    const s = base({ feeAmount: 50_000n, minUserProceeds: 2_000_000n });
+    await assert.rejects(run(s, await sign(s), 2_049_999n), err('BelowMinimum'));
+    await run(s, await sign(s), 2_050_000n);
+    assert.equal(await usdg.read.balanceOf([user.account.address]), 2_000_000n);
+    assert.equal(await usdg.read.balanceOf([creator.account.address]), 50_000n);
+    assert.equal(await usdg.read.balanceOf([settlement.address]), 0n);
+  });
+
+  it('B0 fee: a fee with no creator is refused; no fee with no creator settles to the user', async () => {
+    const { usdg, user, sign, base, run } = await setup();
+    const bad = base({ creator: zeroAddress, feeAmount: 1n });
+    await assert.rejects(run(bad, await sign(bad), 2_000_000n), err('ZeroAddress'));
+    const ok = base({ creator: zeroAddress, feeAmount: 0n });
+    await run(ok, await sign(ok), 2_000_000n);
+    assert.equal(await usdg.read.balanceOf([user.account.address]), 2_000_000n);
+  });
+
+  it('a frozen creator (USDG can freeze addresses) reverts the whole settlement: nothing moves, the redemption stays open', async () => {
+    const { usdg, settlement, executor, user, creator, sign, base, run } = await setup();
+    await usdg.write.setFrozen([creator.account.address, true]);
+    const executorBefore = await usdg.read.balanceOf([executor.address]);
+    const s = base({ feeAmount: 50_000n, minUserProceeds: 2_000_000n });
+    await assert.rejects(run(s, await sign(s), 2_100_000n), /frozen/);
+    assert.equal(await usdg.read.balanceOf([executor.address]), executorBefore);
+    assert.equal(await usdg.read.balanceOf([user.account.address]), 0n);
+    assert.equal(await settlement.read.settled([s.redemptionId]), false);
   });
 
   it('wrong executor: a different caller (even with a valid signature) is refused', async () => {
@@ -115,6 +163,8 @@ describe('RedeemSettlement v1 — no fee', () => {
     const tampered: Partial<Settlement>[] = [
       { redemptionId: id('redemption-2') }, // signature reused for another redemption
       { user: otherUser.account.address }, // wrong user
+      { creator: otherUser.account.address }, // fee redirected to another address
+      { feeAmount: 1n }, // fee changed
       { contextHash: id('bag-v3|basis=50|carry=0') }, // stale state / different basis
       { minUserProceeds: 1n }, // lowered floor
       { deadline: now + 3600n }, // extended deadline
@@ -212,8 +262,8 @@ describe('RedeemSettlement v1 — no fee', () => {
     await assert.rejects(viem.deployContract('RedeemSettlement', [usdg.address, attestorW.account.address, zeroAddress]), err('ZeroAddress'));
   });
 
-  it('property: for random amounts, floors and stray balances, it settles iff received ≥ floor and received > 0; the user gets exactly what arrived; the contract ends at 0', async () => {
-    const { usdg, settlement, user, sign, base, run } = await setup();
+  it('property: for random amounts, fees, floors and stray balances, it settles iff received > 0 and received ≥ floor + fee; the creator gets exactly the fee, the user exactly the rest; the contract ends at 0', async () => {
+    const { usdg, settlement, user, creator, sign, base, run } = await setup();
     let seed = 0x5eed1234;
     const rand = (max: number) => {
       seed = (seed * 1103515245 + 12345) & 0x7fffffff;
@@ -223,20 +273,23 @@ describe('RedeemSettlement v1 — no fee', () => {
       const amount = i % 7 === 0 ? 0n : rand(5_000_000_000);
       const stray = i % 5 === 0 ? rand(1_000) : 0n;
       const floor = rand(Number(amount + stray + 1_000n));
+      const fee = i % 3 === 0 ? 0n : rand(Number(amount / 10n + 10n));
       if (stray > 0n) await usdg.write.mint([settlement.address, stray]);
-      const s = base({ redemptionId: id(`prop-${i}`), minUserProceeds: floor });
+      const s = base({ redemptionId: id(`prop-${i}`), minUserProceeds: floor, feeAmount: fee });
       const userBefore = (await usdg.read.balanceOf([user.account.address])) as bigint;
+      const creatorBefore = (await usdg.read.balanceOf([creator.account.address])) as bigint;
       const received = amount + stray;
-      const shouldSettle = received > 0n && received >= floor;
+      const shouldSettle = received > 0n && received >= floor + fee;
       if (shouldSettle) {
         await run(s, await sign(s), amount);
-        assert.equal((await usdg.read.balanceOf([user.account.address])) as bigint, userBefore + received, `case ${i}`);
+        assert.equal((await usdg.read.balanceOf([user.account.address])) as bigint, userBefore + received - fee, `case ${i}`);
+        assert.equal((await usdg.read.balanceOf([creator.account.address])) as bigint, creatorBefore + fee, `case ${i}`);
       } else {
         await assert.rejects(run(s, await sign(s), amount), err('BelowMinimum', 'NothingReceived'), `case ${i}`);
         assert.equal(await usdg.read.balanceOf([user.account.address]), userBefore, `case ${i}`);
         // A reverted case leaves its stray balance for the next one; clear it so cases stay independent.
         if (stray > 0n) {
-          const clear = base({ redemptionId: id(`clear-${i}`), minUserProceeds: 0n });
+          const clear = base({ redemptionId: id(`clear-${i}`), minUserProceeds: 0n, feeAmount: 0n });
           await run(clear, await sign(clear), 0n);
         }
       }
