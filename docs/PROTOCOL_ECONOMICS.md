@@ -141,9 +141,11 @@ E and F are in `lib/domain/basket-protocol/shares/__tests__/shares.test.ts`.
   non-authoritative (`lib/server/__tests__/a4-authority-guard.test.ts`).
 - **The fee is computed on quoted value.** The redemption fee is charged on
   profit against the quoted redemption value, not on realized swap proceeds.
-  The same quote-time model applies. *Still open after A4:* a sale that fills
-  below its quote can be charged a fee on profit it did not realize. Planned:
-  base the fee on the proceeds actually received (`docs/STATUS.md` §4).
+  The same quote-time model applies. *Superseded by B0* (`docs/FEE_ECONOMICS_DESIGN.md`): the attested fee is
+  now computed on the guaranteed minimum proceeds, the A3 basis of what is
+  sold and losses carried forward, so it never exceeds the fee on the actual
+  result. Computing it on-chain from the actual output is the separate,
+  audited contract PR (B).
 - **Router-path fees are recorded as settled.** The router-settled fee amount
   is attested server-side (creator self-redeem and loss both give 0; §1
   locked rate) and settled on-chain before accounting. The SQL records what

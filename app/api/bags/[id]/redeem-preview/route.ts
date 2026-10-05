@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
 import { requireSession } from '@/lib/auth/require-session';
-import { getBagById } from '@/lib/server/bag-repo';
+import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
+import { listAllLedgerEventsForPosition } from '@/lib/server/ledger-repo';
+import { redemptionPaysFee } from '@/lib/server/fee-redemption-lock';
+import { computePositionPnl } from '@/lib/domain/basket-protocol/accounting/position-pnl';
+import { feeBasisFromPositionPnl } from '@/lib/domain/basket-protocol/redeem/performance-fee-b0';
+import { formatDec, parseDec } from '@/lib/domain/basket-protocol/accounting/decimal';
 import { listAssets } from '@/lib/server/asset-repo';
 import { paymentAssetsFor } from '@/lib/server/payment-assets';
 import { getDisplayPriceProvider } from '@/lib/server/price-provider';
@@ -160,11 +165,44 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }))
   );
 
+  // B0 (docs/FEE_ECONOMICS_DESIGN.md): the performance fee this sale pays, ESTIMATED from the slice's value at
+  // display prices. The exact fee is set when the wallet signs, on the guaranteed minimum proceeds — never more than
+  // the rate × the gain actually realized (above earlier losses).
+  const version = await getCurrentBagVersion(admin, id);
+  let performanceFee: {
+    rateBps: number;
+    basisAvailable: boolean;
+    consumedBasisQuote: string | null;
+    lossCarryQuote: string | null;
+    estimatedFeeQuote: string | null;
+  } | null = null;
+  if (redemptionPaysFee(bag, version, auth.session.userId)) {
+    const rateBps = bag.performanceFeeBpsLocked ?? version?.recipe.performanceFeeBps ?? 0;
+    const basis = feeBasisFromPositionPnl(
+      computePositionPnl(await listAllLedgerEventsForPosition(admin, auth.session.userId, id)),
+      allocation.map((a) => ({ chain: a.sourceAsset.chain, address: a.sourceAsset.address, quantityRaw: a.sellQuantityRaw }))
+    );
+    if (!basis.ok) {
+      performanceFee = { rateBps, basisAvailable: false, consumedBasisQuote: null, lossCarryQuote: null, estimatedFeeQuote: null };
+    } else {
+      const slice = sliceValue.effectivePositionQuote === null ? null : parseDec(sliceValue.effectivePositionQuote);
+      const gain = slice === null ? null : slice - basis.consumedBasisQuote - basis.lossCarryQuote;
+      performanceFee = {
+        rateBps,
+        basisAvailable: true,
+        consumedBasisQuote: formatDec(basis.consumedBasisQuote),
+        lossCarryQuote: formatDec(basis.lossCarryQuote),
+        estimatedFeeQuote: gain === null ? null : formatDec(gain > BigInt(0) ? (gain * BigInt(rateBps)) / BigInt(10000) : BigInt(0)),
+      };
+    }
+  }
+
   return NextResponse.json({
     preview: {
       outputSymbol: outputAsset.symbol,
       fractionBps: body.fractionBps,
       sliceValueQuote: sliceValue.effectivePositionQuote,
+      performanceFee,
       quoteCurrency: 'USD',
       allocation: allocation.map((a) => ({
         symbol: symbolByKey.get(assetKey(a.sourceAsset.chain, a.sourceAsset.address)) ?? '?',

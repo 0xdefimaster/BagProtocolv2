@@ -1,8 +1,9 @@
 # Performance fee economics — design
 
-Status: **DESIGN APPROVED — decisions F1–F7 locked (2026-10-05, §8). Not
-implemented.** Implementation follows §9: B0 (server only) first, then a
-separate, audited contract PR for B. Never both in one PR.
+Status: **DESIGN APPROVED — decisions F1–F7 locked (2026-10-05, §8). B0
+implemented (server only; §9 step 1), not yet validated live. B not started.**
+Implementation follows §9: B0 first, then a separate, audited contract PR for
+B. Never both in one PR.
 
 The question this document answers:
 
@@ -232,11 +233,20 @@ covered: a **purchase** into the same Bag between T0 and T1 changes the
 average cost of what is sold, so the attested basis and the basis the ledger
 applies can differ. The contract cannot see the database either way.
 
-- **B0:** the attestation records the position's ledger sequence at T0 (the
-  ledger is already sequenced, A1). The server refuses to attest while another
-  intent for the same position is in flight (purchase or redemption). After
-  execution the ledger records the charged fee next to the A3 fee base at
-  apply time; any difference is shown, never silently reconciled.
+- **B0 (as implemented, `lib/server/fee-redemption-lock.ts`):** a two-way lock
+  instead of a persisted sequence (no migration): the server refuses to attest
+  while a purchase of the same position is in flight (`PositionBusyError`),
+  and refuses a purchase — at creation and again at execution — while a
+  fee-paying sale of it is open (`REDEEM_IN_PROGRESS`). A quote that expired
+  unsubmitted no longer counts; a submitted transaction always does. The
+  attestation's deadline never exceeds the sale intent's expiry, so it cannot
+  execute after the lock is released (an expired intent gets no attestation).
+  With both
+  directions closed, no fill can change the attested basis between T0 and T1
+  (an external outflow does not change the average cost per unit; the
+  pre-sign coverage check handles the quantity). The charged fee is recorded
+  verbatim from the router's `Redeemed` event; the A3 fee base is recomputed
+  from the ledger next to it, so any difference stays visible.
 - **B (contract PR input):** the signed struct carries a state commitment —
   at least a monotonic per-position nonce/ledger sequence, ideally a
   `positionStateHash` over (basis, loss carry, holdings). The contract keeps a
@@ -307,6 +317,10 @@ the router (not verified).
 ## 9. Implementation plan (after the decisions)
 
 1. **PR: B0 + F1–F4 (server only; no contract, no change to the fee-0 path).**
+   *Implemented:* `performance-fee-b0.ts` (pure), `redeem-fee-attestation.ts`,
+   `fee-redemption-lock.ts`, the preview's fee estimate; tests include the
+   real RedeemFeeRouter on Hardhat. Live validation pending (needs a
+   non-creator wallet selling a fee-paying Bag through a deployed router).
    Attestation computes the fee from grossMinimumProceeds and the
    holdings-based basis net of loss carry, in raw USDG with floor rounding
    (§5.7), and signs `minUserProceeds = grossMinimumProceeds − fee`. It binds

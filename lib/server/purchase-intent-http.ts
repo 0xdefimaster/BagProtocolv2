@@ -58,6 +58,15 @@ export function purchaseExecutionErrorResponse(error: PurchaseExecutionError): N
         },
         { status: 409 }
       );
+    case 'REDEEM_IN_PROGRESS':
+      return NextResponse.json(
+        {
+          error: 'You have a sale of this Bag in progress. Finish or cancel it, then buy again.',
+          code: 'REDEEM_IN_PROGRESS',
+          intentId: error.intentId,
+        },
+        { status: 409 }
+      );
     case 'PROVIDER_SELECTION_UNAVAILABLE':
       return NextResponse.json(
         { error: 'Selecting a specific execution route is not available on this deployment.', code: 'PROVIDER_SELECTION_UNAVAILABLE' },
