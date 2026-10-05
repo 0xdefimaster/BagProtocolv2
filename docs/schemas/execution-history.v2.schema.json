@@ -107,6 +107,7 @@
         "action",
         "outcome",
         "asset",
+        "soldAsset",
         "inputAmountRaw",
         "bagMinimumRaw",
         "providerEnforcedMinimumRaw",
@@ -138,6 +139,16 @@
         },
         "asset": {
           "$ref": "#/definitions/asset"
+        },
+        "soldAsset": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/asset"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "inputAmountRaw": {
           "type": "string",
@@ -212,6 +223,7 @@
         "input",
         "shares",
         "outputs",
+        "totalReceived",
         "evidence",
         "policyEvaluation"
       ],
@@ -370,6 +382,45 @@
             "$ref": "#/definitions/output"
           }
         },
+        "totalReceived": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "asset",
+                "actualRaw",
+                "actualSource",
+                "providerEnforcedMinimumRaw"
+              ],
+              "properties": {
+                "asset": {
+                  "$ref": "#/definitions/asset"
+                },
+                "actualRaw": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$"
+                },
+                "actualSource": {
+                  "enum": [
+                    "ONCHAIN_DERIVED",
+                    "PROVIDER_REPORTED"
+                  ]
+                },
+                "providerEnforcedMinimumRaw": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^[0-9]+$"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "evidence": {
           "type": "object",
           "additionalProperties": false,
@@ -379,6 +430,7 @@
             "filledSwaps",
             "onchainDerived",
             "providerReported",
+            "coveredByTotal",
             "unrecorded"
           ],
           "properties": {
@@ -403,6 +455,10 @@
               "minimum": 0
             },
             "providerReported": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "coveredByTotal": {
               "type": "integer",
               "minimum": 0
             },

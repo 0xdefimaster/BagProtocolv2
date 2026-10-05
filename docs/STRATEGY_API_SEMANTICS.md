@@ -147,7 +147,19 @@ and quotes never count): ONCHAIN (every actual output ONCHAIN_DERIVED),
 PROVIDER (every filled swap has an actual output, at least one only
 PROVIDER_REPORTED), PARTIAL (a filled swap has no recorded actual output),
 NONE (nothing filled). It summarizes; each output's `actualSource` stays
-authoritative.
+authoritative. A filled swap with no per-step actual counts as on-chain
+evidenced (`coveredByTotal`) only when an ONCHAIN_DERIVED `totalReceived`
+covers it.
+
+**Redeem receipts**: each output names the holding it sold (`soldAsset` +
+`inputAmountRaw`); `input`/`shares` are the legacy share unit and are not
+authoritative since A4. `totalReceived` is what reached the wallet in the
+output asset, only once every swap filled. In a one-transaction (LI.FI
+Composer) redeem every leg pays the same token in the same transaction, so
+only the total is observable: it is read from the receipt's Transfer logs
+(ONCHAIN_DERIVED) and the legs' own `actualRaw` stay null — an apportionment
+is never shown as a per-leg outcome. With one transaction per asset the total
+is the sum of the legs' actuals, with the weakest of their sources.
 
 **Pagination**: newest first (`createdAt` desc, then `executionId` asc, at
 microsecond precision). `?limit=` 1–50 (default 50); `hasMore` and an opaque

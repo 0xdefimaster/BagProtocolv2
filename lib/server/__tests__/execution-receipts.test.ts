@@ -53,7 +53,7 @@ describe('buildPurchaseReceipt', () => {
     expect(r).toMatchObject({ executionId: 'intent-1', kind: 'PURCHASE', bagId: 'bag-1', strategyVersion: 5, versionBinding: 'MATCHES_VERSION_RECORD', provider: 'LIFI_COMPOSER' });
     expect(r.input).toEqual({ unit: 'TOKEN', asset: { chain: 'robinhood', chainId: 4663, address: USDG, symbol: 'USDG', decimals: 6 }, amountRaw: '1000000', decimals: 6, source: 'EXECUTION_PLAN' });
     expect(r).toMatchObject({ outcome: 'SUCCEEDED', isFinal: true });
-    expect(r.evidence).toEqual({ level: 'ONCHAIN', swapSteps: 2, filledSwaps: 2, onchainDerived: 2, providerReported: 0, unrecorded: 0 });
+    expect(r.evidence).toEqual({ level: 'ONCHAIN', swapSteps: 2, filledSwaps: 2, onchainDerived: 2, providerReported: 0, coveredByTotal: 0, unrecorded: 0 });
     expect(r.outputs[0]).toMatchObject({ asset: { symbol: 'NVDA' }, bagMinimumRaw: '990', providerEnforcedMinimumRaw: '985', actualRaw: '1000', actualSource: 'ONCHAIN_DERIVED', quotedRaw: null, minimumRespected: true });
     expect(r.transactions).toEqual([
       { txHash: APPROVE, chain: 'robinhood', chainId: 4663, role: 'APPROVAL', verification: 'REPORTED_UNVERIFIED', claim: 'UNCLAIMED' },
@@ -158,6 +158,53 @@ describe('buildRedeemReceipt', () => {
     expect(r.input).toEqual({ unit: 'BAG_SHARES', asset: null, amountRaw: '500000000000000000', decimals: 18, source: 'EXECUTION_PLAN' });
     expect(r.outputs[0]).toMatchObject({ asset: { symbol: 'USDG', decimals: 6 }, actualRaw: '480000', actualSource: 'PROVIDER_REPORTED', minimumRespected: true });
     expect(r.policyEvaluation.checks.find((c) => c.check === 'VERSION_BINDING')).toEqual({ check: 'VERSION_BINDING', result: 'UNKNOWN' });
+    // What was sold is on each output; one transaction per asset → total from the legs, weakest source.
+    expect(r.outputs[0].soldAsset).toMatchObject({ address: NVDA });
+    expect(r.totalReceived).toMatchObject({ asset: { symbol: 'USDG' }, actualRaw: '480000', actualSource: 'PROVIDER_REPORTED', providerEnforcedMinimumRaw: null });
+    expect(r.evidence).toMatchObject({ level: 'PROVIDER', coveredByTotal: 0, unrecorded: 0 });
+  });
+
+  // The live V2 round trip: a 50% sale of four holdings into USDG in ONE LI.FI Composer transaction.
+  const composerRedeem = (over: Partial<RedeemIntent> = {}) =>
+    redeem({
+      composerTransaction: { to: '0xvm', data: '0x', value: '0', chainId: 4663, approvals: [] },
+      steps: [
+        step(0, USDG, { inputAsset: { chain: 'robinhood', address: NVDA }, inputAmountRaw: '500', outputAmountRaw: '831000', outputDecimals: 6, minOutputRaw: null, providerEnforcedMinOutputRaw: '831000' }),
+        step(1, USDG, { inputAsset: { chain: 'robinhood', address: AMD }, inputAmountRaw: '700', outputAmountRaw: '1599000', outputDecimals: 6, minOutputRaw: null, providerEnforcedMinOutputRaw: '1590000' }),
+      ],
+      ...over,
+    });
+
+  it('one-transaction (Composer) redeem: provider is LI.FI Composer, the total comes from the tx receipt, legs are never shown as per-leg outcomes', () => {
+    const claims = new Map([[`robinhood:${TX}`, { chain: 'robinhood', tx_hash: TX, intent_kind: 'REDEEM' as const, intent_id: 'redeem-1' }]]);
+    const r = buildRedeemReceipt(composerRedeem(), ctx({ claims }));
+    expect(r.provider).toBe('LIFI_COMPOSER');
+    for (const o of r.outputs) expect(o).toMatchObject({ outcome: 'FILLED', actualRaw: null, actualSource: null, quotedRaw: null, minimumRespected: null });
+    expect(r.outputs.map((o) => o.soldAsset?.address)).toEqual([NVDA, AMD]);
+    expect(r.totalReceived).toEqual({
+      asset: expect.objectContaining({ address: USDG, decimals: 6 }),
+      actualRaw: '2430000',
+      actualSource: 'ONCHAIN_DERIVED',
+      providerEnforcedMinimumRaw: '2421000',
+    });
+    expect(r.evidence).toEqual({ level: 'ONCHAIN', swapSteps: 2, filledSwaps: 2, onchainDerived: 0, providerReported: 0, coveredByTotal: 2, unrecorded: 0 });
+    expect(r.policyEvaluation.checks.find((c) => c.check === 'TX_CLAIMED_BY_THIS_EXECUTION')?.result).toBe('PASS');
+  });
+
+  it('one-transaction redeem not verified yet: no total, and the stored leg amounts are not shown as quotes either', () => {
+    const pending = composerRedeem({ status: 'CONFIRMING' as never });
+    pending.steps = pending.steps.map((s) => ({ ...s, status: 'CONFIRMING' as never }));
+    const r = buildRedeemReceipt(pending, ctx());
+    expect(r.totalReceived).toBeNull();
+    for (const o of r.outputs) expect(o).toMatchObject({ outcome: 'PENDING', actualRaw: null, quotedRaw: null });
+    expect(r.evidence.level).toBe('NONE');
+  });
+
+  it('a purchase never has a total or a sold asset', () => {
+    const r = buildPurchaseReceipt(purchase(), ctx());
+    expect(r.totalReceived).toBeNull();
+    expect(r.outputs.every((o) => o.soldAsset === null)).toBe(true);
+    expect(r.evidence.coveredByTotal).toBe(0);
   });
 });
 

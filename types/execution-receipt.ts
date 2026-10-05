@@ -93,7 +93,10 @@ export interface ReceiptOutput {
   stepIndex: number;
   action: 'SWAP' | 'KEEP';
   outcome: StepOutcome;
+  /** The asset this step produced. */
   asset: ReceiptAsset;
+  /** Redeem: the holding this step sold (`inputAmountRaw` of it). Purchase: null — the input is the receipt's `input.asset`. */
+  soldAsset: ReceiptAsset | null;
   inputAmountRaw: string;
   /** BAG's verification floor: the execution was rejected below it (EXECUTION_PLAN; checked by BAG's server). */
   bagMinimumRaw: string | null;
@@ -121,8 +124,26 @@ export interface ReceiptEvidence {
   filledSwaps: number;
   onchainDerived: number;
   providerReported: number;
-  /** Filled swaps without a recorded actual output. */
+  /** Filled swaps with no per-step actual whose output is evidenced on-chain as part of `totalReceived` (one-transaction redeem). */
+  coveredByTotal: number;
+  /** Filled swaps without a recorded actual output, individually or as part of an on-chain total. */
   unrecorded: number;
+}
+
+/**
+ * Redeem only: what reached the wallet in the output asset, over every swap step. Null unless every swap
+ * filled and its output is recorded.
+ * - LI.FI Composer (one transaction): every leg pays the same token in the same transaction, so only the
+ *   total is observable — read from the receipt's Transfer logs to the wallet (`ONCHAIN_DERIVED`). The legs'
+ *   own `actualRaw` stay null rather than show an apportionment as an outcome.
+ * - One transaction per asset: the sum of the legs' actuals, with the weakest of their sources.
+ */
+export interface ReceiptTotalReceived {
+  asset: ReceiptAsset;
+  actualRaw: string;
+  actualSource: ReceiptFieldSource;
+  /** Sum of the legs' on-chain swap minimums; null unless every leg has one. Not a guarantee of what reached the wallet. */
+  providerEnforcedMinimumRaw: string | null;
 }
 
 export interface ExecutionReceipt {
@@ -149,11 +170,17 @@ export interface ExecutionReceipt {
   createdAt: string;
   /** When BAG recorded the execution as done (server time) — not a block timestamp. */
   recordedExecutedAt: string | null;
-  /** Purchase: the payment token paid in. Redeem: the Bag's own shares (no token; `asset` is null). */
+  /**
+   * Purchase: the payment token paid in. Redeem: the Bag's own shares (no token; `asset` is null) — a legacy,
+   * non-authoritative unit since A4 (a sale is a fraction of the holdings); what was sold is each output's
+   * `soldAsset` + `inputAmountRaw`.
+   */
   input: { unit: 'TOKEN' | 'BAG_SHARES'; asset: ReceiptAsset | null; amountRaw: string; decimals: number | null; source: 'EXECUTION_PLAN' };
   /** Purchase: shares minted; redeem: shares burned. */
   shares: { amountRaw: string; decimals: number; source: 'BAG_RECORDED' };
   outputs: ReceiptOutput[];
+  /** Redeem only (see `ReceiptTotalReceived`); always null for a purchase. */
+  totalReceived: ReceiptTotalReceived | null;
   evidence: ReceiptEvidence;
   policyEvaluation: {
     /** False today: the policy as it was at execution time is not stored. */

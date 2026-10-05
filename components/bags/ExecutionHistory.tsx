@@ -35,8 +35,11 @@ const EXPLORER = 'https://robinhoodchain.blockscout.com/tx/';
 const amount = (raw: string | null, decimals: number | null) => (raw === null ? null : decimals === null ? `${raw} (raw)` : formatRawAmount(raw, decimals, { maxFractionDigits: 6 }));
 const shortHash = (h: string) => `${h.slice(0, 10)}…${h.slice(-6)}`;
 
-function OutputRow({ o }: { o: ReceiptOutput }) {
-  const symbol = o.asset.symbol ?? `${o.asset.address.slice(0, 6)}…`;
+const symbolOf = (a: { symbol: string | null; address: string }) => a.symbol ?? `${a.address.slice(0, 6)}…`;
+
+function OutputRow({ o, coveredByTotal }: { o: ReceiptOutput; coveredByTotal: boolean }) {
+  const symbol = symbolOf(o.asset);
+  const sold = o.soldAsset ? amount(o.inputAmountRaw, o.soldAsset.decimals) : null;
   const actual = amount(o.actualRaw, o.asset.decimals);
   const bagMin = amount(o.bagMinimumRaw, o.asset.decimals);
   const providerMin = amount(o.providerEnforcedMinimumRaw, o.asset.decimals);
@@ -44,7 +47,14 @@ function OutputRow({ o }: { o: ReceiptOutput }) {
   return (
     <tr className="border-t border-white/5 align-top">
       <td className="py-1.5 pr-3 font-medium text-white">
-        {symbol}
+        {o.soldAsset ? (
+          <>
+            {symbolOf(o.soldAsset)} <span className="text-white/40">→</span> {symbol}
+            {sold && <div className="font-mono text-xs font-normal text-white/50">Sold {sold}</div>}
+          </>
+        ) : (
+          symbol
+        )}
         {o.action === 'KEEP' && <span className="ml-1 text-xs text-white/40">(kept)</span>}
       </td>
       <td className="py-1.5 pr-3 font-mono text-xs text-white/70">
@@ -58,6 +68,10 @@ function OutputRow({ o }: { o: ReceiptOutput }) {
           </span>
         ) : quoted ? (
           <span className="text-white/50">Not completed · quote was {quoted}</span>
+        ) : coveredByTotal && o.outcome === 'FILLED' ? (
+          <span className="text-white/50" title="Every leg paid the same token in one transaction, so only the total is observable on-chain.">
+            In the total below
+          </span>
         ) : (
           <span className="text-white/40">Not recorded</span>
         )}
@@ -69,7 +83,8 @@ function OutputRow({ o }: { o: ReceiptOutput }) {
 function Receipt({ r }: { r: ExecutionReceipt }) {
   const executionTx = r.transactions.find((t) => t.role === 'EXECUTION' && t.verification === 'VERIFIED');
   const inputAmount = amount(r.input.amountRaw, r.input.decimals);
-  const inputLabel = r.input.unit === 'BAG_SHARES' ? 'Bag shares' : (r.input.asset?.symbol ?? '');
+  const inputLabel = r.input.asset?.symbol ?? '';
+  const total = r.totalReceived;
   return (
     <li className="rounded-xl border border-white/10 bg-white/5 p-5">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -79,16 +94,33 @@ function Receipt({ r }: { r: ExecutionReceipt }) {
         <span className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-white/60">{OUTCOME_LABEL[r.outcome]}</span>
         <span className="ml-auto text-xs text-white/40">{new Date(r.createdAt).toLocaleString()}</span>
       </div>
-      <div className="mt-2 text-sm text-white/70">
-        Input: <span className="font-mono text-white">{inputAmount}</span> {inputLabel}
-      </div>
+      {/* A redeem's shares are a legacy, non-authoritative unit (A4): what was sold is listed per row. */}
+      {r.kind === 'PURCHASE' && (
+        <div className="mt-2 text-sm text-white/70">
+          Input: <span className="font-mono text-white">{inputAmount}</span> {inputLabel}
+        </div>
+      )}
       <table className="mt-2 w-full text-left">
         <tbody>
           {r.outputs.map((o) => (
-            <OutputRow key={o.stepIndex} o={o} />
+            <OutputRow key={o.stepIndex} o={o} coveredByTotal={r.evidence.coveredByTotal > 0} />
           ))}
         </tbody>
       </table>
+      {total && (
+        <div className="mt-2 flex flex-wrap items-baseline gap-x-3 border-t border-white/10 pt-2 text-sm">
+          <span className="text-white/70">Received</span>
+          <span className="font-mono text-white">
+            {amount(total.actualRaw, total.asset.decimals)} {symbolOf(total.asset)}
+          </span>
+          <span className="font-mono text-xs text-white/40">· {SOURCE_LABEL[total.actualSource]}</span>
+          {total.providerEnforcedMinimumRaw && (
+            <span className="font-mono text-xs text-white/50" title="Sum of the on-chain swap minimums; not a guarantee of what reached the wallet.">
+              Min (on-chain, swaps): {amount(total.providerEnforcedMinimumRaw, total.asset.decimals)}
+            </span>
+          )}
+        </div>
+      )}
       <ul className="mt-3 space-y-0.5 text-xs">
         {r.policyEvaluation.checks
           .filter((c) => c.result !== 'UNKNOWN')

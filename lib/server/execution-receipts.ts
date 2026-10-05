@@ -13,6 +13,7 @@ import {
   ReceiptEvidence,
   ReceiptFieldSource,
   ReceiptOutput,
+  ReceiptTotalReceived,
   ReceiptTransaction,
   StepOutcome,
 } from '@/types/execution-receipt';
@@ -133,23 +134,33 @@ export function purchaseProvider(intent: Pick<PurchaseIntent, 'providerId' | 'co
   return 'UNKNOWN';
 }
 
-function redeemProvider(intent: Pick<RedeemIntent, 'steps'>): ExecutionProviderKind {
+/** Provider of a redeem, from what BAG recorded server-side. */
+export function redeemProvider(intent: Pick<RedeemIntent, 'steps' | 'composerTransaction'>): ExecutionProviderKind {
+  if (intent.composerTransaction) return 'LIFI_COMPOSER';
   return intent.steps.some((s) => s.action === 'SWAP' && s.lifiStep) ? 'LIFI_SEQUENTIAL' : 'UNKNOWN';
 }
 
-function actualFor(step: PurchaseIntentStepRecord, provider: ExecutionProviderKind): { raw: string | null; source: ReceiptFieldSource | null } {
+/**
+ * A one-transaction (Composer) redeem pays every leg in the same token in the same transaction: only the total is
+ * observable on-chain, and the per-leg amounts BAG stores are an apportionment of it (splitReceivedAcrossLegs).
+ */
+const legActualsApportioned = (kind: 'PURCHASE' | 'REDEEM', provider: ExecutionProviderKind) => kind === 'REDEEM' && provider === 'LIFI_COMPOSER';
+
+function actualFor(step: PurchaseIntentStepRecord, provider: ExecutionProviderKind, apportioned: boolean): { raw: string | null; source: ReceiptFieldSource | null } {
   if (step.action === 'KEEP') return { raw: step.inputAmountRaw, source: 'BAG_RECORDED' };
+  if (apportioned) return { raw: null, source: null };
   if (step.status !== 'COMPLETED' || !step.outputAmountRaw) return { raw: null, source: null };
   if (provider === 'LIFI_COMPOSER' || provider === 'BAG_ROUTER') return { raw: step.outputAmountRaw, source: 'ONCHAIN_DERIVED' };
   if (provider === 'LIFI_SEQUENTIAL' && step.minOutputRaw !== null) return { raw: step.outputAmountRaw, source: 'PROVIDER_REPORTED' };
   return { raw: null, source: null };
 }
 
-function outputsFor(steps: PurchaseIntentStepRecord[], provider: ExecutionProviderKind, ctx: ReceiptContext): ReceiptOutput[] {
+function outputsFor(steps: PurchaseIntentStepRecord[], provider: ExecutionProviderKind, ctx: ReceiptContext, kind: 'PURCHASE' | 'REDEEM'): ReceiptOutput[] {
+  const apportioned = legActualsApportioned(kind, provider);
   return [...steps]
     .sort((a, b) => a.stepIndex - b.stepIndex)
     .map((step) => {
-      const actual = actualFor(step, provider);
+      const actual = actualFor(step, provider, apportioned);
       const swapped = step.action === 'SWAP';
       const outcome = publicStepOutcome(step);
       return {
@@ -157,26 +168,63 @@ function outputsFor(steps: PurchaseIntentStepRecord[], provider: ExecutionProvid
         action: step.action,
         outcome,
         asset: asset(step.outputAsset, ctx, { decimals: step.outputDecimals }),
+        soldAsset: kind === 'REDEEM' ? asset(step.inputAsset, ctx) : null,
         inputAmountRaw: step.inputAmountRaw,
         bagMinimumRaw: swapped ? step.minOutputRaw : null,
         providerEnforcedMinimumRaw: swapped ? (step.providerEnforcedMinOutputRaw ?? null) : null,
         actualRaw: actual.raw,
         actualSource: actual.source,
-        quotedRaw: swapped && outcome !== 'FILLED' ? step.outputAmountRaw : null,
+        // An apportioned leg amount is neither an outcome nor a quote.
+        quotedRaw: swapped && outcome !== 'FILLED' && !apportioned ? step.outputAmountRaw : null,
         minimumRespected: swapped && actual.raw !== null && step.minOutputRaw !== null ? BigInt(actual.raw) >= BigInt(step.minOutputRaw) : null,
       };
     });
 }
 
-/** Receipt-level summary over FILLED swaps (types/execution-receipt.ts `EVIDENCE_LEVELS`). */
-export function evidenceFor(outputs: ReceiptOutput[]): ReceiptEvidence {
+/**
+ * Receipt-level summary over FILLED swaps (types/execution-receipt.ts `EVIDENCE_LEVELS`). A filled swap with no
+ * per-step actual counts as on-chain evidenced only when an ONCHAIN_DERIVED `totalReceived` covers it.
+ */
+export function evidenceFor(outputs: ReceiptOutput[], totalReceived: ReceiptTotalReceived | null = null): ReceiptEvidence {
   const swaps = outputs.filter((o) => o.action === 'SWAP');
   const filled = swaps.filter((o) => o.outcome === 'FILLED');
   const onchainDerived = filled.filter((o) => o.actualRaw !== null && o.actualSource === 'ONCHAIN_DERIVED').length;
   const providerReported = filled.filter((o) => o.actualRaw !== null && o.actualSource === 'PROVIDER_REPORTED').length;
-  const unrecorded = filled.length - onchainDerived - providerReported;
+  const coveredByTotal = totalReceived?.actualSource === 'ONCHAIN_DERIVED' ? filled.filter((o) => o.actualRaw === null).length : 0;
+  const unrecorded = filled.length - onchainDerived - providerReported - coveredByTotal;
   const level = filled.length === 0 ? 'NONE' : unrecorded > 0 ? 'PARTIAL' : providerReported > 0 ? 'PROVIDER' : 'ONCHAIN';
-  return { level, swapSteps: swaps.length, filledSwaps: filled.length, onchainDerived, providerReported, unrecorded };
+  return { level, swapSteps: swaps.length, filledSwaps: filled.length, onchainDerived, providerReported, coveredByTotal, unrecorded };
+}
+
+const SOURCE_STRENGTH: ReceiptFieldSource[] = ['ONCHAIN_DERIVED', 'PROVIDER_REPORTED'];
+
+/** Redeem: total received in the output asset, only when every swap filled and its output is recorded (types `ReceiptTotalReceived`). */
+function totalReceivedFor(intent: RedeemIntent, outputs: ReceiptOutput[], provider: ExecutionProviderKind, ctx: ReceiptContext): ReceiptTotalReceived | null {
+  const swapSteps = intent.steps.filter((s) => s.action === 'SWAP');
+  const swapOutputs = outputs.filter((o) => o.action === 'SWAP');
+  if (swapSteps.length === 0 || swapOutputs.some((o) => o.outcome !== 'FILLED')) return null;
+  const sum = (values: (string | null | undefined)[]) =>
+    values.every((v) => typeof v === 'string' && /^\d+$/.test(v)) ? values.reduce((a, v) => a + BigInt(v as string), BigInt(0)).toString() : null;
+
+  let actualRaw: string | null;
+  let actualSource: ReceiptFieldSource;
+  if (legActualsApportioned('REDEEM', provider)) {
+    // The stored leg amounts sum exactly to what the receipt's Transfer logs showed reaching the wallet.
+    actualRaw = sum(swapSteps.map((s) => s.outputAmountRaw));
+    actualSource = 'ONCHAIN_DERIVED';
+  } else {
+    actualRaw = sum(swapOutputs.map((o) => o.actualRaw));
+    const sources = swapOutputs.map((o) => o.actualSource);
+    if (sources.some((src) => src === null || !SOURCE_STRENGTH.includes(src))) return null;
+    actualSource = sources.some((src) => src === 'PROVIDER_REPORTED') ? 'PROVIDER_REPORTED' : 'ONCHAIN_DERIVED';
+  }
+  if (actualRaw === null) return null;
+  return {
+    asset: asset(intent.outputAsset, ctx, { decimals: intent.outputDecimals }),
+    actualRaw,
+    actualSource,
+    providerEnforcedMinimumRaw: sum(swapSteps.map((s) => s.providerEnforcedMinOutputRaw)),
+  };
 }
 
 function transactionsFor(executionId: string, steps: PurchaseIntentStepRecord[], ctx: ReceiptContext): ReceiptTransaction[] {
@@ -224,7 +272,7 @@ export function buildPurchaseReceipt(intent: PurchaseIntent, ctx: ReceiptContext
   const recordedHash = ctx.versionHashes.get(intent.recipeVersion);
   const versionBinding: ExecutionReceipt['versionBinding'] =
     recordedHash === undefined ? 'VERSION_NOT_FOUND' : recordedHash === intent.compositionHash ? 'MATCHES_VERSION_RECORD' : 'MISMATCH';
-  const outputs = outputsFor(intent.steps, provider, ctx);
+  const outputs = outputsFor(intent.steps, provider, ctx, 'PURCHASE');
   const transactions = transactionsFor(intent.id, intent.steps, ctx);
   const input = asset(intent.inputAsset, ctx);
   return {
@@ -247,6 +295,7 @@ export function buildPurchaseReceipt(intent: PurchaseIntent, ctx: ReceiptContext
     input: { unit: 'TOKEN', asset: input, amountRaw: intent.inputAmountRaw, decimals: input.decimals, source: 'EXECUTION_PLAN' },
     shares: { amountRaw: intent.sharesRaw, decimals: intent.shareDecimals, source: 'BAG_RECORDED' },
     outputs,
+    totalReceived: null,
     evidence: evidenceFor(outputs),
     policyEvaluation: {
       policySnapshotAvailable: false,
@@ -265,7 +314,8 @@ export function buildPurchaseReceipt(intent: PurchaseIntent, ctx: ReceiptContext
 
 export function buildRedeemReceipt(intent: RedeemIntent, ctx: ReceiptContext): ExecutionReceipt {
   const provider = redeemProvider(intent);
-  const outputs = outputsFor(intent.steps, provider, ctx);
+  const outputs = outputsFor(intent.steps, provider, ctx, 'REDEEM');
+  const totalReceived = totalReceivedFor(intent, outputs, provider, ctx);
   const transactions = transactionsFor(intent.id, intent.steps, ctx);
   return {
     executionId: intent.id,
@@ -288,7 +338,8 @@ export function buildRedeemReceipt(intent: RedeemIntent, ctx: ReceiptContext): E
     input: { unit: 'BAG_SHARES', asset: null, amountRaw: intent.sharesRaw, decimals: intent.shareDecimals, source: 'EXECUTION_PLAN' },
     shares: { amountRaw: intent.sharesRaw, decimals: intent.shareDecimals, source: 'BAG_RECORDED' },
     outputs,
-    evidence: evidenceFor(outputs),
+    totalReceived,
+    evidence: evidenceFor(outputs, totalReceived),
     policyEvaluation: { policySnapshotAvailable: false, evaluatedAgainstVersion: null, checks: checksFor(outputs, transactions, 'NOT_RECORDED'), noRouteFallback: null },
   };
 }
