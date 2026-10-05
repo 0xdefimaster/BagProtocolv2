@@ -34,6 +34,8 @@ import { buildPurchaseIntentSteps } from '@/lib/blockchain/lifi-purchase-quote';
 import { trackStepStatus } from '@/lib/blockchain/lifi-status';
 import { trackComposerTransaction } from '@/lib/blockchain/composer-status';
 import { DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
+import { readSettlementResult } from '@/lib/blockchain/redeem-settlement-event';
+import { computeOnChainBagId } from '@/lib/domain/basket-protocol/onchain';
 import { buildRedeemComposer, splitReceivedAcrossLegs } from '@/lib/server/redeem-composer';
 import { formatDec, mulDiv, parseDec, rawToDecimalString } from '@/lib/domain/basket-protocol/accounting/decimal';
 import {
@@ -42,6 +44,7 @@ import {
   getRedeemIntentForUser,
   markRedeemAccountingApplied,
   markRedeemReconciliationApplied,
+  recordRedeemSettlementResult,
   updateRedeemIntentStatus,
   updateRedeemIntentSteps,
   type CreateRedeemIntentInput,
@@ -460,7 +463,7 @@ export async function verifyRedeemExecution(
   }
 
   const verifiedSteps: RedeemIntentStepRecord[] = intent.composerTransaction
-    ? await verifyComposerRedeemSteps(intent, intent.composerTransaction)
+    ? await verifyComposerRedeemSteps(admin, intent, intent.composerTransaction)
     : await Promise.all(
     intent.steps.map(async (step): Promise<RedeemIntentStepRecord> => {
       if (step.action === 'KEEP' || step.status === 'COMPLETED' || step.status === 'FAILED') return step;
@@ -576,6 +579,7 @@ export async function verifyRedeemExecution(
  * arrived. What arrived is split across the legs for display; accounting debits inputs, never outputs.
  */
 async function verifyComposerRedeemSteps(
+  admin: SupabaseClient,
   intent: RedeemIntent,
   composerTransaction: NonNullable<RedeemIntent['composerTransaction']>
 ): Promise<RedeemIntentStepRecord[]> {
@@ -590,8 +594,33 @@ async function verifyComposerRedeemSteps(
   if (outcome.kind === 'FAILED') return markSwaps({ status: 'FAILED', failureCode: outcome.failureCode });
 
   const soldInFull = swaps.every((s) => BigInt(outcome.sentAmountsByAddress[s.inputAsset.address.toLowerCase()] ?? '0') >= BigInt(s.inputAmountRaw));
-  const received = BigInt(outcome.receivedAmountsByAddress[intent.outputAsset.address.toLowerCase()] ?? '0');
+  let received = BigInt(outcome.receivedAmountsByAddress[intent.outputAsset.address.toLowerCase()] ?? '0');
   if (!soldInFull || received <= BigInt(0)) return markSwaps({ status: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
+
+  // A fee-paying sale settled through RedeemSettlement (§9): the contract's Settled event for THIS redemption is the
+  // source of truth — what arrived, the fee it computed and paid to the creator, what the user got. Without it, or
+  // with a user other than this wallet, the sale is not verified. The legs carry the GROSS amount (`received`): the
+  // fee is ledgered separately from the event (FEE_CHARGED, 0054), as a database-booked fee always was, so realized
+  // P&L and the high-water mark stay on the basis the contract charged on.
+  const plan = intent.settlementPlan;
+  if (plan?.attestedAt) {
+    const settled = await readSettlementResult(txHash as `0x${string}`, plan.settlement, computeOnChainBagId(intent.id));
+    if (!settled || settled.user.toLowerCase() !== intent.walletAddress.toLowerCase()) return markSwaps({ status: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
+    received = BigInt(settled.received);
+    await recordRedeemSettlementResult(admin, intent.id, {
+      ...plan,
+      result: {
+        txHash: settled.txHash || txHash,
+        blockNumber: settled.blockNumber,
+        received: settled.received,
+        feeBase: settled.feeBase,
+        fee: settled.fee,
+        userProceeds: settled.userProceeds,
+        creator: settled.creator,
+        executor: settled.executor,
+      },
+    });
+  }
 
   const parts = splitReceivedAcrossLegs(received, swaps.map((s) => s.outputAmountRaw));
   return intent.steps.map((s) =>
@@ -677,6 +706,8 @@ async function applyRedeemAccountingIdempotently(admin: SupabaseClient, intent: 
   // locked rate; passing it here too keeps both sides saying the same thing.
   const bag = await getBagById(admin, intent.bagId);
   const version = await getCurrentBagVersion(admin, intent.bagId);
+  // A sale settled through RedeemSettlement already paid its fee on-chain: apply_redeem_execution (0054) sees the
+  // attested plan on the intent row, books no database fee and ledgers the Settled event's fee instead.
   const performanceFeeBps = bag?.performanceFeeBpsLocked ?? version?.recipe.performanceFeeBps ?? 0;
 
   const { error: rpcError } = await admin.rpc('apply_redeem_execution', {

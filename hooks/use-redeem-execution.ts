@@ -30,11 +30,23 @@ import { describeWalletError } from '@/lib/blockchain/wallet-error';
 // (`intent.composerTransaction`, lib/server/redeem-composer.ts) is signed
 // once (`executeComposerSale`; approvals batched into the same confirmation
 // when the wallet supports EIP-5792) instead of one LI.FI route per asset.
+//
+// A Bag with a performance fee is refused by `/execute` (FEE_ROUTER_REQUIRED):
+// when RedeemSettlement is configured (NEXT_PUBLIC_REDEEM_SETTLEMENT_ADDRESS),
+// the sale goes through the two-phase settlement attestation instead
+// (settlement-quote → settlement-attest), and the wallet signs the ONE
+// Composer transaction it returns — swaps, push to RedeemSettlement,
+// settleFlat — which pays the fee to the creator on-chain. Verification then
+// trusts the contract's Settled event, not this hook.
 // -----------------------------------------------------------------------------
 
 function getConfiguredRedeemFeeRouterAddress(): `0x${string}` | null {
   const raw = process.env.NEXT_PUBLIC_REDEEM_FEE_ROUTER_ADDRESS;
   return raw ? (raw as `0x${string}`) : null;
+}
+
+function isRedeemSettlementConfigured(): boolean {
+  return Boolean(process.env.NEXT_PUBLIC_REDEEM_SETTLEMENT_ADDRESS);
 }
 
 /** `partial`: some legs sold and some failed (A4) — never reported as a completed sale. */
@@ -65,7 +77,7 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new RedeemExecutionHttpError(data?.error ?? `Request failed (${res.status})`, data?.failureCode ?? null);
+    throw new RedeemExecutionHttpError(data?.error ?? `Request failed (${res.status})`, data?.failureCode ?? null, data?.code ?? null);
   }
   return data as T;
 }
@@ -73,7 +85,8 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
 class RedeemExecutionHttpError extends Error {
   constructor(
     message: string,
-    public readonly failureCode: RedeemIntentFailureCode | null
+    public readonly failureCode: RedeemIntentFailureCode | null,
+    public readonly code: string | null = null
   ) {
     super(message);
     this.name = 'RedeemExecutionHttpError';
@@ -292,7 +305,19 @@ export function useRedeemExecution() {
         // the router/vault haven't been deployed/configured yet, never for
         // a deployment that has them set.
         setState((s) => ({ ...s, phase: 'preparing' }));
-        const { intent: prepared } = await postJson<{ intent: RedeemIntent }>(`/api/redeem-intent/${created.id}/execute`);
+        let prepared: RedeemIntent;
+        try {
+          ({ intent: prepared } = await postJson<{ intent: RedeemIntent }>(`/api/redeem-intent/${created.id}/execute`));
+        } catch (err) {
+          if (!(err instanceof RedeemExecutionHttpError && err.code === 'FEE_ROUTER_REQUIRED' && isRedeemSettlementConfigured())) throw err;
+          // A fee-paying sale: phase 1 quotes and plans (signs nothing), phase 2 re-checks, signs and compiles the
+          // final settlement transaction. Either refusing is a server answer, reported as is.
+          await postJson(`/api/redeem-intent/${created.id}/settlement-quote`);
+          const { composerTransaction } = await postJson<{ composerTransaction: NonNullable<RedeemIntent['composerTransaction']> }>(
+            `/api/redeem-intent/${created.id}/settlement-attest`
+          );
+          prepared = { ...created, composerTransaction };
+        }
         setState((s) => ({ ...s, intent: prepared }));
 
         const swapSteps = prepared.steps.filter((s) => s.action === 'SWAP');
