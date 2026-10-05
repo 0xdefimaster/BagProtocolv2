@@ -76,6 +76,7 @@ prove behavior against a local chain, never against Robinhood Chain.
 | Item | Where |
 |---|---|
 | Redemption fee: B0 charges on the guaranteed minimum (never above the fee on the actual result); live validation pending; on-chain computation from actual output is the separate contract PR (B) | `docs/FEE_ECONOMICS_DESIGN.md` |
+| Fee-paying sales through LI.FI Composer (the venue that can sell the live Bag) into a settlement contract: feasibility study done, POSSIBLE-BUT-UNVERIFIED; PoC P1 (compile/simulate only) next. Router not deployed | `docs/LIFI_COMPOSER_FEE_SETTLEMENT_FEASIBILITY.md` |
 | B0 live validation is blocked on: (1) Uniswap v3 executability of the Bag's tokens (run the checker), (2) `RedeemFeeRouter` + `CreatorRewardsVault` deployed and configured for V2, (3) a non-creator wallet selling a fee-paying Bag | `scripts/check-fee-router-liquidity.ts` |
 | Multi-signature sales on wallets without EIP-5792 (Rabby): one approval per token + the sale | proposal: opt-in persistent approval to the user's own Composer proxy |
 | A redemption does not store the fraction sold (receipts show what was sold per asset instead) | `supabase/migrations/0051_fraction_redeem.sql` |
@@ -97,6 +98,7 @@ prove behavior against a local chain, never against Robinhood Chain.
 | `docs/ROBINHOOD_PRICE_AUTHORITY.md` | CURRENT | Live verification still open |
 | `docs/PROTOCOL_ECONOMICS.md` | CURRENT | Invariants; see its A4 notes |
 | `docs/FEE_ECONOMICS_DESIGN.md` | CURRENT | Performance fee design, F1–F7 locked; B0 merged |
+| `docs/LIFI_COMPOSER_FEE_SETTLEMENT_FEASIBILITY.md` | STUDY | Can fee-paying sales run through Composer into a BAG settlement contract? POSSIBLE-BUT-UNVERIFIED; next step is an isolated PoC |
 | `docs/EXECUTION_CANDIDATE_DESIGN.md` | CURRENT | Candidate ranking (compiler path) |
 | `lib/execution/README.md` | CURRENT | Provider compiler; disabled live (§1, §3) |
 | `docs/CREATOR_REWARDS_SETTLEMENT.md` | CURRENT | Rewards ledger → `CreatorRewardsVault` |

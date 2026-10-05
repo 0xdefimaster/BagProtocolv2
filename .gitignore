@@ -11,7 +11,7 @@ build/
 
 cache/
 artifacts/
-tsconfig.tsbuildinfo
+*.tsbuildinfo
 
 *.log
 .DS_Store
