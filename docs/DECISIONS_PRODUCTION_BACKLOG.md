@@ -1,5 +1,7 @@
 # Production backlog — technical decision records
 
+> **Status: NOT IMPLEMENTED** — design / decision only. Current state: [docs/STATUS.md](STATUS.md).
+
 Status of all three: **decided, not implemented in this phase.** None is a
 demo blocker. Each records what would be built, what must not be built, and
 what would trigger revisiting it.

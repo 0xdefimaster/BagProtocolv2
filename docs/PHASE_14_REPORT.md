@@ -1,5 +1,7 @@
 # Phase 14 — LI.FI Live Quote Adapter — Rapor
 
+> **Status: HISTORICAL** — a point-in-time report, superseded since. For the current state see [docs/STATUS.md](STATUS.md).
+
 Kapsam kesinlikle korundu: bu phase'de **hiçbir transaction, wallet approval,
 swap/bridge tx, wallet signing, submission, holdings update, share mint,
 redeem, Robinhood/ATLAS entegrasyonu yok**. Tek yapılan şey: mevcut

@@ -5,6 +5,9 @@ import { createEvmBagDeploymentAdapter } from '@/lib/blockchain/evm/adapter';
 import type { EvmChainConfig } from '@/lib/blockchain/evm/config';
 import { computeOnChainBagId, computeOnChainCompositionHash, deriveOnChainBagId } from '@/lib/domain/basket-protocol/onchain';
 import { confirmBagDeployment, prepareBagDeployment } from '@/lib/server/deploy-bag';
+import { getBagById } from '@/lib/server/bag-repo';
+import { loadStrategyPassport } from '@/lib/server/strategy-passport';
+import { buildBagJson, loadStrategyVersionRows } from '@/lib/server/strategy-api';
 import { TestDatabase, bagRow, createDraftBag, createTestDatabase, deploymentRows } from './pg-harness';
 
 // -----------------------------------------------------------------------------
@@ -102,6 +105,19 @@ describe('real BagFactory + user-signed createBag on a local EVM', () => {
     expect(((await bagContract.read.creator()) as string).toLowerCase()).toBe(s.wallet);
     expect(r.deployment).toMatchObject({ status: 'DEPLOYED', txHash: txHash.toLowerCase(), onChainCreator: s.wallet, factoryAddress: s.factory.address.toLowerCase() });
     expect(await deploymentRows(db, s.bag.id)).toHaveLength(1);
+
+    // The deployed version IS on-chain version 1: Passport and bag.json show the composition hash the contract holds.
+    const onchainComposition = ((await bagContract.read.compositionHash()) as string).toLowerCase();
+    const record = (await getBagById(db.client, s.bag.id))!;
+    const passport = await loadStrategyPassport(db.client, record, null);
+    expect(passport.currentVersion?.onchainCompositionHash).toBe(onchainComposition);
+    expect(passport.lineage.versions.nodes.find((v) => v.version === s.version.version)?.onchain).toMatchObject({ txHash: txHash.toLowerCase(), onchainVersion: 1, compositionHash: onchainComposition });
+    const row = (await loadStrategyVersionRows(db.client, s.bag.id)).find((v) => v.version === s.version.version)!;
+    expect(buildBagJson(record, row).commitments).toMatchObject({
+      onchainCompositionHash: onchainComposition,
+      onchainTxHash: txHash.toLowerCase(),
+      onchainComposition: { status: 'MATCHES_RECORDED', recordedFrom: 'VERIFIED_TX_RECEIPT' },
+    });
   });
 
   it('CREATION FEE: prepare carries the fee as value; the one-transaction paid deployment verifies and the treasury receives it', async () => {

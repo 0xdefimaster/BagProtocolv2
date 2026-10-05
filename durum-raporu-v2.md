@@ -1,5 +1,7 @@
 # Bag Protocol — Creator Rewards / Redemption — Durum Raporu (v2)
 
+> **Status: HISTORICAL** — a point-in-time report, superseded since. For the current state see [docs/STATUS.md](docs/STATUS.md).
+
 Önceki `durum-raporu.md`'nin devamı. `public/assets` ve `tsconfig.tsbuildinfo` yine zip'e dahil edilmedi.
 
 ## Bu turda eklenenler ✅

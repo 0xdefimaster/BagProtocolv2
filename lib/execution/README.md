@@ -10,6 +10,10 @@ a persistence bridge back into the existing `PurchaseIntent` shape.
 Items **1–6 are implemented and wired behind** `BAG_EXECUTION_COMPILER_ENABLED`.
 The legacy path remains the default when the flag is absent or not `true`.
 
+**Live (2026-10-05):** the flag is not enabled on the V2 test site (purchases use
+the legacy path, LI.FI Composer), and the BAG Router is deliberately not deployed
+until its plan-signer trust model is resolved — see `docs/STATUS.md` §1 and §3.
+
 ### Feature flag: `BAG_EXECUTION_COMPILER_ENABLED`
 
 Server-only, read per request (`lib/config/execution.ts`). Only the exact

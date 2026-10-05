@@ -19,6 +19,7 @@ import { BAG_CHAINS, BagChain } from '@/lib/config/chains';
 import { loadStrategyPassport } from '@/lib/server/strategy-passport';
 import { getBagById, listBags } from '@/lib/server/bag-repo';
 import { loadRegistrations, type RegistrationRow } from '@/lib/server/strategy-registration-repo';
+import { deployedCompositionHash, loadDeployedDeployment, resolveDeployedVersionId } from '@/lib/server/deployed-version';
 import { ValidateBagInputError, ValidateBagRequest, ValidationFinding, parseValidateBagRequest, validateBag } from '@/lib/server/validate-bag';
 
 // -----------------------------------------------------------------------------
@@ -34,7 +35,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const isStrategyId = (id: string) => UUID_RE.test(id);
 
 /** Columns read from bag_versions (checked against the real schema by an integration test). */
-export const STRATEGY_VERSION_COLUMNS = 'id,version,created_at,reason,recipe,onchain_tx_hash,onchain_composition_hash';
+export const STRATEGY_VERSION_COLUMNS = 'id,version,created_at,reason,recipe,onchain_tx_hash,onchain_version,onchain_composition_hash';
 
 export interface StrategyVersionRow {
   id: string;
@@ -43,26 +44,37 @@ export interface StrategyVersionRow {
   reason: string;
   recipe: BasketRecipe;
   onchain_tx_hash: string | null;
+  onchain_version?: number | null;
   onchain_composition_hash: string | null;
   /** The verified StrategyRegistry registration of this version, if any (strategy_registrations, 0052). */
   registration?: RegistrationRow | null;
 }
 
 export async function loadStrategyVersionRows(admin: SupabaseClient, bagId: string): Promise<StrategyVersionRow[]> {
-  const [{ data, error }, registrations] = await Promise.all([
+  const [{ data, error }, registrations, deployment] = await Promise.all([
     admin.from('bag_versions').select(STRATEGY_VERSION_COLUMNS).eq('bag_id', bagId).order('version', { ascending: false }),
     loadRegistrations(admin, bagId),
+    loadDeployedDeployment(admin, bagId),
   ]);
   if (error) throw new Error(error.message);
   const byVersion = new Map(registrations.map((r) => [r.version, r]));
-  return ((data ?? []) as StrategyVersionRow[]).map((r) => ({ ...r, registration: byVersion.get(r.version) ?? null }));
+  const rows = (data ?? []) as StrategyVersionRow[];
+  // On-chain version 1 is the deployment itself (lib/server/deployed-version.ts).
+  const deployedId = resolveDeployedVersionId(rows, deployment);
+  return rows.map((r) => {
+    const deployedHash = r.id === deployedId ? deployedCompositionHash(r.recipe) : null;
+    const onchain = deployedHash && deployment?.txHash ? { onchain_tx_hash: deployment.txHash, onchain_version: 1, onchain_composition_hash: deployedHash } : {};
+    return { ...r, ...onchain, registration: byVersion.get(r.version) ?? null };
+  });
 }
 
 const chainIdOf = (chain: ChainId): number | null => (BAG_CHAINS as Partial<Record<string, (typeof BAG_CHAINS)[BagChain]>>)[chain]?.chainId ?? null;
 
 /**
- * The recorded hash is written only by record_onchain_bag_version, after BAG verified the version's
- * transaction receipt and events (lib/server/bag-versioning.ts). Comparing it with a hash recomputed from
+ * The recorded hash is written by record_onchain_bag_version, after BAG verified the version's
+ * transaction receipt and events (lib/server/bag-versioning.ts); for the deployed version (on-chain
+ * version 1) it is the hash confirm_bag_deployment checked against the BagCreated event
+ * (lib/server/deployed-version.ts). Comparing it with a hash recomputed from
  * the stored recipe is BAG's own check; this response never reads the chain.
  */
 const NOT_REGISTERED: RegistryCommitment = {

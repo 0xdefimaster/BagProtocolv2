@@ -1,5 +1,7 @@
 # BagVault — Design & Spec (Phase 19.X-6)
 
+> **Status: NOT IMPLEMENTED** — design / decision only. Current state: [docs/STATUS.md](STATUS.md).
+
 **Status: DESIGN ONLY. No `BagVault.sol` exists. No `BagFactory.createBagVault()`
 exists. No custodial wallet, no private-key custody, nothing in this
 document should be read as "already built."** This is deliberate — see
