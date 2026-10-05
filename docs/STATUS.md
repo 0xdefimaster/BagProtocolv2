@@ -46,7 +46,7 @@ project and Netlify site from the V1 demo.
 | Price authority guard checks against live data | **Open** | `docs/ROBINHOOD_PRICE_AUTHORITY.md` |
 | Permit2 / embedded-wallet batching on Robinhood Chain | **Open** | — |
 | Redemption fee on actual proceeds | **Design approved** (F1–F7); **B0 merged** (PR #14); live validation pending; B (contract) not started until B0 has run live | §4 |
-| Can fee-paying sales execute on Robinhood Chain? (the fee path swaps on Uniswap v3 directly, not LI.FI) | **Open.** First live run of `scripts/check-fee-router-liquidity.ts` (2026-10-05): 582/582 `RPC_ERROR` — not a liquidity result. Cause: four hand-typed Uniswap addresses in `lib/config/robinhood-chain.ts` had invalid EIP-55 checksums, which viem rejects, so every QuoterV2 call (and every fee attestation) failed. Fixed; the checker now also verifies QuoterV2/SwapRouter02 → factory on-chain before quoting. Re-run pending | §4 |
+| Can fee-paying sales execute on Robinhood Chain? (the fee path swaps on Uniswap v3 directly, not LI.FI) | **No for the live Bag; unsafe as built.** Run 1: 582/582 `RPC_ERROR` from invalid address checksums (fixed). Run 2 (2026-10-05): QuoterV2/SwapRouter02 → factory verified on-chain; 212/582 executable, 214 no liquidity, 156 rate-limited RPC errors (to re-run). The live Bag (AMKR/HII/INDA/SOXX) cannot sell through the fee path: AMKR has no Uniswap v3 liquidity at any size. **Safety finding:** many "executable" tokens quote only on a near-empty 1% pool (e.g. AAOI: $25 → $0.18); the attestation takes the first tier that quotes and sets the minimum at 99% of that pool's own quote, so such a sale would execute and lose ~99%. Must be fixed before any router deployment | §4 |
 
 ## 2. Tests (on `main`)
 

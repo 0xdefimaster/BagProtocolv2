@@ -10,6 +10,10 @@
  *   npx tsx scripts/check-fee-router-liquidity.ts --usd=25,100,500      # several sale sizes
  *   npx tsx scripts/check-fee-router-liquidity.ts --symbols=AMKR,SOXX   # only these
  *   npx tsx scripts/check-fee-router-liquidity.ts --out=liquidity.json  # also write the results as JSON
+ *   npx tsx scripts/check-fee-router-liquidity.ts --max-loss-bps=300    # UNSAFE threshold (default 500 = 5%)
+ *
+ * STATUS: PASS (executes, loss within the threshold) · UNSAFE (executes, but loses more — e.g. a near-empty pool)
+ * · FAIL (does not execute). The RPC URL is never printed (API keys live in it).
  *
  * Env: RPC_URL_ROBINHOOD (optional; defaults to the public Robinhood Chain RPC). The asset list comes from Supabase
  * (NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in .env.local, read only).
@@ -33,7 +37,14 @@ import {
 import { createRobinhoodUniswapQuoter } from '../lib/blockchain/robinhood-uniswap-quoter';
 import { COMMON_FEE_TIERS } from '../lib/blockchain/robinhood-swap-builder';
 import { DEFAULT_COMPOSER_SLIPPAGE_BPS } from '../lib/blockchain/lifi-purchase-quote';
-import { checkFeeRouterExecutability, formatExecutabilityRow, type ExecutabilityResult } from '../lib/domain/basket-protocol/redeem/fee-router-executability';
+import {
+  DEFAULT_MAX_LOSS_BPS,
+  checkFeeRouterExecutability,
+  formatExecutabilityRow,
+  redactRpcUrl,
+  type ExecutabilityResult,
+  type QuoteFn,
+} from '../lib/domain/basket-protocol/redeem/fee-router-executability';
 import { listAssets } from '../lib/server/asset-repo';
 import { isSupabaseConfigured, supabaseAdmin } from '../lib/supabase/server';
 
@@ -63,7 +74,22 @@ async function verifyUniswapConfig(client: PublicClient): Promise<void> {
 }
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
-const CONCURRENCY = 4;
+// Low on purpose: public/free-tier RPCs rate-limit, and a rate-limit error is not a liquidity result.
+const CONCURRENCY = 2;
+
+/** Retries an RPC failure (never a revert — the quoter already returns null for those) with backoff. */
+function withRetry(quote: QuoteFn, attempts = 5): QuoteFn {
+  return async (args) => {
+    for (let i = 0; ; i++) {
+      try {
+        return await quote(args);
+      } catch (e) {
+        if (i >= attempts - 1) throw e;
+        await new Promise((r) => setTimeout(r, 500 * 2 ** i));
+      }
+    }
+  };
+}
 
 async function main() {
   const sizes = (arg('usd') ?? '100').split(',').map(Number);
@@ -72,22 +98,25 @@ async function main() {
     process.exit(2);
   }
   const onlySymbols = arg('symbols')?.split(',').map((s) => s.trim().toUpperCase());
+  const maxLossBps = arg('max-loss-bps') ? Number(arg('max-loss-bps')) : DEFAULT_MAX_LOSS_BPS;
 
   const rpcUrl = process.env.RPC_URL_ROBINHOOD || ROBINHOOD_RPC_URL;
+  // Never print the RPC URL itself: API keys live in its path or query.
+  const rpcLabel = redactRpcUrl(rpcUrl);
   const client = createPublicClient({ transport: http(rpcUrl) }) as unknown as PublicClient;
   const chainId = await client.getChainId().catch((e: Error) => {
-    console.error(`RPC_FAILURE: cannot reach ${rpcUrl}: ${e.message}`);
+    console.error(`RPC_FAILURE: cannot reach ${rpcLabel}: ${e.message.split('\n')[0]}`);
     process.exit(2);
   });
   if (chainId !== ROBINHOOD_CHAIN_ID) {
-    console.error(`WRONG_CHAIN: ${rpcUrl} reports chainId ${chainId}, expected ${ROBINHOOD_CHAIN_ID}.`);
+    console.error(`WRONG_CHAIN: ${rpcLabel} reports chainId ${chainId}, expected ${ROBINHOOD_CHAIN_ID}.`);
     process.exit(2);
   }
 
   try {
     await verifyUniswapConfig(client);
   } catch (e) {
-    console.error(`UNISWAP_CONFIG_UNVERIFIED: ${(e as Error).message}`);
+    console.error(`UNISWAP_CONFIG_UNVERIFIED: ${(e as Error).message.split(rpcUrl).join(rpcLabel).split('\n')[0]}`);
     process.exit(2);
   }
 
@@ -104,7 +133,7 @@ async function main() {
     process.exit(2);
   }
 
-  const quote = createRobinhoodUniswapQuoter(client);
+  const quote = withRetry(createRobinhoodUniswapQuoter(client));
   const usdg = { address: ROBINHOOD_REWARD_TOKEN.address as `0x${string}`, decimals: ROBINHOOD_REWARD_TOKEN.decimals };
   const jobs = assets.flatMap((a) => sizes.map((sizeUsdg) => ({ a, sizeUsdg })));
   const results: ExecutabilityResult[] = new Array(jobs.length);
@@ -120,24 +149,34 @@ async function main() {
           sizeUsdg,
           slippageBps: DEFAULT_COMPOSER_SLIPPAGE_BPS,
           feeTiers: COMMON_FEE_TIERS,
+          maxLossBps,
           quote,
         });
       }
     })
   );
 
-  console.log(`Robinhood Chain ${chainId} via ${rpcUrl} · Uniswap v3 tiers ${COMMON_FEE_TIERS.join('/')} (first that quotes) · min = quote × ${(10000 - DEFAULT_COMPOSER_SLIPPAGE_BPS) / 100}%`);
-  console.log(['TOKEN'.padEnd(8), 'STAT'.padEnd(5), 'TIER'.padEnd(6), 'SIZE'.padEnd(11), 'QUOTE'.padEnd(11), 'GROSS MIN'.padEnd(11), 'EXEC', 'REASON'].join(' '));
+  // RPC error texts embed the request URL (and so the API key): scrub it before printing or writing anything.
+  for (const r of results) if (r.error) r.error = r.error.split(rpcUrl).join(rpcLabel);
+
+  console.log(
+    `Robinhood Chain ${chainId} via ${rpcLabel} · Uniswap v3 tiers ${COMMON_FEE_TIERS.join('/')} (first that quotes = the attestation's tier) · min = quote × ${(10000 - DEFAULT_COMPOSER_SLIPPAGE_BPS) / 100}% · UNSAFE above ${maxLossBps / 100}% round-trip loss`
+  );
+  console.log(['TOKEN'.padEnd(8), 'STATUS'.padEnd(6), 'TIER'.padEnd(6), 'SIZE'.padEnd(11), 'QUOTE'.padEnd(11), 'GROSS MIN'.padEnd(11), 'EXEC', 'REASON'].join(' '));
   for (const r of results) console.log(formatExecutabilityRow(r, usdg.decimals));
 
-  const pass = results.filter((r) => r.executable).length;
-  const byReason = results.reduce<Record<string, number>>((m, r) => ((m[r.reason] = (m[r.reason] ?? 0) + 1), m), {});
-  console.log(`\n${pass}/${results.length} executable · ${Object.entries(byReason).map(([k, v]) => `${k} ${v}`).join(' · ')}`);
-  console.log('Read-only: no transaction was sent. A PASS means the quote and its 99% floor exist right now at that size; prices move.');
+  const pass = results.filter((r) => r.status === 'PASS').length;
+  const count = (key: (r: ExecutabilityResult) => string) =>
+    Object.entries(results.reduce<Record<string, number>>((m, r) => ((m[key(r)] = (m[key(r)] ?? 0) + 1), m), {}))
+      .map(([k, v]) => `${k} ${v}`)
+      .join(' · ');
+  console.log(`\n${pass}/${results.length} PASS · ${count((r) => r.status)} · reasons: ${count((r) => r.reason)}`);
+  console.log('UNSAFE = the router WOULD execute it, at a loss above the threshold — the attestation would sign it today.');
+  console.log('Read-only: no transaction was sent. Results are a snapshot; prices and pools move.');
 
   const out = arg('out');
   if (out) {
-    writeFileSync(out, JSON.stringify({ checkedAt: new Date().toISOString(), chainId, rpcUrl, sizesUsdg: sizes, feeTiers: COMMON_FEE_TIERS, slippageBps: DEFAULT_COMPOSER_SLIPPAGE_BPS, results }, null, 2));
+    writeFileSync(out, JSON.stringify({ checkedAt: new Date().toISOString(), chainId, rpc: rpcLabel, maxLossBps, sizesUsdg: sizes, feeTiers: COMMON_FEE_TIERS, slippageBps: DEFAULT_COMPOSER_SLIPPAGE_BPS, results }, null, 2));
     console.log(`Wrote ${out}`);
   }
   process.exit(pass === results.length ? 0 : 1);
