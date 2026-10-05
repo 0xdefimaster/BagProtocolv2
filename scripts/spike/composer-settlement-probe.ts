@@ -131,7 +131,9 @@ async function compileFlow(sdk: ReturnType<typeof createComposeSdk>, signer: `0x
       zero: '0',
       minReceived: minReceived.toString(),
     } as never,
-    sweepTo: { $ref: 'context.sender' },
+    // Composer refuses sweepTo when nothing is left on the proxy to sweep ("no proxy-held terminal resources"): T/R/T2's
+    // core.call consumes the whole USDG. P (transfer remainder) and S (the swap's unspent input) leave something.
+    ...(variant === 'P' || variant === 'S' ? { sweepTo: { $ref: 'context.sender' } } : {}),
     simulationPolicy: 'strict',
     simulateUserProgram: true,
     checkOnChainAllowances: false,
@@ -223,7 +225,8 @@ async function main() {
     'core.call builds on Robinhood (T)': t?.ok ?? false,
     'push model builds (P)': (compiles.P as { ok?: boolean })?.ok ?? false,
     'swap output into core.call builds (S)': swapToken ? ((compiles.S as { ok?: boolean })?.ok ?? false) : 'not run',
-    'a reverting probe call fails the whole simulation (R)': r ? !r.ok : 'not run',
+    // Only a simulation revert counts: R failing for any other reason (e.g. request validation) proves nothing.
+    'a reverting probe call fails the whole simulation (R)': r ? !r.ok && /revert/.test(r.error?.kind ?? '') : 'not run',
     'R failure kind': r?.error?.kind ?? null,
     'userProxy same across compiles (T vs T2)': t?.userProxy && t2?.userProxy ? t.userProxy.toLowerCase() === t2.userProxy.toLowerCase() : null,
   };
