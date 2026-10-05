@@ -7,7 +7,7 @@ import {ReentrancyGuard} from '@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {EIP712} from '@openzeppelin/contracts/utils/cryptography/EIP712.sol';
 import {ECDSA} from '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
 
-/// @title RedeemSettlement — settlement primitive with the B0 creator fee
+/// @title RedeemSettlement — settlement primitive with the creator fee on actual proceeds (B)
 /// @notice The on-chain end of a redemption executed elsewhere (a LI.FI
 /// Composer flow, or any other executor). The executor sells the user's
 /// holdings into `usdg`, transfers ALL of that USDG to this contract, then
@@ -18,17 +18,20 @@ import {ECDSA} from '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
 /// takes custody between transactions: every `settle` forwards its whole
 /// balance and must end at zero.
 ///
-/// Fee (B0, docs/FEE_ECONOMICS_DESIGN.md): the attestor signs `feeAmount`,
-/// computed off-chain as floor(max(0, grossMinimum − basis − lossCarry) ×
-/// rate) — never above the fee on the actual result. Its inputs are
-/// committed through `contextHash`; this version does not recompute them. B
-/// (a later version) makes basis, loss carry and rate explicit signed
-/// fields and computes the fee here from the measured amount. The contract
-/// pays the fee straight to the signed
-/// `creator` — no rewards vault in between (protocol share is 0, F6). The
-/// user gets everything else. `feeAmount = 0` (a Bag without a fee, or a
-/// creator selling their own Bag) settles everything to the user. B (fee
-/// computed here from the measured amount) is a later version.
+/// Fee (B, docs/FEE_ECONOMICS_DESIGN.md): computed HERE from the amount that
+/// actually arrived, not from a quote or a server-computed figure:
+///
+///     fee = floor(max(0, received − consumedBasis − lossCarry) × feeRateBps / 10000)
+///
+/// The attestor only supplies (and signs) the inputs it is the authority
+/// for — the position's consumed cost basis and loss carry from BAG's
+/// ledger (rounded up, §5.7), the Bag's locked fee rate, the creator — and
+/// the user's floor. `feeRateBps = 0` (a Bag without a fee, or a creator
+/// selling their own Bag) settles everything to the user. The same formula
+/// is `computeB0Fee` in lib/domain/basket-protocol/redeem/performance-fee-b0.ts
+/// with the gross set to the measured amount; tests check the two agree.
+/// The fee goes straight to `creator` — no rewards vault in between
+/// (protocol share is 0, F6).
 ///
 /// Creator payout is a direct transfer: if USDG refuses it (USDG is a Paxos
 /// token and can freeze addresses), the whole settlement reverts and the
@@ -37,44 +40,47 @@ import {ECDSA} from '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
 /// transactions: a creator can be frozen between the check and the
 /// transaction. Nothing is ever left here for a creator to claim later.
 ///
-/// Amounts: the amount settled is what this contract actually holds when
-/// `settle` runs — never a quote or a simulation. Live runs showed the two
-/// differ (a route intermediary kept a few units, §7.1a).
-///
 /// Authorization: the backend's attestor signs one EIP-712 `Settlement`
 /// struct covering every parameter. `msg.sender` must be the executor named
 /// in it (for Composer: the user's own execution proxy, taken from that
 /// redemption's compile result). `tx.origin` is never used.
 ///
 /// Stray balance: anyone can send USDG here between transactions. It is
-/// counted into the next settlement and paid to that settlement's user —
-/// it can only add to a user's proceeds, never block a settlement. (Requiring
-/// "balance == amount pushed" instead would let a 1-unit donation block
-/// every settlement.)
+/// counted into the next settlement's `received` — it can only add to that
+/// user's proceeds (and so, above basis, to the fee on them), never block a
+/// settlement. (Requiring "balance == amount pushed" instead would let a
+/// 1-unit donation block every settlement.)
 contract RedeemSettlement is ReentrancyGuard, EIP712 {
     using SafeERC20 for IERC20;
 
+    /// @notice Highest fee rate a Bag can lock (types/basket-protocol.ts
+    /// MAX_PERFORMANCE_FEE_BPS). A signed rate above it is refused.
+    uint256 public constant MAX_FEE_RATE_BPS = 3000;
+
     /// @dev Every field is signed; none can be supplied unsigned.
-    /// `contextHash` binds the off-chain state the attestor checked (Bag,
-    /// strategy version, accounting snapshot such as basis and loss carry):
-    /// a stale or different context is a different hash, so a different
-    /// signature. The contract treats it as opaque and emits it. `creator`
-    /// is the Bag's creator as BAG's own records and the Bag's on-chain
-    /// identity give it — never a value the caller chooses; the attestor signs
-    /// it together with the fee.
+    /// `creator` is the Bag's creator as BAG's own records and the Bag's
+    /// on-chain identity give it — never a value the caller chooses.
+    /// `consumedBasis` / `lossCarry` are the ledger's figures for the shares
+    /// being sold, in USDG raw units, rounded up. `contextHash` binds the rest
+    /// of the state the attestor checked (Bag / definition hash, strategy
+    /// version, the ledger snapshot those figures came from): stale state is a
+    /// different hash, so a different signature. The contract treats it as
+    /// opaque and emits it.
     struct Settlement {
         bytes32 redemptionId;
         address user;
         address creator;
         address executor;
         bytes32 contextHash;
-        uint256 feeAmount;
+        uint256 consumedBasis;
+        uint256 lossCarry;
+        uint256 feeRateBps;
         uint256 minUserProceeds;
         uint256 deadline;
     }
 
     bytes32 public constant SETTLEMENT_TYPEHASH = keccak256(
-        'Settlement(bytes32 redemptionId,address user,address creator,address executor,bytes32 contextHash,uint256 feeAmount,uint256 minUserProceeds,uint256 deadline)'
+        'Settlement(bytes32 redemptionId,address user,address creator,address executor,bytes32 contextHash,uint256 consumedBasis,uint256 lossCarry,uint256 feeRateBps,uint256 minUserProceeds,uint256 deadline)'
     );
 
     /// @notice The only token this contract settles. Fixed at deployment: a
@@ -95,7 +101,8 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
     error AlreadySettled(bytes32 redemptionId);
     error WrongExecutor(address caller, address expected);
     error InvalidSignature(address recovered);
-    error BelowMinimum(uint256 received, uint256 required);
+    error FeeRateTooHigh(uint256 feeRateBps);
+    error BelowMinimum(uint256 userProceeds, uint256 minUserProceeds);
     error NothingReceived();
     error BalanceLeft(uint256 remaining);
 
@@ -106,7 +113,8 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
         address executor,
         bytes32 contextHash,
         uint256 received,
-        uint256 feeAmount,
+        uint256 feeBase,
+        uint256 fee,
         uint256 userProceeds
     );
     event AttestorUpdated(address indexed previous, address indexed current);
@@ -124,37 +132,51 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
         owner = _owner;
     }
 
-    /// @notice Settles one redemption: pays `s.feeAmount` to `s.creator` and
-    /// everything else this contract holds to `s.user`. The executor must have transferred the redemption's USDG
-    /// here earlier in the same transaction.
+    /// @notice Settles one redemption: computes the fee on what actually
+    /// arrived, pays it to `s.creator`, and everything else to `s.user`.
     function settle(Settlement calldata s, bytes calldata signature) external nonReentrant returns (uint256 userProceeds) {
         if (block.timestamp > s.deadline) revert Expired(s.deadline, block.timestamp);
         if (settled[s.redemptionId]) revert AlreadySettled(s.redemptionId);
         if (msg.sender != s.executor) revert WrongExecutor(msg.sender, s.executor);
         if (s.user == address(0)) revert ZeroAddress();
-        if (s.feeAmount > 0 && s.creator == address(0)) revert ZeroAddress();
+        if (s.feeRateBps > MAX_FEE_RATE_BPS) revert FeeRateTooHigh(s.feeRateBps);
+        if (s.feeRateBps > 0 && s.creator == address(0)) revert ZeroAddress();
 
         address recovered = ECDSA.recover(_hashTypedDataV4(hashSettlement(s)), signature);
         if (recovered != attestor) revert InvalidSignature(recovered);
 
-        // Effects before the external transfer.
+        // Effects before the external transfers.
         settled[s.redemptionId] = true;
 
         uint256 received = usdg.balanceOf(address(this));
         if (received == 0) revert NothingReceived();
-        // The user's floor holds after the fee: received ≥ minUserProceeds + feeAmount.
-        uint256 required = s.minUserProceeds + s.feeAmount;
-        if (received < required) revert BelowMinimum(received, required);
 
-        userProceeds = received - s.feeAmount;
-        if (s.feeAmount > 0) usdg.safeTransfer(s.creator, s.feeAmount);
+        (uint256 feeBase, uint256 fee) = computeFee(received, s.consumedBasis, s.lossCarry, s.feeRateBps);
+        userProceeds = received - fee;
+        if (userProceeds < s.minUserProceeds) revert BelowMinimum(userProceeds, s.minUserProceeds);
+
+        if (fee > 0) usdg.safeTransfer(s.creator, fee);
         usdg.safeTransfer(s.user, userProceeds);
 
         // Never hold anything between transactions.
         uint256 remaining = usdg.balanceOf(address(this));
         if (remaining != 0) revert BalanceLeft(remaining);
 
-        emit Settled(s.redemptionId, s.user, s.creator, s.executor, s.contextHash, received, s.feeAmount, userProceeds);
+        emit Settled(s.redemptionId, s.user, s.creator, s.executor, s.contextHash, received, feeBase, fee, userProceeds);
+    }
+
+    /// @notice fee = floor(max(0, received − basis − carry) × rate / 10000).
+    /// Pure and public so the backend's preview and the tests can check they
+    /// compute exactly what the contract charges. `fee ≤ received` always
+    /// (rate ≤ 10000 and feeBase ≤ received).
+    function computeFee(uint256 received, uint256 consumedBasis, uint256 lossCarry, uint256 feeRateBps)
+        public
+        pure
+        returns (uint256 feeBase, uint256 fee)
+    {
+        uint256 hurdle = consumedBasis + lossCarry;
+        feeBase = received > hurdle ? received - hurdle : 0;
+        fee = (feeBase * feeRateBps) / 10000;
     }
 
     /// @notice The EIP-712 struct hash of a settlement (exposed so off-chain
@@ -168,7 +190,9 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
                 s.creator,
                 s.executor,
                 s.contextHash,
-                s.feeAmount,
+                s.consumedBasis,
+                s.lossCarry,
+                s.feeRateBps,
                 s.minUserProceeds,
                 s.deadline
             )
