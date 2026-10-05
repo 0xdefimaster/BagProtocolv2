@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { Client } from 'pg';
 import { cancelPurchaseIfFeeSaleOpen, purchaseInFlightFor } from '@/lib/server/fee-redemption-lock';
 import { TestDatabase, createDraftBag, createTestDatabase } from './pg-harness';
 import { newWallet } from './economics-harness';
@@ -33,6 +34,19 @@ afterAll(async () => {
   await db?.drop();
 });
 
+/** A brand-new session, opened after the write returned: it can only see COMMITTED rows. */
+async function visibleFromAnotherSession(table: 'purchase_intents' | 'redeem_intents', id: string): Promise<boolean> {
+  const url = new URL(process.env.TEST_DATABASE_URL!);
+  url.pathname = `/${db.name}`;
+  const c = new Client({ connectionString: url.toString() });
+  await c.connect();
+  try {
+    return (await c.query(`select 1 from ${table} where id = $1`, [id])).rowCount === 1;
+  } finally {
+    await c.end();
+  }
+}
+
 const jitter = () => new Promise((r) => setTimeout(r, Math.floor(Math.random() * 4)));
 const feeBag = () => ({ id: bagId, creatorId, performanceFeeBpsLocked: 150 });
 
@@ -63,7 +77,9 @@ async function insertOpenPurchase(userId: string, wallet: string) {
 /** The fee sale's two steps. Proceeds = its fee would be attested. */
 async function feeSale(userId: string, wallet: string, delayFirst: boolean) {
   if (delayFirst) await jitter();
-  await insertOpenRedeem(userId, wallet);
+  const id = await insertOpenRedeem(userId, wallet);
+  // The write is committed — visible to any other session — before this side reads for the other.
+  expect(await visibleFromAnotherSession('redeem_intents', id)).toBe(true);
   await jitter();
   return (await purchaseInFlightFor(db.client, userId, bagId)) === null;
 }
@@ -72,6 +88,7 @@ async function feeSale(userId: string, wallet: string, delayFirst: boolean) {
 async function purchase(userId: string, wallet: string, delayFirst: boolean) {
   if (delayFirst) await jitter();
   const id = await insertOpenPurchase(userId, wallet);
+  expect(await visibleFromAnotherSession('purchase_intents', id)).toBe(true);
   await jitter();
   const blocked = await cancelPurchaseIfFeeSaleOpen(db.client, { id, userId, status: 'READY' }, feeBag(), null);
   return { proceeds: blocked === null, id };
@@ -134,5 +151,31 @@ describe('B0 purchase / fee-sale lock under concurrency (real PostgreSQL)', () =
     await db.admin.query(`update redeem_intents set status = 'COMPLETED' where id = $1`, [redeemId]);
     const p3 = await insertOpenPurchase(userId, wallet);
     expect(await cancelPurchaseIfFeeSaleOpen(db.client, { id: p3, userId, status: 'READY' }, feeBag(), null)).toBeNull();
+  });
+
+  it('why the write must be COMMITTED first: an uncommitted write is invisible to the other side; once committed it blocks', async () => {
+    const { userId, wallet } = await newWallet(db);
+    const url = new URL(process.env.TEST_DATABASE_URL!);
+    url.pathname = `/${db.name}`;
+    const tx = new Client({ connectionString: url.toString() });
+    await tx.connect();
+    try {
+      await tx.query('begin');
+      const id = (
+        await tx.query(
+          `insert into purchase_intents (user_id, wallet_address, bag_id, input_asset_chain, input_asset_address, input_amount_raw, shares_raw,
+             route_fingerprint, recipe_version, composition_hash, nav_gross, nav_quote_currency, nav_as_of, steps, status, expires_at)
+           values ($1, $2, $3, 'robinhood', '0x00000000000000000000000000000000000000c0', '1', '1', 'fp', 1, 'h', '0', 'USD', now(), '[]'::jsonb, 'READY', now() + interval '3 minutes')
+           returning id`,
+          [userId, wallet, bagId]
+        )
+      ).rows[0].id as string;
+      // Inside an open transaction, the fee sale's check does not see the purchase — this is the race the lock must avoid.
+      expect(await purchaseInFlightFor(db.client, userId, bagId)).toBeNull();
+      await tx.query('commit');
+      expect(await purchaseInFlightFor(db.client, userId, bagId)).toEqual({ id });
+    } finally {
+      await tx.end();
+    }
   });
 });

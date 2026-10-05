@@ -241,7 +241,13 @@ applies can differ. The contract cannot see the database either way.
   because each side **writes before it reads**: the sale intent exists before
   its fee is attested, and a purchase intent is inserted, then checked, and
   cancelled if a fee sale is open — so the later read always sees the earlier
-  write and at least one side refuses. Tested with parallel races in both
+  write and at least one side refuses. This needs each write to be
+  **committed** before the other side reads: in production every supabase-js
+  call is its own PostgREST request, run in its own transaction and committed
+  before it returns, and the check is a separate, later request (kept so by
+  `fee-lock-write-then-check-guard.test.ts`; the integration test asserts each
+  write is visible from a fresh session before the read, and shows that an
+  uncommitted write would be missed). Tested with parallel races in both
   orders on real PostgreSQL (`fee-redemption-lock.integration.test.ts`); the
   first, check-then-write version let both proceed in 11 of 120 races. A quote that expired
   unsubmitted no longer counts; a submitted transaction always does. The
