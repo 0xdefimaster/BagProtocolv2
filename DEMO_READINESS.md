@@ -5,6 +5,9 @@ implemented in this repository **and** exercised by its tests, against a
 local Hardhat EVM and a real PostgreSQL. It does not mean deployed, and it
 does not mean audited by a third party.
 
+Index of every document by status (CURRENT / LEGACY / SPIKE / NOT IMPLEMENTED /
+HISTORICAL): **[docs/STATUS.md](docs/STATUS.md)**.
+
 > ## ⚠️ DO NOT PUT REAL PRIVATE KEYS IN THE REPOSITORY
 > Keys (`DEPLOYER_PRIVATE_KEY`, `BAG_ROUTER_PLAN_SIGNER_KEY`, the settlement
 > and attestor keys, any E2E wallet key) belong only in `.env.local` or your
@@ -33,20 +36,40 @@ does not mean audited by a third party.
 | Mutable Bag on-chain version path (creator-signed, compare-and-swap, event-verified) | `BagFactory.recordBagVersion`, `bag-versioning.ts`, migration 0035 | `bag-versioning-local-evm.integration.test.ts` + contract tests |
 | Homepage accessibility and responsive behavior | `components/layout`, `components/landing` | `landing-a11y.test.tsx`, `Header.test.tsx`, `scripts/responsive-check.mjs` (real Chromium, 6 viewports, axe incl. contrast) |
 
+## Verified live (Robinhood Chain, V2 test site, 2026-10-05)
+
+Observed with a real wallet on bagprotocolv2.netlify.app (its own Supabase
+project and Netlify site; the V1 demo is separate). Details: `docs/STATUS.md` §1.
+
+| Item | Evidence |
+|---|---|
+| Supabase with `supabase/schema.sql` | Applied; RLS on every table |
+| `BagFactory` + user-signed `createBag` | A Bag deployed and confirmed from the real receipt (on-chain version 1) |
+| Asset registry | 4 crypto + 194 Robinhood Stock Tokens imported |
+| RPC, LI.FI quotes | Working |
+| Purchase in one LI.FI Composer transaction | $5 into 4 stocks; every output read from the tx receipt and above its on-chain minimum; version binding checked |
+| Redeem a fraction in one LI.FI Composer transaction | 50% sale into USDG; Bag TVL halved |
+
+Not covered by the live run: the provider compiler (flag off: the live purchase
+used the legacy path), the BAG Router (not deployed, and kept disabled — see
+`docs/STATUS.md` §3), fee-taking redemptions, `StrategyRegistry` (not deployed),
+and the price authority's guard checks against live data.
+
 ## Requires a live environment (not verifiable from this repository)
 
 | Item | Status |
 |---|---|
-| Deployed `BagFactory` (Robinhood Chain) | **Not deployed.** `scripts/deploy-bag-factory.ts robinhood`. A factory deployed before the `createBag(…, isMutable)` change must be redeployed. |
-| Deployed `BagExecutionRouter` | **Not deployed.** `scripts/deploy-bag-execution-router.ts` |
+| Deployed `BagFactory` (Robinhood Chain) | **Deployed and used live** (see above). `scripts/deploy-bag-factory.ts robinhood` for a new environment. |
+| Deployed `BagExecutionRouter` | **Not deployed, deliberately**: stays disabled until the plan-signer trust model is resolved (`docs/STATUS.md` §3). `scripts/deploy-bag-execution-router.ts` |
+| Deployed `StrategyRegistry` | **Not deployed.** `scripts/deploy-strategy-registry.ts robinhood`, then `STRATEGY_REGISTRY_ADDRESS_ROBINHOOD` |
 | Router allowlists (targets, tokens) | Set by the router deploy script and `scripts/sync-router-token-allowlist.ts` |
 | Plan signer configuration | `BAG_ROUTER_PLAN_SIGNER_KEY` must match the router's on-chain `planSigner` |
 | Real RPC | `ALCHEMY_API_KEY` (or `<CHAIN>_RPC_URL`) as primary, optional `<CHAIN>_RPC_URL_SECONDARY`, operator public RPC last (none for Ethereum). **Not reachable from the development sandbox.** |
-| Real asset registry | `scripts/import-robinhood-assets.ts --apply` (needs network) |
+| Real asset registry | Imported on the V2 test site; `scripts/import-robinhood-assets.ts --apply` for a new environment |
 | Real liquidity | Uniswap v3 pools for each Bag asset vs the input token; never exercised live |
-| LI.FI API / network | Scripts classify every failure; both stopped at `EGRESS_BLOCKED` in the sandbox. **Not verified.** |
+| LI.FI API / network | **Working live** (quotes, Composer purchase and redeem). Blocked from the development sandbox. |
 | Real price sources | Stock Tokens: Robinhood `/rhj/prices` mid × `currentMultiplier` (no config), verified by Chainlink when `ROBINHOOD_CHAINLINK_FEEDS` is set. Crypto on all chains: LI.FI `priceUSD`; TWAP (`ROBINHOOD_PRICE_POOLS`) / CoinGecko only on a LI.FI data gap. **Not verified live**: Robinhood, LI.FI and RPC hosts are blocked from the sandbox (`scripts/verify-robinhood-stock-api.ts`, `scripts/verify-robinhood-price.ts`). |
-| Supabase project with migrations 0024–0036 applied | Not applied to any real project from here |
+| Supabase project | V2 test site: `schema.sql` applied (all migrations). Existing projects: apply `supabase/migrations/` in order |
 | `public/` static assets | `logo.png`, `logo-full.png`, `hero/glass-mark.png` are in the repository (from the `landing-update` branch). |
 
 ## Not yet production-ready
@@ -59,12 +82,12 @@ last column hold.
 |---|---|---|
 | Performance fee immutability | **Implemented + tested** (database triggers, migration 0033) | Migration applied; independent review |
 | Mutable Bag on-chain version path | **Implemented + tested** (contracts, server, migration 0035). No version-editing UI yet. | Factory (re)deployed; UI; live test |
-| Full economic audit | **Internal invariant audit done**: 6 violations fixed (migration 0036, `shares.ts`); see `docs/PROTOCOL_ECONOMICS.md` | Independent third-party audit; the quote-time share-minting / slippage-dilution design decision reviewed |
+| Full economic audit | **Internal invariant audit done**: 6 violations fixed (migration 0036, `shares.ts`); Accounting V2 (0048–0051) values positions from wallet holdings, not shares; see `docs/PROTOCOL_ECONOMICS.md` | Independent third-party audit; redemption fee on actual proceeds instead of the quote |
 | Rescue policy | **Decided, not implemented** (ADR-2). Unrestricted sweep rejected. Finding recorded: leftover input is returned by absolute balance. | Apply the delta fix at the next router redeploy; optional constrained recovery |
 | Second aggregator | **Not built** (ADR-1) | A new `BagExecutionProvider` |
 | One Bag spanning several chains | **Not built.** A Bag is one contract on one chain; valuation is multi-chain, execution is single-chain (`docs/PRICE_AND_DATA_LAYER.md`). | Cross-chain execution design (bridging legs, custody, partial failure) |
 | Full on-chain reward settlement | **Not built** (ADR-3). Rewards are ledger-recorded and settled to `CreatorRewardsVault` by a worker; router-path fees are settled on-chain. | On-chain NAV and cost basis, or accept the hybrid model |
-| Performance history | **Not built.** Bag pages show no chart for live Bags; demo figures are labelled illustrative. | Record NAV snapshots |
+| Performance history | **NAV snapshots recorded** (migrations 0044–0045); per-version performance on the History tab | Enough recorded history; a strategy performance index (planned A6) |
 
 ---
 
@@ -75,7 +98,8 @@ last column hold.
 - **RPC and contracts (Robinhood):**
   - `ALCHEMY_API_KEY` or `ROBINHOOD_RPC_URL` (+ optional `ROBINHOOD_RPC_URL_SECONDARY`)
   - `FACTORY_ADDRESS_ROBINHOOD`, `CONFIRMATIONS_ROBINHOOD`
-  - `BAG_EXECUTION_ROUTER_ADDRESS`, `BAG_ROUTER_PLAN_SIGNER_KEY`, `BAG_EXECUTION_COMPILER_ENABLED=true`
+  - Provider compiler / BAG Router: `BAG_EXECUTION_COMPILER_ENABLED`, `BAG_EXECUTION_ROUTER_ADDRESS`, `BAG_ROUTER_PLAN_SIGNER_KEY` — **leave the router unset** for now (`docs/STATUS.md` §3)
+  - `STRATEGY_REGISTRY_ADDRESS_ROBINHOOD` once the registry is deployed
   - `REDEEM_FEE_ROUTER_ADDRESS`, `CREATOR_REWARDS_VAULT_ADDRESS` (+ their deploy and settlement keys)
 - **Pricing:** Robinhood Stock Tokens need nothing (Robinhood's keyless API); optional `ROBINHOOD_CHAINLINK_FEEDS`. Crypto: LI.FI (`LIFI_API_KEY` for rate limits); fallbacks `ROBINHOOD_PRICE_POOLS`, `CRYPTO_PRICE_FALLBACK=coingecko` + `COINGECKO_API_KEY`. See `docs/PRICE_AND_DATA_LAYER.md`. `PRICE_PROVIDER=mock` is refused in production.
 - **LI.FI:** `LIFI_API_KEY` (required for Composer), `LIFI_INTEGRATOR`.

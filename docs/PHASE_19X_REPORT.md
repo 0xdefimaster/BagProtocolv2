@@ -1,5 +1,7 @@
 # Phase 19.X — Composability Spike — Rapor
 
+> **Status: HISTORICAL** — a point-in-time report, superseded since. For the current state see [docs/STATUS.md](STATUS.md).
+
 Kapsam korundu: PurchasePlanner, CapabilityMatrix, production BagRouter,
 gerçek deposit/shares/NFT/rebalancing — **hiçbiri yok**. Bu phase sadece iki
 dar feasibility sorusuna cevap arıyor (19.X-A, 19.X-B).

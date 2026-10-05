@@ -1,10 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { network } from 'hardhat';
-import type { PublicClient } from 'viem';
+import { parseEventLogs, type PublicClient } from 'viem';
 import { createEvmBagDeploymentAdapter } from '@/lib/blockchain/evm/adapter';
 import type { EvmChainConfig } from '@/lib/blockchain/evm/config';
 import { computeOnChainBagId, computeOnChainCompositionHash, deriveOnChainBagId } from '@/lib/domain/basket-protocol/onchain';
 import { confirmBagDeployment, prepareBagDeployment } from '@/lib/server/deploy-bag';
+import { createBagVersion, getBagById } from '@/lib/server/bag-repo';
+import { loadStrategyPassport } from '@/lib/server/strategy-passport';
+import { buildBagJson, loadStrategyVersionRows } from '@/lib/server/strategy-api';
 import { TestDatabase, bagRow, createDraftBag, createTestDatabase, deploymentRows } from './pg-harness';
 
 // -----------------------------------------------------------------------------
@@ -102,6 +105,19 @@ describe('real BagFactory + user-signed createBag on a local EVM', () => {
     expect(((await bagContract.read.creator()) as string).toLowerCase()).toBe(s.wallet);
     expect(r.deployment).toMatchObject({ status: 'DEPLOYED', txHash: txHash.toLowerCase(), onChainCreator: s.wallet, factoryAddress: s.factory.address.toLowerCase() });
     expect(await deploymentRows(db, s.bag.id)).toHaveLength(1);
+
+    // The deployed version IS on-chain version 1: Passport and bag.json show the composition hash the contract holds.
+    const onchainComposition = ((await bagContract.read.compositionHash()) as string).toLowerCase();
+    const record = (await getBagById(db.client, s.bag.id))!;
+    const passport = await loadStrategyPassport(db.client, record, null);
+    expect(passport.currentVersion?.onchainCompositionHash).toBe(onchainComposition);
+    expect(passport.lineage.versions.nodes.find((v) => v.version === s.version.version)?.onchain).toMatchObject({ txHash: txHash.toLowerCase(), onchainVersion: 1, compositionHash: onchainComposition });
+    const row = (await loadStrategyVersionRows(db.client, s.bag.id)).find((v) => v.version === s.version.version)!;
+    expect(buildBagJson(record, row).commitments).toMatchObject({
+      onchainCompositionHash: onchainComposition,
+      onchainTxHash: txHash.toLowerCase(),
+      onchainComposition: { status: 'MATCHES_RECORDED', recordedFrom: 'VERIFIED_TX_RECEIPT' },
+    });
   });
 
   it('CREATION FEE: prepare carries the fee as value; the one-transaction paid deployment verifies and the treasury receives it', async () => {
@@ -297,3 +313,78 @@ describe('real BagFactory + user-signed createBag on a local EVM', () => {
     expect(Object.keys(s.adapter).sort()).toEqual(['factoryAddress', 'hasBagOnChain', 'isLive', 'name', 'prepareBagCreation', 'verifyBagCreation']);
   });
 });
+
+// -----------------------------------------------------------------------------
+// The deployed version IS on-chain version 1 (lib/server/deployed-version.ts) —
+// derived without a migration, so the invariant is locked end to end here, and
+// so is the fail-closed side: when the records cannot prove which version was
+// deployed, Passport and bag.json show nothing rather than a guess.
+// -----------------------------------------------------------------------------
+describe('deployed version = on-chain version 1 (no migration; fail-closed)', () => {
+  async function deployed() {
+    const s = await scenario();
+    const txHash = await s.prepareAndSend();
+    const r = await confirmBagDeployment(db.client, s.session, s.bag.id, txHash, s.deps);
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    return { s, txHash };
+  }
+  const views = async (bagId: string, version: number) => {
+    const record = (await getBagById(db.client, bagId))!;
+    const passport = await loadStrategyPassport(db.client, record, null);
+    const row = (await loadStrategyVersionRows(db.client, bagId)).find((v) => v.version === version)!;
+    return { passport, node: passport.lineage.versions.nodes.find((v) => v.version === version)!, bagJson: buildBagJson(record, row) };
+  };
+
+  it('deploy tx → BagCreated → deployed Bag address → Bag.compositionHash() → Passport v1 hash → bag.json commitment', async () => {
+    const { s, txHash } = await deployed();
+    // 1. The deploy transaction's own receipt names the Bag contract (not BAG's database).
+    const receipt = await publicClient.getTransactionReceipt({ hash: txHash });
+    const [created] = parseEventLogs({ abi: s.factory.abi, logs: receipt.logs, eventName: 'BagCreated' }) as unknown as { args: { bag: `0x${string}`; compositionHash: string } }[];
+    expect(created).toBeDefined();
+    // 2. That contract's committed composition.
+    const bagContract = await viem.getContractAt('Bag', created.args.bag);
+    const onchain = ((await bagContract.read.compositionHash()) as string).toLowerCase();
+    expect(onchain).toBe(created.args.compositionHash.toLowerCase());
+    expect(Number(await bagContract.read.version())).toBe(1);
+    // 3. Passport: current version and its lineage node carry exactly that hash, as on-chain version 1 of this deploy tx.
+    const { passport, node, bagJson } = await views(s.bag.id, s.version.version);
+    expect(passport.currentVersion?.onchainCompositionHash).toBe(onchain);
+    expect(node.onchain).toMatchObject({ txHash: txHash.toLowerCase(), onchainVersion: 1, compositionHash: onchain });
+    expect(passport.onchain?.contractAddress).toBe(created.args.bag.toLowerCase());
+    // 4. bag.json: the same commitment, and BAG's recomputation from the stored definition agrees with it.
+    expect(bagJson.commitments).toMatchObject({
+      onchainCompositionHash: onchain,
+      onchainTxHash: txHash.toLowerCase(),
+      onchainComposition: { status: 'MATCHES_RECORDED', recordedFrom: 'VERIFIED_TX_RECEIPT', readFromChainThisRequest: false },
+    });
+  });
+
+  it('historical / ambiguous: a deployment followed by an off-chain version (pre-0035 history) → hash cannot be proven → null everywhere', async () => {
+    const { s } = await deployed();
+    // Pre-0035 a deployed Bag could still get an off-chain version. Reproduce that history: lift the DEPLOYED guard for one insert.
+    await db.admin.query(`update bag_deployments set status = 'NOT_DEPLOYED' where bag_id = $1`, [s.bag.id]);
+    const recipe = { ...s.version.recipe, assets: s.version.recipe.assets.map((a) => ({ ...a })) };
+    [recipe.assets[0].weightBps, recipe.assets[1].weightBps] = [recipe.assets[1].weightBps, recipe.assets[0].weightBps];
+    const v2 = await createBagVersion(db.client, { bagId: s.bag.id, recipe, createdBy: s.userId, reason: 'off-chain edit (legacy)' });
+    await db.admin.query(`update bag_deployments set status = 'DEPLOYED' where bag_id = $1`, [s.bag.id]);
+    if (!v2.ok) throw new Error(JSON.stringify(v2));
+
+    // Which version the contract holds can no longer be proven from the records: nothing is shown for either.
+    for (const version of [1, 2]) {
+      const { node, bagJson } = await views(s.bag.id, version);
+      expect(node.onchain).toBeNull();
+      expect(bagJson.commitments).toMatchObject({ onchainCompositionHash: null, onchainComposition: { status: 'NOT_RECORDED' } });
+    }
+    expect((await views(s.bag.id, 2)).passport.currentVersion?.onchainCompositionHash).toBeNull();
+  });
+
+  it('ambiguous: the deployment says a later on-chain version exists that no version row records → null', async () => {
+    const { s } = await deployed();
+    await db.admin.query('update bag_deployments set on_chain_version = 2 where bag_id = $1', [s.bag.id]);
+    const { passport, node, bagJson } = await views(s.bag.id, s.version.version);
+    expect(passport.currentVersion?.onchainCompositionHash).toBeNull();
+    expect(node.onchain).toBeNull();
+    expect(bagJson.commitments.onchainCompositionHash).toBeNull();
+  });
+});
+

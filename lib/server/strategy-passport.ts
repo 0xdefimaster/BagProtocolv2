@@ -14,6 +14,7 @@ import { getDisplayPriceProvider } from '@/lib/server/price-provider';
 import { computeBagPerformance, getNavSnapshots } from '@/lib/server/bag-nav-snapshots';
 import { getBagSocialCounts } from '@/lib/server/bag-social-counts';
 import { deriveStrategyPolicy } from '@/lib/server/strategy-policy';
+import { deployedCompositionHash, resolveDeployedVersionId } from '@/lib/server/deployed-version';
 
 // -----------------------------------------------------------------------------
 // Builds the Strategy Passport (types/strategy-passport.ts) from data BAG
@@ -200,6 +201,26 @@ async function loadVersionRows(admin: SupabaseClient, bagId: string): Promise<Ve
   return (data ?? []) as VersionOnchainRow[];
 }
 
+/** Marks the version the Bag was deployed with as on-chain version 1 (lib/server/deployed-version.ts). */
+async function withDeployedVersion(
+  admin: SupabaseClient,
+  rows: VersionOnchainRow[],
+  deployment: BagDeployment | null,
+  currentVersion: BagVersionRecord | null
+): Promise<VersionOnchainRow[]> {
+  const deployedId = resolveDeployedVersionId(rows, deployment);
+  if (!deployedId || !deployment?.txHash) return rows;
+  let recipe = currentVersion?.id === deployedId ? currentVersion.recipe : null;
+  if (!recipe) {
+    const { data, error } = await admin.from('bag_versions').select('recipe').eq('id', deployedId).maybeSingle<{ recipe: BagVersionRecord['recipe'] }>();
+    if (error || !data) return rows;
+    recipe = data.recipe;
+  }
+  const hash = deployedCompositionHash(recipe);
+  if (!hash) return rows;
+  return rows.map((r) => (r.id === deployedId ? { ...r, onchain_tx_hash: deployment.txHash, onchain_version: 1, onchain_composition_hash: hash } : r));
+}
+
 async function loadAncestors(admin: SupabaseClient, bag: BagRecord): Promise<{ ancestors: BagRecord[]; missing: string[] }> {
   const ancestors: BagRecord[] = [];
   const missing: string[] = [];
@@ -228,13 +249,14 @@ async function loadChildren(admin: SupabaseClient, bagId: string): Promise<{ chi
 
 /** Gathers everything for `bag` with the existing repos and builds its passport. Display data that fails to load is left null, never guessed. */
 export async function loadStrategyPassport(admin: SupabaseClient, bag: BagRecord, viewerUserId: string | null): Promise<StrategyPassport> {
-  const [currentVersion, versions, deployment, lineageUp, lineageDown] = await Promise.all([
+  const [currentVersion, loadedVersions, deployment, lineageUp, lineageDown] = await Promise.all([
     getCurrentBagVersion(admin, bag.id),
     loadVersionRows(admin, bag.id),
     getDeployment(admin, bag.id, bag.chain).catch(() => null),
     loadAncestors(admin, bag),
     loadChildren(admin, bag.id),
   ]);
+  const versions = await withDeployedVersion(admin, loadedVersions, deployment, currentVersion);
 
   const people = [bag.creatorId, ...lineageUp.ancestors.map((b) => b.creatorId), ...lineageDown.children.map((b) => b.creatorId)];
   const [creators, assetsByKey, navOutcome, snapshots, social] = await Promise.all([

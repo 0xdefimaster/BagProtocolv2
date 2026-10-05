@@ -1,5 +1,7 @@
 # BAG Protocol — V10 Production Hardening Sprint Report
 
+> **Status: HISTORICAL** — a point-in-time report, superseded since. For the current state see [docs/STATUS.md](STATUS.md).
+
 Method followed as instructed: repository audit first (architecture map,
 call graph, invariants, prioritized bugs) → minimal patches → tests → this
 report. No unrelated rewrites. No existing API/repository-layer signatures

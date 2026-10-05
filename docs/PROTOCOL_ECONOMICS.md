@@ -132,9 +132,18 @@ E and F are in `lib/domain/basket-protocol/shares/__tests__/shares.test.ts`.
   (LI.FI `toAmountMin` / BAG Router `minOutputs`, default 1%). Removing this
   would mean re-pricing shares at execution time: an architecture change,
   not a rounding fix.
+  *Since Accounting V2 / A4 (migration 0051, `docs/ACCOUNTING_V2_DESIGN.md` §7):*
+  shares are no longer an economic quantity. A depositor's position is valued
+  from the holdings recorded for **that depositor** (what their own swaps
+  returned) against their wallet balance, and a sale sells a fraction of those
+  holdings — so a quote-priced mint no longer moves value between holders.
+  The share columns remain for the legacy fee path and are guarded as
+  non-authoritative (`lib/server/__tests__/a4-authority-guard.test.ts`).
 - **The fee is computed on quoted value.** The redemption fee is charged on
   profit against the quoted redemption value, not on realized swap proceeds.
-  The same quote-time model applies.
+  The same quote-time model applies. *Still open after A4:* a sale that fills
+  below its quote can be charged a fee on profit it did not realize. Planned:
+  base the fee on the proceeds actually received (`docs/STATUS.md` §4).
 - **Router-path fees are recorded as settled.** The router-settled fee amount
   is attested server-side (creator self-redeem and loss both give 0; §1
   locked rate) and settled on-chain before accounting. The SQL records what

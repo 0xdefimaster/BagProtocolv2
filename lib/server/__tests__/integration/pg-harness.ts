@@ -155,8 +155,15 @@ const toError = (err: unknown) => ({ message: err instanceof Error ? err.message
 class ShimQuery {
   private filters: Array<[string, unknown]> = [];
   private orders: Array<[string, boolean]> = [];
+  private maxRows: number | null = null;
+  private withCount = false;
   constructor(private readonly pool: Pool, private readonly table: string) {}
-  select(_columns?: string) {
+  select(_columns?: string, opts: { count?: 'exact' } = {}) {
+    this.withCount = opts.count === 'exact';
+    return this;
+  }
+  limit(n: number) {
+    this.maxRows = n;
     return this;
   }
   eq(column: string, value: unknown) {
@@ -173,13 +180,16 @@ class ShimQuery {
     const sql = `select * from ${assertIdent(this.table)}${where ? ` where ${where}` : ''}${orderBy ? ` order by ${orderBy}` : ''}`;
     return (await this.pool.query(sql, this.filters.map(([, v]) => v))).rows;
   }
-  /** `await from(t).select().eq()…` resolves to every matching row, like supabase-js. */
-  then<R1 = Result<Record<string, unknown>[]>, R2 = never>(
-    onfulfilled?: ((value: Result<Record<string, unknown>[]>) => R1 | PromiseLike<R1>) | null,
+  /** `await from(t).select().eq()…` resolves to the matching rows (up to `limit`), like supabase-js; `count: 'exact'` counts every match. */
+  then<R1 = Result<Record<string, unknown>[]> & { count: number | null }, R2 = never>(
+    onfulfilled?: ((value: Result<Record<string, unknown>[]> & { count: number | null }) => R1 | PromiseLike<R1>) | null,
     onrejected?: ((reason: unknown) => R2 | PromiseLike<R2>) | null
   ): Promise<R1 | R2> {
     return this.run()
-      .then((rows) => ({ data: rows, error: null }), (err) => ({ data: null, error: toError(err) }))
+      .then(
+        (rows) => ({ data: this.maxRows === null ? rows : rows.slice(0, this.maxRows), error: null, count: this.withCount ? rows.length : null }),
+        (err) => ({ data: null, error: toError(err), count: null })
+      )
       .then(onfulfilled, onrejected);
   }
   /** One multi-row INSERT statement (atomic), like supabase-js `insert(rows)`. */

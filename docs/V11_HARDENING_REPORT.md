@@ -1,5 +1,7 @@
 # BAG Protocol — V11 Sprint: Real Redeem Execution Layer
 
+> **Status: HISTORICAL** — a point-in-time report, superseded since. For the current state see [docs/STATUS.md](STATUS.md).
+
 Method followed: audit first (this pass found the router/attestation/swap-
 builder/multi-asset contract work already substantially built — verified
 each piece against real tests rather than re-deriving it), found and fixed

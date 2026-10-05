@@ -1,5 +1,7 @@
 # BAG Protocol — Final Production Audit
 
+> **Status: HISTORICAL** — a point-in-time report, superseded since. For the current state see [docs/STATUS.md](STATUS.md).
+
 > **Correction (this pass, Sept 22):** items B.1, B.2, and B.5 below (and
 > the matching rows in section E / the summary in section F) are **stale**
 > — all three were resolved by the later V11 hardening pass
