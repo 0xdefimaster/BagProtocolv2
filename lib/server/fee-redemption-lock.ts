@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { BagRecord, BagVersionRecord } from '@/types/basket-protocol';
 import { findActiveRedeemIntentForBag } from '@/lib/server/redeem-intent-repo';
-import { findActivePurchaseIntentForBag } from '@/lib/server/purchase-intent-repo';
+import { findActivePurchaseIntentForBag, updatePurchaseIntentStatus } from '@/lib/server/purchase-intent-repo';
+import type { PurchaseIntent } from '@/types/purchase-intent';
 
 // -----------------------------------------------------------------------------
 // B0 — which position state a fee attestation is bound to
@@ -11,6 +12,13 @@ import { findActivePurchaseIntentForBag } from '@/lib/server/purchase-intent-rep
 // two apart: no fee attestation while a purchase of the position is in flight,
 // and no purchase while a fee-paying redemption of it is open. Only sales that
 // pay a fee are affected; fee-free sales and ordinary purchases are not.
+//
+// Race-safe without a database lock: each side WRITES its own intent before it
+// READS for the other (the sale intent exists before its fee is attested; a
+// purchase intent is inserted, then checked, then cancelled if a fee sale is
+// open). Whatever the interleaving, the later of the two reads sees the
+// earlier write, so at least one side refuses — never both proceed. Proven
+// against real PostgreSQL in fee-redemption-lock.integration.test.ts.
 // (The contract-level answer — a per-position nonce in the signed struct — is
 // part of the separate RedeemFeeRouter v2 PR.)
 // -----------------------------------------------------------------------------
@@ -46,3 +54,22 @@ export async function purchaseInFlightFor(admin: SupabaseClient, userId: string,
   const open = await findActivePurchaseIntentForBag(admin, userId, bagId);
   return open && stillOpen(open, now) ? { id: open.id } : null;
 }
+
+/**
+ * Called right AFTER a purchase intent was written: if a fee-paying sale of the same position is open, the purchase
+ * is cancelled (before it could be signed) and the blocking sale is returned.
+ */
+export async function cancelPurchaseIfFeeSaleOpen(
+  admin: SupabaseClient,
+  purchase: Pick<PurchaseIntent, 'id' | 'userId' | 'status'>,
+  bag: Pick<BagRecord, 'id' | 'creatorId' | 'performanceFeeBpsLocked'>,
+  version: Pick<BagVersionRecord, 'recipe'> | null
+): Promise<{ id: string } | null> {
+  const open = await openFeeRedemptionFor(admin, purchase.userId, bag, version);
+  if (!open) return null;
+  if (purchase.status === 'READY' || purchase.status === 'QUOTED' || purchase.status === 'DRAFT') {
+    await updatePurchaseIntentStatus(admin, { id: purchase.id, from: purchase.status, to: 'CANCELLED' });
+  }
+  return open;
+}
+

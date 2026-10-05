@@ -17,7 +17,7 @@ import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
 import { claimNewlyVerifiedTxHashes, TX_HASH_RE } from '@/lib/server/intent-tx-claims';
 import { paymentAssetsFor } from '@/lib/server/payment-assets';
 import { FORK_ROYALTY_BPS } from '@/lib/config/rewards';
-import { openFeeRedemptionFor } from '@/lib/server/fee-redemption-lock';
+import { cancelPurchaseIfFeeSaleOpen, openFeeRedemptionFor } from '@/lib/server/fee-redemption-lock';
 import { getBagAssetHoldings, getBagNavSafe, priceHoldingsIndividually } from '@/lib/server/bag-nav';
 import { EXECUTION_QUOTE_PRICE_SOURCE, executionPricesFromLegs, navAtExecutionPrices } from '@/lib/domain/basket-protocol/shares/execution-valuation';
 import { getDepositQuote, OrphanedNavError, ZeroNavError } from '@/lib/domain/basket-protocol/shares/shares';
@@ -834,6 +834,13 @@ export async function createPurchaseIntentForUser(
       },
     };
   }
+
+  // B0 (§5.6), the second half of the lock: the purchase is written FIRST, then the open fee-paying sale is looked
+  // up. The fee attestation does the mirror image (its sale intent is written before it looks for purchases), so of a
+  // racing purchase and fee sale at least one always sees the other — never both proceed. If a sale won, this
+  // purchase is cancelled before it can be signed.
+  const blocked = await cancelPurchaseIfFeeSaleOpen(admin, intent, bag, version);
+  if (blocked) return { ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: blocked.id } };
 
   return { ok: true, value: intent };
 }

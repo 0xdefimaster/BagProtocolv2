@@ -237,7 +237,13 @@ applies can differ. The contract cannot see the database either way.
   instead of a persisted sequence (no migration): the server refuses to attest
   while a purchase of the same position is in flight (`PositionBusyError`),
   and refuses a purchase — at creation and again at execution — while a
-  fee-paying sale of it is open (`REDEEM_IN_PROGRESS`). A quote that expired
+  fee-paying sale of it is open (`REDEEM_IN_PROGRESS`). It is race-safe
+  because each side **writes before it reads**: the sale intent exists before
+  its fee is attested, and a purchase intent is inserted, then checked, and
+  cancelled if a fee sale is open — so the later read always sees the earlier
+  write and at least one side refuses. Tested with parallel races in both
+  orders on real PostgreSQL (`fee-redemption-lock.integration.test.ts`); the
+  first, check-then-write version let both proceed in 11 of 120 races. A quote that expired
   unsubmitted no longer counts; a submitted transaction always does. The
   attestation's deadline never exceeds the sale intent's expiry, so it cannot
   execute after the lock is released (an expired intent gets no attestation).
