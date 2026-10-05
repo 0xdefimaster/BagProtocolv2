@@ -19,8 +19,12 @@ import {ECDSA} from '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
 /// balance and must end at zero.
 ///
 /// Fee (B0, docs/FEE_ECONOMICS_DESIGN.md): the attestor signs `feeAmount`,
-/// computed off-chain on the guaranteed minimum (never above the fee on the
-/// actual result), and the contract pays it straight to the signed
+/// computed off-chain as floor(max(0, grossMinimum − basis − lossCarry) ×
+/// rate) — never above the fee on the actual result. Its inputs are
+/// committed through `contextHash`; this version does not recompute them. B
+/// (a later version) makes basis, loss carry and rate explicit signed
+/// fields and computes the fee here from the measured amount. The contract
+/// pays the fee straight to the signed
 /// `creator` — no rewards vault in between (protocol share is 0, F6). The
 /// user gets everything else. `feeAmount = 0` (a Bag without a fee, or a
 /// creator selling their own Bag) settles everything to the user. B (fee
@@ -28,8 +32,10 @@ import {ECDSA} from '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
 ///
 /// Creator payout is a direct transfer: if USDG refuses it (USDG is a Paxos
 /// token and can freeze addresses), the whole settlement reverts and the
-/// user keeps their holdings — the backend must not sign for a frozen
-/// creator. Assets never leave the user's wallet outside a settlement.
+/// user keeps their holdings. That revert is the guarantee. The backend's
+/// freeze check before signing is only a preflight that avoids failed
+/// transactions: a creator can be frozen between the check and the
+/// transaction. Nothing is ever left here for a creator to claim later.
 ///
 /// Amounts: the amount settled is what this contract actually holds when
 /// `settle` runs — never a quote or a simulation. Live runs showed the two

@@ -464,7 +464,7 @@ supplied unsigned.
 | `creator` | Receives the fee. The Bag's creator as BAG's records and the Bag's on-chain identity give it; never chosen by the caller |
 | `executor` | The only allowed `msg.sender`. For Composer: the user's proxy, taken from that redemption's compile result, not assumed |
 | `contextHash` | Binds the state the attestor checked: Bag / definition hash, strategy version, and the accounting snapshot (basis, loss carry). Stale state means a different hash, so the signature fails |
-| `feeAmount` | B0 fee, computed off-chain on the guaranteed minimum (`computeB0Fee`). It is 0 for a Bag without a fee or for a creator selling their own Bag |
+| `feeAmount` | B0 fee, computed off-chain as `floor(max(0, grossMinimum − basis − lossCarry) × rate)` (`computeB0Fee`). Its inputs are committed through `contextHash`, and the contract does not recompute it. It is 0 for a Bag without a fee or for a creator selling their own Bag |
 | `minUserProceeds` | Floor on what the user receives **after** the fee |
 | `deadline` | Attestation expiry |
 
@@ -480,13 +480,17 @@ supplied unsigned.
 - **End balance:** must be 0 again; there is no rescue function. A stray
   donation is paid to the next settlement's user. It cannot block a
   settlement; an exact-balance rule could be blocked by a 1-unit donation.
-- **Frozen creator:** USDG is a Paxos token and can freeze addresses. If the
-  fee transfer to a frozen creator is refused, the whole settlement reverts,
-  nothing moves, and the user keeps their holdings, which never left their
-  wallet. The backend must check the creator before signing and refuse to
-  attest for a frozen one. The alternative, crediting a claimable balance
-  inside the contract, would bring back the vault's state and is left out on
-  purpose.
+- **Frozen creator:** USDG is a Paxos token, and Paxos's terms let it freeze
+  addresses. If the fee transfer to a frozen creator is refused, the whole
+  settlement reverts, nothing moves, and the user keeps their holdings, which
+  never left their wallet. **That revert is the guarantee.** The backend's
+  freeze check before signing is only an operational preflight that avoids
+  failed transactions: a creator can be frozen between the check and the
+  transaction, so the preflight guarantees nothing. Not chosen, on purpose:
+  - leaving the fee on the contract and calling the settlement successful;
+  - a rewards vault. A vault only defers the problem, because the vault's
+    payout to a frozen creator fails just the same, and it adds state, claims,
+    withdrawals and access control.
 - **Other:** `nonReentrant`, and checks-effects-interactions. The owner
   (expected: a multisig) can only rotate the attestor or the owner. There is
   no upgrade and no proxy.
@@ -521,9 +525,31 @@ Mutation check: each of the following makes at least one test fail:
 - not counting the fee in the floor;
 - not deducting the fee.
 
+**B0 and B stay separate.**
+
+| | B0 (this contract) | B (later version) |
+|---|---|---|
+| Who computes the fee | The attestor, off-chain | The contract |
+| Gross amount | The guaranteed minimum (`grossMinimum`) | The amount the contract measured |
+| Basis, loss carry, rate | Committed in `contextHash` | Explicit signed fields |
+
+B matters because the route can keep a few units (§7.1a), so the quote and
+the arrival differ.
+
+**Invariants every successful settlement keeps (each covered by tests):**
+
+1. The contract holds 0 USDG afterwards; even 1 unit left reverts.
+2. Fee + user proceeds = the USDG that actually arrived.
+3. Creator, fee, user, redemption, context (Bag / definition hash, version,
+   accounting state) and expiry are covered by one signature.
+4. That signature cannot be reused for another redemption, executor or
+   deployment.
+5. A failed creator payout fails the whole settlement; nothing is left on the
+   contract for later.
+
 **Not yet.**
 
 - B (fee computed from the measured amount).
-- The backend: signing, the creator freeze check, and the `contextHash`
+- The backend: signing, the creator freeze preflight, and the `contextHash`
   preimage.
 - Deployment.
