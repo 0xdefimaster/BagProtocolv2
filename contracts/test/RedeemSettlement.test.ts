@@ -2,7 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { network } from 'hardhat';
 import { computeB0Fee } from '../../lib/domain/basket-protocol/redeem/performance-fee-b0';
-import { encodeFunctionData, getAddress, keccak256, parseEventLogs, toFunctionSelector, toHex, zeroAddress, type Hex } from 'viem';
+import { SETTLEMENT_TYPES, computeSettlementContextHash, settlementDomain, toCompactSignature } from '../../lib/blockchain/redeem-settlement-eip712';
+import { privateKeyToAccount } from 'viem/accounts';
+import { encodeFunctionData, getAddress, keccak256, parseEventLogs, parseSignature, signatureToCompactSignature, toFunctionSelector, toHex, zeroAddress, type Hex } from 'viem';
 
 // -----------------------------------------------------------------------------
 // RedeemSettlement (B: fee on actual proceeds): the settlement primitive behind a Composer
@@ -191,6 +193,88 @@ describe('RedeemSettlement — settlement primitive with the creator fee on actu
     assert.equal(await usdg.read.balanceOf([executor.address]), executorBefore);
     assert.equal(await usdg.read.balanceOf([user.account.address]), 0n);
     assert.equal(await settlement.read.settled([s.redemptionId]), false);
+  });
+
+  it('settleFlat (the Composer form): same result as settle; executor is msg.sender; tampering or another caller recovers a wrong signer', async () => {
+    const { usdg, settlement, executor, otherExecutor, user, creator, sign, base, publicClient } = await setup();
+    const flat = (s: Settlement, sig: Hex) => {
+      const { r, yParityAndS } = signatureToCompactSignature(parseSignature(sig));
+      return encodeFunctionData({
+        abi: settlement.abi,
+        functionName: 'settleFlat',
+        args: [s.redemptionId, s.user, s.creator, s.contextHash, s.consumedBasis, s.lossCarry, s.feeRateBps, s.minUserProceeds, s.deadline, r, yParityAndS],
+      });
+    };
+    const s = base({ consumedBasis: 1_000_000n, lossCarry: 100_000n, feeRateBps: 1000n, minUserProceeds: 2_000_000n });
+    const sig = await sign(s);
+    // Another caller: the attested executor is `executor`, so msg.sender = otherExecutor recovers someone else.
+    await assert.rejects(otherExecutor.write.pushAndSettleFlat([usdg.address, settlement.address, 2_150_000n, flat(s, sig)]), err('InvalidSignature'));
+    // A flat field changed after signing.
+    await assert.rejects(executor.write.pushAndSettleFlat([usdg.address, settlement.address, 2_150_000n, flat({ ...s, lossCarry: 0n }, sig)]), err('InvalidSignature'));
+    const hash = await executor.write.pushAndSettleFlat([usdg.address, settlement.address, 2_150_000n, flat(s, sig)]);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    const [e] = parseEventLogs({ abi: settlement.abi, logs: receipt.logs, eventName: 'Settled' });
+    assert.deepEqual([e.args.executor, e.args.received, e.args.fee, e.args.userProceeds], [getAddress(executor.address), 2_150_000n, 105_000n, 2_045_000n]);
+    assert.equal(await usdg.read.balanceOf([creator.account.address]), 105_000n);
+    assert.equal(await usdg.read.balanceOf([user.account.address]), 2_045_000n);
+    assert.equal(await usdg.read.balanceOf([settlement.address]), 0n);
+    // The same redemption cannot be settled again through the struct entry either.
+    await assert.rejects(executor.write.pushAndSettle([usdg.address, settlement.address, 1n, s, sig]), err('AlreadySettled'));
+  });
+
+  it('backend library ↔ contract: the typehash matches, and a struct signed by the backend\'s own code (attestor key, canonical context, compact signature) settles through settleFlat', async () => {
+    const { viem, usdg, ownerW, executor, user, creator, publicClient } = await setup();
+    // The backend signs with a raw key, as lib/server/redeem-settlement-attestation.ts does. Throwaway test key.
+    const backendKey = `0x${'33'.repeat(32)}` as const;
+    const backend = privateKeyToAccount(backendKey);
+    const settlement = await viem.deployContract('RedeemSettlement', [usdg.address, backend.address, ownerW.account.address]);
+    const typeString = `Settlement(${SETTLEMENT_TYPES.Settlement.map((f) => `${f.type} ${f.name}`).join(',')})`;
+    assert.equal(await settlement.read.SETTLEMENT_TYPEHASH(), keccak256(toHex(typeString)));
+
+    const chainId = await publicClient.getChainId();
+    const contextHash = computeSettlementContextHash({
+      chainId,
+      settlement: settlement.address,
+      bagId: '11111111-2222-3333-4444-555555555555',
+      bagContract: null,
+      strategyVersion: 3,
+      compositionHash: 'c0ffee12',
+      redeemIntentId: '6f1c2b3a-0000-4000-8000-000000000001',
+      user: user.account.address,
+      creator: creator.account.address,
+      sharesRaw: '100',
+      legs: [{ token: '0xdd356aa38f40a7b7076755ac854b6fbb1f0d305b', amountRaw: '20000000000000000' }],
+      ledgerHeadSeq: '812',
+      ledgerEventCount: 2,
+      consumedBasisRaw: '1000000',
+      lossCarryRaw: '0',
+      feeRateBps: 1000,
+    });
+    const now = (await publicClient.getBlock()).timestamp;
+    const message = {
+      redemptionId: id('backend-signed'),
+      user: user.account.address,
+      creator: creator.account.address,
+      executor: executor.address,
+      contextHash,
+      consumedBasis: 1_000_000n,
+      lossCarry: 0n,
+      feeRateBps: 1000n,
+      minUserProceeds: 1_000_000n,
+      deadline: now + 300n,
+    };
+    const signature = await backend.signTypedData({ domain: settlementDomain(chainId, settlement.address), types: SETTLEMENT_TYPES, primaryType: 'Settlement', message });
+    const { r, vs } = toCompactSignature(signature);
+    const call = encodeFunctionData({
+      abi: settlement.abi,
+      functionName: 'settleFlat',
+      args: [message.redemptionId, message.user, message.creator, message.contextHash, message.consumedBasis, message.lossCarry, message.feeRateBps, message.minUserProceeds, message.deadline, r, vs],
+    });
+    const hash = await executor.write.pushAndSettleFlat([usdg.address, settlement.address, 1_500_000n, call]);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    const [e] = parseEventLogs({ abi: settlement.abi, logs: receipt.logs, eventName: 'Settled' });
+    assert.deepEqual([e.args.contextHash, e.args.received, e.args.fee, e.args.userProceeds], [contextHash, 1_500_000n, 50_000n, 1_450_000n]);
+    assert.equal(await usdg.read.balanceOf([settlement.address]), 0n);
   });
 
   it('wrong executor: a different caller (even with a valid signature) is refused', async () => {

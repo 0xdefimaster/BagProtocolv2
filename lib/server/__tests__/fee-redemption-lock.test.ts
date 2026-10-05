@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let openRedeem: { id: string; status: string; expiresAt: string } | null = null;
 let openPurchase: { id: string; status: string; expiresAt: string } | null = null;
-vi.mock('@/lib/server/redeem-intent-repo', () => ({ findActiveRedeemIntentForBag: async () => openRedeem }));
+let liveAttestations: { id: string }[] = [];
+vi.mock('@/lib/server/redeem-intent-repo', () => ({ findActiveRedeemIntentForBag: async () => openRedeem, listLiveSettlementAttestations: async () => liveAttestations }));
 vi.mock('@/lib/server/purchase-intent-repo', () => ({ findActivePurchaseIntentForBag: async () => openPurchase }));
 
 const { openFeeRedemptionFor, purchaseInFlightFor, redemptionPaysFee } = await import('../fee-redemption-lock');
@@ -19,6 +20,7 @@ const feeBag = { id: 'bag_1', creatorId: 'creator', performanceFeeBpsLocked: 150
 beforeEach(() => {
   openRedeem = null;
   openPurchase = null;
+  liveAttestations = [];
 });
 
 describe('fee-redemption lock', () => {
@@ -27,6 +29,14 @@ describe('fee-redemption lock', () => {
     expect(redemptionPaysFee(feeBag, null, 'creator')).toBe(false);
     expect(redemptionPaysFee({ ...feeBag, performanceFeeBpsLocked: null }, { recipe: { performanceFeeBps: 0 } } as never, 'investor')).toBe(false);
     expect(redemptionPaysFee({ ...feeBag, performanceFeeBpsLocked: null }, { recipe: { performanceFeeBps: 200 } } as never, 'investor')).toBe(true);
+  });
+
+  it('§9: an intent holding a settlement attestation still valid on-chain blocks a purchase even when it is no longer open', async () => {
+    openRedeem = null;
+    liveAttestations = [{ id: 'r_failed_but_signed' }];
+    expect(await openFeeRedemptionFor(admin, 'investor', feeBag, null, NOW)).toEqual({ id: 'r_failed_but_signed' });
+    liveAttestations = [];
+    expect(await openFeeRedemptionFor(admin, 'investor', feeBag, null, NOW)).toBeNull();
   });
 
   it('an open fee-paying sale blocks a purchase; an expired quote does not, a submitted transaction always does', async () => {

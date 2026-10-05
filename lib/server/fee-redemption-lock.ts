@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { BagRecord, BagVersionRecord } from '@/types/basket-protocol';
-import { findActiveRedeemIntentForBag } from '@/lib/server/redeem-intent-repo';
+import { findActiveRedeemIntentForBag, listLiveSettlementAttestations } from '@/lib/server/redeem-intent-repo';
 import { findActivePurchaseIntentForBag, updatePurchaseIntentStatus } from '@/lib/server/purchase-intent-repo';
 import type { PurchaseIntent } from '@/types/purchase-intent';
 
@@ -46,7 +46,19 @@ export async function openFeeRedemptionFor(
 ): Promise<{ id: string } | null> {
   if (!redemptionPaysFee(bag, version, userId)) return null;
   const open = await findActiveRedeemIntentForBag(admin, userId, bag.id);
-  return open && stillOpen(open, now) ? { id: open.id } : null;
+  if (open && stillOpen(open, now)) return { id: open.id };
+  // A settlement attestation still valid on-chain blocks a purchase whatever its intent's status (§9): the wallet
+  // could still submit it, against the basis it was signed with.
+  return liveSettlementAttestationFor(admin, userId, bag.id, now);
+}
+
+/**
+ * An intent of this position holding a settlement attestation that is still valid on-chain (its signed deadline has
+ * not passed), in any status — the database status of an intent does not revoke a signature already handed out.
+ */
+export async function liveSettlementAttestationFor(admin: SupabaseClient, userId: string, bagId: string, now = Date.now()): Promise<{ id: string } | null> {
+  const live = await listLiveSettlementAttestations(admin, userId, bagId, Math.floor(now / 1000));
+  return live.length > 0 ? { id: live[0].id } : null;
 }
 
 /** The purchase of the same position that blocks a fee attestation, if any. */
