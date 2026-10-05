@@ -817,16 +817,54 @@ Written and tested locally. Not deployed, not run live.
   attested transaction. If that transition fails, the attestation is not
   handed out.
 
+**Routing invariant (`lib/server/fee-redemption-path.ts`).** This is the one
+place that decides the path:
+
+| Sale | Path |
+|---|---|
+| fee > 0, RedeemSettlement configured | `settlement-quote` → `settlement-attest` **only** |
+| fee > 0, RedeemSettlement not configured | the older RedeemFeeRouter if it and the vault are configured, otherwise refused |
+| fee = 0, or the creator selling their own Bag | the existing free path (`/execute`) |
+
+- `/execute` (both the legacy LI.FI and the legacy Composer path) always
+  refuses a fee.
+- Once RedeemSettlement is configured, `signFeeAttestation` refuses before
+  reading anything, so nothing can be signed for the router, whatever else is
+  configured.
+- The hook also never takes the router path then.
+- Tests: `fee-redemption-routing.test.ts` and the hook routing cases. Each
+  fails without its guard.
+
+**An abandoned signature does not lock the position.** Rejecting in the
+wallet reports `REJECTED`, and the intent becomes `FAILED`. When nothing comes
+back (tab closed), the next sale of the position releases the old intent
+(→ `EXPIRED`) only once signing it can no longer do anything:
+
+- `DRAFT` / `QUOTED` / `READY` past its expiry: nothing was signed;
+- `AWAITING_SIGNATURE` of a settlement sale past its attestation deadline:
+  the contract refuses it after that, and the deadline is at most ~5 minutes
+  after phase 2.
+
+`SUBMITTED` / `CONFIRMING` are never released. A free Composer sale awaiting
+a signature is not released either, because it has no on-chain deadline of
+ours. The §9 live-attestation lock is still checked afterwards. Tests:
+`redeem-abandoned-intent.test.ts`, with a negative control.
+
 **The `Settled` event is the source of truth (`lib/blockchain/redeem-settlement-event.ts`).**
 
-- For an intent with an attested plan, verification reads the receipt. It
-  requires exactly one `Settled` event, from the settlement contract, for
-  this redemption id (`computeOnChainBagId(intent.id)`), with
-  `user` = this wallet.
+- For an intent with an attested plan, verification requires **all** of the
+  following:
+  - the plan's settlement address is the configured, deployed
+    RedeemSettlement;
+  - the transaction succeeded (a reverted receipt settled nothing);
+  - exactly one `Settled` event, from that address, for this redemption id
+    (`computeOnChainBagId(intent.id)`);
+  - in that event, `user` = this wallet, `creator` = the attested creator,
+    and `contextHash` = the attested context.
 - Without that event, the sale is `VERIFICATION_FAILED` and nothing is booked.
   The backend's own status is not trusted.
 - The event (`received`, `feeBase`, `fee`, `userProceeds`, `creator`,
-  `executor`, tx hash, block) is recorded into
+  `executor`, tx hash, block, log index) is recorded into
   `settlement_plan.result` before accounting runs. The write is limited to
   the same `contextHash`.
 - The decoder's ABI is checked against the compiled contract, and it decodes
@@ -850,6 +888,31 @@ Written and tested locally. Not deployed, not run live.
   sale would charge a fee on the fee.
 - **Edge:** `received` is the contract's balance at settlement time (§8), so a
   stray donation counts toward it, as it does in the contract's own fee.
+
+**Realized P&L semantics (locked, independent of the fee model).**
+
+- `realizedPnlQuote` = **gross** proceeds − consumed basis. It is the
+  strategy's result *before* performance fees, and the only input to the
+  high-water mark and the fee base.
+- `feesChargedQuote` = Σ fees, whether booked in the database or settled
+  on-chain.
+- `netRealizedPnlQuote` = `realizedPnlQuote − feesChargedQuote`. This is what
+  the user actually realized: net proceeds − basis.
+- The portfolio API returns all three (`realizedPnl`, `feesCharged`,
+  `netRealizedPnl`).
+- Example: buy for 10, sell for 15, fee 20% → realized 5, fee 1, net 4.
+- Tests: `position-pnl.test.ts` (including why net proceeds would wrongly
+  lower the high-water mark) and the integration test.
+
+**Idempotency.** One settlement can be booked only once:
+
+- the contract emits at most one `Settled` per `redemptionId` (`settled`
+  mapping), and `redemptionId` = the intent;
+- `claim_intent_tx_hash` binds the transaction hash to one intent;
+- accounting is keyed by the intent: `accounting_applied_at`, plus the ledger
+  idempotency keys `REDEEM_FILL:<intent>` and `FEE_CHARGED:<intent>`;
+- re-applying returns `alreadyApplied` and writes nothing (integration test).
+
 
 **Tests.**
 

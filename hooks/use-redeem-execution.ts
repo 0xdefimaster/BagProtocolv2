@@ -285,7 +285,9 @@ export function useRedeemExecution() {
       setState((s) => ({ ...s, phase: 'creating' }));
 
       let createdIntentId: string | null = null;
-      const routerAddress = getConfiguredRedeemFeeRouterAddress();
+      // Routing invariant (lib/server/fee-redemption-path.ts): with RedeemSettlement configured, the older router is
+      // never used; a fee-paying sale takes the settlement path below, a free one the existing path.
+      const routerAddress = isRedeemSettlementConfigured() ? null : getConfiguredRedeemFeeRouterAddress();
 
       try {
         const { intent: created } = await postJson<{ intent: RedeemIntent }>(`/api/bags/${bagId}/redeem-intent`, {

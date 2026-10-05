@@ -12,7 +12,12 @@ const executeWalletSweepMock = vi.fn<(...a: unknown[]) => Promise<void>>();
 vi.mock('@/lib/blockchain/wallet-sweep-client', () => ({ executeWalletSweep: (...a: unknown[]) => executeWalletSweepMock(...a) }));
 vi.mock('@lifi/sdk', () => ({ executeRoute: vi.fn(), convertQuoteToRoute: vi.fn() }));
 vi.mock('@/lib/blockchain/lifi-wallet-client', () => ({ getBrowserLiFiClient: vi.fn() }));
-vi.mock('@/lib/blockchain/redeem-fee-router-client', () => ({ ensureRouterAllowance: vi.fn(), sendRedeemTransaction: vi.fn(), collectRequiredApprovals: vi.fn() }));
+const sendRedeemTransactionMock = vi.fn();
+vi.mock('@/lib/blockchain/redeem-fee-router-client', () => ({
+  ensureRouterAllowance: vi.fn(),
+  sendRedeemTransaction: (...a: unknown[]) => sendRedeemTransactionMock(...a),
+  collectRequiredApprovals: vi.fn(() => []),
+}));
 
 const { useRedeemExecution } = await import('../use-redeem-execution');
 
@@ -64,6 +69,7 @@ const feeBagHandler =
     if (url.endsWith('/settlement-quote')) return { status: 200, body: { plan: {} } };
     if (url.endsWith('/settlement-attest')) return { status: 200, body: { composerTransaction: SETTLEMENT_TX } };
     if (url.includes('/step/')) return { status: 200, body: { intent: intent() } };
+    if (url.endsWith('/attest-fee') || url.endsWith('/confirm-router-tx')) throw new Error(`the old router must not be used: ${url}`);
     if (url.endsWith('/verify')) return { status: 200, body: { intent: intent(verified) } };
     throw new Error(`unexpected ${url}`);
   };
@@ -117,5 +123,26 @@ describe('useRedeemExecution — fee-paying sale through RedeemSettlement', () =
     await run();
     expect(calls.some((u) => u.includes('settlement'))).toBe(false);
     expect(executeWalletSweepMock.mock.calls[0][1]).toEqual({ transaction: LEGACY_TX, approvals: [] });
+  });
+
+  describe('routing invariant: with RedeemSettlement configured, the old RedeemFeeRouter is never used', () => {
+    beforeEach(() => vi.stubEnv('NEXT_PUBLIC_REDEEM_FEE_ROUTER_ADDRESS', '0x6666666666666666666666666666666666666666'));
+
+    it('fee-paying sale with the router address also set: settlement path only', async () => {
+      handler = feeBagHandler();
+      const result = await run();
+      expect(calls.some((u) => u.endsWith('/attest-fee') || u.endsWith('/confirm-router-tx'))).toBe(false);
+      expect(sendRedeemTransactionMock).not.toHaveBeenCalled();
+      expect(calls).toContain('/api/redeem-intent/redeem_1/settlement-attest');
+      expect(result.current.state.phase).toBe('completed');
+    });
+
+    it('free sale with the router address also set: the existing free path', async () => {
+      const base = feeBagHandler();
+      handler = (url) => (url.endsWith('/execute') ? { status: 200, body: { intent: intent({ status: 'AWAITING_SIGNATURE' }) } } : base(url));
+      await run();
+      expect(calls.some((u) => u.endsWith('/attest-fee') || u.includes('settlement'))).toBe(false);
+      expect(executeWalletSweepMock.mock.calls[0][1]).toEqual({ transaction: LEGACY_TX, approvals: [] });
+    });
   });
 });

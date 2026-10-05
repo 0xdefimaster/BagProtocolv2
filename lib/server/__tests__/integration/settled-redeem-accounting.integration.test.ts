@@ -90,7 +90,7 @@ describe('0054 — accounting a sale settled on-chain (real PostgreSQL)', () => 
     const s = await sell(b, plan());
     // Verification records the Settled event before accounting: 15 USDG arrived, fee base 5, fee 1, user got 14.
     await recordRedeemSettlementResult(db.client, s.id, plan({
-      result: { txHash: `0x${'cd'.repeat(32)}`, blockNumber: '7', received: '15000000', feeBase: '5000000', fee: '1000000', userProceeds: '14000000', creator: '0x01', executor: '0x02' },
+      result: { txHash: `0x${'cd'.repeat(32)}`, blockNumber: '7', logIndex: '3', received: '15000000', feeBase: '5000000', fee: '1000000', userProceeds: '14000000', creator: '0x01', executor: '0x02' },
     }));
     await s.apply();
 
@@ -100,8 +100,12 @@ describe('0054 — accounting a sale settled on-chain (real PostgreSQL)', () => 
     const fee = ev.find((e) => e.kind === 'FEE_CHARGED');
     expect(fee?.quote).toMatchObject({ amountQuote: '1.000000', baseQuote: '5.000000', bps: 2000, settledOnchain: true, feeRaw: '1000000', txHash: `0x${'cd'.repeat(32)}` });
     const pnl = computePositionPnl(ev);
+    // Locked semantics (§10): realized P&L is BEFORE fees (gross 15 − basis 10 = 5, the fee base); the fee is
+    // separate (1); what the user actually realized is 5 − 1 = 4 = net proceeds 14 − basis 10.
     expect(pnl.realizedPnlQuote).toBe('5');
     expect(pnl.feesChargedQuote).toBe('1');
+    expect(pnl.netRealizedPnlQuote).toBe('4');
+    expect(pnl.realizedHighWaterMarkQuote).toBe('5');
     // Applying again books nothing more.
     const again = (await s.apply()).rows[0].r;
     expect(again.alreadyApplied).toBe(true);

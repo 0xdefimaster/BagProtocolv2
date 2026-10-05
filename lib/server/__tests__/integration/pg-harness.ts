@@ -149,6 +149,16 @@ const assertIdent = (s: string) => {
   return s;
 };
 
+/**
+ * A filter column: a plain identifier, or PostgREST's JSON text path `column->>key` (as supabase-js sends it, e.g.
+ * `.eq('settlement_plan->>contextHash', …)`). Both parts are validated before being written into the SQL.
+ */
+const JSON_PATH_RE = /^([a-z_][a-z0-9_]*)->>([A-Za-z_][A-Za-z0-9_]*)$/;
+const filterColumn = (s: string) => {
+  const m = JSON_PATH_RE.exec(s);
+  return m ? `(${m[1]} ->> '${m[2]}')` : assertIdent(s);
+};
+
 type Result<T> = { data: T | null; error: { message: string; code?: string } | null };
 const toError = (err: unknown) => ({ message: err instanceof Error ? err.message : String(err), code: (err as { code?: string })?.code });
 
@@ -169,7 +179,7 @@ class ShimQuery {
     return this;
   }
   eq(column: string, value: unknown) {
-    this.filters.push([assertIdent(column), value, '=']);
+    this.filters.push([filterColumn(column), value, '=']);
     return this;
   }
   in(column: string, values: unknown[]) {

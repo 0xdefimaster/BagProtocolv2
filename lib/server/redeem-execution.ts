@@ -117,7 +117,7 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
   }
 
   const existing = await findActiveRedeemIntentForBag(admin, session.userId, bagId);
-  if (existing) {
+  if (existing && !(await releaseAbandonedRedeemIntent(admin, existing))) {
     return { ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: existing.id } };
   }
   // A settlement attestation still valid on-chain (§9) blocks a new sale of the position even when its intent is
@@ -278,6 +278,25 @@ async function loadOwnedIntent(admin: SupabaseClient, userId: string, intentId: 
 
 function isExpired(intent: RedeemIntent): boolean {
   return new Date(intent.expiresAt).getTime() < Date.now();
+}
+
+/**
+ * An open sale nobody will finish — the wallet never signed and no report came back (tab closed, wallet dismissed
+ * without a REJECTED report) — must not block the position forever. Released (→ EXPIRED) only when signing it can no
+ * longer do anything:
+ *  - not yet handed to the wallet (DRAFT / QUOTED / READY) and past its expiry: nothing was signed;
+ *  - AWAITING_SIGNATURE of a settlement sale whose attestation deadline has passed: RedeemSettlement refuses the
+ *    signed transaction after it (`deadline`, §8). The deadline is at most ~5 minutes after phase 2 (§9).
+ * Anything else stays (a free Composer sale awaiting signature has no on-chain deadline of ours to rely on).
+ * Returns true when the intent was released. The live-attestation lock is still checked by the caller.
+ */
+async function releaseAbandonedRedeemIntent(admin: SupabaseClient, intent: RedeemIntent): Promise<boolean> {
+  const beforeWallet = intent.status === 'DRAFT' || intent.status === 'QUOTED' || intent.status === 'READY';
+  const deadline = intent.settlementPlan?.deadline;
+  const settlementLapsed = intent.status === 'AWAITING_SIGNATURE' && typeof deadline === 'number' && deadline < Math.floor(Date.now() / 1000);
+  if (!(beforeWallet && isExpired(intent)) && !settlementLapsed) return false;
+  const released = await updateRedeemIntentStatus(admin, { id: intent.id, from: intent.status, to: 'EXPIRED', failureCode: 'ROUTE_EXPIRED' });
+  return released !== null;
 }
 
 export { saleStillCovered };
@@ -604,14 +623,25 @@ async function verifyComposerRedeemSteps(
   // P&L and the high-water mark stay on the basis the contract charged on.
   const plan = intent.settlementPlan;
   if (plan?.attestedAt) {
+    // Every one of these must hold: the transaction succeeded; the event came from the deployed RedeemSettlement
+    // (the plan's address, which must still be the configured one); exactly one event for THIS redemption id; and
+    // it settled what was attested — this wallet, this creator, this context.
+    const deployed = DEPLOYED_CONTRACTS.redeemSettlement;
+    if (!deployed || deployed.toLowerCase() !== plan.settlement.toLowerCase()) return markSwaps({ status: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
     const settled = await readSettlementResult(txHash as `0x${string}`, plan.settlement, computeOnChainBagId(intent.id));
-    if (!settled || settled.user.toLowerCase() !== intent.walletAddress.toLowerCase()) return markSwaps({ status: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
+    const matches =
+      settled !== null &&
+      settled.user.toLowerCase() === intent.walletAddress.toLowerCase() &&
+      settled.creator.toLowerCase() === plan.creator.toLowerCase() &&
+      settled.contextHash.toLowerCase() === plan.contextHash.toLowerCase();
+    if (!settled || !matches) return markSwaps({ status: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
     received = BigInt(settled.received);
     await recordRedeemSettlementResult(admin, intent.id, {
       ...plan,
       result: {
         txHash: settled.txHash || txHash,
         blockNumber: settled.blockNumber,
+        logIndex: settled.logIndex,
         received: settled.received,
         feeBase: settled.feeBase,
         fee: settled.fee,

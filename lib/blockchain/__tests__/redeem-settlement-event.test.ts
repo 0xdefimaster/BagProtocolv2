@@ -36,6 +36,7 @@ describe('settlementResultFromLogs', () => {
     expect(settlementResultFromLogs([transferLog, settledLog(SETTLEMENT, ID)], SETTLEMENT, ID)).toEqual({
       txHash: TX,
       blockNumber: '42',
+      logIndex: '0',
       redemptionId: ID,
       user: USER,
       creator: CREATOR,

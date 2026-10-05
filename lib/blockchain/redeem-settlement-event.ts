@@ -30,6 +30,7 @@ export const SETTLED_EVENT_ABI = [
 export interface SettlementResult {
   txHash: string;
   blockNumber: string;
+  logIndex: string;
   redemptionId: string;
   user: string;
   creator: string;
@@ -43,7 +44,7 @@ export interface SettlementResult {
 
 /** Decodes the one `Settled` event the settlement contract emitted for `redemptionId` in these logs, or null. */
 export function settlementResultFromLogs(
-  logs: readonly { address: string; topics: readonly Hex[]; data: Hex; blockNumber?: bigint | null; transactionHash?: Hex | null }[],
+  logs: readonly { address: string; topics: readonly Hex[]; data: Hex; blockNumber?: bigint | null; transactionHash?: Hex | null; logIndex?: number | null }[],
   settlement: string,
   redemptionId: Hex
 ): SettlementResult | null {
@@ -56,6 +57,7 @@ export function settlementResultFromLogs(
   return {
     txHash: String(e.transactionHash ?? ''),
     blockNumber: String(e.blockNumber ?? ''),
+    logIndex: String(e.logIndex ?? ''),
     redemptionId: e.args.redemptionId,
     user: getAddress(e.args.user),
     creator: getAddress(e.args.creator),
@@ -68,7 +70,10 @@ export function settlementResultFromLogs(
   };
 }
 
-/** Reads a transaction's receipt and returns its settlement result for `redemptionId`, or null when there is none. */
+/**
+ * Reads a transaction's receipt and returns its settlement result for `redemptionId`, or null when there is none.
+ * Null too when the transaction did not succeed: a reverted transaction settled nothing, whatever its logs say.
+ */
 export async function readSettlementResult(txHash: Hex, settlement: string, redemptionId: Hex): Promise<SettlementResult | null> {
   const receipt = await getChainPublicClient('robinhood').getTransactionReceipt({ hash: txHash });
   if (receipt.status !== 'success') return null;

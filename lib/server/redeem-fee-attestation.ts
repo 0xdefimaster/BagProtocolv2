@@ -8,6 +8,7 @@ import { getAssetsByIdentities } from '@/lib/server/asset-repo';
 import { getPriceProvider } from '@/lib/server/price-provider';
 import { computePositionPnl } from '@/lib/domain/basket-protocol/accounting/position-pnl';
 import { ROBINHOOD_CHAIN_ID, ROBINHOOD_REWARD_TOKEN, DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
+import { feeRedemptionPath } from '@/lib/server/fee-redemption-path';
 import { buildRobinhoodSwapLeg, COMMON_FEE_TIERS } from '@/lib/blockchain/robinhood-swap-builder';
 import { createRobinhoodUniswapQuoter } from '@/lib/blockchain/robinhood-uniswap-quoter';
 import { getRobinhoodPublicClient } from '@/lib/blockchain/robinhood-public-client';
@@ -182,6 +183,9 @@ export interface FeeAttestation {
  * `getRedeemIntentForUser()` ownership check).
  */
 export async function signFeeAttestation(admin: SupabaseClient, userId: string, redeemIntentId: string): Promise<FeeAttestation> {
+  // Routing invariant (lib/server/fee-redemption-path.ts): once RedeemSettlement is configured, a fee-paying sale
+  // goes through it only — nothing is signed for the older router, whatever else is configured.
+  if (feeRedemptionPath() !== 'FEE_ROUTER') throw new RouterNotConfiguredError();
   const privateKey = process.env.REDEEM_FEE_ATTESTOR_PRIVATE_KEY;
   if (!privateKey) {
     throw new Error('REDEEM_FEE_ATTESTOR_PRIVATE_KEY is not set — cannot sign fee attestations.');

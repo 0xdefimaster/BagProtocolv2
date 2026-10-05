@@ -124,6 +124,7 @@ export interface RedeemSettlementPlan {
   result?: {
     txHash: string;
     blockNumber: string;
+    logIndex: string;
     received: string;
     feeBase: string;
     fee: string;
