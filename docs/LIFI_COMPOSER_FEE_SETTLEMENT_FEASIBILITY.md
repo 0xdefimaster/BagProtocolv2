@@ -796,12 +796,147 @@ a context that is still current, but the backend does not track it. The
 settlement-aware receipt path (next) must reconcile `Settled(redemptionId)`
 events, not only reported transaction hashes.
 
-**Not done yet (needed before the real ~$1 run):**
+**Still open before the real ~$1 run:** see §10.
 
-- The frontend calling the two routes.
-- The execution-status / receipt path recognizing a settlement transaction:
-  the wallet receives `received − fee`, and the fee goes to the creator.
-- Deployment of `RedeemSettlement` with its owner and attestor.
-- A real run on Robinhood Chain. Composer's acceptance of `settleFlat` with
-  these argument types has been checked offline against the schema, but not
-  compiled live yet.
+## 10. Settlement redeem flow: frontend, Settled event as source of truth, accounting
+
+Written and tested locally. Not deployed, not run live.
+
+**Frontend (`hooks/use-redeem-execution.ts`).**
+
+- `/execute` refuses a Bag with a performance fee and now returns
+  `code: 'FEE_ROUTER_REQUIRED'`.
+- If `NEXT_PUBLIC_REDEEM_SETTLEMENT_ADDRESS` is set, the hook then calls
+  `settlement-quote` and then `settlement-attest`. The wallet signs the one
+  Composer transaction phase 2 returned (swaps → push to RedeemSettlement →
+  `settleFlat`), not the one built when the intent was created.
+- If either phase refuses, that refusal is the outcome and nothing is signed.
+- If the env var is not set, the refusal is shown as before.
+- Fee-0 Bags are unchanged.
+- Phase 2 moves the intent `READY → AWAITING_SIGNATURE` after saving the
+  attested transaction. If that transition fails, the attestation is not
+  handed out.
+
+**Routing invariant (`lib/server/fee-redemption-path.ts`).** This is the one
+place that decides the path:
+
+| Sale | Path |
+|---|---|
+| fee > 0, RedeemSettlement configured | `settlement-quote` → `settlement-attest` **only** |
+| fee > 0, RedeemSettlement not configured | the older RedeemFeeRouter if it and the vault are configured, otherwise refused |
+| fee = 0, or the creator selling their own Bag | the existing free path (`/execute`) |
+
+- `/execute` (both the legacy LI.FI and the legacy Composer path) always
+  refuses a fee.
+- Once RedeemSettlement is configured, `signFeeAttestation` refuses before
+  reading anything, so nothing can be signed for the router, whatever else is
+  configured.
+- The hook also never takes the router path then.
+- Tests: `fee-redemption-routing.test.ts` and the hook routing cases. Each
+  fails without its guard.
+
+**An abandoned signature does not lock the position.** Rejecting in the
+wallet reports `REJECTED`, and the intent becomes `FAILED`. When nothing comes
+back (tab closed), the next sale of the position releases the old intent
+(→ `EXPIRED`) only once signing it can no longer do anything:
+
+- `DRAFT` / `QUOTED` / `READY` past its expiry: nothing was signed;
+- `AWAITING_SIGNATURE` of a settlement sale past its attestation deadline:
+  the contract refuses it after that, and the deadline is at most ~5 minutes
+  after phase 2.
+
+`SUBMITTED` / `CONFIRMING` are never released. A free Composer sale awaiting
+a signature is not released either, because it has no on-chain deadline of
+ours. The §9 live-attestation lock is still checked afterwards. Tests:
+`redeem-abandoned-intent.test.ts`, with a negative control.
+
+**The `Settled` event is the source of truth (`lib/blockchain/redeem-settlement-event.ts`).**
+
+- For an intent with an attested plan, verification requires **all** of the
+  following:
+  - the plan's settlement address is the configured, deployed
+    RedeemSettlement;
+  - the transaction succeeded (a reverted receipt settled nothing);
+  - exactly one `Settled` event, from that address, for this redemption id
+    (`computeOnChainBagId(intent.id)`);
+  - in that event, `user` = this wallet, `creator` = the attested creator,
+    and `contextHash` = the attested context.
+- Without that event, the sale is `VERIFICATION_FAILED` and nothing is booked.
+  The backend's own status is not trusted.
+- The event (`received`, `feeBase`, `fee`, `userProceeds`, `creator`,
+  `executor`, tx hash, block, log index) is recorded into
+  `settlement_plan.result` before accounting runs. The write is limited to
+  the same `contextHash`.
+- The decoder's ABI is checked against the compiled contract, and it decodes
+  a real `settleFlat` receipt in the Hardhat test.
+
+**Accounting (migration 0054, `apply_redeem_execution`, signature unchanged).**
+
+- The RPC reads the attested plan from the intent row it already locks. The
+  caller's fee rate never mattered here: the RPC uses the bag's locked rate.
+- For a settled sale it books **no database fee**: no
+  `PERFORMANCE_FEE_EARNED` activity and no `EARNED`
+  `creator_reward_settlements` row. Either would pay the creator a second time.
+- It writes the on-chain fee to the ledger as `FEE_CHARGED` with
+  `settledOnchain: true`, `feeRaw` and `txHash`.
+- If the plan is attested but has no event result, it raises
+  `SETTLEMENT_RESULT_MISSING` and applies nothing.
+- The legs' proceeds are the **gross** `received`, split across legs; the fee
+  is a separate entry. This matches how the database-booked fee always
+  worked (`realized = proceeds − cost`, fees counted apart). If the ledger
+  recorded net proceeds, the fee would lower the high-water mark and the next
+  sale would charge a fee on the fee.
+- **Edge:** `received` is the contract's balance at settlement time (§8), so a
+  stray donation counts toward it, as it does in the contract's own fee.
+
+**Realized P&L semantics (locked, independent of the fee model).**
+
+- `realizedPnlQuote` = **gross** proceeds − consumed basis. It is the
+  strategy's result *before* performance fees, and the only input to the
+  high-water mark and the fee base.
+- `feesChargedQuote` = Σ fees, whether booked in the database or settled
+  on-chain.
+- `netRealizedPnlQuote` = `realizedPnlQuote − feesChargedQuote`. This is what
+  the user actually realized: net proceeds − basis.
+- The portfolio API returns all three (`realizedPnl`, `feesCharged`,
+  `netRealizedPnl`).
+- Example: buy for 10, sell for 15, fee 20% → realized 5, fee 1, net 4.
+- Tests: `position-pnl.test.ts` (including why net proceeds would wrongly
+  lower the high-water mark) and the integration test.
+
+**Idempotency.** One settlement can be booked only once:
+
+- the contract emits at most one `Settled` per `redemptionId` (`settled`
+  mapping), and `redemptionId` = the intent;
+- `claim_intent_tx_hash` binds the transaction hash to one intent;
+- accounting is keyed by the intent: `accounting_applied_at`, plus the ledger
+  idempotency keys `REDEEM_FILL:<intent>` and `FEE_CHARGED:<intent>`;
+- re-applying returns `alreadyApplied` and writes nothing (integration test).
+
+
+**Tests.**
+
+- Unit:
+  - event decoding (other contract, other redemption, duplicates);
+  - verification with the event present, missing, or for the wrong user;
+    the result is recorded before accounting;
+  - the hook's call order, a refused attestation, the env var unset, and
+    fee-0 unchanged;
+  - the phase 2 transition.
+- Contract: ABI equality and decoding of a real receipt.
+- Integration on real PostgreSQL
+  (`settled-redeem-accounting.integration.test.ts`): control (database fee
+  booked), settled (no database fee, on-chain `FEE_CHARGED`, realized P&L 5
+  and fees 1 on a 10 → 15 sale at 20%, idempotent), missing result refused,
+  and the context-hash-limited write.
+
+**Still open before the real ~$1 run:**
+
+- Deploy `RedeemSettlement` with its owner and attestor. This is the user's
+  decision.
+- Then compile `settleFlat` live through Composer. Compiling against an
+  address with no code would simulate vacuously, so deployment comes first.
+- Real run: actual received = creator fee + user proceeds, settlement balance
+  ending at 0.
+- Indexer for `Settled` events of intents the database marked `FAILED` (the
+  §9 remaining edge).

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { network } from 'hardhat';
 import { computeB0Fee } from '../../lib/domain/basket-protocol/redeem/performance-fee-b0';
 import { SETTLEMENT_TYPES, computeSettlementContextHash, settlementDomain, toCompactSignature } from '../../lib/blockchain/redeem-settlement-eip712';
+import { SETTLED_EVENT_ABI, settlementResultFromLogs } from '../../lib/blockchain/redeem-settlement-event';
 import { privateKeyToAccount } from 'viem/accounts';
 import { encodeFunctionData, getAddress, keccak256, parseEventLogs, parseSignature, signatureToCompactSignature, toFunctionSelector, toHex, zeroAddress, type Hex } from 'viem';
 
@@ -218,6 +219,15 @@ describe('RedeemSettlement — settlement primitive with the creator fee on actu
     assert.equal(await usdg.read.balanceOf([creator.account.address]), 105_000n);
     assert.equal(await usdg.read.balanceOf([user.account.address]), 2_045_000n);
     assert.equal(await usdg.read.balanceOf([settlement.address]), 0n);
+    // The backend's event decoder (the source of truth for verification and the receipt) reads this real receipt,
+    // and its ABI is the contract's own event.
+    const onChainEvent = settlement.abi.find((x: { type: string; name?: string }) => x.type === 'event' && x.name === 'Settled') as { inputs: { internalType?: string }[] };
+    assert.deepEqual({ anonymous: false, ...SETTLED_EVENT_ABI[0] }, { ...onChainEvent, inputs: onChainEvent.inputs.map(({ internalType: _t, ...i }) => i) });
+    const decoded = settlementResultFromLogs(receipt.logs, settlement.address, s.redemptionId);
+    assert.deepEqual(
+      decoded && [decoded.user, decoded.creator, decoded.executor, decoded.received, decoded.fee, decoded.userProceeds, decoded.txHash],
+      [getAddress(user.account.address), getAddress(creator.account.address), getAddress(executor.address), '2150000', '105000', '2045000', hash]
+    );
     // The same redemption cannot be settled again through the struct entry either.
     await assert.rejects(executor.write.pushAndSettle([usdg.address, settlement.address, 1n, s, sig]), err('AlreadySettled'));
   });

@@ -36,13 +36,20 @@ let otherIntents: Record<string, unknown>[] = [];
 // Called once per check; lets a test make another sale appear only after phase 2's claim.
 let openOthersHook: (() => void) | null = null;
 const callOrder: string[] = [];
+const transitions: { from: string; to: string }[] = [];
+let transitionSucceeds = true;
 let basisResult: { ok: true; consumedBasisQuote: bigint; lossCarryQuote: bigint } | { ok: false; reason: string };
 const basis = (b: string, c: string) => ({ ok: true as const, consumedBasisQuote: parseDec(b), lossCarryQuote: parseDec(c) });
 
 vi.mock('@/lib/config/robinhood-chain', async (orig) => ({ ...(await orig<object>()), DEPLOYED_CONTRACTS: { redeemSettlement: SETTLEMENT } }));
 vi.mock('@/lib/server/redeem-intent-repo', () => ({
   getRedeemIntentForUser: async () => ({ ok: true, intent }),
-  updateRedeemIntentStatus: vi.fn(),
+  updateRedeemIntentStatus: async (_a: unknown, u: { from: string; to: string }) => {
+    transitions.push({ from: u.from, to: u.to });
+    if (!transitionSucceeds) return null;
+    intent = { ...intent, status: u.to };
+    return intent;
+  },
   setRedeemSettlementPlan: async (_a: unknown, _id: string, _s: string, plan: Plan) => {
     savedPlans.push(plan);
     intent = { ...intent, settlementPlan: plan };
@@ -126,6 +133,8 @@ const admin = {
 } as never;
 
 beforeEach(() => {
+  transitions.length = 0;
+  transitionSucceeds = true;
   process.env.REDEEM_SETTLEMENT_ATTESTOR_PRIVATE_KEY = ATTESTOR_KEY;
   process.env.LIFI_API_KEY = 'test-key';
   intent = {
@@ -246,6 +255,14 @@ describe('phase 2 — attestSettlement: re-check, sign, final transaction', () =
     expect(JSON.stringify(finalBuilds[0], (_k, v) => (typeof v === 'bigint' ? v.toString() : v))).not.toMatch(/"fee(Amount)?"/);
     expect(savedAttested).toHaveLength(1);
     expect(savedAttested[0].expectedContext).toBe(plan.contextHash);
+    // The wallet signs next: the intent moves to AWAITING_SIGNATURE so the step reports and verification take over.
+    expect(transitions).toEqual([{ from: 'READY', to: 'AWAITING_SIGNATURE' }]);
+  });
+
+  it('the intent moved on while attesting (READY → AWAITING_SIGNATURE refused): the attestation is not handed out', async () => {
+    await quoteSettlement(admin, 'user', intent.id as string);
+    transitionSucceeds = false;
+    await expect(attestSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(svc.SettlementStateChangedError);
   });
 
   it('expiry: the deadline is never past the intent or the plan', async () => {

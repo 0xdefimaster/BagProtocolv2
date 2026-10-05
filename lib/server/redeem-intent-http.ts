@@ -48,7 +48,7 @@ export function redeemExecutionErrorResponse(error: RedeemExecutionError): NextR
       return NextResponse.json({ error: 'This transaction has already been used for another purchase or redemption.' }, { status: 409 });
     case 'FEE_ROUTER_REQUIRED':
       return NextResponse.json(
-        { error: 'This Bag charges a performance fee, so it can only be redeemed through the on-chain fee router.' },
+        { error: 'This Bag charges a performance fee, so it is redeemed through the on-chain fee settlement.', code: 'FEE_ROUTER_REQUIRED' },
         { status: 409 }
       );
     case 'INVALID_FRACTION':

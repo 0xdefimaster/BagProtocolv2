@@ -38,7 +38,11 @@ export interface PortfolioPositionView {
   hasDrift: boolean;
   hasUnreadable: boolean;
   costBasis: string | null;
+  /** Before performance fees (gross proceeds − consumed basis). */
   realizedPnl: string | null;
+  feesCharged: string | null;
+  /** After performance fees: realizedPnl − feesCharged. */
+  netRealizedPnl: string | null;
   quoteCurrency: string;
 }
 
@@ -75,6 +79,8 @@ export async function GET() {
           hasUnreadable: v.hasUnreadable,
           costBasis: pnl?.costBasisQuote ?? null,
           realizedPnl: pnl?.realizedPnlQuote ?? null,
+          feesCharged: pnl?.feesChargedQuote ?? null,
+          netRealizedPnl: pnl?.netRealizedPnlQuote ?? null,
           quoteCurrency: 'USD',
         };
       })

@@ -384,3 +384,18 @@ export async function claimRedeemSettlementAttestation(
   if (error) throw new Error(error.message);
   return data ? fromRow(data) : null;
 }
+
+/**
+ * Records the settlement's on-chain result (from its `Settled` event) into the intent's plan. Idempotent; only onto
+ * the plan it was read for (same context hash), never over another one.
+ */
+export async function recordRedeemSettlementResult(admin: SupabaseClient, id: string, plan: RedeemSettlementPlan): Promise<void> {
+  const { error } = await admin
+    .from('redeem_intents')
+    .update({ settlement_plan: plan, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('settlement_plan->>contextHash', plan.contextHash)
+    .select()
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+}

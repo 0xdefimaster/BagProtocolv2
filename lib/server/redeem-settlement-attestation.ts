@@ -441,6 +441,10 @@ export async function attestSettlement(admin: SupabaseClient, userId: string, in
     composerTransaction
   );
   if (!saved) throw new SettlementStateChangedError();
+  // The wallet signs next: from here the existing step reports (AWAITING_SIGNATURE → SUBMITTED) and the Composer
+  // verification path take over, with the contract's Settled event as the source of truth.
+  const awaiting = await updateRedeemIntentStatus(admin, { id: state.intent.id, from: 'READY', to: 'AWAITING_SIGNATURE' });
+  if (!awaiting) throw new SettlementStateChangedError();
 
   return {
     composerTransaction,

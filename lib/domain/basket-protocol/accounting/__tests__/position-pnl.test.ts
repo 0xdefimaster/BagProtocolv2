@@ -57,6 +57,25 @@ describe('computePositionPnl — fees, high-water mark, loss carry-forward', () 
     expect(r.exits[0].feeBaseQuote).toBe('50');
     expect(r.feesChargedQuote).toBe('5');
   });
+
+  it('locked semantics: realized P&L is gross proceeds − basis (before fees); net = realized − fees; the fee never lowers the high-water mark', () => {
+    // Sale 1: 100 → 150 gross, fee 10 settled on-chain (user got 140). Sale 2 of a second lot: 100 → 100, no gain.
+    const settledFee = ev('FEE_CHARGED', [], { amountQuote: '10', settledOnchain: true });
+    const r = computePositionPnl([buy([A, '20', '200']), sell([A, '10', '150']), settledFee, sell([A, '10', '100'])]);
+    expect(r.realizedPnlQuote).toBe('50');
+    expect(r.feesChargedQuote).toBe('10');
+    expect(r.netRealizedPnlQuote).toBe('40');
+    // Had the ledger stored net proceeds (140), realized would be 40 and the mark 40: a later recovery of those 10
+    // would be charged again. With gross proceeds the mark stays at 50 and the second sale's fee base is 0.
+    expect(r.realizedHighWaterMarkQuote).toBe('50');
+    expect(r.exits[1].feeBaseQuote).toBe('0');
+  });
+
+  it('net realized P&L is unknown when realized P&L is', () => {
+    const r = computePositionPnl([buy([A, '10', '100']), sell([A, '10'])]);
+    expect(r.realizedPnlQuote).toBeNull();
+    expect(r.netRealizedPnlQuote).toBeNull();
+  });
 });
 
 describe('computePositionPnl — external outflows and unknowns', () => {

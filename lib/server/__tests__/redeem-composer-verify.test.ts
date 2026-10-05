@@ -10,6 +10,8 @@ const updateRedeemIntentStepsMock = vi.fn();
 const markRedeemAccountingAppliedMock = vi.fn();
 const trackComposerMock = vi.fn();
 const trackStepStatusMock = vi.fn();
+const readSettlementResultMock = vi.fn();
+const recordRedeemSettlementResultMock = vi.fn();
 
 vi.mock('@/lib/server/redeem-intent-repo', async () => {
   const { assertValidPurchaseIntentTransition } = await vi.importActual<typeof import('@/lib/domain/basket-protocol/purchase-intent/state-machine')>(
@@ -25,6 +27,7 @@ vi.mock('@/lib/server/redeem-intent-repo', async () => {
     updateRedeemIntentSteps: (...a: unknown[]) => updateRedeemIntentStepsMock(...a),
     markRedeemAccountingApplied: (...a: unknown[]) => markRedeemAccountingAppliedMock(...a),
     markRedeemReconciliationApplied: vi.fn(),
+    recordRedeemSettlementResult: (...a: unknown[]) => recordRedeemSettlementResultMock(...a),
     createRedeemIntent: vi.fn(),
     findActiveRedeemIntentForBag: vi.fn(),
   };
@@ -34,6 +37,17 @@ vi.mock('@/lib/server/bag-repo', () => ({
   getCurrentBagVersion: async () => ({ recipe: { performanceFeeBps: 0 } }),
 }));
 vi.mock('@/lib/blockchain/composer-status', () => ({ trackComposerTransaction: (...a: unknown[]) => trackComposerMock(...a) }));
+let deployedSettlement: string | null = null;
+vi.mock('@/lib/config/robinhood-chain', async (orig) => {
+  const actual = await orig<typeof import('@/lib/config/robinhood-chain')>();
+  return {
+    ...actual,
+    DEPLOYED_CONTRACTS: new Proxy(actual.DEPLOYED_CONTRACTS, {
+      get: (t, k) => (k === 'redeemSettlement' ? deployedSettlement : Reflect.get(t, k)),
+    }),
+  };
+});
+vi.mock('@/lib/blockchain/redeem-settlement-event', () => ({ readSettlementResult: (...a: unknown[]) => readSettlementResultMock(...a) }));
 vi.mock('@/lib/blockchain/lifi-status', () => ({ trackStepStatus: (...a: unknown[]) => trackStepStatusMock(...a) }));
 vi.mock('@/lib/server/price-provider', () => ({ getPriceProvider: () => ({}) }));
 vi.mock('@/lib/server/bag-nav-snapshots', () => ({ recordNavSnapshot: async () => undefined }));
@@ -165,5 +179,118 @@ describe('verifyRedeemExecution — one-transaction (Composer) redemption', () =
     expect(outcome.ok && outcome.value.status).toBe('CONFIRMING');
     expect(row.steps.every((s) => s.status === 'CONFIRMING')).toBe(true);
     expect(accountingCall()).toBeUndefined();
+  });
+});
+
+describe('verifyRedeemExecution — fee-paying sale settled through RedeemSettlement', () => {
+  const SETTLEMENT = '0x5555555555555555555555555555555555555555';
+  const CREATOR = '0x6666666666666666666666666666666666666666';
+  const ID = '6f1c2b3a-0000-4000-8000-0000000000c1';
+
+  function settledIntent(): RedeemIntent {
+    return {
+      ...intent(),
+      id: ID,
+      settlementPlan: {
+        settlement: SETTLEMENT,
+        creator: CREATOR,
+        contextHash: `0x${'cd'.repeat(32)}`,
+        attestedAt: '2026-01-01T00:00:00.000Z',
+        deadline: 4102444800,
+      } as unknown as RedeemIntent['settlementPlan'],
+    };
+  }
+
+  const settled = (over: Record<string, string> = {}) => ({
+    txHash: HASH,
+    blockNumber: '123',
+    logIndex: '4',
+    redemptionId: '0x',
+    user: WALLET,
+    creator: CREATOR,
+    executor: '0x7777777777777777777777777777777777777777',
+    contextHash: `0x${'cd'.repeat(32)}`,
+    received: '10000000',
+    feeBase: '1000000',
+    fee: '200000',
+    userProceeds: '9800000',
+    ...over,
+  });
+
+  beforeEach(() => {
+    row = settledIntent();
+    deployedSettlement = SETTLEMENT;
+    // What the tracker saw arrive in the wallet; the Settled event, not this, is what accounting books.
+    trackComposerMock.mockResolvedValue({ kind: 'DONE', receivedAmountsByAddress: { [USDG]: '9800000' }, sentAmountsByAddress: { [MSFT]: '1000', [NVDA]: '2000' } });
+  });
+
+  it('books the Settled event: gross received per leg (the fee is ledgered by the RPC from the result), result recorded on the plan before accounting', async () => {
+    readSettlementResultMock.mockResolvedValue(settled());
+    const outcome = await verify();
+    expect(outcome.ok && outcome.value.status).toBe('COMPLETED');
+    const { computeOnChainBagId } = await import('@/lib/domain/basket-protocol/onchain');
+    expect(readSettlementResultMock).toHaveBeenCalledWith(HASH, SETTLEMENT, computeOnChainBagId(ID));
+    expect(row.steps.map((s) => s.outputAmountRaw)).toEqual(['6000000', '4000000']);
+    expect(recordRedeemSettlementResultMock).toHaveBeenCalledTimes(1);
+    const accountingAt = rpc.mock.invocationCallOrder[rpc.mock.calls.findIndex(([n]) => n === 'apply_redeem_execution')];
+    expect(recordRedeemSettlementResultMock.mock.invocationCallOrder[0]).toBeLessThan(accountingAt);
+    expect(recordRedeemSettlementResultMock.mock.calls[0][2].result).toEqual({
+      txHash: HASH,
+      blockNumber: '123',
+      logIndex: '4',
+      received: '10000000',
+      feeBase: '1000000',
+      fee: '200000',
+      userProceeds: '9800000',
+      creator: CREATOR,
+      executor: '0x7777777777777777777777777777777777777777',
+    });
+  });
+
+  it('no Settled event for this redemption: not verified, nothing booked', async () => {
+    readSettlementResultMock.mockResolvedValue(null);
+    const outcome = await verify();
+    expect(outcome.ok && outcome.value.status).toBe('FAILED');
+    expect(row.steps.every((s) => s.failureCode === 'VERIFICATION_FAILED')).toBe(true);
+    expect(accountingCall()).toBeUndefined();
+    expect(recordRedeemSettlementResultMock).not.toHaveBeenCalled();
+  });
+
+  it('a Settled event paying someone else: not verified, nothing booked', async () => {
+    readSettlementResultMock.mockResolvedValue(settled({ user: '0x8888888888888888888888888888888888888888' }));
+    const outcome = await verify();
+    expect(outcome.ok && outcome.value.status).toBe('FAILED');
+    expect(accountingCall()).toBeUndefined();
+  });
+
+  it.each([
+    ['another creator', { creator: '0x8888888888888888888888888888888888888888' }],
+    ['another context', { contextHash: `0x${'ef'.repeat(32)}` }],
+  ])('a Settled event for %s than attested: not verified, nothing booked', async (_name, over) => {
+    readSettlementResultMock.mockResolvedValue(settled(over));
+    const outcome = await verify();
+    expect(outcome.ok && outcome.value.status).toBe('FAILED');
+    expect(accountingCall()).toBeUndefined();
+    expect(recordRedeemSettlementResultMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['RedeemSettlement is not configured', null],
+    ['the configured RedeemSettlement is another contract than the plan\'s', '0x9999999999999999999999999999999999999999'],
+  ])('%s: not verified, the receipt is not even read', async (_name, deployed) => {
+    deployedSettlement = deployed;
+    readSettlementResultMock.mockResolvedValue(settled());
+    const outcome = await verify();
+    expect(outcome.ok && outcome.value.status).toBe('FAILED');
+    expect(readSettlementResultMock).not.toHaveBeenCalled();
+    expect(accountingCall()).toBeUndefined();
+  });
+
+  it('a Composer sale without an attested plan never reads the event', async () => {
+    row = intent();
+    trackComposerMock.mockResolvedValue({ kind: 'DONE', receivedAmountsByAddress: { [USDG]: '9900000' }, sentAmountsByAddress: { [MSFT]: '1000', [NVDA]: '2000' } });
+    await verify();
+    expect(readSettlementResultMock).not.toHaveBeenCalled();
+    expect(recordRedeemSettlementResultMock).not.toHaveBeenCalled();
   });
 });

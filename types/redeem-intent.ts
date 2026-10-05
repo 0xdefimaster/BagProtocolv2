@@ -120,4 +120,16 @@ export interface RedeemSettlementPlan {
   /** Set by phase 2. */
   attestedAt?: string;
   deadline?: number;
+  /** Set by verification from the contract's `Settled` event — the source of truth for what the settlement did. */
+  result?: {
+    txHash: string;
+    blockNumber: string;
+    logIndex: string;
+    received: string;
+    feeBase: string;
+    fee: string;
+    userProceeds: string;
+    creator: string;
+    executor: string;
+  };
 }

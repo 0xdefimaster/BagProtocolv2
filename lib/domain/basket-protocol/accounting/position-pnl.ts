@@ -61,11 +61,17 @@ export interface PositionPnl {
   assets: AssetBasis[];
   /** Σ asset basis; null if any held asset's basis is unknown. */
   costBasisQuote: string | null;
-  /** Σ realized P&L over BAG exits; null if any exit's is unknown. */
+  /**
+   * Σ realized P&L over BAG exits, BEFORE performance fees: gross proceeds − consumed basis. This is the strategy's
+   * result and the only input to the high-water mark and the fee base; null if any exit's is unknown.
+   */
   realizedPnlQuote: string | null;
   /** Highest cumulative realized P&L so far (never below 0). */
   realizedHighWaterMarkQuote: string | null;
+  /** Σ performance fees charged (database-booked or settled on-chain). */
   feesChargedQuote: string;
+  /** What the user actually realized: realizedPnlQuote − feesChargedQuote; null when realized P&L is unknown. */
+  netRealizedPnlQuote: string | null;
   /** Basis that left with external outflows (no proceeds known, nothing realized). */
   basisExitedExternallyQuote: string | null;
   exits: RealizedExit[];
@@ -194,6 +200,7 @@ export function computePositionPnl(events: PnlEvent[]): PositionPnl {
     realizedPnlQuote: realized === null ? null : formatDec(realized),
     realizedHighWaterMarkQuote: peak === null ? null : formatDec(peak),
     feesChargedQuote: formatDec(fees),
+    netRealizedPnlQuote: realized === null ? null : formatDec(realized - fees),
     basisExitedExternallyQuote: exitedBasis === null ? null : formatDec(exitedBasis),
     exits,
   };
