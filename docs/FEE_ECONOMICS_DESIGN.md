@@ -266,6 +266,24 @@ applies can differ. The contract cannot see the database either way.
   then increments it, so two attestations for the same position state can
   never both execute.
 
+### 5.6a Design constraint — price quality is not the minimum output
+A minimum output protects against the price moving *after* the quote; it says
+nothing about whether the quote was a fair price. The first live check
+(2026-10-05) found stock tokens whose only quoting Uniswap v3 pool was
+near-empty (AAOI: $25 of stock → $0.18). The attestation took the first tier
+that answered and set the minimum at 99% of that quote, so such a sale would
+have "succeeded" at a ~99% loss.
+
+Rule (implemented, `redeem-quote-quality.ts`, used by `signFeeAttestation` and
+the read-only checker alike): for every swap leg, quote **every** fee tier and
+take the **best**; compare it with the leg's value at BAG's verified price (the
+NAV price provider); refuse the attestation if the best quote is more than
+`FEE_REDEEM_MAX_PRICE_DEVIATION_BPS` (500 = 5%, the protocol default of the
+policy's `maxPriceImpactBps`) below that value. No verified price — e.g. a
+Stock Token outside market hours — means no attestation. This applies to every
+router sale, fee-paying or not. Making the deviation a per-strategy policy
+parameter is a later step.
+
 ### 5.7 Design constraint — one canonical rounding rule
 Today the fee is rounded **to the cent, half away from zero** in TypeScript
 (`previewPerformanceFee`) and SQL (`round(…, 2)`), then converted to USDG raw

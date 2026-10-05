@@ -1,19 +1,19 @@
 /**
- * READ-ONLY: can a fee-paying sale of each Robinhood Chain stock token execute through RedeemFeeRouter?
- * (B0 live-validation prerequisite, docs/FEE_ECONOMICS_DESIGN.md.) The fee path does NOT use LI.FI: it quotes and
- * swaps through Uniswap v3 directly, trying fee tiers 0.3% → 0.05% → 1% and using the first that quotes — exactly
- * as signFeeAttestation does. "A LI.FI route exists" says nothing about this path.
+ * READ-ONLY: would a fee-paying sale of each Robinhood Chain stock token be signed by signFeeAttestation, at a
+ * fair price? (B0 live-validation prerequisite, docs/FEE_ECONOMICS_DESIGN.md.) The fee path does NOT use LI.FI: it
+ * quotes and swaps through Uniswap v3 directly. "A LI.FI route exists" says nothing about this path.
  *
- * No key, no transaction: only QuoterV2 eth_call simulations and (optionally) a read of the asset registry.
+ * No key, no transaction: QuoterV2 eth_call simulations, BAG's price provider, and a read of the asset registry.
  *
  *   npx tsx scripts/check-fee-router-liquidity.ts                       # every VERIFIED stock token in Supabase, $100
  *   npx tsx scripts/check-fee-router-liquidity.ts --usd=25,100,500      # several sale sizes
  *   npx tsx scripts/check-fee-router-liquidity.ts --symbols=AMKR,SOXX   # only these
  *   npx tsx scripts/check-fee-router-liquidity.ts --out=liquidity.json  # also write the results as JSON
- *   npx tsx scripts/check-fee-router-liquidity.ts --max-loss-bps=300    # UNSAFE threshold (default 500 = 5%)
+ *   npx tsx scripts/check-fee-router-liquidity.ts --max-deviation-bps=300  # allowed deviation (default: the attestation's, 5%)
  *
- * STATUS: PASS (executes, loss within the threshold) · UNSAFE (executes, but loses more — e.g. a near-empty pool)
- * · FAIL (does not execute). The RPC URL is never printed (API keys live in it).
+ * Each sale leg is judged by the attestation's own rule (redeem-quote-quality.ts): best Uniswap v3 tier, compared
+ * with BAG's verified price. STATUS: PASS (would be signed) · UNSAFE (a quote exists but is too far below the
+ * verified price — refused) · FAIL (no quote, no verified price, or RPC error). The RPC URL is never printed.
  *
  * Env: RPC_URL_ROBINHOOD (optional; defaults to the public Robinhood Chain RPC). The asset list comes from Supabase
  * (NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in .env.local, read only).
@@ -37,8 +37,9 @@ import {
 import { createRobinhoodUniswapQuoter } from '../lib/blockchain/robinhood-uniswap-quoter';
 import { COMMON_FEE_TIERS } from '../lib/blockchain/robinhood-swap-builder';
 import { DEFAULT_COMPOSER_SLIPPAGE_BPS } from '../lib/blockchain/lifi-purchase-quote';
+import { FEE_REDEEM_MAX_PRICE_DEVIATION_BPS } from '../lib/domain/basket-protocol/redeem/redeem-quote-quality';
+import { getPriceProvider } from '../lib/server/price-provider';
 import {
-  DEFAULT_MAX_LOSS_BPS,
   checkFeeRouterExecutability,
   formatExecutabilityRow,
   redactRpcUrl,
@@ -98,7 +99,7 @@ async function main() {
     process.exit(2);
   }
   const onlySymbols = arg('symbols')?.split(',').map((s) => s.trim().toUpperCase());
-  const maxLossBps = arg('max-loss-bps') ? Number(arg('max-loss-bps')) : DEFAULT_MAX_LOSS_BPS;
+  const maxDeviationBps = arg('max-deviation-bps') ? Number(arg('max-deviation-bps')) : FEE_REDEEM_MAX_PRICE_DEVIATION_BPS;
 
   const rpcUrl = process.env.RPC_URL_ROBINHOOD || ROBINHOOD_RPC_URL;
   // Never print the RPC URL itself: API keys live in its path or query.
@@ -133,23 +134,37 @@ async function main() {
     process.exit(2);
   }
 
+  // BAG's verified price per token — the same provider (and strictness) the attestation uses.
+  const priceProvider = getPriceProvider();
+  const prices = new Map<string, { price: string | null; error?: string }>();
+  for (const a of assets) {
+    try {
+      prices.set(a.address, { price: (await priceProvider.getPrice({ chain: 'robinhood', address: a.address })).price });
+    } catch (e) {
+      prices.set(a.address, { price: null, error: (e as Error).message.split('\n')[0] });
+    }
+  }
+
   const quote = withRetry(createRobinhoodUniswapQuoter(client));
   const usdg = { address: ROBINHOOD_REWARD_TOKEN.address as `0x${string}`, decimals: ROBINHOOD_REWARD_TOKEN.decimals };
-  const jobs = assets.flatMap((a) => sizes.map((sizeUsdg) => ({ a, sizeUsdg })));
+  const jobs = assets.flatMap((a) => sizes.map((sizeUsd) => ({ a, sizeUsd })));
   const results: ExecutabilityResult[] = new Array(jobs.length);
   let next = 0;
   await Promise.all(
     Array.from({ length: CONCURRENCY }, async () => {
       while (next < jobs.length) {
         const i = next++;
-        const { a, sizeUsdg } = jobs[i];
+        const { a, sizeUsd } = jobs[i];
+        const p = prices.get(a.address)!;
         results[i] = await checkFeeRouterExecutability({
           token: { symbol: a.symbol, address: a.address as `0x${string}`, decimals: a.decimals },
           usdg,
-          sizeUsdg,
+          sizeUsd,
+          priceUsd: p.price,
+          ...(p.error ? { priceError: p.error } : {}),
           slippageBps: DEFAULT_COMPOSER_SLIPPAGE_BPS,
           feeTiers: COMMON_FEE_TIERS,
-          maxLossBps,
+          maxDeviationBps,
           quote,
         });
       }
@@ -160,9 +175,9 @@ async function main() {
   for (const r of results) if (r.error) r.error = r.error.split(rpcUrl).join(rpcLabel);
 
   console.log(
-    `Robinhood Chain ${chainId} via ${rpcLabel} · Uniswap v3 tiers ${COMMON_FEE_TIERS.join('/')} (first that quotes = the attestation's tier) · min = quote × ${(10000 - DEFAULT_COMPOSER_SLIPPAGE_BPS) / 100}% · UNSAFE above ${maxLossBps / 100}% round-trip loss`
+    `Robinhood Chain ${chainId} via ${rpcLabel} · best of Uniswap v3 tiers ${COMMON_FEE_TIERS.join('/')} · refused when more than ${maxDeviationBps / 100}% below BAG's verified price · min = quote × ${(10000 - DEFAULT_COMPOSER_SLIPPAGE_BPS) / 100}%`
   );
-  console.log(['TOKEN'.padEnd(8), 'STATUS'.padEnd(6), 'TIER'.padEnd(6), 'SIZE'.padEnd(11), 'QUOTE'.padEnd(11), 'GROSS MIN'.padEnd(11), 'EXEC', 'REASON'].join(' '));
+  console.log(['TOKEN'.padEnd(8), 'STATUS'.padEnd(6), 'TIER'.padEnd(6), 'SIZE'.padEnd(11), 'QUOTE'.padEnd(11), 'VERIFIED'.padEnd(11), 'GROSS MIN'.padEnd(11), 'SIGN', 'REASON'].join(' '));
   for (const r of results) console.log(formatExecutabilityRow(r, usdg.decimals));
 
   const pass = results.filter((r) => r.status === 'PASS').length;
@@ -171,12 +186,12 @@ async function main() {
       .map(([k, v]) => `${k} ${v}`)
       .join(' · ');
   console.log(`\n${pass}/${results.length} PASS · ${count((r) => r.status)} · reasons: ${count((r) => r.reason)}`);
-  console.log('UNSAFE = the router WOULD execute it, at a loss above the threshold — the attestation would sign it today.');
+  console.log('PASS = the attestation would sign it · UNSAFE = a quote exists but is too far below the verified price: refused · FAIL = no quote, no verified price, or RPC error.');
   console.log('Read-only: no transaction was sent. Results are a snapshot; prices and pools move.');
 
   const out = arg('out');
   if (out) {
-    writeFileSync(out, JSON.stringify({ checkedAt: new Date().toISOString(), chainId, rpc: rpcLabel, maxLossBps, sizesUsdg: sizes, feeTiers: COMMON_FEE_TIERS, slippageBps: DEFAULT_COMPOSER_SLIPPAGE_BPS, results }, null, 2));
+    writeFileSync(out, JSON.stringify({ checkedAt: new Date().toISOString(), chainId, rpc: rpcLabel, maxDeviationBps, sizesUsd: sizes, feeTiers: COMMON_FEE_TIERS, slippageBps: DEFAULT_COMPOSER_SLIPPAGE_BPS, results }, null, 2));
     console.log(`Wrote ${out}`);
   }
   process.exit(pass === results.length ? 0 : 1);

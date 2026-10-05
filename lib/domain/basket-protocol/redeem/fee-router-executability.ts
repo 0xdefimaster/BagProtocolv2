@@ -1,26 +1,22 @@
+import { referenceValueRaw, selectRedeemLegQuote, tokenAmountForValue, type TierQuote } from './redeem-quote-quality';
+
 // -----------------------------------------------------------------------------
-// Can a fee-paying sale of this token execute through RedeemFeeRouter — and is
-// it safe? (docs/FEE_ECONOMICS_DESIGN.md, B0 live-validation prerequisite.)
-// Pure: the quoter is injected, so this runs against a mock in tests and against
-// the real Uniswap v3 QuoterV2 (read-only eth_call) in
+// Would signFeeAttestation sign a fee-paying sale of this token, at this size —
+// and if not, why? (docs/FEE_ECONOMICS_DESIGN.md, B0 live-validation
+// prerequisite.) Pure: the quoter is injected, so this runs against a mock in
+// tests and against the real Uniswap v3 QuoterV2 (read-only eth_call) in
 // scripts/check-fee-router-liquidity.ts.
 //
-// It mirrors signFeeAttestation: fee tiers are tried IN ORDER and the FIRST one
-// that quotes is the tier the attestation would use (`sellFeeTier`), and the
-// leg's minimum is quote × (1 − slippage). "Pool exists" is not enough — the
-// quote is taken for a representative sale size.
+// It applies the attestation's own leg rule (redeem-quote-quality.ts): quote
+// every fee tier, take the best, compare with the value at BAG's verified price,
+// refuse beyond the allowed deviation. The representative size is that many USD
+// of the token at the verified price.
 //
-// "Executable" is not "safe". The first live run showed tokens whose only
-// quoting tier is a near-empty 1% pool: the sale executes, and the attestation's
-// minimum (99% of that pool's own quote) protects nothing — the seller gets a
-// fraction of a cent on the dollar. So every executable result is also checked
-// against `maxLossBps` and reported UNSAFE above it, and the best tier is quoted
-// too (`bestFeeTier`/`bestQuoteRaw`) to show what a better tier choice would give.
-//
-// The representative size is given in USDG: the token amount is what that much
-// USDG buys (first tier that quotes), then that amount is quoted back to USDG,
-// as a sale would be. The round trip pays two pool fees and price impact twice,
-// so `roundTripLossBps` is an upper bound on what one sale costs.
+//   PASS    the attestation would sign it (best quote within the allowed deviation)
+//   UNSAFE  a quote exists but is too far below the verified value — refused
+//           (before the price-quality rule, the first run on 2026-10-05 showed
+//           such sales would have been signed at up to a ~99% loss)
+//   FAIL    no quote at all, no verified price, or an RPC error
 // -----------------------------------------------------------------------------
 
 export type QuoteFn = (args: { tokenIn: `0x${string}`; tokenOut: `0x${string}`; amountIn: bigint; feeTier: number }) => Promise<{ amountOut: bigint } | null>;
@@ -28,111 +24,74 @@ export type QuoteFn = (args: { tokenIn: `0x${string}`; tokenOut: `0x${string}`; 
 export interface ExecutabilityInput {
   token: { symbol: string; address: `0x${string}`; decimals: number };
   usdg: { address: `0x${string}`; decimals: number };
-  /** Representative sale size in whole USDG (e.g. 100). */
-  sizeUsdg: number;
+  /** Representative sale size in USD. */
+  sizeUsd: number;
+  /** BAG's verified price (USD), or null when the price provider has none. */
+  priceUsd: string | null;
+  /** Why there is no price, when there is none. */
+  priceError?: string;
   slippageBps: number;
-  /** In the order the attestation tries them. */
   feeTiers: readonly number[];
-  /** Above this round-trip loss an executable sale is reported UNSAFE (default 500 = 5%). */
-  maxLossBps?: number;
+  maxDeviationBps: number;
   quote: QuoteFn;
 }
 
-export type ExecutabilityReason =
-  | 'OK'
-  | 'SETTLEMENT_TOKEN'
-  | 'EXCESSIVE_LOSS'
-  | 'NO_LIQUIDITY_TO_SIZE'
-  | 'NO_SELL_LIQUIDITY'
-  | 'ZERO_OUTPUT'
-  | 'RPC_ERROR';
-
+export type ExecutabilityReason = 'OK' | 'SETTLEMENT_TOKEN' | 'PRICE_DEVIATION' | 'NO_QUOTE' | 'PRICE_UNAVAILABLE' | 'RPC_ERROR';
 export type ExecutabilityStatus = 'PASS' | 'UNSAFE' | 'FAIL';
 
 export interface ExecutabilityResult {
   symbol: string;
   address: string;
-  sizeUsdg: number;
-  /** PASS: executes at an acceptable loss. UNSAFE: executes, but loses more than maxLossBps. FAIL: does not execute. */
+  sizeUsd: number;
   status: ExecutabilityStatus;
-  /** Whether the router would execute it (true for PASS and UNSAFE). */
+  /** Whether the attestation would sign this leg. */
   executable: boolean;
   reason: ExecutabilityReason;
-  /** The tier signFeeAttestation would use for the sale leg (first that quotes). */
-  sellFeeTier: number | null;
+  /** The best tier (the one the attestation uses) and its quote. */
+  feeTier: number | null;
   tokenAmountRaw: string | null;
   quoteRaw: string | null;
+  /** The leg's value at the verified price, in USDG raw units. */
+  referenceRaw: string | null;
+  /** How far the best quote is below the reference, in bps. */
+  deviationBps: number | null;
+  /** quote × (1 − slippage): the leg's minimum output when signed. */
   grossMinimumRaw: string | null;
-  roundTripLossBps: number | null;
-  /** The tier with the highest sale quote, and that quote. */
-  bestFeeTier: number | null;
-  bestQuoteRaw: string | null;
   error?: string;
 }
 
-export const DEFAULT_MAX_LOSS_BPS = 500;
-
 export async function checkFeeRouterExecutability(input: ExecutabilityInput): Promise<ExecutabilityResult> {
-  const { token, usdg, sizeUsdg, slippageBps, feeTiers, quote } = input;
-  const maxLossBps = input.maxLossBps ?? DEFAULT_MAX_LOSS_BPS;
-  const base = {
-    symbol: token.symbol,
-    address: token.address,
-    sizeUsdg,
-    sellFeeTier: null,
-    tokenAmountRaw: null,
-    quoteRaw: null,
-    grossMinimumRaw: null,
-    roundTripLossBps: null,
-    bestFeeTier: null,
-    bestQuoteRaw: null,
-  };
-  // A holding already in USDG is a "no swap" leg in RedeemFeeRouter: always executable, nothing to quote.
+  const { token, usdg, sizeUsd, priceUsd, slippageBps, feeTiers, maxDeviationBps, quote } = input;
+  const base = { symbol: token.symbol, address: token.address, sizeUsd, feeTier: null, tokenAmountRaw: null, quoteRaw: null, referenceRaw: null, deviationBps: null, grossMinimumRaw: null };
+  // A holding already in USDG is a "no swap" leg in RedeemFeeRouter: always signed, nothing to quote.
   if (token.address.toLowerCase() === usdg.address.toLowerCase()) return { ...base, status: 'PASS', executable: true, reason: 'SETTLEMENT_TOKEN' };
-  if (!Number.isFinite(sizeUsdg) || sizeUsdg <= 0) throw new Error('sizeUsdg must be positive');
+  if (!Number.isFinite(sizeUsd) || sizeUsd <= 0) throw new Error('sizeUsd must be positive');
+  if (priceUsd === null) return { ...base, status: 'FAIL', executable: false, reason: 'PRICE_UNAVAILABLE', ...(input.priceError ? { error: input.priceError } : {}) };
 
-  const sizeRaw = BigInt(Math.round(sizeUsdg * 10 ** usdg.decimals));
+  const amount = tokenAmountForValue(sizeUsd, token.decimals, priceUsd);
+  const referenceRaw = referenceValueRaw(amount, token.decimals, priceUsd, usdg.decimals);
+  const sized = { tokenAmountRaw: amount.toString(), referenceRaw: referenceRaw.toString() };
   try {
-    let sized: bigint | null = null;
+    const quotes: TierQuote[] = [];
     for (const feeTier of feeTiers) {
-      const r = await quote({ tokenIn: usdg.address, tokenOut: token.address, amountIn: sizeRaw, feeTier });
-      if (r && r.amountOut > BigInt(0)) {
-        sized = r.amountOut;
-        break;
-      }
+      const r = await quote({ tokenIn: token.address, tokenOut: usdg.address, amountIn: amount, feeTier });
+      if (r) quotes.push({ feeTier, amountOut: r.amountOut });
     }
-    if (sized === null) return { ...base, status: 'FAIL', executable: false, reason: 'NO_LIQUIDITY_TO_SIZE' };
-
-    // Every tier for the sale: the attestation's (first that quotes) and the best.
-    const sells: { feeTier: number; amountOut: bigint }[] = [];
-    for (const feeTier of feeTiers) {
-      const r = await quote({ tokenIn: token.address, tokenOut: usdg.address, amountIn: sized, feeTier });
-      if (r) sells.push({ feeTier, amountOut: r.amountOut });
-    }
-    const tokenAmountRaw = sized.toString();
-    if (sells.length === 0) return { ...base, tokenAmountRaw, status: 'FAIL', executable: false, reason: 'NO_SELL_LIQUIDITY' };
-    const first = sells[0];
-    const best = sells.reduce((a, b) => (b.amountOut > a.amountOut ? b : a));
-    const bestFields = { bestFeeTier: best.feeTier, bestQuoteRaw: best.amountOut.toString() };
-    if (first.amountOut <= BigInt(0)) return { ...base, ...bestFields, tokenAmountRaw, sellFeeTier: first.feeTier, status: 'FAIL', executable: false, reason: 'ZERO_OUTPUT' };
-
-    const grossMinimum = (first.amountOut * BigInt(10000 - slippageBps)) / BigInt(10000);
-    const loss = first.amountOut >= sizeRaw ? 0 : Number(((sizeRaw - first.amountOut) * BigInt(10000)) / sizeRaw);
-    const safe = loss <= maxLossBps;
+    const s = selectRedeemLegQuote(quotes, referenceRaw, maxDeviationBps);
+    if (!s.ok && s.reason === 'NO_QUOTE') return { ...base, ...sized, status: 'FAIL', executable: false, reason: 'NO_QUOTE' };
+    const picked = { feeTier: s.ok || s.reason === 'PRICE_DEVIATION' ? s.feeTier : null, quoteRaw: s.ok || s.reason === 'PRICE_DEVIATION' ? s.quoteRaw.toString() : null, deviationBps: s.ok || s.reason === 'PRICE_DEVIATION' ? s.deviationBps : null };
+    if (!s.ok) return { ...base, ...sized, ...picked, status: 'UNSAFE', executable: false, reason: 'PRICE_DEVIATION' };
     return {
       ...base,
-      ...bestFields,
-      status: safe ? 'PASS' : 'UNSAFE',
+      ...sized,
+      ...picked,
+      status: 'PASS',
       executable: true,
-      reason: safe ? 'OK' : 'EXCESSIVE_LOSS',
-      sellFeeTier: first.feeTier,
-      tokenAmountRaw,
-      quoteRaw: first.amountOut.toString(),
-      grossMinimumRaw: grossMinimum.toString(),
-      roundTripLossBps: loss,
+      reason: 'OK',
+      grossMinimumRaw: ((s.quoteRaw * BigInt(10000 - slippageBps)) / BigInt(10000)).toString(),
     };
   } catch (e) {
-    return { ...base, status: 'FAIL', executable: false, reason: 'RPC_ERROR', error: (e as Error).message };
+    return { ...base, ...sized, status: 'FAIL', executable: false, reason: 'RPC_ERROR', error: (e as Error).message };
   }
 }
 
@@ -145,21 +104,18 @@ const shortError = (e: string) => {
 const usd = (raw: string | null, decimals: number) => (raw === null ? '—' : (Number(raw) / 10 ** decimals).toFixed(2));
 const tierLabel = (t: number | null) => (t === null ? '—' : `${(t / 10000).toString()}%`);
 
-/** One fixed-width line: TOKEN  STATUS  TIER  SIZE  QUOTE  GROSS-MIN(99%)  EXECUTABLE  REASON  [loss] [best tier]. */
+/** TOKEN  STATUS  TIER  SIZE  QUOTE  VERIFIED  GROSS-MIN(99%)  SIGNED  REASON  [deviation]. */
 export function formatExecutabilityRow(r: ExecutabilityResult, usdgDecimals: number): string {
-  const better = r.bestFeeTier !== null && r.bestFeeTier !== r.sellFeeTier ? `  best ${tierLabel(r.bestFeeTier)} $${usd(r.bestQuoteRaw, usdgDecimals)}` : '';
   return [
     r.symbol.padEnd(8),
     r.status.padEnd(6),
-    tierLabel(r.sellFeeTier).padEnd(6),
-    `$${r.sizeUsdg} sell`.padEnd(11),
+    tierLabel(r.feeTier).padEnd(6),
+    `$${r.sizeUsd} sell`.padEnd(11),
     `$${usd(r.quoteRaw, usdgDecimals)}`.padEnd(11),
+    `$${usd(r.referenceRaw, usdgDecimals)}`.padEnd(11),
     `$${usd(r.grossMinimumRaw, usdgDecimals)}`.padEnd(11),
     (r.executable ? 'YES' : 'NO').padEnd(4),
-    r.reason +
-      (r.roundTripLossBps !== null ? `  round-trip loss ${(r.roundTripLossBps / 100).toFixed(2)}%` : '') +
-      better +
-      (r.error ? `  (${shortError(r.error)})` : ''),
+    r.reason + (r.deviationBps !== null ? `  ${(r.deviationBps / 100).toFixed(2)}% below verified` : '') + (r.error ? `  (${shortError(r.error)})` : ''),
   ].join(' ');
 }
 

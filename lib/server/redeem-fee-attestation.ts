@@ -2,6 +2,10 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { privateKeyToAccount } from 'viem/accounts';
 import { computeOnChainBagId } from '@/lib/domain/basket-protocol/onchain';
 import { computeB0Fee, decimalToRawCeil, feeBasisFromPositionPnl } from '@/lib/domain/basket-protocol/redeem/performance-fee-b0';
+import { FEE_REDEEM_MAX_PRICE_DEVIATION_BPS, referenceValueRaw, selectRedeemLegQuote, type TierQuote } from '@/lib/domain/basket-protocol/redeem/redeem-quote-quality';
+import { assetIdentityKey } from '@/lib/domain/basket-protocol/asset-identity';
+import { getAssetsByIdentities } from '@/lib/server/asset-repo';
+import { getPriceProvider } from '@/lib/server/price-provider';
 import { computePositionPnl } from '@/lib/domain/basket-protocol/accounting/position-pnl';
 import { ROBINHOOD_CHAIN_ID, ROBINHOOD_REWARD_TOKEN, DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
 import { buildRobinhoodSwapLeg, COMMON_FEE_TIERS } from '@/lib/blockchain/robinhood-swap-builder';
@@ -82,6 +86,25 @@ export class BalanceUnavailableError extends Error {
   constructor() {
     super('Your wallet balances could not be read right now. Please try again shortly.');
     this.name = 'BalanceUnavailableError';
+  }
+}
+
+/** The best on-chain quote for a leg is too far below its value at BAG's verified price; nothing is signed. */
+export class ExecutionPriceTooLowError extends Error {
+  constructor(public readonly token: string, public readonly deviationBps: number, public readonly maxDeviationBps: number) {
+    super(
+      `The best available swap for ${token} is ${(deviationBps / 100).toFixed(2)}% below its verified price (allowed: ${(maxDeviationBps / 100).toFixed(2)}%). ` +
+        'This sale cannot go through at a fair price right now. Nothing was signed.'
+    );
+    this.name = 'ExecutionPriceTooLowError';
+  }
+}
+
+/** No verified price (or no registry decimals) for a leg: its sale price cannot be checked, so nothing is signed. */
+export class PriceUnavailableForSaleError extends Error {
+  constructor(public readonly token: string, detail: string) {
+    super(`No verified price for ${token} right now (${detail}); the sale price cannot be checked. Nothing was signed.`);
+    this.name = 'PriceUnavailableForSaleError';
   }
 }
 
@@ -231,6 +254,11 @@ export async function signFeeAttestation(admin: SupabaseClient, userId: string, 
   const routerAddress = DEPLOYED_CONTRACTS.redeemFeeRouter;
   const quote = createRobinhoodUniswapQuoter(getRobinhoodPublicClient());
 
+  const priceProvider = getPriceProvider();
+  const decimalsByKey = new Map(
+    (await getAssetsByIdentities(admin, assetSteps.map((s) => s.inputAsset))).map((a) => [assetIdentityKey({ chain: a.chain, address: a.address }), a.decimals])
+  );
+
   let totalMinOutputRaw = BigInt(0);
   const legs: AttestedRedeemLeg[] = [];
   for (const step of assetSteps) {
@@ -251,11 +279,11 @@ export async function signFeeAttestation(admin: SupabaseClient, userId: string, 
       continue;
     }
 
-    // Try each fee tier in order (same fallback-across-tiers pattern
-    // lib/execution/legbuilders/robinhood-uniswap-leg-builder.ts already
-    // uses on the purchase side) until one has a real, quotable pool.
-    let resolvedFeeTier: number | null = null;
-    let expectedOut: bigint | null = null;
+    // Price quality (redeem-quote-quality.ts): quote EVERY fee tier, take the best, and refuse it if it is more
+    // than FEE_REDEEM_MAX_PRICE_DEVIATION_BPS below the leg's value at BAG's verified price. A minimum output only
+    // protects against the price moving after this quote, not against the quote itself being a bad price (e.g. the
+    // only pool being near-empty). No verified price → nothing is signed.
+    const tierQuotes: TierQuote[] = [];
     for (const feeTier of COMMON_FEE_TIERS) {
       const result = await quote({
         tokenIn: inputToken,
@@ -263,15 +291,23 @@ export async function signFeeAttestation(admin: SupabaseClient, userId: string, 
         amountIn: inputAmount,
         feeTier,
       });
-      if (result) {
-        resolvedFeeTier = feeTier;
-        expectedOut = result.amountOut;
-        break;
-      }
+      if (result) tierQuotes.push({ feeTier, amountOut: result.amountOut });
     }
-    if (resolvedFeeTier === null || expectedOut === null) {
-      throw new NoLiquidityError(inputToken, ROBINHOOD_REWARD_TOKEN.address);
+    const decimals = decimalsByKey.get(assetIdentityKey(step.inputAsset));
+    if (decimals === undefined) throw new PriceUnavailableForSaleError(inputToken, 'asset not in the registry');
+    let priceUsd: string;
+    try {
+      priceUsd = (await priceProvider.getPrice(step.inputAsset)).price;
+    } catch (e) {
+      throw new PriceUnavailableForSaleError(inputToken, (e as Error).message);
     }
+    const referenceRaw = referenceValueRaw(inputAmount, decimals, priceUsd, ROBINHOOD_REWARD_TOKEN.decimals);
+    if (referenceRaw <= BigInt(0)) throw new PriceUnavailableForSaleError(inputToken, 'amount too small to value');
+    const selection = selectRedeemLegQuote(tierQuotes, referenceRaw, FEE_REDEEM_MAX_PRICE_DEVIATION_BPS);
+    if (!selection.ok && selection.reason === 'NO_QUOTE') throw new NoLiquidityError(inputToken, ROBINHOOD_REWARD_TOKEN.address);
+    if (!selection.ok) throw new ExecutionPriceTooLowError(inputToken, selection.deviationBps, FEE_REDEEM_MAX_PRICE_DEVIATION_BPS);
+    const resolvedFeeTier = selection.feeTier;
+    const expectedOut = selection.quoteRaw;
 
     // Real slippage floor, derived from the actual on-chain quote — not a
     // fabricated 0 (see this file's V12 module doc note above).
