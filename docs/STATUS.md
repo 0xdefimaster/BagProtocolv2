@@ -45,7 +45,8 @@ project and Netlify site from the V1 demo.
 | Realized P&L after a partial sale, checked live | **Open** | — |
 | Price authority guard checks against live data | **Open** | `docs/ROBINHOOD_PRICE_AUTHORITY.md` |
 | Permit2 / embedded-wallet batching on Robinhood Chain | **Open** | — |
-| Redemption fee on actual proceeds | **Design approved** (`docs/FEE_ECONOMICS_DESIGN.md`, F1–F7); **B0 implemented**, live validation pending; B (contract) not started | §4 |
+| Redemption fee on actual proceeds | **Design approved** (F1–F7); **B0 merged** (PR #14); live validation pending; B (contract) not started until B0 has run live | §4 |
+| Can fee-paying sales execute on Robinhood Chain? (the fee path swaps on Uniswap v3 directly, not LI.FI) | **Open** — read-only checker `scripts/check-fee-router-liquidity.ts` ready, not yet run against the live chain | §4 |
 
 ## 2. Tests (on `main`)
 
@@ -75,6 +76,7 @@ prove behavior against a local chain, never against Robinhood Chain.
 | Item | Where |
 |---|---|
 | Redemption fee: B0 charges on the guaranteed minimum (never above the fee on the actual result); live validation pending; on-chain computation from actual output is the separate contract PR (B) | `docs/FEE_ECONOMICS_DESIGN.md` |
+| B0 live validation is blocked on: (1) Uniswap v3 executability of the Bag's tokens (run the checker), (2) `RedeemFeeRouter` + `CreatorRewardsVault` deployed and configured for V2, (3) a non-creator wallet selling a fee-paying Bag | `scripts/check-fee-router-liquidity.ts` |
 | Multi-signature sales on wallets without EIP-5792 (Rabby): one approval per token + the sale | proposal: opt-in persistent approval to the user's own Composer proxy |
 | A redemption does not store the fraction sold (receipts show what was sold per asset instead) | `supabase/migrations/0051_fraction_redeem.sql` |
 
@@ -94,7 +96,7 @@ prove behavior against a local chain, never against Robinhood Chain.
 | `docs/PRICE_AND_DATA_LAYER.md` | CURRENT | Chains, RPC, assets, prices |
 | `docs/ROBINHOOD_PRICE_AUTHORITY.md` | CURRENT | Live verification still open |
 | `docs/PROTOCOL_ECONOMICS.md` | CURRENT | Invariants; see its A4 notes |
-| `docs/FEE_ECONOMICS_DESIGN.md` | CURRENT | Performance fee design, F1–F7 locked; B0 implemented |
+| `docs/FEE_ECONOMICS_DESIGN.md` | CURRENT | Performance fee design, F1–F7 locked; B0 merged |
 | `docs/EXECUTION_CANDIDATE_DESIGN.md` | CURRENT | Candidate ranking (compiler path) |
 | `lib/execution/README.md` | CURRENT | Provider compiler; disabled live (§1, §3) |
 | `docs/CREATOR_REWARDS_SETTLEMENT.md` | CURRENT | Rewards ledger → `CreatorRewardsVault` |
