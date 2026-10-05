@@ -437,3 +437,66 @@ Two things seen inside the route, before the proxy:
 - The two-phase attestation over Composer quotes, keeping the #16
   price-quality rule.
 - Deployment of anything. The router stays undeployed.
+
+## 8. `RedeemSettlement` v1 — the settlement primitive, no fee
+
+`contracts/RedeemSettlement.sol`. Not deployed. It is the first contract step
+after P1. It has no fee yet: it pays the whole measured amount to the user.
+B0 and then B add the fee on top of the same interface and the same
+security boundary, each in its own PR.
+
+**Shape (push, as proven by SP/SP2).** The executor transfers all of the
+redemption's USDG to the contract, then calls
+`settle(Settlement, signature)` in the same transaction. The contract never
+swaps and never calls an executor or a DEX.
+
+**Signed struct (EIP-712, `BagRedeemSettlement` v1).** No field can be
+supplied unsigned.
+
+| Field | Meaning |
+|---|---|
+| `redemptionId` | Settles at most once (replay guard) |
+| `user` | Receives the proceeds; never `msg.sender`, never `tx.origin` |
+| `executor` | The only allowed `msg.sender`. For Composer: the user's proxy, taken from that redemption's compile result, not assumed |
+| `contextHash` | Binds the state the attestor checked (Bag, strategy version, accounting snapshot). Stale state means a different hash, so the signature fails |
+| `minUserProceeds` | Floor on what the user receives |
+| `deadline` | Attestation expiry |
+
+**Rules.**
+
+- USDG is fixed at deployment. The amount settled is the contract's balance
+  when `settle` runs, never a quote.
+- The balance must be 0 again at the end; there is no rescue function.
+- A stray donation is paid to the next settlement's user. It cannot block a
+  settlement; an exact-balance rule could be blocked by a 1-unit donation.
+- `nonReentrant`, and checks-effects-interactions.
+- The owner (expected: a multisig) can only rotate the attestor or the owner.
+  There is no upgrade and no proxy.
+
+**Tests** (`contracts/test/RedeemSettlement.test.ts`, 15 tests). Each item
+below must fail closed:
+
+- wrong executor, or a direct EOA call;
+- any signed field changed after signing (redemption, user, context, floor,
+  deadline);
+- the signature reused for another redemption;
+- a signature from a non-attestor or for another deployment;
+- replay;
+- an expired attestation;
+- proceeds below the floor, or nothing received;
+- the wrong output token;
+- reentrancy through a token callback;
+- a unit left behind;
+- non-owner admin calls, and zero addresses.
+
+There is also a 40-case randomized property test: it settles if and only if
+`received > 0` and `received ≥ floor`; the user gets exactly what arrived; the
+contract ends at 0.
+
+Mutation check: removing the executor check, the leftover check, the replay
+mark or the reentrancy guard, or leaving `contextHash` out of the signed hash,
+each makes at least one test fail.
+
+**Not in v1.** No fee and no `CreatorRewardsVault`; that comes with B0. No
+backend signing yet. No deployment.
+
