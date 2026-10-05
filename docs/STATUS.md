@@ -32,6 +32,21 @@ project and Netlify site from the V1 demo.
 | `StrategyRegistry` | **Not deployed**; registration and third-party verification proven only on a local EVM. |
 | Price authority (Robinhood `/rhj/prices` × multiplier, Chainlink cross-check, LI.FI crypto prices) | Prices were served live (Bag TVL shown); the authority's guard checks have **not** been verified against live data (`docs/ROBINHOOD_PRICE_AUTHORITY.md`). |
 
+## 1a. Open questions from the 2026-10-05 project report — resolved or not
+
+| Question | State | Evidence |
+|---|---|---|
+| Does a real sale work on V2? | **Resolved** | 50% Composer redeem completed live (§1) |
+| Which execution path did the live purchase use? | **Resolved**: legacy path | No execution-plan hash on its receipt; compiler flag not set |
+| Redeem receipt showed "Unknown provider" / "Not recorded" | **Resolved in code** (PR #12); live check after deploy | `execution-receipts.test.ts` models the live redeem |
+| Passport showed the deployed composition as "not recorded on-chain" | **Resolved in code** (PR #12), no migration; live check after deploy | `bag-deployment-local-evm.integration.test.ts`: deploy tx → BagCreated → Bag address → `compositionHash()` → Passport → bag.json; ambiguous history → null |
+| `StrategyRegistry` deployed and verified by a third party on Robinhood Chain | **Open** | Local EVM only |
+| Registry panel with a real wallet extension | **Open** | — |
+| Realized P&L after a partial sale, checked live | **Open** | — |
+| Price authority guard checks against live data | **Open** | `docs/ROBINHOOD_PRICE_AUTHORITY.md` |
+| Permit2 / embedded-wallet batching on Robinhood Chain | **Open** | — |
+| Redemption fee on actual proceeds | **Open** — design first | §4 |
+
 ## 2. Tests (on `main`)
 
 Unit (vitest) · integration (real PostgreSQL, and Hardhat's in-process EVM for
