@@ -460,8 +460,27 @@ swaps and never calls an executor or a DEX.
 
     fee = floor(max(0, received − consumedBasis − lossCarry) × feeRateBps / 10000)
 
-`received` is the contract's USDG balance when `settle` runs: what really
-arrived, after anything the route kept (§7.1a), never a quote. The backend
+`received` is **the contract's USDG balance at settlement time**, never a
+quote. Normally that is exactly what this redemption's execution delivered,
+after anything the route kept (§7.1a). Strictly, though, it is not "this
+redemption's execution output":
+
+- **No before/after delta exists in the push model.** The executor's
+  transfer runs no code on the contract, so there is no "before" to read.
+- **Earlier donations are not rolled back.** Every successful settlement ends
+  at 0, and a failed settlement rolls back only its own transaction. USDG
+  that a third party sent in an earlier, separate transaction stays, and is
+  counted into the next settlement's `received`.
+- **Such a donation cannot hurt the user.** The user gets
+  `donation × (1 − rate)`, at least 70% of it; the creator gets the fee on it
+  above basis; the donor alone loses.
+- **Not used, on purpose:**
+  - an amount argument from the executor. It comes from the user's own
+    Composer transaction, so the user could understate it to cut the fee. The
+    balance cannot be understated without sending less, which lowers the
+    user's own proceeds and trips the floor.
+  - an exact `balance == amount pushed` rule, which a 1-unit donation would
+    block. The backend
 no longer computes the fee. It supplies and signs only the inputs it is the
 authority for: the ledger's basis and loss carry, the Bag's locked rate, and
 the creator. `computeFee` is public and pure, and tests check that it equals
@@ -480,7 +499,7 @@ supplied unsigned.
 | `contextHash` | Binds the rest of the state the attestor checked: Bag / definition hash, strategy version, and the ledger snapshot the basis and carry came from. Stale state means a different hash, so the signature fails |
 | `consumedBasis`, `lossCarry` | The ledger's cost basis and loss carry for the shares sold, in USDG raw units, rounded up (§5.7) |
 | `feeRateBps` | The Bag's locked rate, capped at 3000 (MAX_PERFORMANCE_FEE_BPS) even if signed higher. It is 0 for a Bag without a fee or for a creator selling their own Bag |
-| `minUserProceeds` | Floor on what the user receives **after** the fee |
+| `minUserProceeds` | Floor on what the user receives **after** the fee: `userProceeds = received − fee` and `userProceeds ≥ minUserProceeds`, else revert. Signed like every other field, so it cannot be changed after signing (tampering test) |
 | `deadline` | Attestation expiry |
 
 **Rules.**

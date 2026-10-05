@@ -45,11 +45,19 @@ import {ECDSA} from '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
 /// in it (for Composer: the user's own execution proxy, taken from that
 /// redemption's compile result). `tx.origin` is never used.
 ///
-/// Stray balance: anyone can send USDG here between transactions. It is
-/// counted into the next settlement's `received` — it can only add to that
-/// user's proceeds (and so, above basis, to the fee on them), never block a
-/// settlement. (Requiring "balance == amount pushed" instead would let a
-/// 1-unit donation block every settlement.)
+/// `received` is this contract's USDG balance at settlement time — NOT
+/// strictly "this redemption's execution output". In the push model it
+/// cannot be a before/after delta: the executor's transfer runs no code
+/// here, so there is no "before" to read. Every successful settlement ends
+/// at zero, and a failed one rolls back its own transaction — but USDG that
+/// a third party sent here in an EARLIER, separate transaction is not rolled
+/// back and is counted into the next settlement's `received`. That can only
+/// add to that user's proceeds (they get donation × (1 − rate) ≥ 70% of it;
+/// the creator the rest above basis); the donor alone loses. Not used,
+/// on purpose: an amount argument passed by the executor (it comes from the
+/// user's own Composer transaction, so the user could understate it to cut
+/// the fee) and an exact "balance == amount pushed" rule (a 1-unit donation
+/// would block every settlement).
 contract RedeemSettlement is ReentrancyGuard, EIP712 {
     using SafeERC20 for IERC20;
 
