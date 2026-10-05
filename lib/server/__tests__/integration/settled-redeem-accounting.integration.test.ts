@@ -128,4 +128,16 @@ describe('0054 — accounting a sale settled on-chain (real PostgreSQL)', () => 
     expect(row.contextHash).toBe(CONTEXT);
     expect(row.result).toBeUndefined();
   });
+
+  it('one Settled event (txHash + logIndex) can be recorded onto at most one intent — enforced by the database', async () => {
+    const b = await setup();
+    const first = await sell(b, plan());
+    const second = await sell(b, plan());
+    const result = { txHash: `0x${'aa'.repeat(32)}`, blockNumber: '9', logIndex: '1', received: '1', feeBase: '0', fee: '0', userProceeds: '1', creator: '0x01', executor: '0x02' };
+    await recordRedeemSettlementResult(db.client, first.id, plan({ result }));
+    await expect(recordRedeemSettlementResult(db.client, second.id, plan({ result }))).rejects.toThrow(/redeem_intents_settled_event_uniq|duplicate key/);
+    // The same event recorded again onto its own intent is fine (idempotent).
+    await recordRedeemSettlementResult(db.client, first.id, plan({ result }));
+  });
 });
+

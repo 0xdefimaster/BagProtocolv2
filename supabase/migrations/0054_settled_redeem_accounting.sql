@@ -11,7 +11,8 @@
 -- refuses to run without the event result. The legs' proceeds are the gross amount that reached the settlement (the
 -- event's `received`), so realized P&L and the high-water mark are on the same footing as the fee the contract
 -- computed; the fee itself is the separate FEE_CHARGED entry, exactly like the database-booked fee before it.
--- Signature unchanged. Everything else is byte-for-byte the 0051 definition.
+-- Signature unchanged. Everything else is byte-for-byte the 0051 definition. Also: a unique index so one Settled
+-- event (txHash + logIndex) can be recorded onto at most one intent.
 
 create or replace function apply_redeem_execution(
   p_intent_id uuid,
@@ -260,3 +261,11 @@ begin
   return v_result;
 end;
 $$;
+
+-- One on-chain Settled event (txHash + logIndex) belongs to at most one intent: recording the same event result onto
+-- a second intent fails in the database, not only in application code. (Within one intent, accounting is already
+-- unique per redemption: ledger_events.idempotency_key 'REDEEM_FILL:<intent>' / 'FEE_CHARGED:<intent>', and the
+-- redemption id is derived from the intent id.)
+create unique index if not exists redeem_intents_settled_event_uniq
+  on redeem_intents ((settlement_plan->'result'->>'txHash'), (settlement_plan->'result'->>'logIndex'))
+  where settlement_plan ? 'result';

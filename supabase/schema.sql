@@ -7582,3 +7582,11 @@ begin
   return v_result;
 end;
 $$;
+
+-- One on-chain Settled event (txHash + logIndex) belongs to at most one intent: recording the same event result onto
+-- a second intent fails in the database, not only in application code. (Within one intent, accounting is already
+-- unique per redemption: ledger_events.idempotency_key 'REDEEM_FILL:<intent>' / 'FEE_CHARGED:<intent>', and the
+-- redemption id is derived from the intent id.)
+create unique index if not exists redeem_intents_settled_event_uniq
+  on redeem_intents ((settlement_plan->'result'->>'txHash'), (settlement_plan->'result'->>'logIndex'))
+  where settlement_plan ? 'result';
