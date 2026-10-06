@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { formatRawAmount } from '@/lib/format';
-import type { ExecutionHistoryResponse, ExecutionOutcome, ExecutionReceipt, ReceiptCheck, ReceiptFieldSource, ReceiptOutput } from '@/types/execution-receipt';
+import type { ExecutionHistoryResponse, ExecutionOutcome, ExecutionReceipt, ReceiptCheck, ReceiptFieldSource, ReceiptOutput, ReceiptSettlement } from '@/types/execution-receipt';
 import type { ExecutionProviderKind } from '@/types/strategy-policy';
 
 // -----------------------------------------------------------------------------
@@ -80,6 +80,48 @@ function OutputRow({ o, coveredByTotal }: { o: ReceiptOutput; coveredByTotal: bo
   );
 }
 
+const FEE_REASON: Record<ReceiptSettlement['feeReason'], string> = {
+  CHARGED: 'Paid on-chain to the creator.',
+  NO_GAIN: 'No performance fee — this sale did not realize a gain over your cost basis.',
+  GAIN_TOO_SMALL: 'No performance fee — the gain was too small to amount to a fee.',
+  NO_FEE_RATE: 'No performance fee — no fee applies to this sale.',
+};
+
+/** A signed raw amount (may be negative) in token units. */
+const signedAmount = (raw: string, decimals: number | null) => {
+  const neg = raw.startsWith('-');
+  const v = amount(neg ? raw.slice(1) : raw, decimals);
+  return v === null ? null : `${neg ? '−' : raw === '0' ? '' : '+'}${v}`;
+};
+
+/** A sale settled through RedeemSettlement: every figure is the contract's `Settled` event, not an estimate. */
+function SettlementSummary({ s }: { s: ReceiptSettlement }) {
+  const d = s.asset.decimals;
+  const sym = symbolOf(s.asset);
+  const row = (label: string, value: string | null, testId: string, tone = 'text-white') => (
+    <div className="flex justify-between gap-3" data-testid={testId}>
+      <span className="text-white/70">{label}</span>
+      <span className={`font-mono ${tone}`}>
+        {value} {sym}
+      </span>
+    </div>
+  );
+  const pnlTone = (raw: string) => (raw.startsWith('-') ? 'text-red-400' : raw === '0' ? 'text-white' : 'text-emerald-400');
+  return (
+    <div className="mt-2 space-y-1 border-t border-white/10 pt-2 text-sm" data-testid="settlement-summary">
+      {row('Gross proceeds', amount(s.grossProceedsRaw, d), 'settlement-gross')}
+      {row(`Performance fee (${s.feeRateBps / 100}% of realized gain)`, amount(s.performanceFeeRaw, d), 'settlement-fee')}
+      <div className="text-xs text-white/50" data-testid="settlement-fee-reason">
+        {FEE_REASON[s.feeReason]}
+      </div>
+      {row('Net proceeds (to your wallet)', amount(s.netProceedsRaw, d), 'settlement-net')}
+      {row('Realized P&L (before fee)', signedAmount(s.realizedPnlRaw, d), 'settlement-pnl', pnlTone(s.realizedPnlRaw))}
+      {s.performanceFeeRaw !== '0' && row('Realized P&L (after fee)', signedAmount(s.netRealizedPnlRaw, d), 'settlement-net-pnl', pnlTone(s.netRealizedPnlRaw))}
+      <div className="font-mono text-xs text-white/40">read from the settlement contract&apos;s Settled event</div>
+    </div>
+  );
+}
+
 function Receipt({ r }: { r: ExecutionReceipt }) {
   const executionTx = r.transactions.find((t) => t.role === 'EXECUTION' && t.verification === 'VERIFIED');
   const inputAmount = amount(r.input.amountRaw, r.input.decimals);
@@ -107,7 +149,9 @@ function Receipt({ r }: { r: ExecutionReceipt }) {
           ))}
         </tbody>
       </table>
-      {total && (
+      {r.settlement && <SettlementSummary s={r.settlement} />}
+      {/* A settled sale's total is gross (before the fee): the settlement summary shows gross, fee and net instead. */}
+      {total && !r.settlement && (
         <div className="mt-2 flex flex-wrap items-baseline gap-x-3 border-t border-white/10 pt-2 text-sm">
           <span className="text-white/70">Received</span>
           <span className="font-mono text-white">

@@ -13,6 +13,7 @@ import {
   ReceiptEvidence,
   ReceiptFieldSource,
   ReceiptOutput,
+  ReceiptSettlement,
   ReceiptTotalReceived,
   ReceiptTransaction,
   StepOutcome,
@@ -312,11 +313,41 @@ export function buildPurchaseReceipt(intent: PurchaseIntent, ctx: ReceiptContext
   };
 }
 
+/** A settled sale's on-chain result (the `Settled` event recorded by verification), or null. */
+export function settlementFor(intent: RedeemIntent, ctx: ReceiptContext): ReceiptSettlement | null {
+  const plan = intent.settlementPlan;
+  const result = plan?.result;
+  const isUint = (v: unknown): v is string => typeof v === 'string' && /^\d+$/.test(v);
+  if (!plan || !result || ![result.received, result.feeBase, result.fee, result.userProceeds, plan.consumedBasisRaw].every(isUint)) return null;
+  const gross = BigInt(result.received);
+  const fee = BigInt(result.fee);
+  const feeBase = BigInt(result.feeBase);
+  const realized = gross - BigInt(plan.consumedBasisRaw);
+  const feeReason: ReceiptSettlement['feeReason'] = fee > BigInt(0) ? 'CHARGED' : plan.feeRateBps === 0 ? 'NO_FEE_RATE' : feeBase === BigInt(0) ? 'NO_GAIN' : 'GAIN_TOO_SMALL';
+  return {
+    source: 'ONCHAIN_SETTLED_EVENT',
+    settlementContract: plan.settlement,
+    txHash: result.txHash,
+    asset: asset(intent.outputAsset, ctx, { decimals: intent.outputDecimals }),
+    grossProceedsRaw: result.received,
+    feeBaseRaw: result.feeBase,
+    performanceFeeRaw: result.fee,
+    netProceedsRaw: result.userProceeds,
+    feeRateBps: plan.feeRateBps,
+    consumedBasisRaw: plan.consumedBasisRaw,
+    realizedPnlRaw: realized.toString(),
+    netRealizedPnlRaw: (realized - fee).toString(),
+    feeReason,
+    creator: result.creator,
+  };
+}
+
 export function buildRedeemReceipt(intent: RedeemIntent, ctx: ReceiptContext): ExecutionReceipt {
   const provider = redeemProvider(intent);
   const outputs = outputsFor(intent.steps, provider, ctx, 'REDEEM');
   const totalReceived = totalReceivedFor(intent, outputs, provider, ctx);
   const transactions = transactionsFor(intent.id, intent.steps, ctx);
+  const settlement = settlementFor(intent, ctx);
   return {
     executionId: intent.id,
     kind: 'REDEEM',
@@ -341,6 +372,7 @@ export function buildRedeemReceipt(intent: RedeemIntent, ctx: ReceiptContext): E
     totalReceived,
     evidence: evidenceFor(outputs, totalReceived),
     policyEvaluation: { policySnapshotAvailable: false, evaluatedAgainstVersion: null, checks: checksFor(outputs, transactions, 'NOT_RECORDED'), noRouteFallback: null },
+    ...(settlement ? { settlement } : {}),
   };
 }
 

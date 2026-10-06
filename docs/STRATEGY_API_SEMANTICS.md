@@ -161,6 +161,17 @@ only the total is observable: it is read from the receipt's Transfer logs
 is never shown as a per-leg outcome. With one transaction per asset the total
 is the sum of the legs' actuals, with the weakest of their sources.
 
+**Settled sales** (fee-paying sales through RedeemSettlement) add an optional
+`settlement` block, read from the contract's `Settled` event as verification
+recorded it — never a quote: `grossProceedsRaw` (the event's `received`),
+`feeBaseRaw`, `performanceFeeRaw`, `netProceedsRaw` (what reached the wallet
+= gross − fee), `feeRateBps`, `consumedBasisRaw` (as signed into the
+settlement), `realizedPnlRaw` (gross − basis, before the fee) and
+`netRealizedPnlRaw` (after it), and `feeReason`: `CHARGED`, `NO_GAIN` (no gain
+over basis and earlier losses), `GAIN_TOO_SMALL` (floors to 0) or
+`NO_FEE_RATE`. For such a sale `totalReceived` is the gross amount, so the UI
+shows the settlement block instead of it.
+
 **Pagination**: newest first (`createdAt` desc, then `executionId` asc, at
 microsecond precision). `?limit=` 1–50 (default 50); `hasMore` and an opaque
 `nextCursor` (pass back as `?cursor=`). The same cursor always returns the
