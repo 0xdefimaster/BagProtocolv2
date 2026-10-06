@@ -12,6 +12,7 @@ It needs no BAG frontend, server or database.
   Getting the bytes is an adapter's job:
   - `@bag-protocol/sdk/http`: `fetchBag(url, { fetch })`.
   - `@bag-protocol/sdk/evm`: `readTokenDecimals(definition, clientFor)`.
+  - `@bag-protocol/sdk/lifi`: `lifiComposer({ apiKey, baseUrl })`, a routing provider for quote/compile (optional peer `@lifi/composer-sdk`).
   - Other sources (a local file, IPFS, wallet storage, a registry `uri`) end in the same `parseBag(text)`.
 - Network access only through what you pass in (a `fetch`, a viem client).
 - Status: in-repo package (`private`), not published to npm yet.
@@ -37,8 +38,7 @@ Pipeline steps:
 - `normalizeBag`: canonical copy.
 - `hashBag`: `definitionHash`.
 
-Quoting, simulating and compiling a purchase are a separate layer (`quoteBag`,
-`simulateBag`, `compileBag`, next PR) and are not part of the artifact.
+Quoting, simulating and compiling a purchase are a separate layer on top of the artifact (see "Execution" below).
 
 ## Document
 
@@ -237,6 +237,62 @@ creator is not in `definitionHash`. `verifyRegistryCommitment` takes the creator
 `commitments.registry` in a served bag.json, including its `creator`, and the
 stated `definitionHash` are never used as authority. If you copy the creator
 from the JSON, you only verify what the JSON claims.
+
+## Execution: quote, simulate, compile
+
+```ts
+import { compileBag, simulateBag } from '@bag-protocol/sdk';
+import { lifiComposer } from '@bag-protocol/sdk/lifi';
+
+const provider = lifiComposer({ apiKey: process.env.LIFI_API_KEY!, baseUrl: 'https://composer.li.quest' });  // your own key
+const compiled = await compileBag(bag, { inputToken, amountRaw, signer }, { provider });
+const check = await simulateBag(compiled, { client });   // your viem client: OK | NEEDS_APPROVAL | INSUFFICIENT_BALANCE | REVERTED
+// your wallet sends compiled.approvals, then signs and sends compiled.transaction
+```
+
+| Function | What it does |
+|---|---|
+| `planPurchase` | Pure plan: exact target allocation (`splitByWeight`), the asset that is the input token is kept (never swapped), whole-bp legs and their on-chain cascade, slippage and price-impact limits |
+| `quoteBag` / `compileBag` | Ask the provider for the route and return the quote, or the quote plus the **unsigned** transaction and the approvals it needs |
+| `simulateBag` | Dry run with `eth_call` from the signer on your client: input balance, then approvals, then the call. A point-in-time check, not a guarantee |
+
+**Never signs, never sends.**
+- The SDK holds no key. It has no signing or sending call (a boundary test checks this).
+- It builds the transaction; your wallet signs it.
+- The assets are swept straight to the signer.
+
+**Limits a caller can only tighten:**
+- **Slippage:** the definition's slippage (or its v1 default), capped at **300 bps**. The cap is the same as BAG's.
+- **Price impact:** at most **500 bps** for the whole purchase.
+
+A looser value is refused (`LOOSER_THAN_POLICY`). An optional `allowedTokens` restricts the assets to your own allowlist.
+
+**Every provider answer is checked against the plan:**
+- the transaction is for the right chain and sends no native value;
+- approvals are only for the input token and never above the swapped amount;
+- every leg delivers the planned token;
+- the reported price impact is within the limit.
+
+Anything else throws `ProviderResponseError`.
+
+No partial purchases: if any asset cannot be routed, the compile fails and nothing is built. This is the strictest no-route behaviour (`BLOCK`).
+
+**Accounting boundary (normative).** A strategy definition is portable and permissionless to execute. BAG fees apply only to executions explicitly originated and accounted for by BAG.
+
+| Path | What it is | BAG ledger / fee |
+|---|---|---|
+| SDK → your script, wallet or another app → your wallet | An execution of the strategy into your own wallet | No |
+| BAG app → BAG purchase intent → BAG ledger | A BAG position: cost basis, P&L, redemption, creator fee | Yes |
+
+Every plan carries `accounting: "NOT_BAG_ACCOUNTED"`. BAG never infers a position or a fee from tokens in a wallet. Adopting externally bought assets into a BAG position is out of scope: it would need cost basis, provenance and fee-eligibility rules first.
+
+**End to end, no BAG app:** `examples/compile-purchase.ts` takes a bag.json (file or URL) through parse → validate → normalize → hash → verify → quote → simulate → compile and prints the unsigned transaction. Run it with your own key and RPC:
+
+```
+LIFI_API_KEY=… RPC_URL=… npx tsx packages/bag-sdk/examples/compile-purchase.ts <bag.json|URL> <inputToken> <amountRaw> <signer>
+```
+
+The test suite runs the same script with the real `@lifi/composer-sdk` and the network mocked.
 
 ## v1 freeze
 
