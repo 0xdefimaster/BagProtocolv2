@@ -72,6 +72,38 @@ describe('ExecutionHistory', () => {
     expect(screen.queryByText('Not recorded')).toBeNull();
   });
 
+  it('settled sale: gross, fee with its reason, net and realized P&L from the Settled event; no gross total shown as "Received"', async () => {
+    const usdg = { chain: 'robinhood' as const, chainId: 4663, address: '0xusdg', symbol: 'USDG', decimals: 6 };
+    const settledReceipt = (over: Record<string, unknown>) =>
+      receipt({
+        kind: 'REDEEM', strategyVersion: null, versionBinding: 'NOT_RECORDED',
+        totalReceived: { asset: usdg, actualRaw: '2975572', actualSource: 'ONCHAIN_DERIVED', providerEnforcedMinimumRaw: null },
+        settlement: {
+          source: 'ONCHAIN_SETTLED_EVENT', settlementContract: '0x934a', txHash: TX, asset: usdg,
+          grossProceedsRaw: '2975572', feeBaseRaw: '0', performanceFeeRaw: '0', netProceedsRaw: '2975572', feeRateBps: 850,
+          consumedBasisRaw: '3000000', realizedPnlRaw: '-24428', netRealizedPnlRaw: '-24428', feeReason: 'NO_GAIN', creator: '0xc',
+          ...over,
+        } as never,
+      });
+    const loss = settledReceipt({});
+    const gain = { ...settledReceipt({ grossProceedsRaw: '3500000', feeBaseRaw: '500000', performanceFeeRaw: '42500', netProceedsRaw: '3457500', realizedPnlRaw: '500000', netRealizedPnlRaw: '457500', feeReason: 'CHARGED' }), executionId: 'e2' };
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ schemaVersion: 2, bagId: 'bag-1', scope: 'VIEWER_OWN_EXECUTIONS', executions: [loss, gain], hasMore: false, nextCursor: null }) })));
+    render(<ExecutionHistory bagId="bag-1" />);
+    const [l, g] = await screen.findAllByTestId('settlement-summary');
+    const text = (el: HTMLElement, id: string) => el.querySelector(`[data-testid="${id}"]`)?.textContent;
+    expect(text(l, 'settlement-gross')).toBe('Gross proceeds2.975572 USDG');
+    expect(text(l, 'settlement-fee')).toBe('Performance fee (8.5% of realized gain)0 USDG');
+    expect(text(l, 'settlement-fee-reason')).toBe('No performance fee — this sale did not realize a gain over your cost basis.');
+    expect(text(l, 'settlement-net')).toBe('Net proceeds (to your wallet)2.975572 USDG');
+    expect(text(l, 'settlement-pnl')).toBe('Realized P&L (before fee)−0.024428 USDG');
+    expect(l.querySelector('[data-testid="settlement-net-pnl"]')).toBeNull();
+    expect(text(g, 'settlement-fee')).toBe('Performance fee (8.5% of realized gain)0.0425 USDG');
+    expect(text(g, 'settlement-fee-reason')).toBe('Paid on-chain to the creator.');
+    expect(text(g, 'settlement-net-pnl')).toBe('Realized P&L (after fee)+0.4575 USDG');
+    // The legs' total is gross: not presented as what was received.
+    expect(screen.queryByText('Received')).toBeNull();
+  });
+
   it('asks to sign in on 401 and shows the empty state', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 401, json: async () => ({ error: 'Not signed in.' }) })));
     render(<ExecutionHistory bagId="bag-1" />);

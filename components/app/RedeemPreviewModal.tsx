@@ -494,6 +494,13 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
                           '. The exact fee is set when you sign, on the guaranteed minimum you receive — never more than this rate of the gain you actually realize, and nothing on a loss.'
                         : 'Your records cannot give the cost basis of what you are selling, so the fee cannot be computed and this sale cannot go through BAG right now.'}
                     </p>
+                    {preview.performanceFee.basisAvailable && Number(preview.performanceFee.estimatedFeeQuote) === 0 && (
+                      <p data-testid="performance-fee-zero-reason" style={{ marginTop: 4, fontSize: 11.5, fontWeight: 600 }}>
+                        No performance fee at current prices — this sale is at or below your cost basis
+                        {preview.performanceFee.lossCarryQuote && preview.performanceFee.lossCarryQuote !== '0' ? ' plus earlier losses still to recover' : ''}, and the fee
+                        applies only to realized gain.
+                      </p>
+                    )}
                   </div>
                 )}
               </>

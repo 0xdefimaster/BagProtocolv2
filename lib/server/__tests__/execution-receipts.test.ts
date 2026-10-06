@@ -191,6 +191,56 @@ describe('buildRedeemReceipt', () => {
     expect(r.policyEvaluation.checks.find((c) => c.check === 'TX_CLAIMED_BY_THIS_EXECUTION')?.result).toBe('PASS');
   });
 
+  // The first live sale through RedeemSettlement (tx 0x7550ac9d…9d3d): sold at a loss, so no fee.
+  const settled = (result: Record<string, string>, over: Record<string, unknown> = {}) =>
+    composerRedeem({
+      settlementPlan: {
+        settlement: '0x934a3f266e68DfbFF8eD4F02AA393a36048170a0',
+        consumedBasisRaw: '3000000',
+        lossCarryRaw: '0',
+        feeRateBps: 850,
+        attestedAt: '2026-10-06T00:18:00Z',
+        result: { txHash: TX, blockNumber: '81204116', logIndex: '9', creator: '0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46', executor: '0xproxy', ...result },
+        ...over,
+      } as never,
+    });
+
+  it('a settled sale carries the Settled event: gross, fee, net, realized P&L and why the fee is 0 (live numbers)', () => {
+    const r = buildRedeemReceipt(settled({ received: '2975572', feeBase: '0', fee: '0', userProceeds: '2975572' }), ctx());
+    expect(r.settlement).toEqual({
+      source: 'ONCHAIN_SETTLED_EVENT',
+      settlementContract: '0x934a3f266e68DfbFF8eD4F02AA393a36048170a0',
+      txHash: TX,
+      asset: expect.objectContaining({ address: USDG, decimals: 6 }),
+      grossProceedsRaw: '2975572',
+      feeBaseRaw: '0',
+      performanceFeeRaw: '0',
+      netProceedsRaw: '2975572',
+      feeRateBps: 850,
+      consumedBasisRaw: '3000000',
+      realizedPnlRaw: '-24428',
+      netRealizedPnlRaw: '-24428',
+      feeReason: 'NO_GAIN',
+      creator: '0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46',
+    });
+  });
+
+  it('a settled sale with a gain: the fee is charged, net = gross − fee, P&L after fee', () => {
+    const r = buildRedeemReceipt(settled({ received: '3500000', feeBase: '500000', fee: '42500', userProceeds: '3457500' }), ctx());
+    expect(r.settlement).toMatchObject({ feeReason: 'CHARGED', performanceFeeRaw: '42500', netProceedsRaw: '3457500', realizedPnlRaw: '500000', netRealizedPnlRaw: '457500' });
+  });
+
+  it('fee reasons: a gain too small to floor to a fee, and a sale with no fee rate', () => {
+    expect(buildRedeemReceipt(settled({ received: '3000010', feeBase: '10', fee: '0', userProceeds: '3000010' }), ctx()).settlement?.feeReason).toBe('GAIN_TOO_SMALL');
+    expect(buildRedeemReceipt(settled({ received: '3500000', feeBase: '500000', fee: '0', userProceeds: '3500000' }, { feeRateBps: 0 }), ctx()).settlement?.feeReason).toBe('NO_FEE_RATE');
+  });
+
+  it('no Settled result recorded (or not a settlement sale): no settlement block at all', () => {
+    expect(buildRedeemReceipt(composerRedeem(), ctx())).not.toHaveProperty('settlement');
+    expect(buildRedeemReceipt(settled({ received: 'x', feeBase: '0', fee: '0', userProceeds: '0' }), ctx())).not.toHaveProperty('settlement');
+    expect(buildRedeemReceipt(composerRedeem({ settlementPlan: { settlement: '0x1', consumedBasisRaw: '1', feeRateBps: 850 } as never }), ctx())).not.toHaveProperty('settlement');
+  });
+
   it('one-transaction redeem not verified yet: no total, and the stored leg amounts are not shown as quotes either', () => {
     const pending = composerRedeem({ status: 'CONFIRMING' as never });
     pending.steps = pending.steps.map((s) => ({ ...s, status: 'CONFIRMING' as never }));

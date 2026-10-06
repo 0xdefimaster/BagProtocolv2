@@ -146,6 +146,34 @@ export interface ReceiptTotalReceived {
   providerEnforcedMinimumRaw: string | null;
 }
 
+/**
+ * A fee-paying sale settled through RedeemSettlement: the contract's own `Settled` event, as verification recorded it
+ * (redeem_intents.settlement_plan.result). Every amount is what happened on-chain, never a quote or an estimate.
+ */
+export interface ReceiptSettlement {
+  source: 'ONCHAIN_SETTLED_EVENT';
+  settlementContract: string;
+  txHash: string;
+  asset: ReceiptAsset;
+  /** What reached the settlement contract (the event's `received`). */
+  grossProceedsRaw: string;
+  /** received − basis − earlier losses still to recover, floored at 0 (the event's `feeBase`). */
+  feeBaseRaw: string;
+  performanceFeeRaw: string;
+  /** What reached the wallet (the event's `userProceeds`) = gross − fee. */
+  netProceedsRaw: string;
+  feeRateBps: number;
+  /** The cost basis of what was sold, as signed into the settlement (raw, rounded up). */
+  consumedBasisRaw: string;
+  /** gross − basis (before the fee); may be negative. Signed decimal string in raw units. */
+  realizedPnlRaw: string;
+  /** realizedPnl − fee. Signed decimal string in raw units. */
+  netRealizedPnlRaw: string;
+  /** Why the fee is what it is. */
+  feeReason: 'CHARGED' | 'NO_GAIN' | 'GAIN_TOO_SMALL' | 'NO_FEE_RATE';
+  creator: string;
+}
+
 export interface ExecutionReceipt {
   /** Stable id of the execution. Personal: only ever returned to its owner. */
   executionId: string;
@@ -181,6 +209,8 @@ export interface ExecutionReceipt {
   outputs: ReceiptOutput[];
   /** Redeem only (see `ReceiptTotalReceived`); always null for a purchase. */
   totalReceived: ReceiptTotalReceived | null;
+  /** Present only for a sale settled through RedeemSettlement (see `ReceiptSettlement`). */
+  settlement?: ReceiptSettlement;
   evidence: ReceiptEvidence;
   policyEvaluation: {
     /** False today: the policy as it was at execution time is not stored. */
