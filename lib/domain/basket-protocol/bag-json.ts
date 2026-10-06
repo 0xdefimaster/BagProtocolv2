@@ -1,6 +1,6 @@
-import { keccak256, stringToHex } from 'viem';
 import type { BasketRecipe } from '@/types/basket-protocol';
-import { BAG_JSON_HASH_DOMAIN, BagAssetDisplay, BagDefinition, BagDefinitionAsset } from '@/types/strategy';
+import type { BagAssetDisplay, BagDefinition } from '@/types/strategy';
+import { normalizeDefinition } from '../../../packages/bag-sdk/src/index';
 import { normalizeAssetAddress } from './asset-identity';
 
 // -----------------------------------------------------------------------------
@@ -12,70 +12,11 @@ import { normalizeAssetAddress } from './asset-identity';
 // anyone: lowercase EVM addresses, code-unit ordering, RFC 8785 serialization.
 // -----------------------------------------------------------------------------
 
-/**
- * RFC 8785 (JSON Canonicalization Scheme) for the JSON values bag.json uses:
- * object keys sorted by UTF-16 code units, no whitespace, strings and numbers
- * serialized as ECMAScript JSON.stringify does. Refuses values JSON cannot
- * represent instead of dropping them.
- */
-export function canonicalJson(value: unknown): string {
-  if (value === null) return 'null';
-  switch (typeof value) {
-    case 'string':
-    case 'boolean':
-      return JSON.stringify(value);
-    case 'number':
-      if (!Number.isFinite(value)) throw new Error('canonicalJson: non-finite number.');
-      return JSON.stringify(value);
-    case 'object': {
-      if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-      const obj = value as Record<string, unknown>;
-      const keys = Object.keys(obj).sort();
-      return `{${keys
-        .map((k) => {
-          if (obj[k] === undefined) throw new Error(`canonicalJson: "${k}" is undefined.`);
-          return `${JSON.stringify(k)}:${canonicalJson(obj[k])}`;
-        })
-        .join(',')}}`;
-    }
-    default:
-      throw new Error(`canonicalJson: unsupported ${typeof value}.`);
-  }
-}
+// The canonical form and the hash have exactly one implementation: the SDK's. The app re-exports it so a
+// bag.json BAG serves and one a third party hashes can never disagree.
+export { canonicalJson, computeDefinitionHash, definitionHashPreimage, normalizeDefinition } from '../../../packages/bag-sdk/src/index';
 
 const byCodeUnits = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
-
-/** Canonical copy of a definition: normalized addresses, assets in (chain, address) order. Idempotent. */
-export function normalizeDefinition(def: BagDefinition): BagDefinition {
-  const assets: BagDefinitionAsset[] = def.assets
-    .map((a) => ({ chain: a.chain, address: normalizeAssetAddress(a.chain, a.address), decimals: a.decimals, weightBps: a.weightBps }))
-    .sort((a, b) => byCodeUnits(a.chain, b.chain) || byCodeUnits(a.address, b.address));
-  const r = def.rules;
-  return {
-    kind: def.kind,
-    chain: def.chain,
-    mutability: def.mutability,
-    assets,
-    rules: {
-      weightBounds: { minBps: r.weightBounds.minBps, maxBps: r.weightBounds.maxBps },
-      maxAssets: r.maxAssets,
-      minInvestment: r.minInvestment ? { amount: r.minInvestment.amount, measuredAs: r.minInvestment.measuredAs } : null,
-      swapSlippageBps: r.swapSlippageBps,
-      rebalance: r.rebalance ? { frequency: r.rebalance.frequency, driftThresholdBps: r.rebalance.driftThresholdBps } : null,
-      performanceFeeBps: r.performanceFeeBps,
-      noRouteAssetPolicy: r.noRouteAssetPolicy,
-    },
-  };
-}
-
-/** The exact string the hash covers: domain prefix + JCS of the normalized definition. */
-export function definitionHashPreimage(def: BagDefinition): string {
-  return BAG_JSON_HASH_DOMAIN + canonicalJson(normalizeDefinition(def));
-}
-
-export function computeDefinitionHash(def: BagDefinition): string {
-  return keccak256(stringToHex(definitionHashPreimage(def)));
-}
 
 /** Plain decimal string for a stored number (never exponent notation). Null if it is not a finite, non-negative number. */
 export function decimalString(n: unknown): string | null {

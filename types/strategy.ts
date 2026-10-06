@@ -15,8 +15,8 @@ import type { ValidateBagResult } from '@/lib/server/validate-bag';
 // -----------------------------------------------------------------------------
 
 export const BAG_JSON_FORMAT_VERSION = 1;
-/** Domain prefix hashed in front of the canonical definition. */
-export const BAG_JSON_HASH_DOMAIN = 'bag.json/v1\n';
+/** Domain prefix hashed in front of the canonical definition (defined once, in the SDK). */
+export { BAG_JSON_HASH_DOMAIN } from '../packages/bag-sdk/src/types';
 
 /**
  * One asset of the definition: identity (chain + address), the unit its amounts are expressed in (decimals,

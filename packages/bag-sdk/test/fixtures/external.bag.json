@@ -1,0 +1,30 @@
+{
+  "bagJson": 1,
+  "definition": {
+    "kind": "STATIC_BASKET",
+    "chain": "robinhood",
+    "mutability": "MUTABLE",
+    "assets": [
+      { "chain": "robinhood", "address": "0xB0000000000000000000000000000000000000Bb", "decimals": 18, "weightBps": 6000 },
+      { "chain": "robinhood", "address": "0xa0000000000000000000000000000000000000aA", "decimals": 18, "weightBps": 4000 }
+    ],
+    "rules": {
+      "weightBounds": { "minBps": 500, "maxBps": 7000 },
+      "maxAssets": 10,
+      "minInvestment": { "amount": "10", "measuredAs": "PAYMENT_TOKEN_AMOUNT" },
+      "swapSlippageBps": 100,
+      "rebalance": { "frequency": "THRESHOLD_ONLY", "driftThresholdBps": 500 },
+      "performanceFeeBps": 1000,
+      "noRouteAssetPolicy": "HOLD_INPUT"
+    }
+  },
+  "metadata": {
+    "name": "Written by hand",
+    "symbol": "HAND",
+    "description": "A bag.json that was never stored by BAG.",
+    "assets": [
+      { "chain": "robinhood", "address": "0xb0000000000000000000000000000000000000bb", "symbol": "BBB" },
+      { "chain": "robinhood", "address": "0xa0000000000000000000000000000000000000aa", "symbol": "AAA" }
+    ]
+  }
+}

@@ -14,6 +14,19 @@ stays outside `definitionHash` (authorship has its own on-chain provenance);
 fork lineage is set only server-side and immutable (0046). The current contract
 is in `docs/STRATEGY_API_SEMANTICS.md`; the examples below predate this patch.
 
+**v1 is frozen (SDK PR).** The standalone SDK (`packages/bag-sdk`, spec in its
+README) is the single implementation of parse/validate/normalize/hash; the app
+re-exports its canonicalization. Decisions recorded with it:
+- D1: closed chain table (`ethereum` 1, `base` 8453, `arbitrum` 42161, `robinhood` 4663), defined once (`BAG_V1_CHAINS`).
+- D2: single-chain strategies.
+- D3: a minimal document `{ bagJson, definition, metadata? }` is complete.
+- D4: `creator` is a verification input, never read from the JSON.
+- D5: strict parsing.
+
+Changing any hash-relevant field, normalization, sorting or numeric rule, the
+chain table, the validation rules or the meaning of a field requires
+`bag.json/v2`.
+
 Goal: one canonical Strategy object that the HTTP API and later MCP serve,
 built from what BAG already stores. No smart-contract change, no DB schema
 change, V1 purchase/redeem/execution flows untouched.

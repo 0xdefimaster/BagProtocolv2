@@ -134,6 +134,86 @@
       },
       "preimage": "bag.json/v1\n{\"assets\":[{\"address\":\"0x1111111111111111111111111111111111111111\",\"chain\":\"robinhood\",\"decimals\":6,\"weightBps\":10000}],\"chain\":\"robinhood\",\"kind\":null,\"mutability\":null,\"rules\":{\"maxAssets\":null,\"minInvestment\":null,\"noRouteAssetPolicy\":null,\"performanceFeeBps\":null,\"rebalance\":null,\"swapSlippageBps\":null,\"weightBounds\":{\"maxBps\":null,\"minBps\":null}}}",
       "definitionHash": "0x56e714034d3a679e65912bbdad1fa59ade0549cc675bbbe827edb8a84ecee72e"
+    },
+    {
+      "name": "explicit-zero-fee",
+      "input": {
+        "kind": "STATIC_BASKET",
+        "chain": "robinhood",
+        "mutability": "MUTABLE",
+        "assets": [
+          {
+            "chain": "robinhood",
+            "address": "0xB0000000000000000000000000000000000000Bb",
+            "decimals": 18,
+            "weightBps": 6000
+          },
+          {
+            "chain": "robinhood",
+            "address": "0xa0000000000000000000000000000000000000aA",
+            "decimals": 18,
+            "weightBps": 4000
+          }
+        ],
+        "rules": {
+          "weightBounds": {
+            "minBps": 500,
+            "maxBps": 7000
+          },
+          "maxAssets": 10,
+          "minInvestment": {
+            "amount": "10",
+            "measuredAs": "PAYMENT_TOKEN_AMOUNT"
+          },
+          "swapSlippageBps": 100,
+          "rebalance": {
+            "frequency": "THRESHOLD_ONLY",
+            "driftThresholdBps": 500
+          },
+          "performanceFeeBps": 0,
+          "noRouteAssetPolicy": "HOLD_INPUT"
+        }
+      },
+      "canonical": {
+        "kind": "STATIC_BASKET",
+        "chain": "robinhood",
+        "mutability": "MUTABLE",
+        "assets": [
+          {
+            "chain": "robinhood",
+            "address": "0xa0000000000000000000000000000000000000aa",
+            "decimals": 18,
+            "weightBps": 4000
+          },
+          {
+            "chain": "robinhood",
+            "address": "0xb0000000000000000000000000000000000000bb",
+            "decimals": 18,
+            "weightBps": 6000
+          }
+        ],
+        "rules": {
+          "weightBounds": {
+            "minBps": 500,
+            "maxBps": 7000
+          },
+          "maxAssets": 10,
+          "minInvestment": {
+            "amount": "10",
+            "measuredAs": "PAYMENT_TOKEN_AMOUNT"
+          },
+          "swapSlippageBps": 100,
+          "rebalance": {
+            "frequency": "THRESHOLD_ONLY",
+            "driftThresholdBps": 500
+          },
+          "performanceFeeBps": 0,
+          "noRouteAssetPolicy": "HOLD_INPUT"
+        }
+      },
+      "preimage": "bag.json/v1\n{\"assets\":[{\"address\":\"0xa0000000000000000000000000000000000000aa\",\"chain\":\"robinhood\",\"decimals\":18,\"weightBps\":4000},{\"address\":\"0xb0000000000000000000000000000000000000bb\",\"chain\":\"robinhood\",\"decimals\":18,\"weightBps\":6000}],\"chain\":\"robinhood\",\"kind\":\"STATIC_BASKET\",\"mutability\":\"MUTABLE\",\"rules\":{\"maxAssets\":10,\"minInvestment\":{\"amount\":\"10\",\"measuredAs\":\"PAYMENT_TOKEN_AMOUNT\"},\"noRouteAssetPolicy\":\"HOLD_INPUT\",\"performanceFeeBps\":0,\"rebalance\":{\"driftThresholdBps\":500,\"frequency\":\"THRESHOLD_ONLY\"},\"swapSlippageBps\":100,\"weightBounds\":{\"maxBps\":7000,\"minBps\":500}}}",
+      "definitionHash": "0xb5b68ef748e4b592774300705c1397ab2335f0e7a61b522c5e51b3b6e2b5f539",
+      "note": "Same as full-unnormalized-input except performanceFeeBps: 0 (explicit no fee). Must hash differently from null (not set) and from 1000."
     }
   ]
 }

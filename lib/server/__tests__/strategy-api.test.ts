@@ -22,6 +22,7 @@ import { ValidateBagInputError } from '../validate-bag';
 import { computeOnChainCompositionHash } from '@/lib/domain/basket-protocol/onchain';
 import { BAG_JSON_FORMAT_VERSION, STRATEGY_API_SCHEMA_VERSION } from '@/types/strategy';
 import { BagRecord, BasketRecipe, CanonicalAsset } from '@/types/basket-protocol';
+import { parseBag, validateBag } from '@/packages/bag-sdk/src';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const PARENT = '22222222-2222-4222-8222-222222222222';
@@ -131,6 +132,28 @@ describe('bag.json for a stored version', () => {
 
   it('legacy fields the recipe never had stay null (v1 had no fee set)', () => {
     expect(buildBagJson(bag(), rows[0]).definition.rules.performanceFeeBps).toBeNull();
+  });
+
+  it('a bag.json BAG serves is a valid document for the standalone SDK (same hash, no hash mismatch)', () => {
+    for (const row of rows) {
+      const served = buildBagJson(bag({ parentBagId: PARENT, parentBagVersion: 3 }), row);
+      const parsed = parseBag(JSON.stringify(served));
+      expect(parsed.issues).toEqual([]);
+      if (!parsed.ok) continue;
+      const v = validateBag(parsed.bag);
+      // Nothing about the document itself is off (hash, chain id, lineage, metadata)...
+      expect(v.errors.filter((e) => !e.path.startsWith('definition.'))).toEqual([]);
+      expect(v.definitionHash).toBe(served.definitionHash);
+    }
+    // ...and the SDK applies BAG's rules: v2 passes; the v1 fixture (one asset at 100% with maxWeightBps 7000) does not, as in validateDefinition.
+    const sdkDoc = (doc: unknown) => {
+      const r = parseBag(JSON.stringify(doc));
+      if (!r.ok) throw new Error(JSON.stringify(r.issues));
+      return r.bag;
+    };
+    expect(validateBag(sdkDoc(buildBagJson(bag(), rows[1]))).errors).toEqual([]);
+    expect(validateBag(sdkDoc(buildBagJson(bag(), rows[0]))).errors.map((e) => e.code)).toEqual(['ABOVE_MAX_WEIGHT']);
+    expect(validateDefinition(buildBagJson(bag(), rows[0]).definition, registry).validation.errors.map((e) => e.code)).toContain('ABOVE_MAX_WEIGHT');
   });
 
   it('exposes no internal ids', () => {
