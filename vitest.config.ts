@@ -29,7 +29,7 @@ export default defineConfig({
     jsx: { runtime: 'automatic' },
   },
   test: {
-    include: ['lib/**/*.test.ts', 'lib/**/*.test.tsx', 'hooks/**/*.test.ts', 'hooks/**/*.test.tsx', 'app/**/*.test.tsx', 'components/**/*.test.tsx'],
+    include: ['packages/**/*.test.ts', 'lib/**/*.test.ts', 'lib/**/*.test.tsx', 'hooks/**/*.test.ts', 'hooks/**/*.test.tsx', 'app/**/*.test.tsx', 'components/**/*.test.tsx'],
     exclude: ['**/node_modules/**', '**/*.integration.test.ts'],
     setupFiles: ['./vitest.setup.ts'],
   },

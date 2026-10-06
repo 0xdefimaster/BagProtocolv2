@@ -52,6 +52,11 @@ display metadata, or how BAG enforces the rules.
   recorded with the version; current values are in `state.display`). It is
   never a rule: agents must not read intent or constraints from it.
 
+**Standalone SDK:** `packages/bag-sdk` parses, validates, normalizes, hashes
+and registry-verifies a bag.json with no BAG server. Its README is the frozen v1
+spec. The registry creator is a verification input there, never taken from
+`commitments.registry`.
+
 **`null`, omitted and default**
 
 - Every definition key is required. An omitted key is rejected (400 /
