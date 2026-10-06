@@ -51,9 +51,14 @@ describe('validateBag', () => {
     expect(errorCodes(bag, [{ ...tokens[0] }, { ...tokens[1], chain: 'ethereum' }])).toEqual(['ASSET_CHAIN_MISMATCH@definition.assets[0].chain']);
   });
 
-  it('weights must sum to 10000 (± 2) and respect the declared bounds', () => {
-    expect(errorCodes(doc((d) => (d.definition.assets[0].weightBps = 5000)))).toEqual(['WEIGHTS_NOT_100@definition.assets']);
-    expect(errorCodes(doc((d) => (d.definition.assets[0].weightBps = 6002)))).toEqual([]);
+  it('weights must sum to exactly 10000: no unallocated or over-allocated remainder', () => {
+    for (const w of [5998, 5999, 6001, 6002, 5000]) {
+      expect(errorCodes(doc((d) => (d.definition.assets[0].weightBps = w)))).toEqual(['WEIGHTS_NOT_100@definition.assets']);
+    }
+    expect(errorCodes(doc())).toEqual([]);
+  });
+
+  it('weights respect the declared bounds', () => {
     expect(errorCodes(doc((d) => (d.definition.rules.weightBounds.maxBps = 5000)))).toEqual(['ABOVE_MAX_WEIGHT@definition.assets[0].weightBps']);
     expect(errorCodes(doc((d) => (d.definition.rules.weightBounds.minBps = 4500)))).toEqual(['BELOW_MIN_WEIGHT@definition.assets[1].weightBps']);
     expect(errorCodes(doc((d) => (d.definition.rules.weightBounds = { minBps: 8000, maxBps: 7000 })))).toEqual(['INVALID_WEIGHT_BOUNDS@definition.rules.weightBounds']);

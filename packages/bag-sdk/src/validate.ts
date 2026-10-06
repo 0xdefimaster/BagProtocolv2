@@ -1,5 +1,6 @@
 import { chainIdOf, normalizeAddress, type BagChain } from './chains';
 import { computeDefinitionHash, normalizeDefinition } from './definition';
+import { resolveV1Rules } from './rules';
 import type { BagDocument, BagIssue, Hex } from './types';
 
 // -----------------------------------------------------------------------------
@@ -8,27 +9,18 @@ import type { BagDocument, BagIssue, Hex } from './types';
 // in a fixed order. Never touches the network.
 //
 // Mirrors the rules BAG applies when a version is created (weights, bounds,
-// duplicates, decimals, fee cap, slippage and drift ranges), with the v1
-// defaults below used ONLY to check a `null` ("not set") rule; they are never
-// written into the document or the hash.
+// duplicates, decimals, fee cap, slippage and drift ranges). A `null` rule is
+// checked against its normative v1 default (rules.ts, resolveV1Rules); the
+// default is never written into the document or the hash.
 //
 // Not here, on purpose: BAG's asset allowlist, routes, prices, price impact
 // and deposit size. Those depend on the market or on a deployment and belong
 // to quoting/compiling, not to the artifact.
 // -----------------------------------------------------------------------------
 
-/** Frozen with v1. What a `null` rule is checked against; changing one is a spec change (bag.json/v2). */
-export const V1_RULE_DEFAULTS = Object.freeze({
-  minWeightBps: 100,
-  maxWeightBps: 7000,
-  /** `maxAssets: null` allows max(asset count, 10), capped by MAX_ASSETS. */
-  maxAssetsFloor: 10,
-});
-
 export const V1_LIMITS = Object.freeze({
+  /** Weights must sum to exactly this. No tolerance: there is no unallocated or over-allocated remainder. */
   TOTAL_WEIGHT_BPS: 10_000,
-  /** Weights must sum to 10000 bps ± this (BAG's rule since v1, for UI rounding). */
-  WEIGHT_SUM_TOLERANCE_BPS: 2,
   MAX_ASSETS: 100,
   MIN_DECIMALS: 0,
   MAX_DECIMALS: 18,
@@ -89,8 +81,8 @@ export function validateBag(bag: BagDocument, options: ValidateBagOptions = {}):
   });
 
   const total = d.assets.reduce((s, a) => s + (a.weightBps > 0 ? a.weightBps : 0), 0);
-  if (d.assets.length > 0 && Math.abs(total - L.TOTAL_WEIGHT_BPS) > L.WEIGHT_SUM_TOLERANCE_BPS) {
-    err('WEIGHTS_NOT_100', 'definition.assets', `Weights sum to ${total} bps; they must sum to ${L.TOTAL_WEIGHT_BPS} (± ${L.WEIGHT_SUM_TOLERANCE_BPS}).`);
+  if (d.assets.length > 0 && total !== L.TOTAL_WEIGHT_BPS) {
+    err('WEIGHTS_NOT_100', 'definition.assets', `Weights sum to ${total} bps; they must sum to exactly ${L.TOTAL_WEIGHT_BPS}.`);
   }
 
   // ---- token decimals (only against what the caller supplied) ----
@@ -109,8 +101,9 @@ export function validateBag(bag: BagDocument, options: ValidateBagOptions = {}):
   const wb = r.weightBounds;
   if (wb.minBps !== null && !inRange(wb.minBps, 0, L.TOTAL_WEIGHT_BPS)) err('INVALID_RULE_VALUE', 'definition.rules.weightBounds.minBps', `minBps must be from 0 to ${L.TOTAL_WEIGHT_BPS}.`);
   if (wb.maxBps !== null && !inRange(wb.maxBps, 1, L.TOTAL_WEIGHT_BPS)) err('INVALID_RULE_VALUE', 'definition.rules.weightBounds.maxBps', `maxBps must be from 1 to ${L.TOTAL_WEIGHT_BPS}.`);
-  const minBps = wb.minBps ?? V1_RULE_DEFAULTS.minWeightBps;
-  const maxBps = wb.maxBps ?? V1_RULE_DEFAULTS.maxWeightBps;
+  const resolved = resolveV1Rules(d);
+  const minBps = resolved.minWeightBps.value;
+  const maxBps = resolved.maxWeightBps.value;
   if (minBps > maxBps) {
     err('INVALID_WEIGHT_BOUNDS', 'definition.rules.weightBounds', `minBps (${minBps}) is greater than maxBps (${maxBps}).`);
   } else {

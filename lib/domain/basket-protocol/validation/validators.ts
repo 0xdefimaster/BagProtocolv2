@@ -247,12 +247,11 @@ export function validateAssets(recipe: BasketRecipe): ValidationIssue[] {
 
 // ----------------------------- 3. Weight invariants -------------------------------
 
-// Weights are integer basis points (10000 = 100%), so in principle they
-// should sum exactly. A small tolerance still absorbs any float→bps
-// rounding done upstream (e.g. `bagPositionsToRecipeAssets`, which rounds
-// a percentage to the nearest bp) without opening the door to a real
-// mis-allocation like 40+30+20=90.
-const WEIGHT_SUM_TOLERANCE_BPS = 2;
+// Weights are integer basis points and must sum to exactly 10000. No tolerance:
+// the purchase path (calculateDepositAllocation → distributeExactByWeight)
+// refuses any other sum, so a tolerance here only let a version be created that
+// could never be bought. The create UI already sends whole percents that sum to
+// 100. bag.json v1 freezes the same rule (packages/bag-sdk).
 const TOTAL_WEIGHT_BPS = 10_000;
 
 export function validateWeightInvariants(recipe: BasketRecipe): ValidationIssue[] {
@@ -261,12 +260,12 @@ export function validateWeightInvariants(recipe: BasketRecipe): ValidationIssue[
   if (validAssets.length === 0) return issues; // already reported by validateAssets
 
   const total = validAssets.reduce((sum, a) => sum + a.weightBps, 0);
-  if (Math.abs(total - TOTAL_WEIGHT_BPS) > WEIGHT_SUM_TOLERANCE_BPS) {
+  if (total !== TOTAL_WEIGHT_BPS) {
     issues.push(
       issue(
         VALIDATION_CODES.WEIGHTS_NOT_100,
         'ERROR',
-        `Asset weights must sum to 100% (${(TOTAL_WEIGHT_BPS / 100).toFixed(2)}%). Got ${(total / 100).toFixed(2)}%.`,
+        `Asset weights must sum to exactly 100% (${TOTAL_WEIGHT_BPS} bps). Got ${total} bps.`,
         'assets'
       )
     );

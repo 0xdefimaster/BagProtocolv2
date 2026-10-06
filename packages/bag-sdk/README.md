@@ -4,20 +4,28 @@ A BAG strategy as a portable object. This package reads, checks, canonicalizes
 and hashes a **bag.json v1** document, and verifies it against StrategyRegistry.
 It needs no BAG frontend, server or database.
 
-- Dependencies: `viem` (peer) and standard Web APIs (`fetch`). No framework,
-  database, environment variable, endpoint or key in the source. A boundary
-  test (`test/boundary.test.ts`) enforces this.
-- Network access only through what you pass in (`fetch`, a viem client).
+- Dependencies: `viem` (peer) only. No framework, database, environment
+  variable, endpoint or key in the source. A boundary test
+  (`test/boundary.test.ts`) enforces this.
+- **Strategy core ≠ transport.** The core (`@bag-protocol/sdk`) is
+  parse → validate → normalize → hash → verify and never fetches anything.
+  Getting the bytes is an adapter's job:
+  - `@bag-protocol/sdk/http`: `fetchBag(url, { fetch })`.
+  - `@bag-protocol/sdk/evm`: `readTokenDecimals(definition, clientFor)`.
+  - Other sources (a local file, IPFS, wallet storage, a registry `uri`) end in the same `parseBag(text)`.
+- Network access only through what you pass in (a `fetch`, a viem client).
 - Status: in-repo package (`private`), not published to npm yet.
 
 ```ts
-import { fetchBag, parseBag, validateBag, normalizeBag, hashBag, verifyRegistryCommitment } from '@bag-protocol/sdk';
+import { parseBag, validateBag, normalizeBag, hashBag, resolveV1Rules, verifyRegistryCommitment } from '@bag-protocol/sdk';
+import { fetchBag } from '@bag-protocol/sdk/http';   // optional transport adapter
 
 const parsed = parseBag(fileText);            // or: await fetchBag(url)
 if (!parsed.ok) throw new Error(parsed.issues.map((i) => `${i.code} ${i.path}`).join('\n'));
 const check = validateBag(parsed.bag, { tokens });  // tokens: optional { chain, address, decimals }[] (see readTokenDecimals)
 const canonical = normalizeBag(parsed.bag);
 const definitionHash = hashBag(canonical);    // == check.definitionHash
+const rules = resolveV1Rules(parsed.bag.definition);  // what the strategy means, every null resolved
 
 // Optional: is this exactly what <creator> committed on-chain?
 const v = await verifyRegistryCommitment({ bag: parsed.bag, expectedCreator, registry, client });
@@ -61,6 +69,7 @@ replaced by a default. A missing key is an error, not `null`.
 | `assets[]` | `{ chain, address, decimals, weightBps }`: identity is `chain + address` |
 | `rules.weightBounds` | `{ minBps, maxBps }`, each integer \| null |
 | `rules.maxAssets` | integer \| null |
+| `assets[].weightBps` | integer 1–10000; the weights sum to **exactly** 10000 |
 | `rules.minInvestment` | `{ amount: canonical decimal string, measuredAs: "PAYMENT_TOKEN_AMOUNT" }` \| null |
 | `rules.swapSlippageBps` | integer 1–10000 \| null (0 is recorded as null) |
 | `rules.rebalance` | `{ frequency: MANUAL\|DAILY\|WEEKLY\|MONTHLY\|THRESHOLD_ONLY \| null, driftThresholdBps }` \| null |
@@ -141,7 +150,7 @@ Definition rules:
 | `INVALID_DECIMALS` | Decimals 0–18 |
 | `DECIMALS_MISMATCH` | Against supplied tokens |
 | `INVALID_WEIGHT` | Weight 1–10000 |
-| `WEIGHTS_NOT_100` | Weights sum to 10000 ± 2 |
+| `WEIGHTS_NOT_100` | Weights sum to exactly 10000 |
 | `BELOW_MIN_WEIGHT`, `ABOVE_MAX_WEIGHT`, `INVALID_WEIGHT_BOUNDS` | Weight bounds |
 | `INVALID_PERFORMANCE_FEE` | Fee cap 3000 |
 | `INVALID_SLIPPAGE` | Slippage range |
@@ -157,14 +166,48 @@ Document rules:
 | `SELF_FORK` | A fork must be another strategy |
 | `METADATA_ASSET_UNKNOWN` | `metadata.assets` may only name definition assets |
 
-A `null` bound is checked against the frozen v1 defaults (`V1_RULE_DEFAULTS`):
-- min 100 bps;
-- max 7000 bps;
-- `maxAssets` max(count, 10).
-
-These defaults are never written into the document or the hash.
-
 Not checked here: BAG's asset allowlist, routes, prices, price impact and deposit size. They depend on the market or a deployment.
+
+## Weights: exactly 10000, no remainder (normative)
+
+The weights of a v1 definition sum to **exactly 10000 bps**. There is no tolerance:
+- `9998` would leave 2 bps of every deposit unallocated;
+- `10002` would allocate more than was deposited.
+
+A definition that does not sum to 10000 is invalid (`WEIGHTS_NOT_100`) and must not be executed.
+
+How a deposit is split (every executor must do it this way):
+1. For each asset, `floor(amount × weightBps / 10000)` in the input token's smallest unit.
+2. The units lost to flooring (always fewer than the number of assets) go one unit each to the assets with the largest remainder.
+3. Ties are broken by `chain:address` ascending.
+
+The split is exact: the parts always sum to the deposit, with nothing left over and nothing created. The SDK implements it as `splitByWeight`, and a test in the app checks that it gives exactly the same result as BAG's `distributeExactByWeight`.
+
+Before v1 was frozen, BAG accepted 9998–10002 at version creation but its purchase path already refused anything but exactly 10000. Both now require exactly 10000. The create UI always sent whole percents summing to 100.
+
+## `null` and its default (normative)
+
+A `null` rule means "not set by the creator". The default is **never written** into the document, so it is not in the hash. But every reader must give `null` the same meaning, otherwise one `definitionHash` would mean two strategies. So the resolution is part of the standard: `resolveV1Rules` applies this table.
+
+| Field | `null` resolves to |
+|---|---|
+| `kind` | `STATIC_BASKET` |
+| `mutability` | `MUTABLE` |
+| `rules.weightBounds.minBps` | 100 |
+| `rules.weightBounds.maxBps` | 7000 |
+| `rules.maxAssets` | max(asset count, 10), at most 100 |
+| `rules.minInvestment` | `"0"` (no minimum) |
+| `rules.swapSlippageBps` | 100 |
+| `rules.rebalance.frequency` (or `rebalance: null`) | `THRESHOLD_ONLY` |
+| `rules.rebalance.driftThresholdBps` (or `rebalance: null`) | 500 |
+| `rules.performanceFeeBps` | 0 (no fee) |
+| `rules.noRouteAssetPolicy` | `BLOCK` |
+
+- Each resolved value is labelled `DECLARED` or `V1_DEFAULT`.
+- A declared `0` (for example `performanceFeeBps: 0`) is a value, not "unset".
+- **v1 default resolution semantics are normative and frozen.** Changing any value in this table is `bag.json/v2`. These values equal BAG's own defaults, and a test in the app (`bag-sdk-consistency.test.ts`) fails if they ever diverge.
+
+The definition states what the creator allows. An executor may enforce a rule **more strictly, never more loosely**. For example, BAG caps the per-swap slippage it applies at 300 bps even if a definition declares more.
 
 ## Version, fork and registry
 
@@ -194,7 +237,8 @@ bag.json v1 semantics are frozen. Changing any of the following requires
 - the sorting rule;
 - the numeric rule;
 - the chain table;
-- the validation rules or defaults above;
+- the validation rules, the weight-sum rule or the deposit split;
+- the `null` default table;
 - the interpretation of a field.
 
 This holds even when the bytes would not change: a change of meaning is a new version.

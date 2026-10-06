@@ -10,15 +10,24 @@ import { BAG_V1_CHAINS } from '../src';
 // -----------------------------------------------------------------------------
 
 const SRC = fileURLToPath(new URL('../src', import.meta.url));
-const sources = readdirSync(SRC)
+const sources = (readdirSync(SRC, { recursive: true }) as string[])
   .filter((f) => f.endsWith('.ts'))
-  .map((f) => ({ file: f, text: readFileSync(join(SRC, f), 'utf8') }));
+  .map((f) => ({ file: f.replace(/\\/g, '/'), text: readFileSync(join(SRC, f), 'utf8') }));
+const core = sources.filter((s) => !s.file.startsWith('adapters/'));
 
 describe('SDK dependency boundary', () => {
   it('imports only viem and its own modules', () => {
     for (const { file, text } of sources) {
       const specifiers = [...text.matchAll(/(?:import|export)[^'"]*from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
-      for (const s of specifiers) expect(s.startsWith('./') || s === 'viem', `${file} imports ${s}`).toBe(true);
+      for (const s of specifiers) expect(s.startsWith('./') || (s.startsWith('../') && !s.startsWith('../../')) || s === 'viem', `${file} imports ${s}`).toBe(true);
+    }
+  });
+
+  it('the strategy core has no transport: no fetch, and it never imports an adapter', () => {
+    expect(core.length).toBeGreaterThan(5);
+    for (const { file, text } of core) {
+      expect(text, file).not.toMatch(/\bfetch\s*\(/);
+      expect(text, file).not.toMatch(/from\s+['"]\.\/adapters/);
     }
   });
 

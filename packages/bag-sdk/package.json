@@ -5,7 +5,9 @@
   "description": "bag.json v1: parse, validate, normalize, hash and verify BAG strategy definitions without the BAG app.",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./http": "./src/adapters/http.ts",
+    "./evm": "./src/adapters/evm.ts"
   },
   "files": [
     "src",

@@ -1,6 +1,6 @@
-// @bag-protocol/sdk — the bag.json v1 artifact layer.
-// parse → validate → normalize → hash, plus independent StrategyRegistry verification.
-// Depends on viem and standard Web APIs only. Spec: ../README.md.
+// @bag-protocol/sdk — the bag.json v1 strategy core.
+// parse → validate → normalize → hash → verify (StrategyRegistry). No transport: getting the bytes is an
+// adapter's job (@bag-protocol/sdk/http, @bag-protocol/sdk/evm). Depends on viem only. Spec: ../README.md.
 
 export { BAG_V1_CHAINS, BAG_V1_CHAIN_SLUGS, chainIdOf, isBagChain, normalizeAddress, type BagChain } from './chains';
 export {
@@ -25,7 +25,9 @@ export {
 } from './types';
 export { canonicalJson, parseJsonStrict, JsonSyntaxError } from './json';
 export { parseBag, type ParseResult } from './parse';
-export { validateBag, V1_LIMITS, V1_RULE_DEFAULTS, type BagValidation, type TokenInfo, type ValidateBagOptions } from './validate';
+export { validateBag, V1_LIMITS, type BagValidation, type TokenInfo, type ValidateBagOptions } from './validate';
+export { resolveV1Rules, V1_DEFAULTS, type Resolved, type ResolvedV1Rules, type RuleSource } from './rules';
+export { splitByWeight } from './split';
 export { computeDefinitionHash, definitionHashPreimage, hashBag, normalizeAssetDisplay, normalizeBag, normalizeDefinition, type HashableDefinition } from './definition';
 export {
   checkRegistryCommitment,
@@ -38,4 +40,3 @@ export {
   type RegistryRecord,
   type RegistryVerification,
 } from './registry';
-export { fetchBag, MAX_BAG_JSON_BYTES, readTokenDecimals } from './load';

@@ -22,6 +22,9 @@ re-exports its canonicalization. Decisions recorded with it:
 - D3: a minimal document `{ bagJson, definition, metadata? }` is complete.
 - D4: `creator` is a verification input, never read from the JSON.
 - D5: strict parsing.
+- Weights sum to exactly 10000; the deposit split (floor, largest remainder, ties by `chain:address`) is normative. Version creation now requires exactly 10000 too; the purchase path always did.
+- The `null` → default table (`resolveV1Rules`) is normative and frozen. Defaults are still never written into the document or the hash.
+- The core never fetches. Transport lives in adapters (`/http`, `/evm`).
 
 Changing any hash-relevant field, normalization, sorting or numeric rule, the
 chain table, the validation rules or the meaning of a field requires

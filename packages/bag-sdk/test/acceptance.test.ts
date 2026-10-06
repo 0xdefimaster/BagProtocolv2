@@ -2,17 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { encodeAbiParameters, keccak256, type Hex } from 'viem';
 import {
   checkRegistryCommitment,
-  fetchBag,
   hashBag,
   normalizeBag,
   parseBag,
-  readTokenDecimals,
   registryStrategyId,
   validateBag,
   verifyRegistryCommitment,
   type BagDocument,
   type ContractReader,
 } from '../src';
+import { fetchBag } from '../src/adapters/http';
+import { readTokenDecimals } from '../src/adapters/evm';
 import { EXTERNAL_DEFINITION_HASH, externalBag, externalBagText } from './helpers';
 
 // -----------------------------------------------------------------------------
