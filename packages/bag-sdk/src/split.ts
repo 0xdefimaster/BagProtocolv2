@@ -2,7 +2,9 @@ import { normalizeAddress } from './chains';
 import type { BagDefinition } from './types';
 
 // -----------------------------------------------------------------------------
-// The normative v1 deposit split (README "Weights: exactly 10000"). Pure.
+// The normative v1 TARGET allocation (README "Weights: exactly 10000"). Pure.
+// An executor that splits on-chain by bps (LI.FI Composer) may deviate from it
+// by less than V1_EXECUTION_TOLERANCE_BPS of the deposit per asset.
 //   1. part_i = floor(amount × weightBps_i / 10000)
 //   2. the units lost to flooring go one each to the largest remainders,
 //   3. ties by `chain:address` ascending.
@@ -10,6 +12,9 @@ import type { BagDefinition } from './types';
 // -----------------------------------------------------------------------------
 
 const TOTAL_BPS = BigInt(10_000);
+
+/** Largest allowed per-asset deviation from the target, in bps of the deposit, for an executor that splits on-chain by bps ratios. */
+export const V1_EXECUTION_TOLERANCE_BPS = 2;
 
 /** Splits `amountRaw` (smallest unit of the input token) across a valid definition's assets. Keys are `chain:address` (lowercase). */
 export function splitByWeight(amountRaw: bigint, definition: Pick<BagDefinition, 'assets'>): Map<string, bigint> {

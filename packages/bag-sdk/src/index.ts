@@ -27,7 +27,7 @@ export { canonicalJson, parseJsonStrict, JsonSyntaxError } from './json';
 export { parseBag, type ParseResult } from './parse';
 export { validateBag, V1_LIMITS, type BagValidation, type TokenInfo, type ValidateBagOptions } from './validate';
 export { resolveV1Rules, V1_DEFAULTS, type Resolved, type ResolvedV1Rules, type RuleSource } from './rules';
-export { splitByWeight } from './split';
+export { splitByWeight, V1_EXECUTION_TOLERANCE_BPS } from './split';
 export { computeDefinitionHash, definitionHashPreimage, hashBag, normalizeAssetDisplay, normalizeBag, normalizeDefinition, type HashableDefinition } from './definition';
 export {
   checkRegistryCommitment,
