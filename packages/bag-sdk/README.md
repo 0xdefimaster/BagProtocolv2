@@ -176,12 +176,22 @@ The weights of a v1 definition sum to **exactly 10000 bps**. There is no toleran
 
 A definition that does not sum to 10000 is invalid (`WEIGHTS_NOT_100`) and must not be executed.
 
-How a deposit is split (every executor must do it this way):
+**Target allocation (normative, exact).** The amount each asset should receive:
 1. For each asset, `floor(amount × weightBps / 10000)` in the input token's smallest unit.
 2. The units lost to flooring (always fewer than the number of assets) go one unit each to the assets with the largest remainder.
 3. Ties are broken by `chain:address` ascending.
 
-The split is exact: the parts always sum to the deposit, with nothing left over and nothing created. The SDK implements it as `splitByWeight`, and a test in the app checks that it gives exactly the same result as BAG's `distributeExactByWeight`.
+The parts always sum to the deposit, with nothing left over and nothing created. The SDK implements this as `splitByWeight`; a test in the app checks it gives exactly the same result as BAG's `distributeExactByWeight`. Every implementation must compute the same target.
+
+**Execution (normative bound).** An executor must:
+- spend the **whole** deposit, with no unallocated remainder and nothing created;
+- give each asset its target amount, within **2 bps of the deposit**.
+
+An executor that splits off-chain into fixed per-asset amounts (BAG's sequential path) hits the target exactly. An executor that splits on-chain by basis-point ratios cannot. This is the case for LI.FI Composer: `core.split` divides one input in two by a bps ratio, so an N-asset purchase is a cascade of N−1 splits. Two things make it deviate:
+- each step's ratio is rounded to a whole bp of the *remaining* amount, giving at most 0.95 bp of the deposit per asset (measured over 20,000 random baskets);
+- the target amounts are converted to whole-bp weights first, adding less than 1 bp.
+
+The last asset absorbs what remains, so the whole deposit is still spent. This bound is pinned by a test (`bag-sdk-consistency.test.ts`). On a 10 USDG purchase, 2 bps is at most 0.2 cents per asset.
 
 Before v1 was frozen, BAG accepted 9998–10002 at version creation but its purchase path already refused anything but exactly 10000. Both now require exactly 10000. The create UI always sent whole percents summing to 100.
 
@@ -237,7 +247,7 @@ bag.json v1 semantics are frozen. Changing any of the following requires
 - the sorting rule;
 - the numeric rule;
 - the chain table;
-- the validation rules, the weight-sum rule or the deposit split;
+- the validation rules, the weight-sum rule, the target allocation or the execution bound;
 - the `null` default table;
 - the interpretation of a field.
 

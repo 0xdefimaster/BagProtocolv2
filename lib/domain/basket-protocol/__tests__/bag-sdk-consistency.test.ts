@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { V1_DEFAULTS, V1_LIMITS, BAG_V1_CHAINS, splitByWeight } from '@/packages/bag-sdk/src';
+import { V1_DEFAULTS, V1_LIMITS, BAG_V1_CHAINS, splitByWeight, V1_EXECUTION_TOLERANCE_BPS } from '@/packages/bag-sdk/src';
+import { computeCascadeSplitBps } from '@/lib/blockchain/lifi-composer-adapter';
 import { distributeExactByWeight } from '../exact-allocation';
 import { assetIdentityKey } from '../asset-identity';
 import {
@@ -68,5 +69,47 @@ describe('bag.json v1 (SDK) ↔ BAG app', () => {
       expect([...sdk.entries()].sort()).toEqual([...bag.entries()].sort());
       expect([...sdk.values()].reduce((a, b) => a + b, BigInt(0))).toBe(amount);
     }
+  });
+
+  it('BAG’s Composer purchase (on-chain bps cascade) stays within the v1 execution bound of the exact target', () => {
+    // Mirrors lifi-purchase-quote.ts: exact target amounts → whole-bp leg weights (last leg absorbs) →
+    // computeCascadeSplitBps → each on-chain split takes `bps` of what remains.
+    let seed = 11;
+    const rand = (m: number) => ((seed = (seed * 1103515245 + 12345) % 2 ** 31), seed % m);
+    let worst = 0;
+    for (let t = 0; t < 3000; t++) {
+      const n = 2 + rand(9);
+      const raw = Array.from({ length: n }, () => 1 + rand(3000));
+      const sum = raw.reduce((a, b) => a + b, 0);
+      const weights = raw.map((w) => Math.floor((w * 10000) / sum));
+      weights[0] += 10000 - weights.reduce((a, b) => a + b, 0);
+      if (weights.some((w) => w <= 0)) continue;
+      const assets = weights.map((weightBps, i) => ({ chain: 'robinhood' as const, address: `0x${(0xa0 + i).toString(16).padStart(40, '0')}`, decimals: 18, weightBps }));
+      const amount = BigInt(1 + rand(1_000_000_007)) * BigInt(1_000_000);
+      const target = [...splitByWeight(amount, { assets }).values()];
+      // amounts → leg bps exactly as lifi-purchase-quote.ts does
+      let assigned = 0;
+      const legBps = target.map((a, i) => {
+        if (i === n - 1) return 10000 - assigned;
+        const b = Number((a * BigInt(10000)) / amount);
+        assigned += b;
+        return b;
+      });
+      if (legBps.some((b) => b <= 0)) continue;
+      const steps = computeCascadeSplitBps(legBps.map((weightBps, i) => ({ address: assets[i].address, weightBps, symbol: `A${i}` })));
+      let remaining = amount;
+      const executed = steps.map((bps) => {
+        const part = (remaining * BigInt(bps)) / BigInt(10000);
+        remaining -= part;
+        return part;
+      });
+      executed.push(remaining);
+      expect(executed.reduce((a, b) => a + b, BigInt(0))).toBe(amount); // whole deposit spent
+      executed.forEach((e, i) => {
+        const dev = Math.abs(Number(e - target[i])) / Number(amount) * 10000;
+        worst = Math.max(worst, dev);
+      });
+    }
+    expect(worst).toBeLessThan(V1_EXECUTION_TOLERANCE_BPS);
   });
 });
