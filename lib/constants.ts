@@ -4,6 +4,7 @@ export const NAV_LINKS = [
   { href: "#creatorfi", label: "CreatorFi" },
   { href: "#how-it-works", label: "How it works" },
   { href: "#protocol", label: "Protocol" },
+  { href: "#roadmap", label: "Roadmap" },
 ] as const;
 
 // Public project links shown in the footer. Left empty on purpose: set them to
