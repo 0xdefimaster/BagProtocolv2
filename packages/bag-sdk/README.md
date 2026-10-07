@@ -245,7 +245,12 @@ import { compileBag, simulateBag } from '@bag-protocol/sdk';
 import { lifiComposer } from '@bag-protocol/sdk/lifi';
 
 const provider = lifiComposer({ apiKey: process.env.LIFI_API_KEY!, baseUrl: 'https://composer.li.quest' });  // your own key
-const compiled = await compileBag(bag, { inputToken, amountRaw, signer }, { provider });
+const trust = {
+  chainId: 4663,
+  allowedTransactionTargets: ['0x…'], // contracts you have verified for this chain
+  allowedApprovalSpenders: ['0x…'],   // contracts you have verified for this chain
+};
+const compiled = await compileBag(bag, { inputToken, amountRaw, signer }, { provider, trust });
 const check = await simulateBag(compiled, { client });   // your viem client: OK | NEEDS_APPROVAL | INSUFFICIENT_BALANCE | REVERTED
 // your wallet sends compiled.approvals, then signs and sends compiled.transaction
 ```
@@ -267,13 +272,14 @@ const check = await simulateBag(compiled, { client });   // your viem client: OK
 
 A looser value is refused (`LOOSER_THAN_POLICY`). An optional `allowedTokens` restricts the assets to your own allowlist.
 
-**Every provider answer is checked against the plan:**
-- the transaction is for the right chain and sends no native value;
-- approvals are only for the input token and never above the swapped amount;
-- every leg delivers the planned token;
-- the reported price impact is within the limit.
+**Validation happens on both sides of the provider call:**
+
+- **Before calling the provider:** the SDK validates the strategy and purchase inputs, builds the plan, checks its slippage and price-impact policy, and requires a caller trust policy whose chain matches the plan. The target/spender allowlist contents are also checked for valid addresses.
+- **After the provider responds:** the SDK checks the returned transaction's chain and target, native value, approval token/spender/amount, planned output tokens on every leg, and reported price impact. A target or spender that is not allowlisted is rejected here, before the unsigned transaction is returned to the caller.
 
 Anything else throws `ProviderResponseError`.
+
+The caller must provide a chain-scoped `ExecutionTrustPolicy`. A mismatched policy chain or malformed/empty target allowlist is rejected before the provider call. The SDK cannot know the provider's compiled target or approval spender until the provider responds, so disallowed returned targets/spenders are rejected after that call and before any unsigned transaction is returned. The SDK does not decode arbitrary transaction calldata to prove its full economic behavior; use a provider and endpoint you trust, simulate the compiled call, and let the wallet show the transaction before signing.
 
 No partial purchases: if any asset cannot be routed, the compile fails and nothing is built. This is the strictest no-route behaviour (`BLOCK`).
 
@@ -289,8 +295,10 @@ Every plan carries `accounting: "NOT_BAG_ACCOUNTED"`. BAG never infers a positio
 **End to end, no BAG app:** `examples/compile-purchase.ts` takes a bag.json (file or URL) through parse → validate → normalize → hash → verify → quote → simulate → compile and prints the unsigned transaction. Run it with your own key and RPC:
 
 ```
-LIFI_API_KEY=… RPC_URL=… npx tsx packages/bag-sdk/examples/compile-purchase.ts <bag.json|URL> <inputToken> <amountRaw> <signer>
+LIFI_API_KEY=… RPC_URL=… COMPOSER_TRUSTED_TARGETS=0x… COMPOSER_TRUSTED_SPENDERS=0x… npx tsx packages/bag-sdk/examples/compile-purchase.ts <bag.json|URL> <inputToken> <amountRaw> <signer>
 ```
+
+The target and spender values must be independently verified for the strategy's chain. If the transaction needs an approval and no trusted spender is configured, compilation fails closed.
 
 The test suite runs the same script with the real `@lifi/composer-sdk` and the network mocked.
 

@@ -63,7 +63,7 @@ function rpc(hash: string) {
 
 describe('external script: bag.json → unsigned Composer transaction', () => {
   it('from a file that BAG has never stored', async () => {
-    const report = await run({ source: EXTERNAL_BAG_PATH, inputToken: USDG, amountRaw: BigInt(10_000_000), signer: SIGNER, provider: lifiComposer({ apiKey: 'own-key', baseUrl: 'https://composer.test', fetch: composerFetch() }), client: rpc(EXTERNAL_DEFINITION_HASH) });
+    const report = await run({ source: EXTERNAL_BAG_PATH, inputToken: USDG, amountRaw: BigInt(10_000_000), signer: SIGNER, provider: lifiComposer({ apiKey: 'own-key', baseUrl: 'https://composer.test', fetch: composerFetch() }), allowedTransactionTargets: ['0x' + '7'.repeat(40)], allowedApprovalSpenders: [], client: rpc(EXTERNAL_DEFINITION_HASH) });
     expect(report.parse).toBe('ok');
     expect(report.validate).toBe('ok');
     expect(report.definitionHash).toBe(EXTERNAL_DEFINITION_HASH);
@@ -79,6 +79,7 @@ describe('external script: bag.json → unsigned Composer transaction', () => {
       source: 'https://example.org/hand.bag.json', fetch: fetchBagJson,
       inputToken: USDG, amountRaw: BigInt(10_000_000), signer: SIGNER,
       provider: lifiComposer({ apiKey: 'own-key', baseUrl: 'https://composer.test', fetch: composerFetch() }), client: rpc(EXTERNAL_DEFINITION_HASH),
+      allowedTransactionTargets: ['0x' + '7'.repeat(40)], allowedApprovalSpenders: [],
       registry: { address: REGISTRY, expectedCreator: CREATOR },
     });
     expect(report.verify).toBe('verified');
@@ -88,7 +89,7 @@ describe('external script: bag.json → unsigned Composer transaction', () => {
   it('stops at the first failing step and never reaches the provider', async () => {
     const fetchImpl = composerFetch();
     const broken = externalBagText().replace('"weightBps": 6000', '"weightBps": 5000');
-    const report = await run({ source: 'mem', readText: async () => broken, inputToken: USDG, amountRaw: BigInt(10_000_000), signer: SIGNER, provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), client: rpc(EXTERNAL_DEFINITION_HASH) });
+    const report = await run({ source: 'mem', readText: async () => broken, inputToken: USDG, amountRaw: BigInt(10_000_000), signer: SIGNER, provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), allowedTransactionTargets: ['0x' + '7'.repeat(40)], allowedApprovalSpenders: [], client: rpc(EXTERNAL_DEFINITION_HASH) });
     expect(report.validate).toEqual([expect.objectContaining({ code: 'WEIGHTS_NOT_100' })]);
     expect(report.unsignedTransaction).toBeUndefined();
     expect(fetchImpl).not.toHaveBeenCalled();

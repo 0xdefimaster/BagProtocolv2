@@ -24,6 +24,7 @@ const USDG = '0x' + 'c'.repeat(40);
 const SIGNER = '0x' + '5'.repeat(40);
 const SPENDER = '0x' + '6'.repeat(40);
 const ROUTER = '0x' + '7'.repeat(40);
+const TRUST = { chainId: 4663, allowedTransactionTargets: [ROUTER], allowedApprovalSpenders: [SPENDER] } as const;
 
 const doc = (mutate: (d: any) => void = () => {}): BagDocument => {
   const raw = externalBag();
@@ -128,7 +129,7 @@ describe('planPurchase', () => {
 describe('compileBag / quoteBag', () => {
   it('returns an unsigned transaction and the quote; sends the provider exactly the plan', async () => {
     const provider = fakeProvider();
-    const compiled = await compileBag(doc(), req(), { provider });
+    const compiled = await compileBag(doc(), req(), { provider, trust: TRUST });
     expect(compiled.transaction).toEqual({ to: ROUTER, data: '0x12345678abcdef', value: BigInt(0), chainId: 4663 });
     expect(compiled.approvals).toEqual([{ token: USDG, spender: SPENDER, amountRaw: BigInt(10_000_000) }]);
     expect(compiled.quote.legs.map((l) => l.minOutRaw)).toEqual(['990', '990']);
@@ -136,7 +137,7 @@ describe('compileBag / quoteBag', () => {
       chainId: 4663, inputToken: USDG, amountRaw: BigInt(10_000_000), signer: SIGNER, legs: [{ token: A }, { token: B }],
       cascadeSplitBps: [4000], slippageBps: 100, maxPriceImpactBps: 500,
     });
-    const quote = await quoteBag(doc(), req(), { provider: fakeProvider() });
+    const quote = await quoteBag(doc(), req(), { provider: fakeProvider(), trust: TRUST });
     expect(quote.priceImpactBps).toBe(12);
     expect('transaction' in quote).toBe(false);
   });
@@ -144,22 +145,46 @@ describe('compileBag / quoteBag', () => {
   it('refuses a provider answer that does not match the plan', async () => {
     const bad: [string, (r: ComposerCompileResult) => ComposerCompileResult][] = [
       ['chain', (r) => ({ ...r, transaction: { ...r.transaction, chainId: 1 } })],
+      ['missing transaction chain', (r) => ({ ...r, transaction: { ...r.transaction, chainId: null } })],
       ['native value', (r) => ({ ...r, transaction: { ...r.transaction, value: '1' } })],
       ['approval token', (r) => ({ ...r, approvals: [{ token: A, spender: SPENDER, amountRaw: '1' }] })],
       ['approval amount', (r) => ({ ...r, approvals: [{ token: USDG, spender: SPENDER, amountRaw: '10000001' }] })],
+      ['untrusted transaction target (checked after provider response)', (r) => ({ ...r, transaction: { ...r.transaction, to: '0x' + '9'.repeat(40) } })],
+      ['untrusted approval spender (checked after provider response)', (r) => ({ ...r, approvals: [{ token: USDG, spender: '0x' + '9'.repeat(40), amountRaw: '10000000' }] })],
       ['leg token', (r) => ({ ...r, legs: [r.legs[1], r.legs[0]] })],
       ['leg count', (r) => ({ ...r, legs: [r.legs[0]] })],
       ['price impact', (r) => ({ ...r, priceImpactBps: 501 })],
       ['malformed tx', (r) => ({ ...r, transaction: { ...r.transaction, to: 'nope' } })],
     ];
     for (const [name, mutate] of bad) {
-      await expect(compileBag(doc(), req(), { provider: fakeProvider(mutate) }), name).rejects.toBeInstanceOf(ProviderResponseError);
+      await expect(compileBag(doc(), req(), { provider: fakeProvider(mutate), trust: TRUST }), name).rejects.toBeInstanceOf(ProviderResponseError);
     }
+  });
+
+  it('requires an explicit chain-matched caller trust policy', async () => {
+    const provider = fakeProvider();
+    await expect(compileBag(doc(), req(), { provider } as never)).rejects.toThrow(/trust policy chain missing/);
+    expect(provider.requests).toHaveLength(0);
+    await expect(compileBag(doc(), req(), { provider, trust: { ...TRUST, allowedTransactionTargets: [] } })).rejects.toThrow(/at least one valid transaction target/);
+    expect(provider.requests).toHaveLength(0);
+    const wrongChainProvider = fakeProvider();
+    await expect(compileBag(doc(), req(), { provider: wrongChainProvider, trust: { ...TRUST, chainId: 1 } })).rejects.toThrow(/does not match plan chain/);
+    expect(wrongChainProvider.requests).toHaveLength(0);
+  });
+
+  it('calls the provider once, then rejects unallowlisted returned targets and spenders before returning a transaction', async () => {
+    const untrustedTargetProvider = fakeProvider((r) => ({ ...r, transaction: { ...r.transaction, to: '0x' + '9'.repeat(40) } }));
+    await expect(compileBag(doc(), req(), { provider: untrustedTargetProvider, trust: TRUST })).rejects.toThrow(/transaction target .* not in the caller's trusted target allowlist/);
+    expect(untrustedTargetProvider.requests).toHaveLength(1);
+
+    const untrustedSpenderProvider = fakeProvider((r) => ({ ...r, approvals: [{ token: USDG, spender: '0x' + '9'.repeat(40), amountRaw: '10000000' }] }));
+    await expect(compileBag(doc(), req(), { provider: untrustedSpenderProvider, trust: TRUST })).rejects.toThrow(/approval spender .* not in the caller's trusted spender allowlist/);
+    expect(untrustedSpenderProvider.requests).toHaveLength(1);
   });
 
   it('never calls the provider for a purchase it cannot plan', async () => {
     const provider = fakeProvider();
-    await expect(compileBag(doc(), req({ slippageBps: 1000 }), { provider })).rejects.toBeInstanceOf(PurchasePlanError);
+    await expect(compileBag(doc(), req({ slippageBps: 1000 }), { provider, trust: TRUST })).rejects.toBeInstanceOf(PurchasePlanError);
     expect(provider.requests).toHaveLength(0);
   });
 });
@@ -189,7 +214,7 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
 
   it('builds the split/swap flow from the plan and maps the compile response', async () => {
     const fetchImpl = composeFetch(compileData);
-    const compiled = await compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'test-key', baseUrl: 'https://composer.test', fetch: fetchImpl }) });
+    const compiled = await compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'test-key', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST });
     expect(compiled.transaction).toEqual({ to: ROUTER, data: '0xdeadbeef', value: BigInt(0), chainId: 4663 });
     expect(compiled.quote.legs.map((l) => [l.expectedOutRaw, l.minOutRaw])).toEqual([['4000', '3960'], ['6000', '5940']]);
     expect(compiled.quote.priceImpactBps).toBe(10);
@@ -205,7 +230,7 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
 
   it('a price impact above the limit from the real adapter is refused', async () => {
     const fetchImpl = composeFetch({ ...compileData, priceImpact: { ...compileData.priceImpact, impactBps: 735 } });
-    await expect(compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }) })).rejects.toThrow(/735 bps is above the limit 500/);
+    await expect(compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST })).rejects.toThrow(/735 bps is above the limit 500/);
   });
 });
 
@@ -223,7 +248,7 @@ describe('simulateBag', () => {
     };
     return c;
   };
-  const compiled = () => compileBag(doc(), req(), { provider: fakeProvider() });
+  const compiled = () => compileBag(doc(), req(), { provider: fakeProvider(), trust: TRUST });
 
   it('OK when balance and approvals are in place and the call succeeds', async () => {
     expect(await simulateBag(await compiled(), { client: client() })).toEqual({ status: 'OK' });

@@ -16,7 +16,7 @@
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { createPublicClient, http, type Hex } from 'viem';
-import { compileBag, hashBag, normalizeBag, parseBag, simulateBag, validateBag, verifyRegistryCommitment, type ComposerProvider, type ContractReader, type SimulationClient } from '../src/index';
+import { chainIdOf, compileBag, hashBag, normalizeBag, parseBag, simulateBag, validateBag, verifyRegistryCommitment, type ComposerProvider, type ContractReader, type SimulationClient } from '../src/index';
 import { fetchBag } from '../src/adapters/http';
 import { readTokenDecimals } from '../src/adapters/evm';
 import { lifiComposer } from '../src/adapters/lifi';
@@ -27,6 +27,8 @@ export interface RunOptions {
   amountRaw: bigint;
   signer: string;
   provider: ComposerProvider;
+  allowedTransactionTargets: string[];
+  allowedApprovalSpenders: string[];
   client: SimulationClient & ContractReader;
   registry?: { address: Hex; expectedCreator: string };
   readText?: (path: string) => Promise<string>;
@@ -53,7 +55,18 @@ export async function run(o: RunOptions) {
     report.verify = v.verified ? 'verified' : v.checks.filter((c) => !c.ok);
   }
 
-  const compiled = await compileBag(bag, { inputToken: o.inputToken, amountRaw: o.amountRaw, signer: o.signer, tokens }, { provider: o.provider });
+  const compiled = await compileBag(
+    bag,
+    { inputToken: o.inputToken, amountRaw: o.amountRaw, signer: o.signer, tokens },
+    {
+      provider: o.provider,
+      trust: {
+        chainId: chainIdOf(bag.definition.chain),
+        allowedTransactionTargets: o.allowedTransactionTargets,
+        allowedApprovalSpenders: o.allowedApprovalSpenders,
+      },
+    }
+  );
   const q = compiled.quote;
   report.quote = {
     provider: q.provider,
@@ -74,8 +87,10 @@ async function main() {
   const [source, inputToken, amountRaw, signer, registry, expectedCreator] = process.argv.slice(2);
   const apiKey = process.env.LIFI_API_KEY;
   const rpcUrl = process.env.RPC_URL;
-  if (!source || !inputToken || !amountRaw || !signer || !apiKey || !rpcUrl) {
-    console.error('Usage: LIFI_API_KEY=... RPC_URL=... npx tsx compile-purchase.ts <bag.json path|URL> <inputToken> <amountRaw> <signer> [registry expectedCreator]');
+  const allowedTransactionTargets = (process.env.COMPOSER_TRUSTED_TARGETS ?? '').split(',').map((a) => a.trim()).filter(Boolean);
+  const allowedApprovalSpenders = (process.env.COMPOSER_TRUSTED_SPENDERS ?? '').split(',').map((a) => a.trim()).filter(Boolean);
+  if (!source || !inputToken || !amountRaw || !signer || !apiKey || !rpcUrl || allowedTransactionTargets.length === 0) {
+    console.error('Usage: LIFI_API_KEY=... RPC_URL=... COMPOSER_TRUSTED_TARGETS=0x... [COMPOSER_TRUSTED_SPENDERS=0x...,0x...] npx tsx compile-purchase.ts <bag.json path|URL> <inputToken> <amountRaw> <signer> [registry expectedCreator]');
     process.exit(2);
   }
   // LI.FI's production Composer API (docs.li.fi quickstart; what BAG uses). Override with COMPOSER_URL.
@@ -87,6 +102,8 @@ async function main() {
     amountRaw: BigInt(amountRaw),
     signer,
     provider: lifiComposer({ apiKey, baseUrl }),
+    allowedTransactionTargets,
+    allowedApprovalSpenders,
     client,
     registry: registry && expectedCreator ? { address: registry as Hex, expectedCreator } : undefined,
   });

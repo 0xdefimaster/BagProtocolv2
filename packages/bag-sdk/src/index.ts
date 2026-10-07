@@ -51,6 +51,7 @@ export {
   type ComposerCompileRequest,
   type ComposerCompileResult,
   type ComposerProvider,
+  type ExecutionTrustPolicy,
   type PurchaseQuote,
   type QuotedLeg,
   type SimulationClient,

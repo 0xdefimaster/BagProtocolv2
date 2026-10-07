@@ -9,10 +9,10 @@ import type { BagDocument, Hex } from './types';
 // (e.g. `lifiComposer({ apiKey })` from @bag-protocol/sdk/lifi, with the
 // caller's own LI.FI credentials), chain reads from the caller's viem client.
 //
-// Every answer from the provider is checked before it is returned: the
-// transaction is for the planned chain, approvals are only for the input token
-// and never above the swapped amount, every leg delivers the planned token,
-// and the reported price impact is within the plan's limit.
+// The caller trust policy and purchase plan are checked before the provider
+// call. Provider-returned transaction chain/target, approval token/spender/
+// amount, planned output legs, and price impact are checked after the response
+// and before returning an unsigned transaction.
 // -----------------------------------------------------------------------------
 
 /** What the SDK asks a routing provider to build. Provider-neutral. */
@@ -44,6 +44,16 @@ export interface ComposerCompileResult {
 export interface ComposerProvider {
   readonly name: string;
   compile(request: ComposerCompileRequest): Promise<ComposerCompileResult>;
+}
+
+/** Caller-owned trust boundary for contracts the wallet may be asked to call or approve. */
+export interface ExecutionTrustPolicy {
+  /** Must equal the strategy chain. Address allowlists are never shared across chains. */
+  chainId: number;
+  /** Explicit contracts allowed as the compiled transaction target. */
+  allowedTransactionTargets: readonly string[];
+  /** Explicit contracts allowed to receive an ERC-20 approval. May be empty if no approval is needed. */
+  allowedApprovalSpenders: readonly string[];
 }
 
 export interface QuotedLeg {
@@ -84,6 +94,28 @@ const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const HEX_RE = /^0x[0-9a-fA-F]*$/;
 const UINT_RE = /^\d+$/;
 
+interface TrustedContracts {
+  targets: Set<string>;
+  spenders: Set<string>;
+}
+
+function trustedContracts(plan: PurchasePlan, provider: string, trust: ExecutionTrustPolicy): TrustedContracts {
+  const fail = (m: string): never => {
+    throw new ProviderResponseError(`${provider}: ${m}`);
+  };
+  if (!trust || trust.chainId !== plan.chainId) fail(`trust policy chain ${trust?.chainId ?? 'missing'} does not match plan chain ${plan.chainId}.`);
+  if (!Array.isArray(trust.allowedTransactionTargets) || trust.allowedTransactionTargets.length === 0 || trust.allowedTransactionTargets.some((a) => typeof a !== 'string' || !ADDRESS_RE.test(a))) {
+    fail('trust policy must contain at least one valid transaction target.');
+  }
+  if (!Array.isArray(trust.allowedApprovalSpenders) || trust.allowedApprovalSpenders.some((a) => typeof a !== 'string' || !ADDRESS_RE.test(a))) {
+    fail('trust policy contains an invalid approval spender list.');
+  }
+  return {
+    targets: new Set(trust.allowedTransactionTargets.map((a) => a.toLowerCase())),
+    spenders: new Set(trust.allowedApprovalSpenders.map((a) => a.toLowerCase())),
+  };
+}
+
 function requestFor(plan: PurchasePlan): ComposerCompileRequest {
   return {
     chainId: plan.chainId,
@@ -98,18 +130,20 @@ function requestFor(plan: PurchasePlan): ComposerCompileRequest {
 }
 
 /** Checks a provider answer against the plan. Throws ProviderResponseError on anything unexpected. */
-function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult): CompiledPurchase {
+function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult, trusted: TrustedContracts): CompiledPurchase {
   const fail = (m: string): never => {
     throw new ProviderResponseError(`${provider}: ${m}`);
   };
   const tx = r.transaction;
   if (!ADDRESS_RE.test(tx.to) || !HEX_RE.test(tx.data) || tx.data.length < 10 || !UINT_RE.test(tx.value)) fail('malformed transaction.');
-  if (tx.chainId !== null && tx.chainId !== plan.chainId) fail(`transaction is for chain ${tx.chainId}, the plan is for ${plan.chainId}.`);
+  if (tx.chainId === null || tx.chainId !== plan.chainId) fail(`transaction chain ${tx.chainId ?? 'missing'} does not match plan chain ${plan.chainId}.`);
+  if (!trusted.targets.has(tx.to.toLowerCase())) fail(`transaction target ${tx.to} is not in the caller's trusted target allowlist.`);
   if (BigInt(tx.value) !== BigInt(0)) fail('an ERC-20 purchase must not send native value.');
 
   const approvals = r.approvals.map((a) => {
     if (normalizeAddress(a.token) !== plan.inputToken) fail(`approval requested for ${a.token}, not the input token.`);
     if (!ADDRESS_RE.test(a.spender) || !UINT_RE.test(a.amountRaw)) fail('malformed approval.');
+    if (!trusted.spenders.has(a.spender.toLowerCase())) fail(`approval spender ${a.spender} is not in the caller's trusted spender allowlist.`);
     if (BigInt(a.amountRaw) > plan.swapAmountRaw) fail('approval above the swapped amount.');
     return { token: plan.inputToken as Hex, spender: a.spender as Hex, amountRaw: BigInt(a.amountRaw) };
   });
@@ -135,14 +169,17 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult)
 }
 
 /** Plans the purchase and asks the provider for a priced route. Returns the quote only (no transaction). */
-export async function quoteBag(bag: BagDocument, req: PurchaseRequest, options: { provider: ComposerProvider }): Promise<PurchaseQuote> {
+export async function quoteBag(bag: BagDocument, req: PurchaseRequest, options: { provider: ComposerProvider; trust: ExecutionTrustPolicy }): Promise<PurchaseQuote> {
   return (await compileBag(bag, req, options)).quote;
 }
 
 /** Plans the purchase, compiles it with the provider, checks the answer and returns the unsigned transaction. */
-export async function compileBag(bag: BagDocument, req: PurchaseRequest, options: { provider: ComposerProvider }): Promise<CompiledPurchase> {
+export async function compileBag(bag: BagDocument, req: PurchaseRequest, options: { provider: ComposerProvider; trust: ExecutionTrustPolicy }): Promise<CompiledPurchase> {
   const plan = planPurchase(bag, req);
-  return checked(plan, options.provider.name, await options.provider.compile(requestFor(plan)));
+  const trusted = trustedContracts(plan, options.provider.name, options.trust);
+  // The provider response is the first point where the compiled target and
+  // approval spenders are available to compare with the caller's allowlists.
+  return checked(plan, options.provider.name, await options.provider.compile(requestFor(plan)), trusted);
 }
 
 /** Anything with viem's `readContract` and `call` (a viem PublicClient on the strategy's chain). */
