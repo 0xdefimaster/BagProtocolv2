@@ -7,20 +7,73 @@
 // -----------------------------------------------------------------------------
 
 const NOW = [
-  { t: 'Create, publish, version, fork', b: 'Bags with creator identity, numbered versions and parent/root lineage.' },
-  { t: 'Explore and strategy pages', b: 'Allocation, creator, chain and diversification for every published Bag.' },
-  { t: 'Allocation and execution', b: 'Routes through BAG Router or LI.FI, signed in your own wallet, verified on-chain before accounting.' },
-  { t: 'Creator economics', b: '1.5% fork royalty to the root creator; performance fee on realized profit, locked once outside capital arrives.' },
-  { t: 'Multi-chain data layer', b: 'LI.FI crypto data, Robinhood Stock Token data, and resilient RPC across four chains.' },
+  {
+    t: 'Live Bag creation on Robinhood Chain',
+    b: 'User-signed BagFactory deployment with receipt verification and on-chain composition binding.',
+  },
+  {
+    t: 'Strategy standard and lineage',
+    b: 'bag.json v1, deterministic validation and hashing, version history, strategy diffs, Passport, Policy and fork lineage.',
+  },
+  {
+    t: 'Basket execution with LI.FI',
+    b: 'Multi-asset purchases and fraction-based redemptions through LI.FI Composer in a single transaction where supported.',
+  },
+  {
+    t: 'Verified execution and receipts',
+    b: 'Provider-independent execution plans, minimum-output checks, wallet and transaction binding, on-chain receipt verification and execution history.',
+  },
+  {
+    t: 'Live Robinhood asset and price layer',
+    b: 'Robinhood Stock Token registry and pricing, LI.FI crypto pricing, RPC failover and execution-aware valuation safeguards.',
+  },
+  {
+    t: 'On-chain redemption settlement',
+    b: 'RedeemSettlement is live on Robinhood Chain; the first real fee-path sale has been reconciled from chain event to database ledger.',
+  },
 ];
 
 const NEXT = [
-  { tag: 'DEPLOYMENT PENDING', t: 'BagFactory on mainnet', b: 'Contracts are written and tested; not yet deployed.' },
-  { tag: 'DEPLOYMENT PENDING', t: 'BAG Router on Robinhood Chain', b: 'Router, token allowlists and plan signer configuration.' },
-  { tag: 'DEPLOYMENT PENDING', t: 'Live price pools', b: 'Pool configuration for on-chain price fallbacks.' },
-  { tag: 'COMING NEXT', t: 'Creator reputation and verification', b: 'Track records and verified creators.' },
-  { tag: 'COMING NEXT', t: 'Performance history and analytics', b: 'Recorded NAV history, risk and volatility metrics.' },
-  { tag: 'COMING NEXT', t: 'Public SDK', b: 'Read, render and build on Bags from third-party clients.' },
+  {
+    tag: 'IN PROGRESS',
+    t: 'BAG Router production enablement',
+    b: 'Resolve the plan-signer trust boundary, deploy the router, configure allowlists and enable the native execution path.',
+  },
+  {
+    tag: 'COMING NEXT',
+    t: 'Live compiler and best execution',
+    b: 'Enable parallel provider candidates, add independent providers, normalize gas and fee data, and optimize the basket as a whole.',
+  },
+  {
+    tag: 'COMING NEXT',
+    t: 'Fee-paying redemption validation',
+    b: 'Run a live gain-bearing redemption and verify that the non-zero performance fee reaches the creator exactly once.',
+  },
+  {
+    tag: 'COMING NEXT',
+    t: 'Portfolio management',
+    b: 'Drift detection, target-vs-current allocation, delta-based rebalance planning, one-click rebalance and verified post-state.',
+  },
+  {
+    tag: 'COMING NEXT',
+    t: 'Execution intelligence',
+    b: 'Measure quote vs. actual output, price impact, latency, failures and provider reliability to improve future routing.',
+  },
+  {
+    tag: 'COMING NEXT',
+    t: 'Strategy intelligence',
+    b: 'Liquidity and route analysis, concentration and risk checks, execution-cost warnings and Strategy Doctor recommendations.',
+  },
+  {
+    tag: 'COMING NEXT',
+    t: 'Automation and recurring strategies',
+    b: 'Scheduled purchases, drift-aware DCA, threshold rebalances and conditional execution when required routes become available.',
+  },
+  {
+    tag: 'COMING NEXT',
+    t: 'Open strategy network, AI and agents',
+    b: 'Public strategy registry, portable strategy discovery, third-party verification, AI-to-bag.json workflows and authenticated agents.',
+  },
 ];
 
 export default function Roadmap() {

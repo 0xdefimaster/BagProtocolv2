@@ -72,7 +72,8 @@ bag-protocol/
 Current, evidence-based status of every part (what is verified in code,
 what needs a live environment, what is not production-ready):
 **[DEMO_READINESS.md](DEMO_READINESS.md)**. Which document is current, legacy,
-a spike or historical: **[docs/STATUS.md](docs/STATUS.md)**.
+a spike or historical: **[docs/STATUS.md](docs/STATUS.md)**. Product and infrastructure direction:
+**[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
 Supported chains are Ethereum, Arbitrum, Base and Robinhood Chain (4663).
 The data layer is described in
