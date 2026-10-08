@@ -1,13 +1,12 @@
 import { CanonicalAsset, ChainId } from '@/types/basket-protocol';
 import { ROBINHOOD_REWARD_TOKEN } from '@/lib/config/robinhood-chain';
+import { NATIVE_ASSET_ADDRESS } from '@/lib/domain/basket-protocol/asset-identity';
 
 /**
- * The one token a buyer pays with (and a redeemer receives) on each chain:
- * the chain's settlement stablecoin, matched by its PINNED CONTRACT ADDRESS —
- * never by symbol, so a registry row that merely calls itself "USDG"/"USDC"
- * can never become the payment token. On Robinhood Chain that is USDG, the
- * protocol's settlement/reward token (lib/config/robinhood-chain.ts); on the
- * other chains, Circle's native USDC.
+ * The settlement token remains pinned per chain, but Ethereum additionally
+ * exposes native ETH as a funding asset. Native ETH is a virtual registry
+ * entry: it uses the protocol's canonical native sentinel and is never read
+ * from the ERC-20 asset table.
  */
 export const PAYMENT_TOKEN_BY_CHAIN: Partial<Record<ChainId, { symbol: string; address: string }>> = {
   robinhood: { symbol: ROBINHOOD_REWARD_TOKEN.symbol, address: ROBINHOOD_REWARD_TOKEN.address },
@@ -16,14 +15,39 @@ export const PAYMENT_TOKEN_BY_CHAIN: Partial<Record<ChainId, { symbol: string; a
   arbitrum: { symbol: 'USDC', address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' },
 };
 
+export const NATIVE_PAYMENT_ASSET_ID_BY_CHAIN: Partial<Record<ChainId, string>> = {
+  ethereum: 'native:ethereum:ETH',
+};
+
+function nativePaymentAssetFor(chain: ChainId): CanonicalAsset | null {
+  if (chain !== 'ethereum') return null;
+  return {
+    id: NATIVE_PAYMENT_ASSET_ID_BY_CHAIN.ethereum!,
+    chain,
+    address: NATIVE_ASSET_ADDRESS,
+    symbol: 'ETH',
+    decimals: 18,
+    name: 'Ether',
+    status: 'VERIFIED',
+    assetType: 'crypto',
+    createdAt: '',
+    updatedAt: '',
+  };
+}
+
 export function paymentAssetsFor(assets: CanonicalAsset[], chain: ChainId): CanonicalAsset[] {
   const pinned = PAYMENT_TOKEN_BY_CHAIN[chain];
-  if (!pinned) return [];
-  return assets.filter(
+  const native = nativePaymentAssetFor(chain);
+  const settlementAssets = pinned
+    ? assets.filter(
     (a) =>
       a.status === 'VERIFIED' &&
       a.chain === chain &&
       a.assetType === 'crypto' &&
       a.address.toLowerCase() === pinned.address.toLowerCase()
-  );
+      )
+    : [];
+  // Keep the settlement token first so existing purchase flows remain stable;
+  // Ethereum buyers can explicitly switch the funding asset to native ETH.
+  return native ? [...settlementAssets, native] : settlementAssets;
 }
