@@ -360,6 +360,8 @@ interface PreparedBagPurchaseContext {
   outcome: PurchasePreviewResult;
   /** Set when the Bag's unroutable-asset policy changed what this purchase buys — persisted on the intent. */
   fallback: PurchaseIntentFallback | null;
+  /** USD value of one payment asset at preparation time; 1 for settlement stablecoins. */
+  inputUsdPrice: string;
 }
 
 /**
@@ -505,7 +507,8 @@ async function priceSharesFromExecution(
   slippageBps: number,
   /** Display symbols by identity key (recipe assets), only to name an unpriced holding in the error. */
   knownSymbols: ReadonlyMap<string, string>,
-  now: Date
+  now: Date,
+  inputUsdPrice = '1'
 ): Promise<PurchaseExecutionOutcome<{ depositQuote: DepositQuote; nav: NavResult }>> {
   const executionPrices = executionPricesFromLegs(
     steps.map((st) => ({
@@ -520,7 +523,7 @@ async function priceSharesFromExecution(
     { asset: { chain: inputAsset.chain, address: inputAsset.address }, decimals: inputAsset.decimals },
     now.toISOString(),
     // Only used when a leg reports no minimum at all: the same tolerance the transaction is built with.
-    { expectedHaircutBps: slippageBps }
+    { expectedHaircutBps: slippageBps, inputUsdPrice }
   );
   const holdings = await getBagAssetHoldings(admin, bagId);
   const uncovered = holdings.filter((h) => !executionPrices.has(assetIdentityKey(h.asset)));
@@ -628,7 +631,7 @@ export async function createPurchaseIntentForUser(
 
   const prepared = await prepareBagPurchaseContext(admin, bagId, inputAssetId, amount);
   if (!prepared.ok) return prepared;
-  const { bag, version, outputIdentityKeys, inputAsset, identity, nav: oracleNav, shareSupply, outcome, fallback } = prepared.value;
+  const { bag, version, outputIdentityKeys, inputAsset, identity, nav: oracleNav, shareSupply, outcome, fallback, inputUsdPrice } = prepared.value;
 
   const openFeeSale = await openFeeRedemptionFor(admin, session.userId, bag, version);
   if (openFeeSale) return { ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: openFeeSale.id } };
@@ -776,7 +779,7 @@ export async function createPurchaseIntentForUser(
       };
     }
     const knownSymbols = new Map(version.recipe.assets.map((a) => [assetIdentityKey(a), a.symbol] as const));
-    const priced = await priceSharesFromExecution(admin, bagId, steps, inputAsset, shareSupply, outcome.inputAmountDisplay, bagSlippageBps(version), knownSymbols, new Date());
+    const priced = await priceSharesFromExecution(admin, bagId, steps, inputAsset, shareSupply, outcome.inputAmountDisplay, bagSlippageBps(version), knownSymbols, new Date(), inputUsdPrice);
     if (!priced.ok) return priced;
     depositQuote = priced.value.depositQuote;
     nav = priced.value.nav;
