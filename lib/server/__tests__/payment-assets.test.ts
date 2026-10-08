@@ -52,3 +52,18 @@ describe('paymentAssetsFor', () => {
     expect(result.map((a) => a.address)).toEqual([BASE_USDC]);
   });
 });
+
+
+describe('native ETH payment asset', () => {
+  it('adds native ETH after Ethereum USDC without touching Robinhood USDG', () => {
+    const ethereumUsdc = asset('USDC', '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', { chain: 'ethereum', decimals: 6 });
+    const ethereum = paymentAssetsFor([ethereumUsdc], 'ethereum');
+    expect(ethereum.map((a) => a.symbol)).toEqual(['USDC', 'ETH']);
+    expect(ethereum[1].address).toBe('0x0000000000000000000000000000000000000000');
+    expect(ethereum[1].decimals).toBe(18);
+    expect(ethereum[1].id).toBe('native:ethereum:ETH');
+
+    const robinhood = paymentAssetsFor([asset('USDG', USDG)], 'robinhood');
+    expect(robinhood.map((a) => a.symbol)).toEqual(['USDG']);
+  });
+});
