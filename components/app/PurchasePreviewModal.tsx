@@ -93,7 +93,7 @@ interface PurchasePreviewResponse {
   inputAmountDisplay: string;
   depositPlan: { allocations: DepositAllocationView[]; unallocatedRaw: string };
   /** Null when the oracle could not value the Bag: shares are then priced from the executable quote when the purchase is prepared. */
-  depositQuote: { sharesRaw: string; shareDecimals: number; sharePrice: string; isBootstrap: boolean } | null;
+  depositQuote: { depositAmount: string; sharesRaw: string; shareDecimals: number; sharePrice: string; isBootstrap: boolean } | null;
   shareValuation?: 'ORACLE_NAV' | 'EXECUTION_QUOTE';
   executionPlan: { steps: ExecutionStepView[] };
   navGross: string | null;
@@ -580,6 +580,12 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
             <span style={{ fontSize: 12.5, color: 'var(--ink-soft, #B4AEA2)' }}>No supported payment asset on this network yet.</span>
           )}
         </div>
+
+        {preview && selectedAsset && preview.depositQuote && selectedAsset.address.toLowerCase() === '0x0000000000000000000000000000000000000000' && !previewError && (
+          <div style={{ marginBottom: 14, fontSize: 12.5, color: 'var(--ink-soft, #B4AEA2)' }}>
+            Approximately {formatDecimalStringUsd(preview.depositQuote.depositAmount)} USD at the current ETH price
+          </div>
+        )}
 
         {previewError && (
           <div
