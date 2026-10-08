@@ -113,6 +113,8 @@ interface PurchasePreviewModalProps {
   bagName: string;
   /** Prefills "You pay" — e.g. the creator's launch-buy amount from the deploy panel. */
   initialAmount?: string;
+  /** For Ethereum launch buys, prefer native ETH over the default settlement token. */
+  preferNativeInput?: boolean;
   /** Starts the purchase by itself once the preview and routes are ready (launch buy right after deploy). The wallet still asks for every signature. */
   autoStart?: boolean;
   /** Called once the purchase completes (the Create page uses it to move on to the new bag's page). */
@@ -132,7 +134,7 @@ const PRICE_CAUSE_LABEL: Record<string, string> = {
 };
 const priceCauseLabel = (cause: string) => PRICE_CAUSE_LABEL[cause] ?? 'unavailable';
 
-export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart, onCompleted, onClose }: PurchasePreviewModalProps) {
+export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart, preferNativeInput, onCompleted, onClose }: PurchasePreviewModalProps) {
   // No default amount: a pre-filled "100" made the background preparation
   // build a $100 route before the buyer had typed anything.
   const [amount, setAmount] = useState(initialAmount ?? '');
@@ -302,7 +304,10 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
       .then((data) => {
         if (cancelled) return;
         setInputAssets(data.inputAssets);
-        setSelectedAssetId(data.inputAssets[0]?.id ?? null);
+        const nativeEth = preferNativeInput
+          ? data.inputAssets.find((a) => a.chain === 'ethereum' && a.address.toLowerCase() === '0x0000000000000000000000000000000000000000')
+          : undefined;
+        setSelectedAssetId(nativeEth?.id ?? data.inputAssets[0]?.id ?? null);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -314,7 +319,7 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
     return () => {
       cancelled = true;
     };
-  }, [bagId]);
+  }, [bagId, preferNativeInput]);
 
   // Recompute the preview whenever amount/asset changes (debounced —
   // "Calculating..." for the network round trip, not for pure local math,
@@ -572,7 +577,7 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
               ))}
             </select>
           ) : (
-            <span style={{ fontSize: 12.5, color: 'var(--ink-soft, #B4AEA2)' }}>No payment token on this network yet (USDG on Robinhood Chain)</span>
+            <span style={{ fontSize: 12.5, color: 'var(--ink-soft, #B4AEA2)' }}>No supported payment asset on this network yet.</span>
           )}
         </div>
 
@@ -606,7 +611,12 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
             </div>
             <div style={{ marginBottom: 14 }}>
               {preview.depositPlan.allocations.map((a) => {
-                const valueDisplay = selectedAsset ? formatRawAmountUsd(a.valueRaw, selectedAsset.decimals) : '$0.00';
+                const isNativePayment = selectedAsset?.address.toLowerCase() === '0x0000000000000000000000000000000000000000';
+                const valueDisplay = selectedAsset
+                  ? isNativePayment
+                    ? `${formatRawAmount(a.valueRaw, selectedAsset.decimals, { maxFractionDigits: 6 })} ${selectedAsset.symbol}`
+                    : formatRawAmountUsd(a.valueRaw, selectedAsset.decimals)
+                  : '$0.00';
                 return (
                   <div
                     key={a.targetSymbol}
