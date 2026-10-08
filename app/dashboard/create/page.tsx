@@ -503,7 +503,7 @@ export default function CreatePage() {
                     type="text"
                     inputMode="decimal"
                     value={investmentAmount}
-                    onChange={(e) => setInvestmentAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+                    onChange={(e) => setInvestmentAmount(e.target.value.replace(/[^0-9.]/g, '').replace(/(\\..*)\\./g, '$1'))}
                   />
                 </div>
 
@@ -612,7 +612,8 @@ export default function CreatePage() {
                 assetPool={assetPool}
                 assetIds={selectedAssetIds}
                 allocations={allocations}
-                investmentAmount={investmentAmount}
+                investmentAmount={Number(investmentAmount) || 0}
+                investmentCurrency={launchPayment === 'native' && selectedNetworkId === 'ethereum' ? 'ETH' : 'USD'}
                 onAllocationChange={handleAllocationChange}
                 onAutoBalance={handleAutoBalance}
                 noRouteAssetIds={noRouteAssetIds}
