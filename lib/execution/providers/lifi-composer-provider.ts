@@ -10,6 +10,7 @@ import {
 import { toLiFiChainId } from '@/lib/blockchain/lifi-config';
 import { BagExecutionGraph, BagExecutionIntent, CompiledExecution, ExpectedOutput } from '../types';
 import { BagExecutionProvider, ProviderCapabilities } from './types';
+import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 
 // -----------------------------------------------------------------------------
 // lib/execution/providers/lifi-composer-provider.ts
