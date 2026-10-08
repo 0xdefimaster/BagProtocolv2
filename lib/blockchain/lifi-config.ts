@@ -1,5 +1,6 @@
 import { createClient, SDKClient } from '@lifi/sdk';
-import { ChainId } from '@/types/basket-protocol';
+import { ChainId, AssetIdentity } from '@/types/basket-protocol';
+import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 
 // -----------------------------------------------------------------------------
 // Phase 14 — LI.FI SDK setup shared by lifi-execution-adapter.ts.
@@ -60,6 +61,15 @@ export function toLiFiChainId(chain: ChainId): number {
   const id = LIFI_CHAIN_IDS[chain];
   if (id === undefined) throw new UnsupportedChainError(chain);
   return id;
+}
+
+/** LI.FI's canonical EVM native-token address. The protocol layer uses the
+ * zero address as its native sentinel; only this adapter boundary translates
+ * it to LI.FI's native-token representation. */
+export const LIFI_NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+
+export function toLiFiTokenAddress(asset: AssetIdentity): string {
+  return isNativeAssetIdentity(asset) ? LIFI_NATIVE_TOKEN_ADDRESS : asset.address;
 }
 
 let client: SDKClient | null = null;
