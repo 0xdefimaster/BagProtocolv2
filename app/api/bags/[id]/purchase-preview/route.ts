@@ -13,6 +13,7 @@ import { AssetIdentity, DEFAULT_UNROUTABLE_POLICY } from '@/types/basket-protoco
 import { liFiExecutionAdapter } from '@/lib/blockchain/lifi-execution-adapter';
 import { ExecutionResult } from '@/lib/blockchain/execution-adapter';
 import { checkRateLimit, getClientIp, rateLimitedResponseBody } from '@/lib/server/rate-limit';
+import { paymentAmountToQuoteCurrency } from '@/lib/server/payment-value';
 
 // Production-hardening P1-10 — this POST is unauthenticated by design (spec:
 // no wallet needed to preview) and fans out to a REAL LI.FI quote per SWAP
@@ -206,12 +207,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const identity: AssetIdentity = { chain: inputAsset.chain, address: inputAsset.address };
+  let quoteAmount: string;
+  try {
+    quoteAmount = await paymentAmountToQuoteCurrency(inputAsset, body.amount);
+  } catch (err) {
+    return NextResponse.json({ error: `Unable to value ${inputAsset.symbol} for this purchase right now.` }, { status: 503 });
+  }
   const outcome = computePurchasePreview({
     recipe: version.recipe,
     inputAsset: identity,
     inputSymbol: inputAsset.symbol,
     inputDecimals: inputAsset.decimals,
     amount: body.amount,
+    quoteAmount,
     nav,
     shareSupply,
   });
