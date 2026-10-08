@@ -475,7 +475,10 @@ export default function CreatePage() {
                     <button
                       type="button"
                       className={`invest-preset ${launchPayment === 'settlement' ? 'active' : ''}`}
-                      onClick={() => setLaunchPayment('settlement')}
+                      onClick={() => {
+                        setLaunchPayment('settlement');
+                        setInvestmentAmount((current) => ETH_INVEST_PRESETS.includes(current) ? '100' : current);
+                      }}
                     >
                       USDC
                     </button>
@@ -484,7 +487,9 @@ export default function CreatePage() {
                       className={`invest-preset ${launchPayment === 'native' ? 'active' : ''}`}
                       onClick={() => {
                         setLaunchPayment('native');
-                        setInvestmentAmount((current) => current === '0' || current === '10' || current === '100' || current === '500' || current === '1000' ? '0.05' : current);
+                        setInvestmentAmount((current) =>
+                          current === '0' || INVEST_PRESETS.includes(current) ? '0.05' : current
+                        );
                       }}
                     >
                       ETH
@@ -493,7 +498,31 @@ export default function CreatePage() {
                 )}
 
                 <div className="invest-input-row">
-                  <span className="dollar">{launchPayment === 'native' && selectedNetworkId === 'ethereum' ? 'Ξ' : '
+                  <span className="dollar">{launchPayment === 'native' && selectedNetworkId === 'ethereum' ? 'Ξ' : '$'}</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={investmentAmount}
+                    onChange={(e) => setInvestmentAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+                  />
+                </div>
+
+                <div className="invest-presets">
+                  {(launchPayment === 'native' && selectedNetworkId === 'ethereum' ? ETH_INVEST_PRESETS : INVEST_PRESETS).map((amt) => (
+                    <button
+                      key={amt}
+                      className={`invest-preset ${investmentAmount === amt ? 'active' : ''}`}
+                      onClick={() => setInvestmentAmount(amt)}
+                    >
+                      {amt === '0'
+                        ? 'Just create'
+                        : launchPayment === 'native' && selectedNetworkId === 'ethereum'
+                          ? `${amt} ETH`
+                          : formatUSD(Number(amt))}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <div className="invest-box" style={{ marginTop: 18 }}>
                 <span className="lbl">Creator performance fee (optional)</span>
