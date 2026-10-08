@@ -7,7 +7,7 @@ import {
   ExecutionStepQuote,
   ExecutionStepResult,
 } from './execution-adapter';
-import { getLiFiClient, toLiFiChainId, UnsupportedChainError } from './lifi-config';
+import { getLiFiClient, toLiFiChainId, toLiFiTokenAddress, UnsupportedChainError } from './lifi-config';
 
 // -----------------------------------------------------------------------------
 // Phase 14 — LI.FI Live Quote Adapter.
@@ -136,7 +136,7 @@ export async function quoteSwapStep(
       // resolved `address` (never a symbol) per spec section 6: the
       // ExecutionPlan/ExecutionRouteRequest it was handed never carries a
       // symbol to begin with, only `AssetIdentity { chain, address }`.
-      fromToken: inputAsset.address,
+      fromToken: toLiFiTokenAddress(inputAsset),
       toToken: outputAsset.address,
       fromAmount: inputAmountRaw,
       fromAddress: placeholderAddressFor(sourceChain),
