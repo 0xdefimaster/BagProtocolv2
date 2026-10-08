@@ -1,6 +1,7 @@
 import { AssetHolding, AssetIdentity, AssetPrice, NavResult } from '@/types/basket-protocol';
 import { assetIdentitiesEqual, assetIdentityKey } from '@/lib/domain/basket-protocol/asset-identity';
 import { calculateNavFromPrices, NAV_VALUE_DECIMALS } from '@/lib/domain/basket-protocol/nav/nav';
+import { toProtocolPrice } from '@/lib/domain/basket-protocol/pricing/price-precision';
 
 // -----------------------------------------------------------------------------
 // Execution-quote share valuation.
@@ -71,20 +72,23 @@ function formatScaled(value: bigint, decimals: number): string {
 }
 
 /**
- * Prices (in payment-token units, at NAV precision, rounded up) implied by a compiled purchase's legs.
+ * Prices implied by a compiled purchase's legs. Leg ratios are first derived in
+ * payment-asset units, then converted into the Bag's quote currency using
+ * `inputUsdPrice` (USD per one payment asset).
  * Legs without a usable minimum output are skipped: an asset is either priced from a real quote or not at all.
  */
 export function executionPricesFromLegs(
   legs: ExecutionLeg[],
   input: { asset: AssetIdentity; decimals: number },
   timestamp: string,
-  options: { quoteCurrency?: string; expectedHaircutBps?: number } = {}
+  options: { quoteCurrency?: string; expectedHaircutBps?: number; inputUsdPrice?: string } = {}
 ): Map<string, AssetPrice> {
   const quoteCurrency = options.quoteCurrency ?? 'USD';
   const haircutBps = options.expectedHaircutBps ?? -1; // no haircut configured: never price from an expected output
   const prices = new Map<string, AssetPrice>();
   const put = (asset: AssetIdentity, price: string) => prices.set(assetIdentityKey(asset), { asset, price, quoteCurrency, timestamp, source: EXECUTION_QUOTE_PRICE_SOURCE });
-  put(input.asset, '1');
+  const inputUsdPrice = options.inputUsdPrice ?? '1';
+  put(input.asset, inputUsdPrice);
 
   const best = new Map<string, { asset: AssetIdentity; scaled: bigint }>();
   for (const leg of legs) {
@@ -102,7 +106,12 @@ export function executionPricesFromLegs(
     // Two legs into the same asset (not produced today): keep the higher, more conservative price.
     if (!prev || scaled > prev.scaled) best.set(key, { asset: leg.outputAsset, scaled });
   }
-  for (const { asset, scaled } of best.values()) put(asset, formatScaled(scaled, NAV_VALUE_DECIMALS));
+  const usdPriceScaled = toProtocolPrice(inputUsdPrice, NAV_VALUE_DECIMALS);
+  const scale = pow10(NAV_VALUE_DECIMALS);
+  for (const { asset, scaled } of best.values()) {
+    const usdScaled = (scaled * usdPriceScaled + scale - BigInt(1)) / scale;
+    put(asset, formatScaled(usdScaled, NAV_VALUE_DECIMALS));
+  }
   return prices;
 }
 
