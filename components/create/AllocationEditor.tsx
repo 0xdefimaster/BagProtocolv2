@@ -7,6 +7,7 @@ interface AllocationEditorProps {
   assetIds: string[];
   allocations: Record<string, number>;
   investmentAmount: number;
+  investmentCurrency?: 'USD' | 'ETH';
   onAllocationChange: (assetId: string, value: number) => void;
   onAutoBalance: () => void;
   /** Assets the liquidity check found no swap route for — shown with a warning. */
@@ -18,6 +19,7 @@ export function AllocationEditor({
   assetIds,
   allocations,
   investmentAmount,
+  investmentCurrency = 'USD',
   onAllocationChange,
   onAutoBalance,
   noRouteAssetIds,
@@ -43,7 +45,7 @@ export function AllocationEditor({
       <div>
         {assets.map((asset) => {
           const pct = allocations[asset.id] || 0;
-          const usd = (pct / 100) * investmentAmount;
+          const allocatedAmount = (pct / 100) * investmentAmount;
           return (
             <div key={asset.id} className="alloc-row">
               <div className="alloc-row-head">
@@ -60,7 +62,7 @@ export function AllocationEditor({
                   </div>
                 </div>
                 <div className="alloc-row-vals">
-                  <span className="alloc-usd">{formatUSD(usd)}</span>
+                  <span className="alloc-usd">{investmentCurrency === 'ETH' ? `${allocatedAmount.toFixed(6)} ETH` : formatUSD(allocatedAmount)}</span>
                   <span className="alloc-pct">{pct}%</span>
                 </div>
               </div>
