@@ -255,6 +255,9 @@ export function composerLegSimulatedOutputRaw(
  * outright.
  */
 export async function buildComposerPurchase(request: ComposerPurchaseRequest): Promise<ComposerPurchaseResult> {
+  if (request.inputTokenAddress.toLowerCase() === '0x0000000000000000000000000000000000000000') {
+    throw new ComposerIneligibleError('Composer purchase inputs must be ERC-20 tokens; native ETH uses the sequential LI.FI execution path.');
+  }
   if (!isComposerEligible(request.chain, request.legs)) {
     throw new ComposerIneligibleError(
       `Chain "${request.chain}" with ${request.legs.length} leg(s) is not eligible for a Composer flow — use the sequential lifi-purchase-quote.ts path instead.`
