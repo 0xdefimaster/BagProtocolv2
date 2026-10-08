@@ -63,6 +63,7 @@ export class LiFiComposerProvider implements BagExecutionProvider {
   supports(_intent: BagExecutionIntent, graph: BagExecutionGraph): boolean {
     if (!COMPOSER_ELIGIBLE_CHAINS.includes(graph.chainId)) return false;
     if (graph.legs.length === 0) return false;
+    if (isNativeAssetIdentity(graph.inputAsset)) return false;
     // Cascading-split fan-out needs exactly one shared input asset.
     const firstInput = graph.legs[0].sourceAsset;
     const sameInput = graph.legs.every(
