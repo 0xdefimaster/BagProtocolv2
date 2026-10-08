@@ -503,7 +503,7 @@ export default function CreatePage() {
                     type="text"
                     inputMode="decimal"
                     value={investmentAmount}
-                    onChange={(e) => setInvestmentAmount(e.target.value.replace(/[^0-9.]/g, '').replace(/(\\..*)\\./g, '$1'))}
+                    onChange={(e) => setInvestmentAmount(e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))}
                   />
                 </div>
 
