@@ -1,7 +1,7 @@
 import { getQuote } from '@lifi/sdk';
 import { ChainId, ExecutionStep } from '@/types/basket-protocol';
 import { ComposerFallbackNotice, PurchaseIntentStepRecord } from '@/types/purchase-intent';
-import { getLiFiClient, toLiFiChainId } from './lifi-config';
+import { getLiFiClient, toLiFiChainId, toLiFiTokenAddress } from './lifi-config';
 import { getLiFiTokenData } from './lifi-token-data';
 import { mapLiFiError } from './lifi-execution-adapter';
 import { buildComposerPurchase, composerLegEnforcedMinOutputRaw, composerLegSimulatedOutputRaw, ComposerIneligibleError, ComposerPurchaseLeg, isComposerEligible } from './lifi-composer-adapter';
@@ -70,7 +70,7 @@ export async function quoteRealSwapStep(
       toChain: toChainId,
       // Registry-resolved addresses only — never a symbol, same invariant
       // as lifi-execution-adapter.ts (spec section 6, still true here).
-      fromToken: step.route.inputAsset.address,
+      fromToken: toLiFiTokenAddress(step.route.inputAsset),
       toToken: step.route.outputAsset.address,
       fromAmount: step.route.inputAmountRaw,
       // THE fix this phase makes: real connected wallet address, not
