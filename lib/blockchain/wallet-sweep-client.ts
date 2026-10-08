@@ -21,10 +21,13 @@ import { ensureErc20AllowanceOnChain, getBrowserWalletClientForChain, sendCompos
 // EIP-5792 or without atomic batching gets the sequential flow unchanged.
 // -----------------------------------------------------------------------------
 
-export interface SweepTransactionPlan {
+export interface WalletTransactionPlan {
   transaction: { to: string; data: string; value: string; chainId: number };
   approvals: { token: string; spender: string; amountRaw: string }[];
 }
+
+/** Backwards-compatible name for the Composer wallet sweep call site. */
+export type SweepTransactionPlan = WalletTransactionPlan;
 
 export type SweepProgress = 'approving' | 'batching' | 'simulating' | 'signing' | 'confirming';
 
@@ -44,8 +47,10 @@ export async function walletSupportsAtomicBatch(provider: Eip1193Provider, walle
   let caps: unknown;
   try {
     caps = await provider.request({ method: 'wallet_getCapabilities', params: [walletAddress, [toHexChain(chainId)]] });
-  } catch {
-    return false; // no EIP-5792 at all
+  } catch (err) {
+    const { code } = describeWalletError(err);
+    if (BATCH_UNSUPPORTED_CODES.has(Number(code))) return false; // no EIP-5792 at all
+    throw err;
   }
   if (!caps || typeof caps !== 'object') return false;
   const byChain = caps as Record<string, { atomic?: { status?: string }; atomicBatch?: { supported?: boolean } } | undefined>;
@@ -76,12 +81,12 @@ async function shortApprovals(provider: Eip1193Provider, walletAddress: string, 
 /** Thrown when the wallet turned the batch down for lack of support: the caller falls back to the sequential flow. */
 class BatchUnsupportedError extends Error {}
 
-/** Sends approvals + sale as one atomic EIP-5792 batch and returns the sale's transaction hash. */
-export async function sendSweepBatch(
+/** Sends approvals + final call as one atomic EIP-5792 batch and returns its final transaction hash. */
+export async function sendAtomicWalletCalls(
   provider: Eip1193Provider,
   walletAddress: string,
-  plan: SweepTransactionPlan,
-  approvals: SweepTransactionPlan['approvals'],
+  plan: WalletTransactionPlan,
+  approvals: WalletTransactionPlan['approvals'],
   sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))
 ): Promise<Hex> {
   const { transaction } = plan;
@@ -119,19 +124,36 @@ export async function sendSweepBatch(
     const s = status?.status;
     const done = s === 200 || s === 'CONFIRMED';
     const failed = typeof s === 'number' ? s >= 400 : s === 'FAILED';
-    if (failed) throw new Error('The sale reverted on-chain. Nothing was sold and no approval was left behind.');
+    if (failed) throw new Error('The wallet batch reverted or failed on-chain. The transaction was not accepted as successful.');
+    if (status?.atomic === false) {
+      throw new Error('Your wallet reported a non-atomic batch. The transaction was not accepted as successful.');
+    }
     if (done) {
+      if (status?.atomic !== true) {
+        throw new Error('Your wallet did not confirm that the batch executed atomically. The result must be verified before continuing.');
+      }
       const receipts = status?.receipts ?? [];
       const last = receipts[receipts.length - 1];
-      if (!last?.transactionHash) throw new Error('Your wallet confirmed the sale but did not report its transaction.');
-      if (receipts.some((r) => r.status !== undefined && r.status !== '0x1' && r.status !== 'success')) {
-        throw new Error('The sale transaction reverted on-chain. Your tokens were not sold.');
+      if (!last?.transactionHash) throw new Error('Your wallet confirmed the batch but did not report its transaction.');
+      if (receipts.some((r) => r.status !== '0x1' && r.status !== 'success')) {
+        throw new Error('A transaction in the wallet batch reverted on-chain.');
       }
       return last.transactionHash as Hex;
     }
-    if (Date.now() > deadline) throw new Error('The sale is still pending in your wallet. Check your wallet activity before trying again.');
+    if (Date.now() > deadline) throw new Error('The batch is still pending in your wallet. Check your wallet activity before trying again.');
     await sleep(BATCH_POLL_MS);
   }
+}
+
+/** Backwards-compatible wrapper for the Composer sweep call site and tests. */
+export function sendSweepBatch(
+  provider: Eip1193Provider,
+  walletAddress: string,
+  plan: SweepTransactionPlan,
+  approvals: SweepTransactionPlan['approvals'],
+  sleep?: (ms: number) => Promise<void>
+): Promise<Hex> {
+  return sendAtomicWalletCalls(provider, walletAddress, plan, approvals, sleep);
 }
 
 export interface WalletSweepOptions {
@@ -139,12 +161,19 @@ export interface WalletSweepOptions {
   onSubmitted?: (hash: Hex) => Promise<unknown> | void;
 }
 
-export async function executeWalletSweep(
+export interface WalletExecutionOptions extends WalletSweepOptions {
+  /** Human-readable transaction kind used only for preflight error messaging. */
+  confirmationLabel?: string;
+}
+
+export type WalletAuthorizationStrategy = 'NONE' | 'EIP5792_ATOMIC_BATCH' | 'SEQUENTIAL';
+
+export async function executeWalletTransactionWithApprovals(
   walletAddress: string,
-  plan: SweepTransactionPlan,
+  plan: WalletTransactionPlan,
   onProgress: (step: SweepProgress) => void = () => {},
-  options: WalletSweepOptions = {}
-): Promise<Hex> {
+  options: WalletExecutionOptions = {}
+): Promise<{ txHash: Hex; authorizationStrategy: WalletAuthorizationStrategy }> {
   const submitted = async (hash: Hex) => {
     try {
       await options.onSubmitted?.(hash);
@@ -153,6 +182,7 @@ export async function executeWalletSweep(
     }
   };
   const { transaction } = plan;
+  let authorizationStrategy: WalletAuthorizationStrategy = 'NONE';
 
   if (plan.approvals.length > 0) {
     await getBrowserWalletClientForChain(walletAddress, transaction.chainId); // switch network first
@@ -162,14 +192,19 @@ export async function executeWalletSweep(
       if (needed.length > 0 && (await walletSupportsAtomicBatch(provider, walletAddress, transaction.chainId))) {
         onProgress('batching');
         try {
-          const batchHash = await sendSweepBatch(provider, walletAddress, plan, needed);
+          const batchHash = await sendAtomicWalletCalls(provider, walletAddress, plan, needed);
           await submitted(batchHash);
-          return batchHash;
+          return { txHash: batchHash, authorizationStrategy: 'EIP5792_ATOMIC_BATCH' };
         } catch (err) {
           if (!(err instanceof BatchUnsupportedError)) throw err;
           // Wallet advertised batching but refused it: fall through to one approval at a time.
+          authorizationStrategy = 'SEQUENTIAL';
         }
+      } else if (needed.length > 0) {
+        authorizationStrategy = 'SEQUENTIAL';
       }
+    } else {
+      authorizationStrategy = 'SEQUENTIAL';
     }
   }
 
@@ -178,7 +213,7 @@ export async function executeWalletSweep(
     await ensureErc20AllowanceOnChain(walletAddress, transaction.chainId, approval.token, approval.spender, approval.amountRaw);
   }
   onProgress('simulating');
-  await simulateTransactionOnChain(walletAddress, transaction.chainId, transaction, 'sale');
+  await simulateTransactionOnChain(walletAddress, transaction.chainId, transaction, options.confirmationLabel ?? 'sale');
   onProgress('signing');
   const hash = await sendComposerTransaction(walletAddress, transaction);
   await submitted(hash);
@@ -187,5 +222,16 @@ export async function executeWalletSweep(
   if (!provider) throw new Error('Wallet disconnected before the sale confirmed.');
   const receipt = await createPublicClient({ transport: custom(provider) }).waitForTransactionReceipt({ hash });
   if (receipt.status !== 'success') throw new Error('The sale transaction reverted on-chain. Your tokens were not sold.');
-  return hash;
+  return { txHash: hash, authorizationStrategy };
+}
+
+/** Backwards-compatible name for existing Composer sweep callers. */
+export async function executeWalletSweep(
+  walletAddress: string,
+  plan: SweepTransactionPlan,
+  onProgress: (step: SweepProgress) => void = () => {},
+  options: WalletSweepOptions = {}
+): Promise<Hex> {
+  const result = await executeWalletTransactionWithApprovals(walletAddress, plan, onProgress, options);
+  return result.txHash;
 }

@@ -17,8 +17,11 @@ import { rawToDecimalString, splitRaw } from '@/lib/domain/basket-protocol/accou
 // lib/server/creator-rewards-reconciliation.ts's own module doc).
 //
 // A malicious/buggy client submitting a txHash for someone else's
-// transaction, a reverted transaction, or a transaction to the wrong
-// contract are all rejected here before any DB write happens.
+// transaction, a reverted transaction, or a transaction without the
+// expected router event and wallet/intent binding is rejected before DB
+// writes. For EIP-5792 smart-account batches the outer transaction may be
+// sent to the wallet or its account-abstraction entry point, while the
+// Router still emits the authoritative event from inside that batch.
 // -----------------------------------------------------------------------------
 
 const REDEEMED_EVENT_ABI = [
@@ -45,7 +48,7 @@ export class RouterTxVerificationError extends Error {
 }
 
 /**
- * Independently verifies that `txHash` is a real, confirmed, successful
+ * Independently verifies that `txHash` contains a confirmed, successful
  * `RedeemFeeRouter.redeem()` call for `redeemIntentId`, then indexes the
  * result via `apply_redeem_execution_router_settled()` (never re-derives
  * or re-pays the fee — see that migration's own doc) and marks the intent
@@ -53,13 +56,14 @@ export class RouterTxVerificationError extends Error {
  *
  * Verification steps, each of which throws `RouterTxVerificationError` on
  * failure rather than silently proceeding:
- *   1. The tx was sent TO the currently-configured `REDEEM_FEE_ROUTER_ADDRESS`.
- *   2. The tx receipt status is 'success' (a reverted tx is never indexed).
- *   3. The receipt contains a `Redeemed` event.
- *   4. That event's `redemptionId` matches this intent's own deterministic
+ *   1. The tx receipt status is 'success' (a reverted tx is never indexed).
+ *   2. The receipt contains a `Redeemed` event emitted by the configured router.
+ *   3. That event's wallet and `redemptionId` match this intent's own
+ *      wallet and deterministic
  *      id (the same value the attestation was signed over) — so a txHash
  *      for some OTHER user's redemption can never be submitted here to
- *      forge a completion for this intent.
+ *      forge a completion for this intent. This also supports atomic smart-
+ *      account batches whose outer transaction target is not the Router.
  */
 export async function verifyAndIndexRouterRedemption(
   admin: SupabaseClient,
@@ -82,9 +86,6 @@ export async function verifyAndIndexRouterRedemption(
 
   const tx = await publicClient.getTransaction({ hash: txHash }).catch(() => null);
   if (!tx) throw new RouterTxVerificationError(`Transaction ${txHash} not found on Robinhood Chain.`);
-  if (tx.to?.toLowerCase() !== routerAddress.toLowerCase()) {
-    throw new RouterTxVerificationError(`Transaction ${txHash} was not sent to the configured RedeemFeeRouter (${routerAddress}).`);
-  }
 
   const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 120_000 });
   if (receipt.status !== 'success') {
@@ -123,6 +124,11 @@ export async function verifyAndIndexRouterRedemption(
   if (decoded.redemptionId.toLowerCase() !== expectedRedemptionId.toLowerCase()) {
     throw new RouterTxVerificationError(
       `Transaction ${txHash}'s Redeemed event is for a different redemption (${decoded.redemptionId}), not this intent (${expectedRedemptionId}).`
+    );
+  }
+  if (decoded.user.toLowerCase() !== intent.walletAddress.toLowerCase()) {
+    throw new RouterTxVerificationError(
+      `Transaction ${txHash}'s Redeemed event belongs to ${decoded.user}, not this intent's wallet (${intent.walletAddress}).`
     );
   }
 

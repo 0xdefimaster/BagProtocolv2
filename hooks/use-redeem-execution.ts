@@ -4,9 +4,10 @@ import { useCallback, useRef, useState } from 'react';
 import { executeRoute, convertQuoteToRoute, LiFiStep, RouteExtended, ExecutionAction } from '@lifi/sdk';
 import { RedeemIntent, RedeemIntentFailureCode, RedeemIntentStepRecord } from '@/types/redeem-intent';
 import { getBrowserLiFiClient } from '@/lib/blockchain/lifi-wallet-client';
-import { ensureRouterAllowance, sendRedeemTransaction, collectRequiredApprovals } from '@/lib/blockchain/redeem-fee-router-client';
+import { sendRedeemTransaction } from '@/lib/blockchain/redeem-fee-router-client';
 import type { FeeAttestation } from '@/lib/server/redeem-fee-attestation';
 import { executeWalletSweep } from '@/lib/blockchain/wallet-sweep-client';
+import type { WalletAuthorizationStrategy } from '@/lib/blockchain/wallet-sweep-client';
 import { describeWalletError } from '@/lib/blockchain/wallet-error';
 
 // -----------------------------------------------------------------------------
@@ -58,6 +59,7 @@ export interface RedeemExecutionState {
   activeStepIndex: number | null;
   error: string | null;
   failureCode: RedeemIntentFailureCode | null;
+  authorizationStrategy: WalletAuthorizationStrategy | null;
 }
 
 const INITIAL_STATE: RedeemExecutionState = {
@@ -66,6 +68,7 @@ const INITIAL_STATE: RedeemExecutionState = {
   activeStepIndex: null,
   error: null,
   failureCode: null,
+  authorizationStrategy: null,
 };
 
 async function postJson<T>(url: string, body?: unknown): Promise<T> {
@@ -260,14 +263,11 @@ export function useRedeemExecution() {
     setState((s) => ({ ...s, phase: 'awaiting_signature' }));
     const { attestation } = await postJson<{ attestation: FeeAttestation }>(`/api/redeem-intent/${intentId}/attest-fee`);
 
-    for (const { token, amount } of collectRequiredApprovals(attestation)) {
-      await ensureRouterAllowance(token, walletAddress as `0x${string}`, routerAddress, amount);
-    }
-
-    const { txHash, confirmed } = await sendRedeemTransaction(routerAddress, walletAddress as `0x${string}`, attestation);
+    const { txHash, confirmed, authorizationStrategy } = await sendRedeemTransaction(routerAddress, walletAddress as `0x${string}`, attestation);
     if (!confirmed) {
       throw new Error('The redemption transaction reverted on-chain.');
     }
+    setState((s) => ({ ...s, authorizationStrategy }));
 
     setState((s) => ({ ...s, phase: 'confirming' }));
     // Deliberately awaited, not fire-and-forget: `verifyAndIndexRouterRedemption()`

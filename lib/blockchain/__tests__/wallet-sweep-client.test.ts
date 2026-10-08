@@ -18,7 +18,7 @@ vi.mock('../lifi-wallet-client', () => ({
   getBrowserWalletClientForChain: mocks.switchChain,
 }));
 
-import { executeWalletSweep, sendSweepBatch, walletSupportsAtomicBatch, SweepTransactionPlan } from '../wallet-sweep-client';
+import { executeWalletSweep, executeWalletTransactionWithApprovals, sendSweepBatch, walletSupportsAtomicBatch, SweepTransactionPlan } from '../wallet-sweep-client';
 
 const WALLET = '0x49da00000000000000000000000000000000fe46';
 const SPENDER = '0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae';
@@ -41,6 +41,7 @@ function wallet(opts: {
   allowances?: Record<string, bigint>;
   caps?: unknown;
   capsThrows?: boolean;
+  capsError?: unknown;
   sendCalls?: (params: unknown) => unknown;
   statuses?: unknown[];
 }) {
@@ -54,7 +55,7 @@ function wallet(opts: {
         return uint(opts.allowances?.[to.toLowerCase()] ?? BigInt(0));
       }
       case 'wallet_getCapabilities':
-        if (opts.capsThrows) throw Object.assign(new Error('Method not found'), { code: -32601 });
+        if (opts.capsThrows) throw opts.capsError ?? Object.assign(new Error('Method not found'), { code: -32601 });
         return opts.caps ?? {};
       case 'wallet_sendCalls':
         return opts.sendCalls ? opts.sendCalls(params) : { id: 'batch-1' };
@@ -122,14 +123,23 @@ describe('sendSweepBatch', () => {
   });
 
   it('waits while pending (and through a not-yet-known id), accepts the older string id / CONFIRMED form', async () => {
-    wallet({ sendCalls: () => 'legacy-id', statuses: [null, { status: 100 }, { status: 'CONFIRMED', receipts: [{ transactionHash: SALE_HASH, status: '0x1' }] }] });
+    wallet({ sendCalls: () => 'legacy-id', statuses: [null, { status: 100, atomic: true }, { status: 'CONFIRMED', atomic: true, receipts: [{ transactionHash: SALE_HASH, status: '0x1' }] }] });
     expect(await sendSweepBatch(prov(), WALLET, plan, plan.approvals, noSleep)).toBe(SALE_HASH);
   });
 
   it('a reverted batch is an error, never a success', async () => {
-    wallet({ statuses: [{ status: 500, receipts: [] }] });
+    wallet({ statuses: [{ status: 500, atomic: true, receipts: [] }] });
     await expect(sendSweepBatch(prov(), WALLET, plan, plan.approvals, noSleep)).rejects.toThrow(/reverted/);
-    wallet({ statuses: [{ status: 200, receipts: [{ transactionHash: SALE_HASH, status: '0x0' }] }] });
+    wallet({ statuses: [{ status: 200, atomic: true, receipts: [{ transactionHash: SALE_HASH, status: '0x0' }] }] });
+    await expect(sendSweepBatch(prov(), WALLET, plan, plan.approvals, noSleep)).rejects.toThrow(/reverted/);
+  });
+
+  it('rejects missing or false atomicity and incomplete receipt status', async () => {
+    wallet({ statuses: [{ status: 200, atomic: false, receipts: [{ transactionHash: SALE_HASH, status: '0x1' }] }] });
+    await expect(sendSweepBatch(prov(), WALLET, plan, plan.approvals, noSleep)).rejects.toThrow(/non-atomic/);
+    wallet({ statuses: [{ status: 200, receipts: [{ transactionHash: SALE_HASH, status: '0x1' }] }] });
+    await expect(sendSweepBatch(prov(), WALLET, plan, plan.approvals, noSleep)).rejects.toThrow(/did not confirm.*atomically/);
+    wallet({ statuses: [{ status: 200, atomic: true, receipts: [{ transactionHash: SALE_HASH }] }] });
     await expect(sendSweepBatch(prov(), WALLET, plan, plan.approvals, noSleep)).rejects.toThrow(/reverted/);
   });
 
@@ -162,6 +172,27 @@ describe('executeWalletSweep', () => {
     expect(mocks.simulate).toHaveBeenCalled();
     expect(mocks.send).toHaveBeenCalled();
     expect(steps).toEqual(['approving', 'simulating', 'signing', 'confirming']);
+  });
+
+  it('reports whether redemption authorization was batched or sequential without changing the legacy sweep result', async () => {
+    wallet({ caps: atomic });
+    await expect(executeWalletTransactionWithApprovals(WALLET, plan)).resolves.toEqual({
+      txHash: SALE_HASH,
+      authorizationStrategy: 'EIP5792_ATOMIC_BATCH',
+    });
+
+    wallet({ caps: { '0x1237': { atomic: { status: 'unsupported' } } } });
+    await expect(executeWalletTransactionWithApprovals(WALLET, plan)).resolves.toEqual({
+      txHash: SALE_HASH,
+      authorizationStrategy: 'SEQUENTIAL',
+    });
+  });
+
+  it('only treats an unsupported capability method as absence; arbitrary capability errors fail closed', async () => {
+    wallet({ capsThrows: true, capsError: new Error('RPC transport unavailable') });
+    await expect(executeWalletSweep(WALLET, plan)).rejects.toThrow(/RPC transport unavailable/);
+    expect(mocks.ensureAllowance).not.toHaveBeenCalled();
+    expect(mocks.send).not.toHaveBeenCalled();
   });
 
   it('wallet advertises batching but refuses it as unsupported: falls back to the sequential flow', async () => {
