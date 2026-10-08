@@ -23,6 +23,25 @@ const holding = (asset: typeof NVDA, qty: string, decimals = 18): AssetHolding =
 const supply = (shares: number): ShareSupply => ({ bagId: 'b', totalSharesRaw: e18(shares).toString(), shareDecimals: 18, updatedAt: NOW.toISOString() });
 
 describe('executionPricesFromLegs', () => {
+  it('converts payment-token prices into USD when the input is native ETH', () => {
+    const eth = { chain: 'ethereum' as const, address: '0x0000000000000000000000000000000000000000' };
+    const ethInput = { asset: eth, decimals: 18 };
+    const p = executionPricesFromLegs(
+      [{
+        action: 'SWAP',
+        outputAsset: { chain: 'ethereum', address: '0x1111111111111111111111111111111111111111' },
+        inputAmountRaw: '100000000000000000',
+        minOutputRaw: '50000000000000000',
+        outputDecimals: 18,
+      }],
+      ethInput,
+      NOW.toISOString(),
+      { inputUsdPrice: '2500' }
+    );
+    expect(p.get(assetIdentityKey(eth))?.price).toBe('2500');
+    expect(p.get(assetIdentityKey({ chain: 'ethereum', address: '0x1111111111111111111111111111111111111111' }))?.price).toBe('5000');
+  });
+
   it('prices each bought asset as input spent / BAG minimum output, and the payment token at 1', () => {
     const p = executionPricesFromLegs([leg(NVDA, 60, e18(9.9).toString()), leg(AAPL, 40, e18(4).toString())], input, NOW.toISOString());
     expect(p.get(assetIdentityKey(USDG))?.price).toBe('1');
