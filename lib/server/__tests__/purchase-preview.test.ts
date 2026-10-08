@@ -88,6 +88,23 @@ describe('computePurchasePreview', () => {
     expect(outcome.isBootstrap).toBe(true);
   });
 
+  it('uses quoteAmount for USD/share valuation while keeping amount in payment-token units', () => {
+    const outcome = computePurchasePreview({
+      recipe: recipe({ minInvestment: 200 }),
+      inputAsset: USDC,
+      inputSymbol: 'USDC',
+      inputDecimals: 6,
+      amount: '0.1',
+      quoteAmount: '250',
+      nav: zeroNav(),
+      shareSupply: zeroShareSupply(),
+    });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.inputAmountRaw).toBe('100000');
+    expect(outcome.depositQuote?.depositAmount).toBe('250');
+  });
+
   it("rejects a deposit below the creator's minimum investment", () => {
     const outcome = computePurchasePreview({
       recipe: recipe({ minInvestment: 250 }),
