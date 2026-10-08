@@ -467,12 +467,24 @@ async function prepareBagPurchaseContext(
     }
   }
 
+  let quoteAmount: string;
+  let inputUsdPrice: string;
+  try {
+    [quoteAmount, inputUsdPrice] = await Promise.all([
+      paymentAmountToQuoteCurrency(inputAsset, effectiveAmount),
+      getPaymentAssetUsdPrice(inputAsset),
+    ]);
+  } catch {
+    return { ok: false, error: { kind: 'PREVIEW_ERROR', message: `Unable to value ${inputAsset.symbol} for this purchase right now.` } };
+  }
+
   const outcome = computePurchasePreview({
     recipe: effectiveRecipe,
     inputAsset: identity,
     inputSymbol: inputAsset.symbol,
     inputDecimals: inputAsset.decimals,
     amount: effectiveAmount,
+    quoteAmount,
     nav,
     shareSupply,
   });
@@ -488,7 +500,7 @@ async function prepareBagPurchaseContext(
     return { ok: false, error: { kind: 'PREVIEW_ERROR', message: messageByKind[outcome.error.kind] ?? 'Unable to calculate allocation.' } };
   }
 
-  return { ok: true, value: { bag, version, outputIdentityKeys, inputAsset, identity, nav, shareSupply, outcome, fallback } };
+  return { ok: true, value: { bag, version, outputIdentityKeys, inputAsset, identity, nav, shareSupply, outcome, fallback, inputUsdPrice } };
 }
 
 /**
