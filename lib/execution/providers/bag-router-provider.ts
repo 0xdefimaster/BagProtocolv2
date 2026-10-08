@@ -3,6 +3,7 @@ import { BagExecutionGraph, BagExecutionIntent, CompiledExecution, ExpectedOutpu
 import { computeBagExecutionGraphHash } from '../plan';
 import { getEvmChainIdFor } from '@/lib/blockchain/evm/config';
 import { BagExecutionProvider, ProviderCapabilities } from './types';
+import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 
 // -----------------------------------------------------------------------------
 // lib/execution/providers/bag-router-provider.ts
@@ -189,6 +190,7 @@ export class BagRouterProvider implements BagExecutionProvider {
       if (intent.chainId !== chain) return false;
       if (getEvmChainIdFor(chain) !== this.config.chainId) return false;
       if (graph.inputAsset.chain !== chain) return false;
+      if (isNativeAssetIdentity(graph.inputAsset)) return false;
       const input = graph.inputAsset.address.toLowerCase();
       return graph.legs.every(
         (leg) =>
