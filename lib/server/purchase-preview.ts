@@ -66,8 +66,10 @@ export interface ComputePurchasePreviewInput {
   inputAsset: AssetIdentity;
   inputSymbol: string;
   inputDecimals: number;
-  /** Human decimal string, e.g. "100" — never a raw/scaled unit. */
+  /** Human decimal string in the selected payment asset, e.g. "0.05" ETH or "100" USDC. */
   amount: string;
+  /** Human decimal string in the Bag's quote currency (USD). Defaults to amount for 1:1 settlement tokens. */
+  quoteAmount?: string;
   /**
    * The Bag's CURRENT NAV — computed by the caller via `getBagNav()`
    * (lib/server/bag-nav.ts) from actual `bag_holdings`, never derived here
@@ -101,6 +103,7 @@ export interface ComputePurchasePreviewInput {
  */
 export function computePurchasePreview(input: ComputePurchasePreviewInput): PurchasePreviewOutcome {
   const amount = input.amount.trim();
+  const quoteAmount = (input.quoteAmount ?? amount).trim();
   if (!isValidDecimalString(amount) || amount.startsWith('-')) {
     return { ok: false, error: { kind: 'INVALID_AMOUNT' } };
   }
@@ -127,10 +130,17 @@ export function computePurchasePreview(input: ComputePurchasePreviewInput): Purc
 
   const executionPlan = buildExecutionPlan(depositPlan);
 
+  if (!isValidDecimalString(quoteAmount) || quoteAmount.startsWith('-')) {
+    return { ok: false, error: { kind: 'INVALID_AMOUNT' } };
+  }
+  if (toProtocolPrice(quoteAmount, 18) <= BigInt(0)) {
+    return { ok: false, error: { kind: 'ZERO_AMOUNT' } };
+  }
+
   let depositQuote: DepositQuote | null = null;
   if (input.nav) {
     try {
-      depositQuote = getDepositQuote(input.nav, input.shareSupply, amount);
+      depositQuote = getDepositQuote(input.nav, input.shareSupply, quoteAmount);
     } catch (err) {
       if (err instanceof OrphanedNavError || err instanceof ZeroNavError) {
         return { ok: false, error: { kind: 'NAV_UNAVAILABLE', message: err.message } };
@@ -149,7 +159,7 @@ export function computePurchasePreview(input: ComputePurchasePreviewInput): Purc
   // Enforced here so the preview and the purchase paths apply the same rule.
   // The deposit amount is the payment-token amount itself (counted 1:1), so the check never needs a price.
   const minimum = input.recipe.minInvestment ?? 0;
-  if (minimum > 0 && Number(depositQuote?.depositAmount ?? amount) < minimum) {
+  if (minimum > 0 && Number(depositQuote?.depositAmount ?? quoteAmount) < minimum) {
     return {
       ok: false,
       error: { kind: 'BELOW_MIN_INVESTMENT', minimum, message: `The minimum investment for this Bag is $${minimum}.` },
