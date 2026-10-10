@@ -1,4 +1,4 @@
-import { chainIdOf, normalizeAddress } from './chains';
+import { chainIdOf, isNativeToken, normalizeAddress } from './chains';
 import { computeDefinitionHash } from './definition';
 import { resolveV1Rules } from './rules';
 import { splitByWeight } from './split';
@@ -35,7 +35,10 @@ export const V1_EXECUTION_POLICY = Object.freeze({
 export const SDK_EXECUTION_ACCOUNTING = 'NOT_BAG_ACCOUNTED' as const;
 
 export interface PurchaseRequest {
-  /** ERC-20 the buyer pays with, on the strategy's chain. */
+  /**
+   * What the buyer pays with, on the strategy's chain: an ERC-20 address, or NATIVE_TOKEN (the zero address) for
+   * the chain's native coin (ETH), which is sent as the transaction's value with no approval.
+   */
   inputToken: string;
   /** Deposit, in the input token's smallest unit. */
   amountRaw: bigint;
@@ -64,6 +67,8 @@ export interface PurchasePlan {
   definitionHash: Hex;
   chainId: number;
   inputToken: string;
+  /** 'native': paid as the transaction value, no approval. 'erc20': pulled after an approval, no value. */
+  inputKind: 'native' | 'erc20';
   signer: string;
   amountRaw: bigint;
   /** Target amount of the input token that stays in the wallet because the strategy holds the input token itself. */
@@ -112,7 +117,7 @@ export function planPurchase(bag: BagDocument, req: PurchaseRequest): PurchasePl
   const validation = validateBag(bag, { tokens: req.tokens });
   issues.push(...validation.errors);
 
-  if (!ADDRESS_RE.test(req.inputToken)) err('INVALID_INPUT_TOKEN', 'request.inputToken', 'inputToken must be an ERC-20 address.');
+  if (!ADDRESS_RE.test(req.inputToken)) err('INVALID_INPUT_TOKEN', 'request.inputToken', 'inputToken must be an ERC-20 address or NATIVE_TOKEN.');
   if (!ADDRESS_RE.test(req.signer)) err('INVALID_SIGNER', 'request.signer', 'signer must be an address.');
   if (typeof req.amountRaw !== 'bigint' || req.amountRaw <= BigInt(0)) err('INVALID_AMOUNT', 'request.amountRaw', 'amountRaw must be a positive bigint.');
 
@@ -139,6 +144,9 @@ export function planPurchase(bag: BagDocument, req: PurchaseRequest): PurchasePl
   const keyOf = (address: string) => `${chain}:${normalizeAddress(address)}`;
 
   const keptRaw = target.get(keyOf(input)) ?? null;
+  // Native ETH is only ever swapped: a kept share would leave the strategy holding the native coin, which the
+  // strategy's own assets (ERC-20s) never are. Pay with an ERC-20 the strategy holds instead.
+  if (isNativeToken(input) && keptRaw !== null) err('NATIVE_INPUT_KEPT', 'request.inputToken', 'The strategy holds the native coin itself; a native payment cannot be kept.');
   const swapAssets = bag.definition.assets
     .map((a) => ({ token: normalizeAddress(a.address), targetInputRaw: target.get(keyOf(a.address))! }))
     .filter((a) => a.token !== input)
@@ -167,6 +175,7 @@ export function planPurchase(bag: BagDocument, req: PurchaseRequest): PurchasePl
     definitionHash: computeDefinitionHash(bag.definition),
     chainId: chainIdOf(chain),
     inputToken: input,
+    inputKind: isNativeToken(input) ? 'native' : 'erc20',
     signer: normalizeAddress(req.signer),
     amountRaw: req.amountRaw,
     kept: keptRaw === null ? null : { token: input, amountRaw: keptRaw },

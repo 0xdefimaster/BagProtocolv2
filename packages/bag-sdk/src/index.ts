@@ -3,7 +3,7 @@
 // adapter's job (@bag-protocol/sdk/http, @bag-protocol/sdk/evm); routing is a ComposerProvider
 // (@bag-protocol/sdk/lifi). The core depends on viem only. Spec: ../README.md.
 
-export { BAG_V1_CHAINS, BAG_V1_CHAIN_SLUGS, chainIdOf, isBagChain, normalizeAddress, type BagChain } from './chains';
+export { BAG_V1_CHAINS, BAG_V1_CHAIN_SLUGS, chainIdOf, isBagChain, isNativeToken, NATIVE_TOKEN, normalizeAddress, type BagChain } from './chains';
 export {
   BAG_JSON_FORMAT_VERSION,
   BAG_JSON_HASH_DOMAIN,
@@ -35,11 +35,13 @@ export {
   offChainRefOf,
   readRegistryRecord,
   registryStrategyId,
+  STRATEGY_REGISTRY_DEPLOYMENTS,
   STRATEGY_REGISTRY_READ_ABI,
   verifyRegistryCommitment,
   type ContractReader,
   type RegistryRecord,
   type RegistryVerification,
+  type StrategyRegistryDeployment,
 } from './registry';
 export { cascadeSplitBps, planPurchase, PurchasePlanError, SDK_EXECUTION_ACCOUNTING, V1_EXECUTION_POLICY, type PlannedLeg, type PurchasePlan, type PurchaseRequest } from './purchase';
 export {

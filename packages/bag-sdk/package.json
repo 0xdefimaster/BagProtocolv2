@@ -4,24 +4,44 @@
   "private": true,
   "description": "bag.json v1: parse, validate, normalize, hash and verify BAG strategies, and compile unsigned purchases, without the BAG app.",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./http": "./src/adapters/http.ts",
-    "./evm": "./src/adapters/evm.ts",
-    "./lifi": "./src/adapters/lifi.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./http": {
+      "types": "./dist/adapters/http.d.ts",
+      "import": "./dist/adapters/http.js"
+    },
+    "./evm": {
+      "types": "./dist/adapters/evm.d.ts",
+      "import": "./dist/adapters/evm.js"
+    },
+    "./lifi": {
+      "types": "./dist/adapters/lifi.d.ts",
+      "import": "./dist/adapters/lifi.js"
+    }
   },
   "files": [
-    "src",
+    "dist",
     "README.md"
   ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/fix-esm-imports.mjs",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "smoke:consumer": "node scripts/consumer-smoke.mjs"
+  },
   "peerDependencies": {
     "viem": "^2.0.0",
     "@lifi/composer-sdk": "^0.5.0"
   },
-  "license": "UNLICENSED",
   "peerDependenciesMeta": {
     "@lifi/composer-sdk": {
       "optional": true
     }
-  }
+  },
+  "license": "UNLICENSED"
 }
