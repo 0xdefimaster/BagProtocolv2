@@ -21,7 +21,7 @@ async function rejects(p: Promise<unknown>, error: string) {
   await assert.rejects(p, (e: Error) => e.message.includes(error), `expected ${error}`);
 }
 
-async function setup(componentCount = 2, opts: { hookToken?: boolean } = {}) {
+async function setup(componentCount = 2, opts: { hookToken?: boolean; hookLast?: boolean } = {}) {
   const { viem } = await network.connect();
   const publicClient = await viem.getPublicClient();
   const [creator, alice, bob, carol, guardian, stranger] = await viem.getWalletClients();
@@ -31,13 +31,14 @@ async function setup(componentCount = 2, opts: { hookToken?: boolean } = {}) {
   const bagId = await bagFactory.read.deriveBagId([creator.account.address, ref('bag-1')]);
   const bag = (await bagFactory.read.bagOf([bagId])) as `0x${string}`;
 
-  // Components: the first can be a HookERC20 (6 decimals, hook/skim), the rest plain 18-decimal tokens.
+  // Components: one can be a HookERC20 (6 decimals, hook/skim): the first, or the last with `hookLast`; the rest plain 18-decimal tokens.
   const tokens: { address: `0x${string}`; write: any; read: any }[] = [];
   const hook = opts.hookToken ? await viem.deployContract('HookERC20', []) : null;
-  if (hook) tokens.push(hook as any);
-  while (tokens.length < componentCount) tokens.push((await viem.deployContract('MockToken', [`T${tokens.length}`, `T${tokens.length}`, 18])) as any);
+  if (hook && !opts.hookLast) tokens.push(hook as any);
+  while (tokens.length < componentCount - (hook && opts.hookLast ? 1 : 0)) tokens.push((await viem.deployContract('MockToken', [`T${tokens.length}`, `T${tokens.length}`, 18])) as any);
+  if (hook && opts.hookLast) tokens.push(hook as any);
   // Unit basket: amount of each component per 1e18 shares at the first mint.
-  const units = tokens.map((_, i) => (hook && i === 0 ? 3_000_000n : (BigInt(i) + 1n) * 7n * 10n ** 17n + 3n) as bigint);
+  const units = tokens.map((t, i) => (hook && t.address === hook.address ? 3_000_000n : (BigInt(i) + 1n) * 7n * 10n ** 17n + 3n) as bigint);
 
   const createHash = await vaultFactory.write.createVault([bag, 'Bag Share', 'BAGS', tokens.map((t) => t.address), units, guardian.account.address]);
   const createReceipt = await publicClient.waitForTransactionReceipt({ hash: createHash });
@@ -212,6 +213,30 @@ describe('BagVault — hostile tokens and callers', () => {
     await hook!.write.arm([alice.account.address, attacker.address, encodeFunctionData({ abi: attacker.abi, functionName: 'attack' }), false]);
     await (await as(alice)).write.mint([E18, alice.account.address, max()]);
     assert.equal(await attacker.read.reentryReverted(), true);
+  });
+
+  it('read-only reentrancy: a view read from a token hook mid-mint or mid-redeem sees holdings and supply in step', async () => {
+    // The hook token is the LAST component, so its hook fires after the other component has moved.
+    const { viem, as, alice, hook, vault, vaultAddress, fund, max, zero } = await setup(2, { hookToken: true, hookLast: true });
+    await fund(alice);
+    await (await as(alice)).write.mint([2n * E18, alice.account.address, max()]);
+    const recorder = await viem.deployContract('VaultViewRecorder', [vaultAddress]);
+    const record = encodeFunctionData({ abi: recorder.abi, functionName: 'record' });
+
+    // Mint: the hook fires while the hook token is pulled, after component 0 has already been pulled.
+    const supplyBefore = (await vault.read.totalSupply()) as bigint;
+    const holdingsBefore = (await vault.read.holdings()) as bigint[];
+    await hook!.write.arm([alice.account.address, recorder.address, record, false]);
+    await (await as(alice)).write.mint([E18, alice.account.address, max()]);
+    assert.equal(await recorder.read.recorded(), true);
+    assert.equal(await recorder.read.seenSupply(), supplyBefore);
+    assert.deepEqual(await recorder.read.seenHoldings(), holdingsBefore);
+
+    // Redeem: shares are burnt and holdings reduced before any transfer, so the hook sees the new state throughout.
+    await hook!.write.arm([vaultAddress, recorder.address, record, false]);
+    await (await as(alice)).write.redeem([E18 / 2n, alice.account.address, zero()]);
+    assert.equal(await recorder.read.seenSupply(), await vault.read.totalSupply());
+    assert.deepEqual(await recorder.read.seenHoldings(), await vault.read.holdings());
   });
 
   it('fee-on-transfer: a token that delivers less than asked is refused (mint)', async () => {

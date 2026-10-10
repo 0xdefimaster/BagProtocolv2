@@ -78,6 +78,7 @@ own balance. Any difference from the expected amount reverts (`TransferAmountMis
 | First-depositor / inflation via donation | Internal holdings ignore donations; `DEAD_SHARES` keep supply > 0; `MIN_FIRST_MINT` | "inflation / donation attack" |
 | Supply returning to 0 with leftover holdings (the next "first mint" would claim them) | Dead shares are unredeemable, so supply ≥ 1,000 forever after the first mint | same + invariants test |
 | Reentrancy through a token hook (ERC-777-style) | `nonReentrant` on mint and redeem (shared lock); redeem burns and updates holdings before transfers | "reentrancy" (HookERC20 + ReentrantExecutionTarget) |
+| Read-only reentrancy (a view read from a token hook mid-call) | mint moves holdings and supply together after every transfer; redeem moves both before any transfer, so views are never half-updated | "read-only reentrancy" (HookERC20 as the last component + VaultViewRecorder) |
 | Fee-on-transfer token | Balance-delta check in and out → revert | "fee-on-transfer" (both directions) |
 | Admin rug | No withdraw, no owner, no upgrade; guardian can only pause mint | "pause stops mint only" |
 | Fake Bag / squatting a Bag's vault | Factory checks `BagFactory.bagOf` and `bag.creator() == msg.sender`; one vault per Bag | factory tests |

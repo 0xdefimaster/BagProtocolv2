@@ -180,9 +180,12 @@ contract BagVault is ERC20, ReentrancyGuard {
             uint256 received = token.balanceOf(address(this)) - before;
             // Fee-on-transfer (and anything else that delivers a different amount) is refused.
             if (received != amounts[i]) revert TransferAmountMismatch(address(token), amounts[i], received);
-            _holdings[i] += amounts[i];
         }
 
+        // Holdings and supply move together, after every transfer: a view read from a
+        // token hook mid-mint (read-only reentrancy) sees the old, consistent state,
+        // never holdings raised for some components while the supply is not.
+        for (uint256 i = 0; i < n; i++) _holdings[i] += amounts[i];
         if (first) _mint(DEAD_ADDRESS, DEAD_SHARES);
         _mint(receiver, shares);
         emit Minted(msg.sender, receiver, shares, amounts);
