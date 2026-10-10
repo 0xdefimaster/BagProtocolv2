@@ -162,6 +162,22 @@ export function parseDecimalToRaw(value: string, decimals: number): string | nul
 }
 
 /**
+ * A raw-unit amount as a PLAIN decimal string at full precision — no
+ * thousands separators, no truncation, trailing fractional zeros trimmed
+ * (e.g. `250000000n` at 6 decimals → `"250"`). For writing an exact amount
+ * back into an input (the purchase modal's MAX), where `formatRawAmount()`'s
+ * grouping and truncation would change the value. bigint-only; the inverse
+ * of `parseDecimalToRaw()` for non-negative amounts.
+ */
+export function rawToPlainDecimal(raw: bigint, decimals: number): string {
+  if (raw < BigInt(0)) throw new Error('rawToPlainDecimal: negative amount.');
+  const divisor = BigInt(10) ** BigInt(decimals);
+  const whole = (raw / divisor).toString();
+  const fraction = decimals > 0 ? (raw % divisor).toString().padStart(decimals, '0').replace(/0+$/, '') : '';
+  return fraction ? `${whole}.${fraction}` : whole;
+}
+
+/**
  * A Bag's 7D / 30D / YTD returns for display: recorded NAV history when the
  * API sent it (null = history doesn't reach back that far), otherwise the
  * reported figures of demo Bags. A live Bag with neither has no figures
