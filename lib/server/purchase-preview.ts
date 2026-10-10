@@ -3,7 +3,7 @@ import { calculateDepositAllocation, InvalidRecipeWeightsError } from '@/lib/dom
 import { buildExecutionPlan } from '@/lib/domain/basket-protocol/deposit/execution-plan';
 import { getDepositQuote, OrphanedNavError, ZeroNavError, ZeroShareSupplyError } from '@/lib/domain/basket-protocol/shares/shares';
 import { isValidDecimalString, toProtocolPrice } from '@/lib/domain/basket-protocol/pricing/price-precision';
-import { assetIdentitiesEqual } from '@/lib/domain/basket-protocol/asset-identity';
+import { assetIdentitiesEqual, isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 
 // -----------------------------------------------------------------------------
 // Phase 12 — One-click Bag purchase PREVIEW. The only new "business logic"
@@ -34,7 +34,9 @@ export type PurchasePreviewError =
   | { kind: 'ZERO_AMOUNT' }
   | { kind: 'INVALID_RECIPE'; message: string }
   | { kind: 'NAV_UNAVAILABLE'; message: string }
-  | { kind: 'BELOW_MIN_INVESTMENT'; minimum: number; message: string };
+  | { kind: 'BELOW_MIN_INVESTMENT'; minimum: number; message: string }
+  /** Part of a native-ETH payment would be kept as ETH (a KEEP allocation, e.g. the HOLD_INPUT policy): a Bag position cannot hold native ETH, so the buyer pays with the stablecoin instead. */
+  | { kind: 'NATIVE_INPUT_KEPT'; message: string };
 
 export interface PurchasePreviewResult {
   ok: true;
@@ -66,8 +68,14 @@ export interface ComputePurchasePreviewInput {
   inputAsset: AssetIdentity;
   inputSymbol: string;
   inputDecimals: number;
-  /** Human decimal string, e.g. "100" — never a raw/scaled unit. */
+  /** Human decimal string in the payment asset, e.g. "100" (USDG) or "0.05" (ETH) — never a raw/scaled unit. */
   amount: string;
+  /**
+   * The same payment in the Bag's quote currency (USD), human decimal
+   * (lib/server/payment-value.ts). Shares and the minimum investment use it.
+   * Omitted for a settlement stablecoin, which counts 1:1: then `amount`.
+   */
+  quoteAmount?: string;
   /**
    * The Bag's CURRENT NAV — computed by the caller via `getBagNav()`
    * (lib/server/bag-nav.ts) from actual `bag_holdings`, never derived here
@@ -125,12 +133,29 @@ export function computePurchasePreview(input: ComputePurchasePreviewInput): Purc
     throw err;
   }
 
+  // Native ETH is only ever swapped, never held: a Bag position (and every
+  // sale path) holds ERC-20s only.
+  if (isNativeAssetIdentity(input.inputAsset) && depositPlan.allocations.some((a) => a.action === 'KEEP')) {
+    return {
+      ok: false,
+      error: { kind: 'NATIVE_INPUT_KEPT', message: `Part of this purchase would be held as ${input.inputSymbol}, which a Bag position can't hold. Pay with the stablecoin instead.` },
+    };
+  }
+
   const executionPlan = buildExecutionPlan(depositPlan);
+
+  const quoteAmount = (input.quoteAmount ?? amount).trim();
+  if (!isValidDecimalString(quoteAmount) || quoteAmount.startsWith('-')) {
+    return { ok: false, error: { kind: 'INVALID_AMOUNT' } };
+  }
+  if (toProtocolPrice(quoteAmount, QUOTE_DECIMALS) <= BigInt(0)) {
+    return { ok: false, error: { kind: 'ZERO_AMOUNT' } };
+  }
 
   let depositQuote: DepositQuote | null = null;
   if (input.nav) {
     try {
-      depositQuote = getDepositQuote(input.nav, input.shareSupply, amount);
+      depositQuote = getDepositQuote(input.nav, input.shareSupply, quoteAmount);
     } catch (err) {
       if (err instanceof OrphanedNavError || err instanceof ZeroNavError) {
         return { ok: false, error: { kind: 'NAV_UNAVAILABLE', message: err.message } };
@@ -146,10 +171,10 @@ export function computePurchasePreview(input: ComputePurchasePreviewInput): Purc
   }
 
   // The creator's minimum deposit (recipe.minInvestment, quote currency).
-  // Enforced here so the preview and the purchase paths apply the same rule.
-  // The deposit amount is the payment-token amount itself (counted 1:1), so the check never needs a price.
+  // Enforced here so the preview and the purchase paths apply the same rule,
+  // on the payment's USD value (a stablecoin counts 1:1, so it needs no price).
   const minimum = input.recipe.minInvestment ?? 0;
-  if (minimum > 0 && Number(depositQuote?.depositAmount ?? amount) < minimum) {
+  if (minimum > 0 && isBelowMinimum(depositQuote?.depositAmount ?? quoteAmount, minimum)) {
     return {
       ok: false,
       error: { kind: 'BELOW_MIN_INVESTMENT', minimum, message: `The minimum investment for this Bag is $${minimum}.` },
@@ -171,6 +196,16 @@ export function computePurchasePreview(input: ComputePurchasePreviewInput): Purc
     navGross: input.nav?.grossNav ?? null,
     isBootstrap: depositQuote?.isBootstrap ?? false,
   };
+}
+
+/** Decimal precision the USD payment amount is compared at. */
+const QUOTE_DECIMALS = 18;
+
+/** `amount` (USD decimal string) < `minimum` (the recipe's number), compared as bigints. */
+function isBelowMinimum(amount: string, minimum: number): boolean {
+  const asDecimal = String(minimum);
+  const minimumDecimal = isValidDecimalString(asDecimal) ? asDecimal : minimum.toFixed(QUOTE_DECIMALS);
+  return toProtocolPrice(amount, QUOTE_DECIMALS) < toProtocolPrice(minimumDecimal, QUOTE_DECIMALS);
 }
 
 /** True iff `allocation.action === 'KEEP'` because its target asset is the deposit's own input asset — mirrors the identity check `calculateDepositAllocation()` already applies (never re-derived from symbols). */

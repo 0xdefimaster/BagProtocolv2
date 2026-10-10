@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CanonicalAsset } from '@/types/basket-protocol';
-import { paymentAssetsFor } from '../payment-assets';
+import { nativePaymentAssetFor, paymentAssetsFor, purchaseInputAssetsFor } from '../payment-assets';
+import { NATIVE_ASSET_ADDRESS } from '@/lib/domain/basket-protocol/asset-identity';
 
 const USDG = '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168';
 const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
@@ -50,5 +51,29 @@ describe('paymentAssetsFor', () => {
       'base'
     );
     expect(result.map((a) => a.address)).toEqual([BASE_USDC]);
+  });
+});
+
+describe('purchaseInputAssetsFor — native ETH as a purchase input', () => {
+  it('on Robinhood Chain offers USDG first, then native ETH (18 decimals, the native sentinel)', () => {
+    const result = purchaseInputAssetsFor([asset('USDG', USDG)], 'robinhood');
+    expect(result.map((a) => a.symbol)).toEqual(['USDG', 'ETH']);
+    expect(result[1]).toMatchObject({ id: 'native:robinhood', chain: 'robinhood', address: NATIVE_ASSET_ADDRESS, decimals: 18 });
+  });
+
+  it('on Ethereum offers USDC then ETH', () => {
+    const usdc = asset('USDC', '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', { chain: 'ethereum' });
+    expect(purchaseInputAssetsFor([usdc], 'ethereum').map((a) => a.symbol)).toEqual(['USDC', 'ETH']);
+  });
+
+  it('chains without a configured wrapped native token get no native option', () => {
+    expect(nativePaymentAssetFor('base')).toBeNull();
+    expect(nativePaymentAssetFor('arbitrum')).toBeNull();
+    expect(purchaseInputAssetsFor([asset('USDC', BASE_USDC, { chain: 'base' })], 'base').map((a) => a.symbol)).toEqual(['USDC']);
+  });
+
+  it('a registry row at the zero address is never picked up as the payment token; redemptions stay stablecoin-only', () => {
+    const fakeNative = asset('ETH', NATIVE_ASSET_ADDRESS, { decimals: 18 });
+    expect(paymentAssetsFor([asset('USDG', USDG), fakeNative], 'robinhood').map((a) => a.symbol)).toEqual(['USDG']);
   });
 });

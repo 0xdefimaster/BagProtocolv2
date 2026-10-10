@@ -160,3 +160,40 @@ describe('trackStepStatus — on-chain fallback when LI.FI has no status', () =>
     });
   }
 });
+
+describe('trackStepStatus — a native-ETH payment step', () => {
+  const NATIVE = '0x0000000000000000000000000000000000000000';
+  const ethInput = { ...input, expectedInputAsset: { chain: 'ethereum' as const, address: NATIVE }, expectedInputAmountRaw: '50000000000000000' };
+  const ethDone = (tokenAddress: string, amount = '50000000000000000') => doneStatus({ sending: { txHash: TX, amount, token: { address: tokenAddress } } });
+
+  it('accepts LI.FI reporting the native token as the zero address or as 0xEeee…', async () => {
+    getStatusMock.mockResolvedValue(ethDone(NATIVE));
+    expect(await trackStepStatus(ethInput)).toMatchObject({ kind: 'DONE', matchesExpectedAsset: true });
+    getStatusMock.mockResolvedValue(ethDone('0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'));
+    expect(await trackStepStatus(ethInput)).toMatchObject({ kind: 'DONE', matchesExpectedAsset: true });
+  });
+
+  it('still rejects an ERC-20 spend reported for a native step, and less ETH than the step', async () => {
+    getStatusMock.mockResolvedValue(ethDone(USDC));
+    expect(await trackStepStatus(ethInput)).toMatchObject({ kind: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
+    getStatusMock.mockResolvedValue(ethDone(NATIVE, '1'));
+    expect(await trackStepStatus(ethInput)).toMatchObject({ kind: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
+  });
+
+  it('a USDC step never accepts the 0xEeee alias (the alias only counts for native steps)', async () => {
+    getStatusMock.mockResolvedValue(doneStatus({ sending: { txHash: TX, amount: '1000000000', token: { address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' } } }));
+    expect(await trackStepStatus(input)).toMatchObject({ kind: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
+  });
+
+  it('on-chain fallback: the ETH spent is the transaction value', async () => {
+    rpcConfigured = true;
+    getStatusMock.mockResolvedValue({ status: 'NOT_FOUND' });
+    const pad = (addr: string) => `0x${addr.slice(2).toLowerCase().padStart(64, '0')}`;
+    const out = { address: WETH, topics: ['0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef', pad('0x4444444444444444444444444444444444444444'), pad(WALLET)], data: `0x${BigInt('420000000000000000').toString(16).padStart(64, '0')}` };
+    getTransactionReceiptMock.mockResolvedValue({ status: 'success', logs: [out] });
+    getTransactionMock.mockResolvedValue({ from: WALLET, value: BigInt('50000000000000000') });
+    expect(await trackStepStatus(ethInput)).toMatchObject({ kind: 'DONE', receivedAmountRaw: '420000000000000000' });
+    getTransactionMock.mockResolvedValue({ from: WALLET, value: BigInt(1) });
+    expect(await trackStepStatus(ethInput)).toMatchObject({ kind: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
+  });
+});

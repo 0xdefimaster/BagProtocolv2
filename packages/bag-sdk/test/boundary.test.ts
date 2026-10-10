@@ -19,7 +19,11 @@ describe('SDK dependency boundary', () => {
   it('imports only viem and its own modules', () => {
     for (const { file, text } of sources) {
       const specifiers = [...text.matchAll(/(?:import|export)[^'"]*from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
-      for (const s of specifiers) expect(s.startsWith('./') || (s.startsWith('../') && !s.startsWith('../../')) || s === 'viem', `${file} imports ${s}`).toBe(true);
+      for (const s of specifiers) {
+        // The LI.FI adapter alone may import its optional peer, @lifi/composer-sdk.
+        const lifi = file === 'adapters/lifi.ts' && s === '@lifi/composer-sdk';
+        expect(s.startsWith('./') || (s.startsWith('../') && !s.startsWith('../../')) || s === 'viem' || lifi, `${file} imports ${s}`).toBe(true);
+      }
     }
   });
 
@@ -36,7 +40,8 @@ describe('SDK dependency boundary', () => {
       expect(text, file).not.toMatch(/process\.env|require\(|node:/);
       expect(text, file).not.toMatch(/https?:\/\//);
       expect(text, file).not.toMatch(/0x[0-9a-fA-F]{64}(?![0-9a-fA-F])/); // no 32-byte literal (key or hash) in source
-      expect(text, file).not.toMatch(/supabase|next\/|react|netlify|@lifi/i);
+      expect(text, file).not.toMatch(/supabase|next\/|react|netlify/i);
+      if (file !== 'adapters/lifi.ts') expect(text, file).not.toMatch(/@lifi/i);
     }
   });
 
@@ -46,9 +51,16 @@ describe('SDK dependency boundary', () => {
     expect(definers).toEqual(['chains.ts']);
   });
 
-  it('the package declares viem as its only dependency', () => {
+  it('the package declares viem as its only required dependency (@lifi/composer-sdk is an optional peer of the LI.FI adapter)', () => {
     const pkg = JSON.parse(readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'));
     expect(pkg.dependencies).toBeUndefined();
-    expect(Object.keys(pkg.peerDependencies)).toEqual(['viem']);
+    expect(Object.keys(pkg.peerDependencies).sort()).toEqual(['@lifi/composer-sdk', 'viem']);
+    expect(pkg.peerDependenciesMeta).toEqual({ '@lifi/composer-sdk': { optional: true } });
+  });
+
+  it('the SDK never signs or sends: no key handling, no signing or sending call', () => {
+    for (const { file, text } of sources) {
+      expect(text, file).not.toMatch(/privateKey|privateKeyToAccount|signTransaction|signMessage|signTypedData|sendTransaction|sendRawTransaction|eth_send/);
+    }
   });
 });

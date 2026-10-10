@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { V1_DEFAULTS, V1_LIMITS, BAG_V1_CHAINS, splitByWeight, V1_EXECUTION_TOLERANCE_BPS } from '@/packages/bag-sdk/src';
+import { V1_DEFAULTS, V1_LIMITS, BAG_V1_CHAINS, splitByWeight, V1_EXECUTION_TOLERANCE_BPS, cascadeSplitBps } from '@/packages/bag-sdk/src';
 import { computeCascadeSplitBps } from '@/lib/blockchain/lifi-composer-adapter';
 import { distributeExactByWeight } from '../exact-allocation';
 import { assetIdentityKey } from '../asset-identity';
@@ -111,5 +111,19 @@ describe('bag.json v1 (SDK) ↔ BAG app', () => {
       });
     }
     expect(worst).toBeLessThan(V1_EXECUTION_TOLERANCE_BPS);
+  });
+
+  it('the SDK’s cascade split is BAG’s Composer cascade (computeCascadeSplitBps)', () => {
+    let seed = 5;
+    const rand = (m: number) => ((seed = (seed * 1103515245 + 12345) % 2 ** 31), seed % m);
+    for (let t = 0; t < 2000; t++) {
+      const n = 1 + rand(10);
+      const raw = Array.from({ length: n }, () => 1 + rand(5000));
+      const sum = raw.reduce((a, b) => a + b, 0);
+      const bps = raw.map((w) => Math.floor((w * 10000) / sum));
+      bps[n - 1] += 10000 - bps.reduce((a, b) => a + b, 0);
+      if (bps.some((b) => b <= 0)) continue;
+      expect(cascadeSplitBps(bps)).toEqual(computeCascadeSplitBps(bps.map((weightBps, i) => ({ address: `0x${i}`, weightBps, symbol: `A${i}` }))));
+    }
   });
 });

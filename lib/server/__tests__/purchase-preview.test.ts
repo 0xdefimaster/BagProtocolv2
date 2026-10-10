@@ -283,3 +283,44 @@ describe('computePurchasePreview', () => {
     expect(BigInt(outcome.depositQuote!.sharesRaw)).toBe(BigInt(25) * BigInt(10) ** BigInt(18));
   });
 });
+
+describe('computePurchasePreview — native ETH payment (quoteAmount)', () => {
+  const ETH = { chain: 'ethereum' as const, address: '0x0000000000000000000000000000000000000000' };
+  const ethInput = { inputAsset: ETH, inputSymbol: 'ETH', inputDecimals: 18 };
+
+  it('allocates wei, but prices shares from the USD value: 0.05 ETH = $150 at NAV/share $10 → 15 shares', () => {
+    const outcome = computePurchasePreview({ recipe: recipe(), ...ethInput, amount: '0.05', quoteAmount: '150', nav: nav('1000'), shareSupply: shareSupply(100) });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.inputAmountRaw).toBe('50000000000000000');
+    const allocated = outcome.depositPlan.allocations.reduce((s, a) => s + BigInt(a.valueRaw), BigInt(0)) + BigInt(outcome.depositPlan.unallocatedRaw);
+    expect(allocated.toString()).toBe('50000000000000000');
+    expect(outcome.depositQuote?.sharesRaw).toBe((BigInt(15) * BigInt(10) ** BigInt(18)).toString());
+    expect(outcome.depositQuote?.depositAmount).toBe('150');
+    expect(outcome.executionPlan.steps.every((s) => s.action === 'SWAP')).toBe(true);
+  });
+
+  it('the minimum investment is checked on the USD value, not the ETH amount', () => {
+    const r = recipe({ minInvestment: 100 });
+    const below = computePurchasePreview({ recipe: r, ...ethInput, amount: '0.03', quoteAmount: '90', nav: null, shareSupply: zeroShareSupply() });
+    expect(below).toMatchObject({ ok: false, error: { kind: 'BELOW_MIN_INVESTMENT' } });
+    const above = computePurchasePreview({ recipe: r, ...ethInput, amount: '0.05', quoteAmount: '150', nav: null, shareSupply: zeroShareSupply() });
+    expect(above.ok).toBe(true);
+  });
+
+  it('refuses a native payment that would be kept as ETH (e.g. the HOLD_INPUT policy put the input in the basket)', () => {
+    const r = recipe({
+      assets: [
+        { chain: 'ethereum', address: NVDA.address, symbol: 'NVDA', decimals: 18, weightBps: 8000 },
+        { chain: 'ethereum', address: ETH.address, symbol: 'ETH', decimals: 18, weightBps: 2000 },
+      ],
+    });
+    const outcome = computePurchasePreview({ recipe: r, ...ethInput, amount: '1', quoteAmount: '3000', nav: null, shareSupply: zeroShareSupply() });
+    expect(outcome).toMatchObject({ ok: false, error: { kind: 'NATIVE_INPUT_KEPT' } });
+  });
+
+  it('a stablecoin without quoteAmount behaves exactly as before (amount counted 1:1)', () => {
+    const outcome = computePurchasePreview({ recipe: recipe({ minInvestment: 100 }), inputAsset: USDC, inputSymbol: 'USDC', inputDecimals: 6, amount: '99.99', nav: null, shareSupply: zeroShareSupply() });
+    expect(outcome).toMatchObject({ ok: false, error: { kind: 'BELOW_MIN_INVESTMENT' } });
+  });
+});

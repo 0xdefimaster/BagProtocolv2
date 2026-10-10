@@ -55,7 +55,9 @@ display metadata, or how BAG enforces the rules.
 **Standalone SDK:** `packages/bag-sdk` parses, validates, normalizes, hashes
 and registry-verifies a bag.json with no BAG server. Its README is the frozen v1
 spec. The registry creator is a verification input there, never taken from
-`commitments.registry`.
+`commitments.registry`. It also compiles unsigned purchases (`compileBag`). A purchase
+made that way is an execution of the strategy into the buyer's wallet, not a BAG
+position: BAG fees apply only to executions explicitly originated and accounted for by BAG.
 
 **`null`, omitted and default**
 

@@ -460,6 +460,30 @@ describe('usePurchaseExecution', () => {
     expect(order).toEqual(['approve', 'simulate', 'send']);
   });
 
+  it('native-ETH Composer purchase: no allowance step at all, one transaction carrying the ETH as its value', async () => {
+    const NATIVE = { chain: 'robinhood' as const, address: '0x0000000000000000000000000000000000000000' };
+    const composerTransaction = { to: '0xLiFiDiamond', data: '0xdeadbeef', value: '1000000000000000', chainId: 4663, userProxy: '0xProxy', approvals: [] };
+    const created = baseIntent({ status: 'DRAFT' });
+    const steps = [
+      baseStep({ stepIndex: 0, inputAsset: NATIVE, inputAmountRaw: '600000000000000' }),
+      baseStep({ stepIndex: 1, inputAsset: NATIVE, inputAmountRaw: '400000000000000' }),
+    ];
+    const prepared = baseIntent({ status: 'READY', composerTransaction, steps });
+    const completed = baseIntent({ status: 'COMPLETED', composerTransaction, steps: steps.map((st) => ({ ...st, status: 'COMPLETED' as const, txHash: '0xonehash' })) });
+    sendTransactionMock.mockResolvedValue('0xonehash');
+    wireHttp({ created, prepared, onVerify: () => completed });
+
+    const { result } = renderHook(() => usePurchaseExecution());
+    await act(async () => {
+      await result.current.start(BAG_ID, 'native:robinhood', '0.001', WALLET_ADDRESS);
+    });
+
+    expect(ensureErc20AllowanceOnChainMock).not.toHaveBeenCalled();
+    expect(sendTransactionMock).toHaveBeenCalledTimes(1);
+    expect(sendTransactionMock).toHaveBeenCalledWith(expect.objectContaining({ value: BigInt('1000000000000000') }));
+    expect(result.current.state.phase).toBe('completed');
+  });
+
   it('a Composer transaction that would revert is never sent', async () => {
     const composerTransaction = { to: '0xLiFiDiamond', data: '0xdeadbeef', value: '0', chainId: 4663, userProxy: '0xProxy', approvals: [] };
     const created = baseIntent({ status: 'DRAFT' });

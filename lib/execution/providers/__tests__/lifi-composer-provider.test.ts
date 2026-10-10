@@ -60,3 +60,27 @@ describe('LiFiComposerProvider — providerEnforcedMinOutputRaw', () => {
     expect(Object.values(legQuotes).map((q) => q.outputAmountRaw)).toEqual(['1000', '2000', '3000']);
   });
 });
+
+describe('LiFiComposerProvider — native ETH input', () => {
+  it('supports a native-ETH payment and compiles it as one transaction with the ETH as its value', async () => {
+    const ETH = { chain: 'robinhood' as const, address: '0x0000000000000000000000000000000000000000' };
+    const g = graph();
+    const native = { ...g, inputAsset: ETH, legs: g.legs.map((l) => ({ ...l, sourceAsset: ETH })) } as BagExecutionGraph;
+    const provider = new LiFiComposerProvider({ apiKey: 'k' });
+    expect(provider.getCapabilities().nativeAsset).toBe(true);
+    expect(provider.supports({} as BagExecutionIntent, native)).toBe(true);
+    buildComposerPurchaseMock.mockResolvedValueOnce({
+      approvals: [],
+      transactionRequest: { to: '0xvm', data: '0xdead', value: '1000000', chainId: 4663 },
+      userProxy: '0xproxy',
+      producedResources: {},
+      gasLimitRaw: null,
+      priceImpact: null,
+      fees: [],
+    });
+    const compiled = await provider.compile({} as BagExecutionIntent, native);
+    expect(buildComposerPurchaseMock).toHaveBeenLastCalledWith(expect.objectContaining({ inputTokenAddress: ETH.address, inputAmountRaw: '1000000' }));
+    expect(compiled.mode).toBe('SINGLE_TX');
+    expect(compiled.transactions).toEqual([expect.objectContaining({ value: '1000000' })]);
+  });
+});

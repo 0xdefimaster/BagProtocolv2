@@ -1,5 +1,6 @@
 import { PurchaseIntent, PurchaseIntentStepRecord } from '@/types/purchase-intent';
 import { ExecutionMode } from './types';
+import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 
 // -----------------------------------------------------------------------------
 // lib/execution/signing-expectation.ts
@@ -65,6 +66,10 @@ export function deriveSigningExpectation(
   assumeApprovalNeeded = true
 ): SigningExpectation {
   const swapCount = countSwapSteps(intent.steps);
+  // A native-ETH payment is sent as the transaction value: nothing to approve.
+  if (intent.steps.some((s) => s.action === 'SWAP' && 'inputAsset' in s && s.inputAsset && isNativeAssetIdentity(s.inputAsset))) {
+    assumeApprovalNeeded = false;
+  }
   // A legacy (flag-off) intent has no compiler mode, but one carrying a
   // Composer transaction is still exactly one transaction for every leg.
   const mode = intent.executionMode ?? (intent.composerTransaction ? 'SINGLE_TX' : null);
@@ -141,7 +146,9 @@ export function deriveSigningExpectation(
     summary: swapCount > 1 ? 'Multiple wallet confirmations' : 'Wallet confirmation required',
     detail:
       swapCount > 1
-        ? `This purchase swaps into ${swapCount} assets. Expect a token approval followed by one transaction per asset.`
-        : 'Expect a token approval followed by the purchase transaction.',
+        ? `This purchase swaps into ${swapCount} assets. Expect ${assumeApprovalNeeded ? 'a token approval followed by ' : ''}one transaction per asset.`
+        : assumeApprovalNeeded
+          ? 'Expect a token approval followed by the purchase transaction.'
+          : 'Expect one purchase transaction.',
   };
 }

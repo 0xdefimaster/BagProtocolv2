@@ -1,7 +1,39 @@
 # StrategyRegistry — design
 
-Status: **contract, off-chain verifier, user-signed registration flow and fork
-provenance implemented; contract not deployed.**
+Status: **deployed on Robinhood Chain (2026-10-10).** Contract, off-chain
+verifier, user-signed registration flow and fork provenance implemented. The
+app uses it once `STRATEGY_REGISTRY_ADDRESS_ROBINHOOD` is set (§8).
+
+## 0. Deployments
+
+| Chain | Address | Deploy tx | Block | Deployer |
+|---|---|---|---|---|
+| Robinhood Chain (4663) | `0x907cc27d644c8ea1c24b8320ad09ecf2819209a8` | `0x453db80f70a024816ac22d457017fbbc84294fdcce407f91f1d5666a137d518e` | 85332074 | P1 disposable wallet `0xb193DE199EeB9bd1143607a11AD00999Ceb956b8` |
+
+Deployed with `scripts/deploy-strategy-registry.ts robinhood`. The script
+checked the RPC's chain id (4663) before sending and the receipt's success
+and contract address after. The contract has no constructor arguments, owner,
+admin or fee, so the deployer has no power over it.
+
+Not independently re-read from this repository's sandbox (no Robinhood Chain
+access): the bytecode at the address is checked on the explorer
+(robinhoodchain.blockscout.com) against `artifacts/contracts/StrategyRegistry.sol`.
+
+**To switch it on:** set `STRATEGY_REGISTRY_ADDRESS_ROBINHOOD` to the address
+above in the deployment's environment (Netlify) and redeploy. It is an address,
+not a secret. Switched on in production on 2026-10-10.
+
+**First live commitment (2026-10-10).** Bag `feetest`
+(`170e5e72-d5d5-4f16-b180-24b3dc525b37`, TSLA 50% / NVDA 50%, 20% performance
+fee), v1, `definitionHash`
+`0x089fc9ba2754f4180658c5f809986e606f8ec63d55430e3ab33da2046210a4fa`,
+registered from the creator's own wallet `0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46`
+through the Bag page panel (§8):
+tx `0xe5c105c3f07daee701f25ca7bd1b2afd3cfb9c8c43ff2c09aeaf32a2db0180c7`.
+BAG confirmed the receipt and the panel shows v1 as Registered. Anyone can
+re-check it without BAG: `GET /api/strategies/170e5e72-d5d5-4f16-b180-24b3dc525b37/versions/1`
+gives the bag.json, and `scripts/verify-strategy-commitment.ts` compares its
+hash with the registry on-chain.
 
 ## 1. What it is for
 
