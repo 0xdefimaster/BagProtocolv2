@@ -4,6 +4,7 @@ import { ComposerFallbackNotice, PurchaseIntentStepRecord } from '@/types/purcha
 import { getLiFiClient, toLiFiChainId } from './lifi-config';
 import { getLiFiTokenData } from './lifi-token-data';
 import { mapLiFiError } from './lifi-execution-adapter';
+import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 import { buildComposerPurchase, composerLegEnforcedMinOutputRaw, composerLegSimulatedOutputRaw, ComposerIneligibleError, ComposerPurchaseLeg, isComposerEligible } from './lifi-composer-adapter';
 
 // -----------------------------------------------------------------------------
@@ -281,9 +282,16 @@ async function tryBuildComposerSteps(
     if (err instanceof ComposerIneligibleError) return null;
     const message = err instanceof Error ? err.message : String(err);
     console.warn(`[composer] single-transaction route refused: ${message}`);
+    const notice = parseComposerFallback(message);
+    // A native-ETH payment has a proven per-asset path (each swap sends its
+    // ETH as the transaction value, no approval), and Composer's native-input
+    // support is the newer of the two: anything but a price-impact refusal
+    // falls back to it rather than failing the purchase. The price-impact
+    // limit still goes back to the buyer, exactly as for a stablecoin.
+    if (isNativeAssetIdentity(inputAsset) && notice.reason !== 'PRICE_IMPACT') return null;
     // A real Composer refusal (price impact, network, simulation revert,
     // timeout). Returned as-is so the buyer sees why; no per-asset fallback.
-    return { composerFallback: parseComposerFallback(message) };
+    return { composerFallback: notice };
   }
 
   const stepRecords: PurchaseIntentStepRecord[] = steps.map((step, stepIndex) => {

@@ -303,3 +303,61 @@ describe('composerLegEnforcedMinOutputRaw', () => {
   });
 });
 
+
+describe('buildComposerPurchase — native ETH input (one transaction, ETH as msg.value)', () => {
+  const NATIVE = '0x0000000000000000000000000000000000000000';
+  const ethRequest = {
+    chain: 'ethereum' as const,
+    inputTokenAddress: NATIVE,
+    inputAmountRaw: '1000000000000000',
+    signerAddress: '0xSigner',
+    slippageBps: 100,
+    apiKey: 'test-key',
+    legs: [
+      { address: '0xTargetA', weightBps: 6000, symbol: 'A' },
+      { address: '0xTargetB', weightBps: 4000, symbol: 'B' },
+    ],
+  };
+  const withTx = (value: string, approvals: unknown[] = []) =>
+    mockComposeFetch({
+      body: {
+        data: {
+          producedResources: {},
+          transactionRequest: { to: '0xComposerVM', chainId: 1, data: '0xdeadbeef', value },
+          userProxy: '0xUserProxy',
+          approvals,
+        },
+      },
+    });
+
+  it('declares the input as the native resource and returns one transaction carrying exactly the purchase ETH', async () => {
+    const fetchImpl = vi.fn(withTx('1000000000000000'));
+    const result = await buildComposerPurchase({ ...ethRequest, fetchImpl });
+    const sent = String((fetchImpl.mock.calls as unknown as [unknown, RequestInit][])[0][1].body);
+    expect(sent).toContain('"native"');
+    expect(sent).not.toContain('"erc20","token":"0x0000000000000000000000000000000000000000"');
+    expect(result.transactionRequest.value).toBe('1000000000000000');
+    expect(result.approvals).toEqual([]);
+  });
+
+  it('accepts a 0x-hex value and normalizes it to decimal', async () => {
+    const result = await buildComposerPurchase({ ...ethRequest, fetchImpl: withTx('0x38d7ea4c68000') });
+    expect(result.transactionRequest.value).toBe('1000000000000000');
+  });
+
+  it('refuses a transaction carrying more or less ETH than the purchase', async () => {
+    await expect(buildComposerPurchase({ ...ethRequest, fetchImpl: withTx('2000000000000000') })).rejects.toThrow(/does not equal/);
+    await expect(buildComposerPurchase({ ...ethRequest, fetchImpl: withTx('0') })).rejects.toThrow(/does not equal/);
+  });
+
+  it('refuses any token approval for a native purchase', async () => {
+    const approval = { token: '0xInputToken', spender: '0x1231231231231231231231231231231231231231', amount: '1', transactionRequest: { to: '0xInputToken', data: '0x', value: '0' } };
+    await expect(buildComposerPurchase({ ...ethRequest, fetchImpl: withTx('1000000000000000', [approval]) })).rejects.toThrow(/native-ETH purchase/);
+  });
+
+  it('an ERC-20 purchase whose transaction also spends ETH is refused', async () => {
+    await expect(
+      buildComposerPurchase({ ...ethRequest, inputTokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', inputAmountRaw: '1000000', fetchImpl: withTx('5') })
+    ).rejects.toThrow(/also spends native ETH/);
+  });
+});

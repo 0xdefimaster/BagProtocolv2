@@ -34,7 +34,7 @@ const CAPABILITIES: ProviderCapabilities = {
   singleTransaction: true,
   requiresApproval: true, // Composer's own on-chain-allowance check (`checkOnChainAllowances`) may still require one; see `buildComposerPurchase`'s own comment.
   requiresMultipleSignatures: false,
-  nativeAsset: false, // Underlying adapter only builds `resources.erc20(...)` inputs.
+  nativeAsset: true, // ERC-20 inputs (`resources.erc20`) and native ETH (`resources.native`, sent as the tx value).
   erc20: true,
   atomic: true,
   supportsRecipient: false, // `sweepTo: { $ref: 'context.sender' }` is hardcoded in the underlying adapter.

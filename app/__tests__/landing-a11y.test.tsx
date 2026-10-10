@@ -101,10 +101,10 @@ describe('landing page — copy says only what the code does', () => {
     }
   });
 
-  it('status tags are the literal AVAILABLE NOW / DEPLOYMENT PENDING / COMING NEXT set', async () => {
+  it('status tags are the literal AVAILABLE NOW / IN PROGRESS / COMING NEXT set', async () => {
     await renderLanding();
     const tags = Array.from(document.querySelectorAll('#roadmap .tag')).map((t) => t.textContent);
-    expect(new Set(tags)).toEqual(new Set(['AVAILABLE NOW', 'DEPLOYMENT PENDING', 'COMING NEXT']));
+    expect(new Set(tags)).toEqual(new Set(['AVAILABLE NOW', 'IN PROGRESS', 'COMING NEXT']));
     // Contract deployment is never presented as available.
     const now = Array.from(document.querySelectorAll('#roadmap .tag-now')).map((t) => t.parentElement?.textContent ?? '');
     for (const item of now) expect(item).not.toMatch(/BagFactory on mainnet|BAG Router on Robinhood Chain|price pools/i);

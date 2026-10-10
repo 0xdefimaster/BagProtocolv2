@@ -85,6 +85,15 @@ interface StatusView {
 
 const same = (a: string | undefined, b: string) => typeof a === 'string' && a.toLowerCase() === b.toLowerCase();
 
+/** LI.FI's other spelling of an EVM chain's native token (it also uses the zero address, BAG's own native sentinel). */
+const LIFI_NATIVE_ALIAS = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+
+/** `reported` (a token address in LI.FI's status) is `expected`; for a native asset, either native spelling counts. */
+function sameToken(reported: string | undefined, expected: AssetIdentity): boolean {
+  if (same(reported, expected.address)) return true;
+  return isNativeAssetIdentity(expected) && same(reported, LIFI_NATIVE_ALIAS);
+}
+
 function isUnsignedInteger(value: string | undefined): value is string {
   return typeof value === 'string' && /^\d+$/.test(value);
 }
@@ -232,7 +241,7 @@ export async function trackStepStatus(input: TrackStepStatusInput): Promise<Trac
   if (!same(response.toAddress, input.expectedWallet)) {
     return verificationFailed(`Transfer paid out to ${response.toAddress ?? 'an unknown address'}, not the intent's wallet.`);
   }
-  if (!same(response.sending?.token?.address, input.expectedInputAsset.address)) {
+  if (!sameToken(response.sending?.token?.address, input.expectedInputAsset)) {
     return verificationFailed('Transfer spent a different token than this step.');
   }
   const sentAmount = response.sending?.amount;

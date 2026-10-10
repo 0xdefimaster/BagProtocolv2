@@ -2,7 +2,7 @@
 // Status — tags are literal:
 //   AVAILABLE NOW       implemented in the app and covered by its tests (local
 //                       chain + real PostgreSQL). Contracts are NOT on mainnet yet.
-//   DEPLOYMENT PENDING  code exists; needs contracts deployed + live configuration
+//   IN PROGRESS         being built or enabled now; not available to users yet
 //   COMING NEXT         not built
 // -----------------------------------------------------------------------------
 

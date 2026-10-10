@@ -3,6 +3,7 @@ import type { Bindable, ComposeSdkOptions } from '@lifi/composer-sdk';
 import type { ProducedResource } from '@lifi/compose-spec';
 import { ChainId } from '@/types/basket-protocol';
 import { toLiFiChainId } from './lifi-config';
+import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 
 // -----------------------------------------------------------------------------
 // lifi-composer-adapter.ts — genuinely single-signature multi-asset purchase,
@@ -70,7 +71,11 @@ export interface ComposerPurchaseLeg {
 
 export interface ComposerPurchaseRequest {
   chain: ChainId;
-  /** Input token address (ERC-20 — native-asset input is not handled by this module; see `resources.erc20` usage below). */
+  /**
+   * Input token address: an ERC-20 (pulled with `transferFrom` after an
+   * approval), or the native sentinel (NATIVE_ASSET_ADDRESS) for a native-ETH
+   * payment, which the transaction carries as its `value` — no approval.
+   */
   inputTokenAddress: string;
   /** Raw input amount (token's smallest unit), as a decimal string. */
   inputAmountRaw: string;
@@ -255,6 +260,7 @@ export function composerLegSimulatedOutputRaw(
  * outright.
  */
 export async function buildComposerPurchase(request: ComposerPurchaseRequest): Promise<ComposerPurchaseResult> {
+  const nativeInput = isNativeAssetIdentity({ chain: request.chain, address: request.inputTokenAddress });
   if (!isComposerEligible(request.chain, request.legs)) {
     throw new ComposerIneligibleError(
       `Chain "${request.chain}" with ${request.legs.length} leg(s) is not eligible for a Composer flow — use the sequential lifi-purchase-quote.ts path instead.`
@@ -274,7 +280,9 @@ export async function buildComposerPurchase(request: ComposerPurchaseRequest): P
   const builder = sdk.flow(chainId, {
     name: `bag-purchase-${request.legs.length}-legs`,
     inputs: {
-      amountIn: resources.erc20(request.inputTokenAddress as `0x${string}`, chainId),
+      // Native ETH is deposited as msg.value (the SDK's `directDeposit`
+      // materialiser: "native via msg.value, ERC-20 via transferFrom").
+      amountIn: nativeInput ? resources.native(chainId) : resources.erc20(request.inputTokenAddress as `0x${string}`, chainId),
     },
   });
 
@@ -339,6 +347,20 @@ export async function buildComposerPurchase(request: ComposerPurchaseRequest): P
   // purchase spends; any other request means something unexpected is being
   // asked of the wallet, so refuse (the caller falls back to sequential).
   const approvals: ComposerApproval[] = (result.approvals ?? []).map((a) => ({ token: a.token, spender: a.spender, amountRaw: a.amount }));
+  const value = result.transactionRequest.value ?? '0';
+  const valueWei = BigInt(value); // decimal or 0x-hex; anything else throws (and the purchase does not go ahead)
+  if (nativeInput) {
+    // A native payment needs no approval at all, and the transaction must
+    // carry exactly the purchase's ETH — never more (it would be spent or
+    // swept elsewhere) and never less (the flow would revert or underbuy).
+    if (approvals.length > 0) throw new Error('Composer requested a token approval for a native-ETH purchase.');
+    if (valueWei !== BigInt(request.inputAmountRaw)) {
+      throw new Error(`Composer transaction value ${value} does not equal the purchase's ${request.inputAmountRaw} wei.`);
+    }
+  } else if (valueWei !== BigInt(0)) {
+    // An ERC-20 purchase never spends the wallet's ETH (same rule as the sweep and settlement flows below).
+    throw new Error('Composer returned an ERC-20 purchase transaction that also spends native ETH.');
+  }
   for (const a of approvals) {
     if (a.token.toLowerCase() !== request.inputTokenAddress.toLowerCase()) {
       throw new Error(`Composer requested an approval for ${a.token}, not the purchase's input token.`);
@@ -353,7 +375,7 @@ export async function buildComposerPurchase(request: ComposerPurchaseRequest): P
     transactionRequest: {
       to: result.transactionRequest.to,
       data: result.transactionRequest.data,
-      value: result.transactionRequest.value ?? '0',
+      value: valueWei.toString(),
       chainId,
     },
     userProxy: result.userProxy,

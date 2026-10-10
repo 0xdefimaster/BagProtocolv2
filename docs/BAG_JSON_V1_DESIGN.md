@@ -24,7 +24,9 @@ re-exports its canonicalization. Decisions recorded with it:
 - D5: strict parsing.
 - Weights sum to exactly 10000. The target allocation (floor, largest remainder, ties by `chain:address`) is normative and exact. An executor must spend the whole deposit and give each asset its target within 2 bps of the deposit; LI.FI Composer's bps cascade needs this bound. Version creation now requires exactly 10000 too; the purchase path always did.
 - The `null` → default table (`resolveV1Rules`) is normative and frozen. Defaults are still never written into the document or the hash.
-- The core never fetches. Transport lives in adapters (`/http`, `/evm`).
+- The core never fetches. Transport lives in adapters (`/http`, `/evm`, `/lifi`).
+- Execution (`quoteBag` / `compileBag` / `simulateBag`) builds unsigned transactions only. Slippage ≤ 300 bps and price impact ≤ 500 bps; a caller can only tighten them.
+- Accounting boundary: a strategy definition is portable and permissionless to execute. BAG fees apply only to executions explicitly originated and accounted for by BAG. SDK executions are `NOT_BAG_ACCOUNTED`.
 
 Changing any hash-relevant field, normalization, sorting or numeric rule, the
 chain table, the validation rules or the meaning of a field requires

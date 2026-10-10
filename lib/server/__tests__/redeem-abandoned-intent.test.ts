@@ -8,7 +8,9 @@ import type { RedeemIntent } from '@/types/redeem-intent';
 
 let active: Partial<RedeemIntent> | null = null;
 let liveAttestation: { id: string } | null = null;
-const transitions: { from: string; to: string }[] = [];
+const transitions: { from: string; to: string; steps?: unknown[] }[] = [];
+const searchMock = vi.fn();
+const trackComposerMock = vi.fn();
 
 vi.mock('@/lib/server/redeem-intent-repo', async () => {
   const { assertValidPurchaseIntentTransition } = await vi.importActual<typeof import('@/lib/domain/basket-protocol/purchase-intent/state-machine')>(
@@ -16,19 +18,32 @@ vi.mock('@/lib/server/redeem-intent-repo', async () => {
   );
   return {
     findActiveRedeemIntentForBag: async () => active,
-    updateRedeemIntentStatus: async (_a: unknown, u: { from: Parameters<typeof assertValidPurchaseIntentTransition>[0]; to: Parameters<typeof assertValidPurchaseIntentTransition>[1] }) => {
+    updateRedeemIntentStatus: async (
+      _a: unknown,
+      u: { from: Parameters<typeof assertValidPurchaseIntentTransition>[0]; to: Parameters<typeof assertValidPurchaseIntentTransition>[1]; steps?: unknown[] }
+    ) => {
       assertValidPurchaseIntentTransition(u.from, u.to);
-      transitions.push({ from: u.from, to: u.to });
-      return { ...active, status: u.to };
+      transitions.push(u.steps ? { from: u.from, to: u.to, steps: u.steps } : { from: u.from, to: u.to });
+      active = { ...active, status: u.to, ...(u.steps ? { steps: u.steps as RedeemIntent['steps'] } : {}) };
+      return active;
     },
     createRedeemIntent: vi.fn(),
-    getRedeemIntentForUser: vi.fn(),
+    getRedeemIntentForUser: async () => ({ ok: true, intent: active }),
     markRedeemAccountingApplied: vi.fn(),
     markRedeemReconciliationApplied: vi.fn(),
     recordRedeemSettlementResult: vi.fn(),
-    updateRedeemIntentSteps: vi.fn(),
+    updateRedeemIntentSteps: async (_a: unknown, _id: string, _status: string, steps: RedeemIntent['steps']) => {
+      active = { ...active, steps };
+      return active;
+    },
   };
 });
+vi.mock('@/lib/blockchain/composer-tx-search', () => ({ findComposerTransactionFromWallet: (...a: unknown[]) => searchMock(...a) }));
+vi.mock('@/lib/blockchain/composer-status', () => ({ trackComposerTransaction: (...a: unknown[]) => trackComposerMock(...a) }));
+vi.mock('@/lib/server/intent-tx-claims', () => ({
+  TX_HASH_RE: /^0x[0-9a-fA-F]{64}$/,
+  claimNewlyVerifiedTxHashes: async (_a: unknown, _k: unknown, _id: unknown, _before: unknown, after: unknown) => after,
+}));
 vi.mock('@/lib/server/fee-redemption-lock', () => ({ liveSettlementAttestationFor: async () => liveAttestation }));
 // Past the checks under test, the sale stops at the Bag lookup.
 vi.mock('@/lib/server/bag-repo', () => ({ getBagById: async () => null, getCurrentBagVersion: async () => null }));
@@ -46,6 +61,8 @@ beforeEach(() => {
   active = null;
   liveAttestation = null;
   transitions.length = 0;
+  searchMock.mockReset();
+  trackComposerMock.mockReset();
 });
 
 describe('createRedeemIntentForUser — an abandoned sale does not lock the position forever', () => {
@@ -88,5 +105,84 @@ describe('createRedeemIntentForUser — an abandoned sale does not lock the posi
     active = { id: 'old', status: 'AWAITING_SIGNATURE', expiresAt: future, settlementPlan: { deadline: nowSec() - 1 } as never };
     liveAttestation = { id: 'other' };
     expect(await create()).toEqual({ ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: 'other' } });
+  });
+});
+
+describe('createRedeemIntentForUser — a free Composer sale awaiting a signature (#27)', () => {
+  const TX = `0x${'ab'.repeat(32)}`;
+  const longPast = new Date(Date.now() - 60 * 60_000).toISOString(); // expiry an hour ago: past the grace period
+  const composerTransaction = { to: '0xComposerVM', data: '0xdeadbeef', value: '0', chainId: 4663, approvals: [] };
+  const swap = (i: number) => ({
+    stepIndex: i,
+    action: 'SWAP' as const,
+    status: 'AWAITING_SIGNATURE',
+    txHash: null,
+    sourceChain: 'robinhood' as const,
+    destinationChain: 'robinhood' as const,
+    inputAsset: { chain: 'robinhood' as const, address: i === 0 ? '0xTokenA' : '0xTokenB' },
+    inputAmountRaw: '100',
+    outputAsset: { chain: 'robinhood' as const, address: '0xUSDG' },
+    outputAmountRaw: '50',
+  });
+  const freeSale = (expiresAt: string): Partial<RedeemIntent> =>
+    ({
+      id: 'old',
+      status: 'AWAITING_SIGNATURE',
+      expiresAt,
+      createdAt: new Date(Date.parse(expiresAt) - 180_000).toISOString(),
+      settlementPlan: null,
+      composerTransaction,
+      walletAddress: '0xWallet',
+      outputAsset: { chain: 'robinhood', address: '0xUSDG' },
+      steps: [swap(0), swap(1)],
+    }) as unknown as Partial<RedeemIntent>;
+
+  it('within the grace period after expiry: blocks, and the chain is not even asked', async () => {
+    active = freeSale(past);
+    expect(await create()).toEqual({ ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: 'old' } });
+    expect(searchMock).not.toHaveBeenCalled();
+  });
+
+  it('past the grace period and the built transaction was never sent: released, a new sale may start', async () => {
+    active = freeSale(longPast);
+    searchMock.mockResolvedValue({ kind: 'NOT_FOUND' });
+    expect(await create()).toEqual({ ok: false, error: { kind: 'BAG_NOT_FOUND' } });
+    expect(transitions).toEqual([{ from: 'AWAITING_SIGNATURE', to: 'EXPIRED' }]);
+    expect(searchMock).toHaveBeenCalledWith(
+      expect.objectContaining({ chain: 'robinhood', wallet: '0xWallet', soldTokens: ['0xTokenA', '0xTokenB'], expected: composerTransaction })
+    );
+  });
+
+  it('the chain cannot answer (RPC down, or a wallet transaction still pending): blocks, nothing released', async () => {
+    active = freeSale(longPast);
+    searchMock.mockResolvedValue({ kind: 'UNKNOWN', reason: 'a transaction from the wallet is still pending' });
+    expect(await create()).toEqual({ ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: 'old' } });
+    expect(transitions).toEqual([]);
+  });
+
+  it('the sale was mined but never reported: recovered as SUBMITTED with its hash, verified, and still blocks while confirming', async () => {
+    active = freeSale(longPast);
+    searchMock.mockResolvedValue({ kind: 'FOUND', txHash: TX });
+    trackComposerMock.mockResolvedValue({ kind: 'PENDING' });
+    expect(await create()).toEqual({ ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: 'old' } });
+    expect(transitions[0]).toMatchObject({ from: 'AWAITING_SIGNATURE', to: 'SUBMITTED' });
+    expect((transitions[0].steps as { txHash: string; status: string }[]).every((st) => st.txHash === TX && st.status === 'SUBMITTED')).toBe(true);
+    // verify checked exactly the found transaction against the built one
+    expect(trackComposerMock).toHaveBeenCalledWith(expect.objectContaining({ txHash: TX, recipient: '0xWallet', expectedTransaction: composerTransaction }));
+    expect(transitions.map((t) => t.to)).not.toContain('EXPIRED');
+  });
+
+  it('a recovered transaction that failed on-chain ends FAILED, which frees the position', async () => {
+    active = freeSale(longPast);
+    searchMock.mockResolvedValue({ kind: 'FOUND', txHash: TX });
+    trackComposerMock.mockResolvedValue({ kind: 'FAILED', failureCode: 'TRANSACTION_REVERTED' });
+    expect(await create()).toEqual({ ok: false, error: { kind: 'BAG_NOT_FOUND' } });
+    expect(transitions.map((t) => t.to)).toEqual(['SUBMITTED', 'FAILED']);
+  });
+
+  it('a settlement sale is never searched this way (its attestation deadline decides)', async () => {
+    active = { ...freeSale(longPast), settlementPlan: { deadline: nowSec() + 60 } as never };
+    expect(await create()).toEqual({ ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: 'old' } });
+    expect(searchMock).not.toHaveBeenCalled();
   });
 });

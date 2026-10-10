@@ -11,6 +11,7 @@ import {
 } from '@/lib/blockchain/lifi-wallet-client';
 import { ensureBagRouterAllowance, sendBagRouterTransaction } from '@/lib/blockchain/bag-router-client';
 import { describeWalletError } from '@/lib/blockchain/wallet-error';
+import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 
 // -----------------------------------------------------------------------------
 // Phase 17 — spec Aşama 6: drives the "Purchase" button's entire lifecycle
@@ -286,7 +287,8 @@ export function usePurchaseExecution() {
         // told apart from "LI.FI omitted it". Composer's entry point is the
         // transaction target (the LI.FI Diamond), so make sure it may pull the
         // purchase's input — a no-op when the allowance already covers it.
-        if (approvals.length === 0 && swapSteps.length > 0) {
+        // A native-ETH payment travels as the transaction value: there is no allowance to check.
+        if (approvals.length === 0 && swapSteps.length > 0 && !isNativeAssetIdentity(swapSteps[0].inputAsset)) {
           const inputToken = swapSteps[0].inputAsset.address;
           const inputTotal = swapSteps.reduce((sum, st) => sum + BigInt(st.inputAmountRaw), BigInt(0));
           await ensureErc20AllowanceOnChain(walletAddress, composerTransaction.chainId, inputToken, composerTransaction.to, inputTotal.toString());

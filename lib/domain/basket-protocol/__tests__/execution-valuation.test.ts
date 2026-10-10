@@ -122,3 +122,37 @@ describe('legFloorOutputRaw: the lowest output a leg can end with, strictest sou
     expect(p.get(assetIdentityKey(NVDA))?.price).toBe('6.060606060606060607');
   });
 });
+
+describe('executionPricesFromLegs — native ETH payment (inputUsdPrice)', () => {
+  const ETH = { chain: 'robinhood' as const, address: '0x0000000000000000000000000000000000000000' };
+  const ethInput = { asset: ETH, decimals: 18 };
+  // 0.03 ETH spent, at least 9 NVDA out.
+  const ethLeg: ExecutionLeg = { action: 'SWAP', outputAsset: NVDA, inputAmountRaw: '30000000000000000', minOutputRaw: e18(9).toString(), outputDecimals: 18 };
+
+  it('prices the payment at its USD price and each leg as spent × price / floor output, rounded up once', () => {
+    const p = executionPricesFromLegs([ethLeg], ethInput, NOW.toISOString(), { inputUsdPrice: '3000' });
+    expect(p.get(assetIdentityKey(ETH))?.price).toBe('3000');
+    // 0.03 × 3000 / 9 = 10
+    expect(p.get(assetIdentityKey(NVDA))?.price).toBe('10');
+    const odd = executionPricesFromLegs([ethLeg], ethInput, NOW.toISOString(), { inputUsdPrice: '3000.01' });
+    // 0.03 × 3000.01 / 9 = 10.000033333… → rounded UP
+    expect(odd.get(assetIdentityKey(NVDA))?.price).toBe('10.000033333333333334');
+  });
+
+  it('shares from the execution quote then follow the USD deposit: $90 into a $1000 / 100-share Bag → 9 shares', () => {
+    const prices = executionPricesFromLegs([ethLeg], ethInput, NOW.toISOString(), { inputUsdPrice: '3000' });
+    // The Bag holds 100 NVDA = $1000 at the execution price.
+    const valued = navAtExecutionPrices([holding(NVDA, e18(100).toString())], prices, new Map(), NOW);
+    expect(valued.ok).toBe(true);
+    if (!valued.ok) return;
+    const quote = getDepositQuote(valued.nav, supply(100), '90');
+    expect(quote.sharesRaw).toBe(e18(9).toString());
+  });
+
+  it('without inputUsdPrice it is exactly the stablecoin behaviour (payment at 1)', () => {
+    const a = executionPricesFromLegs([leg(NVDA, 60, e18(9.9).toString())], input, NOW.toISOString());
+    const b = executionPricesFromLegs([leg(NVDA, 60, e18(9.9).toString())], input, NOW.toISOString(), { inputUsdPrice: '1' });
+    expect(b.get(assetIdentityKey(NVDA))?.price).toBe(a.get(assetIdentityKey(NVDA))?.price);
+    expect(() => executionPricesFromLegs([], input, NOW.toISOString(), { inputUsdPrice: '0' })).toThrow();
+  });
+});
