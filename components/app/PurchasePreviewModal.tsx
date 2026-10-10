@@ -3,9 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, ArrowRight, Loader2, CheckCircle2, AlertTriangle, Wallet } from 'lucide-react';
 import { MAX_ACCEPTABLE_PRICE_IMPACT_BPS, type ComposerFallbackNotice } from '@/types/purchase-intent';
-import { formatDecimalStringUsd, formatRawAmount, formatRawAmountUsd } from '@/lib/format';
+import { formatDecimalStringUsd, formatRawAmount, formatRawAmountUsd, parseDecimalToRaw, rawToPlainDecimal } from '@/lib/format';
 import { useWallet } from '@/lib/wallet-context';
 import { usePurchaseExecution } from '@/hooks/use-purchase-execution';
+import { isNativePaymentAsset, useNativeGasReserve, usePaymentBalance, usableBalanceRaw } from '@/hooks/use-payment-balance';
+import { BAG_CHAINS, isBagChain } from '@/lib/config/chains';
+import { NATIVE_ASSET_ADDRESS } from '@/lib/domain/basket-protocol/asset-identity';
 import { purchasePrefetchKey, usePurchasePrefetch } from '@/hooks/use-purchase-prefetch';
 import { usePurchaseOptions, resolveSelectedProviderId, ExecutionCandidateView } from '@/hooks/use-purchase-options';
 import { deriveSigningExpectation } from '@/lib/execution/signing-expectation';
@@ -151,6 +154,48 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
   const awaitingFallback = execution.state.phase === 'awaiting_price_impact_confirmation';
   const isExecuting = execution.state.phase !== 'idle' && execution.state.phase !== 'failed' && !awaitingFallback;
 
+  const selectedAsset = useMemo(
+    () => inputAssets?.find((a) => a.id === selectedAssetId) ?? null,
+    [inputAssets, selectedAssetId]
+  );
+
+  // The buyer's balance of the selected payment asset, read from that
+  // asset's own chain (hooks/use-payment-balance.ts). Display and a pre-check
+  // only: a balance we couldn't read never blocks the purchase, since the
+  // execution flow checks the real balance on chain anyway.
+  const balanceOwner = wallet.isConnected && wallet.walletAddress ? wallet.walletAddress : null;
+  const payingNative = selectedAsset ? isNativePaymentAsset(selectedAsset) : false;
+  const paymentBalance = usePaymentBalance(selectedAsset, balanceOwner);
+  // Paying with an ERC-20, the network fee is still paid in the chain's
+  // native token: read it too, only to warn when there is none.
+  const nativeAsset = useMemo(
+    () =>
+      selectedAsset && !payingNative && isBagChain(selectedAsset.chain)
+        ? { chain: selectedAsset.chain, address: NATIVE_ASSET_ADDRESS, decimals: BAG_CHAINS[selectedAsset.chain].nativeCurrency.decimals }
+        : null,
+    [selectedAsset, payingNative]
+  );
+  const nativeBalance = usePaymentBalance(nativeAsset, balanceOwner);
+  const gasReserveRaw = useNativeGasReserve(selectedAsset?.chain ?? null, payingNative);
+  // Null whenever we don't know (still loading, read failed, gas reserve not
+  // known yet): then nothing is blocked and MAX is off.
+  const usableRaw =
+    paymentBalance.status === 'ready' && paymentBalance.balanceRaw !== null && (!payingNative || gasReserveRaw !== null)
+      ? usableBalanceRaw(paymentBalance.balanceRaw, payingNative, gasReserveRaw ?? BigInt(0))
+      : null;
+  const amountRaw = selectedAsset ? parseDecimalToRaw(amount, selectedAsset.decimals) : null;
+  const insufficientBalance = usableRaw !== null && amountRaw !== null && BigInt(amountRaw) > usableRaw;
+  const noNativeForFees = nativeAsset !== null && nativeBalance.status === 'ready' && nativeBalance.balanceRaw === BigInt(0);
+
+  // Both balances change with a purchase (or may have, with a failed one).
+  const refetchPayment = paymentBalance.refetch;
+  const refetchNative = nativeBalance.refetch;
+  useEffect(() => {
+    if (execution.state.phase !== 'completed' && execution.state.phase !== 'failed') return;
+    refetchPayment();
+    refetchNative();
+  }, [execution.state.phase, refetchPayment, refetchNative]);
+
   // The wallet prompts are sent by THIS page (the server never signs for the
   // buyer). Closing or reloading the tab mid-purchase stops them, so warn first.
   useEffect(() => {
@@ -284,7 +329,8 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
     providerId: selectedProviderId,
     enabled:
       !!preview && !previewError && !calculating && !!selectedAssetId && wallet.isConnected && !!wallet.authUser &&
-      !!wallet.walletAddress && !isExecuting && execution.state.phase !== 'completed' && !noRouteBlocksPurchase && !staleComparisonBlocksPurchase,
+      !!wallet.walletAddress && !isExecuting && execution.state.phase !== 'completed' && !noRouteBlocksPurchase && !staleComparisonBlocksPurchase &&
+      !insufficientBalance,
   });
   const takePrepared = () =>
     selectedAssetId ? prefetch.take(purchasePrefetchKey(bagId, selectedAssetId, amount, selectedProviderId)) : undefined;
@@ -403,9 +449,26 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
     onCompleted?.();
   }, [execution.state.phase, onCompleted]);
 
+  // The launch buy only goes ahead on a balance we have actually read and
+  // that covers the amount. It is turned off for the rest of this modal
+  // session (never re-armed by a new amount, preview or balance) when the
+  // balance cannot be read or does not cover it: the buyer then decides and
+  // presses Purchase themselves. Without that, lowering the amount after an
+  // insufficient-balance stop would fire the purchase mid-typing.
   const autoStartedRef = useRef(false);
+  const [autoStartStopped, setAutoStartStopped] = useState<'INSUFFICIENT_BALANCE' | 'BALANCE_UNAVAILABLE' | null>(null);
   useEffect(() => {
-    if (!autoStart || autoStartedRef.current) return;
+    if (!autoStart || autoStartedRef.current || autoStartStopped) return;
+    if (paymentBalance.status === 'error') {
+      setAutoStartStopped('BALANCE_UNAVAILABLE');
+      return;
+    }
+    // Nothing is sent before the balance check has a result.
+    if (paymentBalance.status !== 'ready' || usableRaw === null) return;
+    if (insufficientBalance) {
+      setAutoStartStopped('INSUFFICIENT_BALANCE');
+      return;
+    }
     if (!preview || previewError || calculating || !selectedAssetId) return;
     if (noRouteBlocksPurchase || staleComparisonBlocksPurchase) return;
     if (!wallet.isConnected || !wallet.authUser || execution.state.phase !== 'idle') return;
@@ -413,17 +476,18 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
     void execution.start(bagId, selectedAssetId, amount.trim(), wallet.walletAddress, selectedProviderId ?? undefined, takePrepared());
     // Fires once when every precondition is met; execution/wallet identities are stable enough here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoStart, preview, previewError, calculating, selectedAssetId, noRouteBlocksPurchase, staleComparisonBlocksPurchase, wallet.isConnected, wallet.authUser, execution.state.phase]);
+  }, [autoStart, autoStartStopped, paymentBalance.status, usableRaw, preview, previewError, calculating, selectedAssetId, noRouteBlocksPurchase, staleComparisonBlocksPurchase, insufficientBalance, wallet.isConnected, wallet.authUser, execution.state.phase]);
 
-  const selectedAsset = useMemo(
-    () => inputAssets?.find((a) => a.id === selectedAssetId) ?? null,
-    [inputAssets, selectedAssetId]
-  );
 
   const estimatedSharesDisplay = preview?.depositQuote
     ? formatRawAmount(preview.depositQuote.sharesRaw, preview.depositQuote.shareDecimals, { maxFractionDigits: 4 })
     : null;
   const unvaluedAssets = preview?.valuation && !preview.valuation.available ? preview.valuation.unavailable : [];
+
+  // One place for every reason the Purchase button is off (disabled, opacity
+  // and cursor all read it).
+  const purchaseBlocked =
+    !preview || !!previewError || calculating || isExecuting || !selectedAssetId || staleComparisonBlocksPurchase || noRouteBlocksPurchase || insufficientBalance;
 
   return (
     <div
@@ -575,6 +639,63 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
             <span style={{ fontSize: 12.5, color: 'var(--ink-soft, #B4AEA2)' }}>No payment token on this network yet (USDG on Robinhood Chain)</span>
           )}
         </div>
+
+        {/* Balance of the selected payment asset (only with a connected wallet). */}
+        {balanceOwner && selectedAsset && paymentBalance.status !== 'idle' && (
+          <div
+            data-testid="payment-balance"
+            style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginTop: -8, marginBottom: 14, fontSize: 12, color: 'var(--ink-soft, #B4AEA2)' }}
+          >
+            {paymentBalance.status === 'loading' ? (
+              <span>Balance: …</span>
+            ) : paymentBalance.status === 'error' || paymentBalance.balanceRaw === null ? (
+              <>
+                <span>Balance unavailable</span>
+                <button
+                  type="button"
+                  onClick={paymentBalance.refetch}
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--gold-lt, #F0DFC0)', fontSize: 12, textDecoration: 'underline' }}
+                >
+                  Retry
+                </button>
+              </>
+            ) : (
+              <>
+                <span>
+                  Balance:{' '}
+                  {formatRawAmount(paymentBalance.balanceRaw.toString(), selectedAsset.decimals, payingNative ? { maxFractionDigits: 6 } : { maxFractionDigits: 2, padFraction: true })}{' '}
+                  {selectedAsset.symbol}
+                </span>
+                <button
+                  type="button"
+                  disabled={isExecuting || usableRaw === null}
+                  onClick={() => {
+                    if (usableRaw !== null) setAmount(rawToPlainDecimal(usableRaw, selectedAsset.decimals));
+                  }}
+                  style={{
+                    background: 'var(--gold-tint, rgba(217,185,139,0.1))',
+                    border: '1px solid var(--line-soft, rgba(255,255,255,0.08))',
+                    borderRadius: 6,
+                    padding: '1px 7px',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: 'var(--gold-lt, #F0DFC0)',
+                    cursor: isExecuting || usableRaw === null ? 'not-allowed' : 'pointer',
+                    opacity: isExecuting || usableRaw === null ? 0.5 : 1,
+                  }}
+                >
+                  MAX
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {balanceOwner && noNativeForFees && selectedAsset && isBagChain(selectedAsset.chain) && (
+          <div style={{ marginTop: -6, marginBottom: 14, fontSize: 12, color: 'var(--gold, #D9B98B)' }}>
+            You need some {BAG_CHAINS[selectedAsset.chain].nativeCurrency.symbol} on {BAG_CHAINS[selectedAsset.chain].name} for network fees.
+          </div>
+        )}
 
         {previewError && (
           <div
@@ -897,18 +1018,20 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
               if (!selectedAssetId) return;
               void execution.start(bagId, selectedAssetId, amount.trim(), wallet.walletAddress, selectedProviderId ?? undefined, takePrepared());
             }}
-            disabled={!preview || !!previewError || calculating || isExecuting || !selectedAssetId || staleComparisonBlocksPurchase || noRouteBlocksPurchase}
+            disabled={purchaseBlocked}
             title={staleComparisonBlocksPurchase ? 'Refresh routes to continue — the comparison shown is outdated.' : noRouteBlocksPurchase ? `No route for ${unroutableSymbols.join(', ')}` : undefined}
             style={{
               ...primaryButtonStyle,
-              opacity: !preview || !!previewError || calculating || isExecuting || !selectedAssetId || staleComparisonBlocksPurchase || noRouteBlocksPurchase ? 0.5 : 1,
-              cursor: !preview || !!previewError || calculating || isExecuting || !selectedAssetId || staleComparisonBlocksPurchase || noRouteBlocksPurchase ? 'not-allowed' : 'pointer',
+              opacity: purchaseBlocked ? 0.5 : 1,
+              cursor: purchaseBlocked ? 'not-allowed' : 'pointer',
             }}
           >
             {isExecuting ? (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, justifyContent: 'center', width: '100%' }}>
                 <Loader2 size={14} className="spin" /> Purchase in progress…
               </span>
+            ) : insufficientBalance && selectedAsset ? (
+              `Insufficient ${selectedAsset.symbol} balance`
             ) : execution.state.phase === 'failed' ? (
               'Try again'
             ) : staleComparisonBlocksPurchase ? (
@@ -921,6 +1044,13 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
           </button>
         )}
 
+        {autoStartStopped && !isExecuting && execution.state.phase === 'idle' && (
+          <div role="status" style={{ marginTop: 8, fontSize: 12, color: 'var(--gold, #D9B98B)' }}>
+            {autoStartStopped === 'INSUFFICIENT_BALANCE'
+              ? 'Automatic purchase stopped: your balance does not cover this amount. Adjust it and press Purchase to continue.'
+              : "Automatic purchase stopped: your balance couldn't be read. Check it and press Purchase to continue."}
+          </div>
+        )}
         {quotesLoading && preview && !isExecuting && (
           <div style={{ marginTop: 8, fontSize: 12, color: 'var(--ink-soft)' }}>Live route quotes are still loading — you can already purchase.</div>
         )}

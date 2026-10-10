@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDecimalString, formatDecimalStringUsd, formatRawAmount, formatRawAmountUsd } from '../format';
+import { formatDecimalString, formatDecimalStringUsd, formatRawAmount, formatRawAmountUsd, parseDecimalToRaw, rawToPlainDecimal } from '../format';
 
 describe('formatDecimalString', () => {
   it('truncates (never rounds) the fraction to maxFractionDigits, trimming trailing zeros by default', () => {
@@ -59,5 +59,17 @@ describe('formatRawAmount', () => {
 describe('formatRawAmountUsd', () => {
   it('formats a raw amount as $-prefixed currency', () => {
     expect(formatRawAmountUsd('40000000', 6)).toBe('$40.00'); // 40 USDC @ 6 decimals
+  });
+});
+
+describe('rawToPlainDecimal', () => {
+  it('exact, ungrouped, trailing zeros trimmed; round-trips with parseDecimalToRaw', () => {
+    expect(rawToPlainDecimal(BigInt(250_000_000), 6)).toBe('250');
+    expect(rawToPlainDecimal(BigInt('1234567890123456789'), 18)).toBe('1.234567890123456789');
+    expect(rawToPlainDecimal(BigInt('1000000000000000000000'), 18)).toBe('1000');
+    expect(rawToPlainDecimal(BigInt(5), 0)).toBe('5');
+    expect(rawToPlainDecimal(BigInt(0), 6)).toBe('0');
+    for (const raw of ['1', '999999', '123456789012345678901234']) expect(parseDecimalToRaw(rawToPlainDecimal(BigInt(raw), 18), 18)).toBe(raw);
+    expect(() => rawToPlainDecimal(BigInt(-1), 6)).toThrow();
   });
 });
