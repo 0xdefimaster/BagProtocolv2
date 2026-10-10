@@ -4,6 +4,7 @@ import { ComposerFallbackNotice, PurchaseIntentStepRecord } from '@/types/purcha
 import { getLiFiClient, toLiFiChainId } from './lifi-config';
 import { getLiFiTokenData } from './lifi-token-data';
 import { mapLiFiError } from './lifi-execution-adapter';
+import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 import { buildComposerPurchase, composerLegEnforcedMinOutputRaw, composerLegSimulatedOutputRaw, ComposerIneligibleError, ComposerPurchaseLeg, isComposerEligible } from './lifi-composer-adapter';
 
 // -----------------------------------------------------------------------------
@@ -230,6 +231,9 @@ async function tryBuildComposerSteps(
     (s) => s.route.inputAsset.chain === inputAsset.chain && s.route.inputAsset.address === inputAsset.address
   );
   if (!sameInputAsset) return null;
+  // Composer only pulls an ERC-20 input; a native-ETH payment takes the
+  // sequential LI.FI path, where each swap sends its ETH as the tx value.
+  if (isNativeAssetIdentity(inputAsset)) return null;
 
   const chain = swapSteps[0].route.sourceChain;
   const sameChain = swapSteps.every((s) => s.route.sourceChain === chain && s.route.destinationChain === chain);

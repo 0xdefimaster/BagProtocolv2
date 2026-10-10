@@ -5,6 +5,7 @@ import {
   ROBINHOOD_EXPLORER_URL,
   ROBINHOOD_NATIVE_CURRENCY,
   ROBINHOOD_PUBLIC_RPC_URL,
+  ROBINHOOD_WETH_ADDRESS,
 } from './robinhood-chain';
 
 // -----------------------------------------------------------------------------
@@ -43,6 +44,13 @@ export interface BagChainConfig {
   publicRpcUrls: readonly string[];
   supportedAssetTypes: readonly BagAssetType[];
   viemChain: Chain;
+  /**
+   * The chain's canonical wrapped native token (WETH). Non-null means a
+   * buyer may pay for a Bag with the chain's native token: WETH is the price
+   * identity that values the native payment in USD (lib/server/payment-value.ts),
+   * never a token the purchase touches. Null: native payments are off there.
+   */
+  wrappedNativeAddress: string | null;
 }
 
 const ROBINHOOD_NATIVE = { name: 'Ether', ...ROBINHOOD_NATIVE_CURRENCY };
@@ -66,6 +74,8 @@ export const BAG_CHAINS: Record<BagChain, BagChainConfig> = {
     publicRpcUrls: [],
     supportedAssetTypes: ['CRYPTO'],
     viemChain: mainnet,
+    // Canonical WETH9 on Ethereum mainnet.
+    wrappedNativeAddress: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
   },
   arbitrum: {
     chain: 'arbitrum',
@@ -77,6 +87,7 @@ export const BAG_CHAINS: Record<BagChain, BagChainConfig> = {
     publicRpcUrls: arbitrum.rpcUrls.default.http,
     supportedAssetTypes: ['CRYPTO'],
     viemChain: arbitrum,
+    wrappedNativeAddress: null,
   },
   base: {
     chain: 'base',
@@ -88,6 +99,7 @@ export const BAG_CHAINS: Record<BagChain, BagChainConfig> = {
     publicRpcUrls: base.rpcUrls.default.http,
     supportedAssetTypes: ['CRYPTO'],
     viemChain: base as unknown as Chain,
+    wrappedNativeAddress: null,
   },
   robinhood: {
     chain: 'robinhood',
@@ -99,6 +111,7 @@ export const BAG_CHAINS: Record<BagChain, BagChainConfig> = {
     publicRpcUrls: [ROBINHOOD_PUBLIC_RPC_URL],
     supportedAssetTypes: ['CRYPTO', 'STOCK_TOKEN'],
     viemChain: robinhoodViemChain,
+    wrappedNativeAddress: ROBINHOOD_WETH_ADDRESS,
   },
 };
 
