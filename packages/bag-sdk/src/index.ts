@@ -1,6 +1,7 @@
 // @bag-protocol/sdk — the bag.json v1 strategy core.
 // parse → validate → normalize → hash → verify (StrategyRegistry). No transport: getting the bytes is an
-// adapter's job (@bag-protocol/sdk/http, @bag-protocol/sdk/evm). Depends on viem only. Spec: ../README.md.
+// adapter's job (@bag-protocol/sdk/http, @bag-protocol/sdk/evm); routing is a ComposerProvider
+// (@bag-protocol/sdk/lifi). The core depends on viem only. Spec: ../README.md.
 
 export { BAG_V1_CHAINS, BAG_V1_CHAIN_SLUGS, chainIdOf, isBagChain, normalizeAddress, type BagChain } from './chains';
 export {
@@ -40,3 +41,19 @@ export {
   type RegistryRecord,
   type RegistryVerification,
 } from './registry';
+export { cascadeSplitBps, planPurchase, PurchasePlanError, SDK_EXECUTION_ACCOUNTING, V1_EXECUTION_POLICY, type PlannedLeg, type PurchasePlan, type PurchaseRequest } from './purchase';
+export {
+  compileBag,
+  ProviderResponseError,
+  quoteBag,
+  simulateBag,
+  type CompiledPurchase,
+  type ComposerCompileRequest,
+  type ComposerCompileResult,
+  type ComposerProvider,
+  type ExecutionTrustPolicy,
+  type PurchaseQuote,
+  type QuotedLeg,
+  type SimulationClient,
+  type SimulationResult,
+} from './execution';
