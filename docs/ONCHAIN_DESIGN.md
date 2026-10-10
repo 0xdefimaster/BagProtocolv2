@@ -304,7 +304,7 @@ Native ETH purchase ──▶ BagVault (audit #1)
  (audit #3)    (audit #4)           (oracle decision) for wallet buys)
 ```
 
-1. **Native ETH purchase.** Implemented: ETH is a purchase input on Robinhood Chain and Ethereum (sequential LI.FI legs, valued in USD at the WETH oracle price; sales still settle in the stablecoin). No new contracts.
+1. **Native ETH purchase.** Implemented: ETH is a purchase input on Robinhood Chain and Ethereum (one LI.FI Composer transaction with the ETH as its value, per-asset LI.FI swaps as the fallback; valued in USD at the WETH oracle price; sales still settle in the stablecoin). No new contracts.
 2. **BagVault.** Resolve `docs/BAG_VAULT_DESIGN.md` §9 first: component binding, token allowlist, guardian. **Audit #1.**
 3. **Management fee (§1)** and **performance record (§3).** Neither needs a price oracle on chain. **Audit #2** for the fee.
 4. **Oracle decision.** It gates §1 performance fee, §2 rebalance and §5 hook. Pick it once, for all three.

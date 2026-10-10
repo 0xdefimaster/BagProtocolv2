@@ -10,7 +10,6 @@ import {
 import { toLiFiChainId } from '@/lib/blockchain/lifi-config';
 import { BagExecutionGraph, BagExecutionIntent, CompiledExecution, ExpectedOutput } from '../types';
 import { BagExecutionProvider, ProviderCapabilities } from './types';
-import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 
 // -----------------------------------------------------------------------------
 // lib/execution/providers/lifi-composer-provider.ts
@@ -35,7 +34,7 @@ const CAPABILITIES: ProviderCapabilities = {
   singleTransaction: true,
   requiresApproval: true, // Composer's own on-chain-allowance check (`checkOnChainAllowances`) may still require one; see `buildComposerPurchase`'s own comment.
   requiresMultipleSignatures: false,
-  nativeAsset: false, // Underlying adapter only builds `resources.erc20(...)` inputs.
+  nativeAsset: true, // ERC-20 inputs (`resources.erc20`) and native ETH (`resources.native`, sent as the tx value).
   erc20: true,
   atomic: true,
   supportsRecipient: false, // `sweepTo: { $ref: 'context.sender' }` is hardcoded in the underlying adapter.
@@ -63,8 +62,6 @@ export class LiFiComposerProvider implements BagExecutionProvider {
   supports(_intent: BagExecutionIntent, graph: BagExecutionGraph): boolean {
     if (!COMPOSER_ELIGIBLE_CHAINS.includes(graph.chainId)) return false;
     if (graph.legs.length === 0) return false;
-    // ERC-20 inputs only (`nativeAsset: false` above): a native-ETH payment goes to the sequential provider.
-    if (isNativeAssetIdentity(graph.inputAsset)) return false;
     // Cascading-split fan-out needs exactly one shared input asset.
     const firstInput = graph.legs[0].sourceAsset;
     const sameInput = graph.legs.every(

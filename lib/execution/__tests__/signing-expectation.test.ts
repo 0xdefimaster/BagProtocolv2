@@ -107,3 +107,27 @@ describe('deriveSigningExpectation — modes without a knowable count', () => {
     expect(e.detail).toMatch(/single transaction/);
   });
 });
+
+describe('deriveSigningExpectation — native-ETH payment', () => {
+  const nativeSwap = (i: number) =>
+    ({ stepIndex: i, action: 'SWAP', status: 'QUOTED', inputAsset: { chain: 'robinhood', address: '0x0000000000000000000000000000000000000000' } }) as unknown as PurchaseIntentStepRecord;
+
+  it('one Composer transaction, no approval: exactly one confirmation', () => {
+    const e = deriveSigningExpectation({ executionMode: 'SINGLE_TX', steps: [nativeSwap(0), nativeSwap(1)] });
+    expect(e.walletConfirmations).toBe(1);
+    expect(e.includesApproval).toBe(false);
+  });
+
+  it('a legacy (no compiler mode) multi-asset intent paid in ETH never mentions an approval', () => {
+    const e = deriveSigningExpectation({ executionMode: null, steps: [nativeSwap(0), nativeSwap(1)] });
+    expect(e.includesApproval).toBe(false);
+    expect(e.detail).toBe('This purchase swaps into 2 assets. Expect one transaction per asset.');
+  });
+
+  it('sequential legs: one confirmation per asset, never an approval', () => {
+    const e = deriveSigningExpectation({ executionMode: 'MULTI_TX', steps: [nativeSwap(0), nativeSwap(1)] });
+    expect(e.walletConfirmations).toBe(2);
+    expect(e.includesApproval).toBe(false);
+    expect(e.detail).not.toMatch(/approval/i);
+  });
+});
