@@ -41,7 +41,8 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
 
       const builder = sdk.flow(chainId, {
         name: `bag-sdk-purchase-${req.legs.length}-legs`,
-        inputs: { amountIn: resources.erc20(req.inputToken as `0x${string}`, chainId) },
+        // Native ETH is deposited as msg.value by `directDeposit` ("native via msg.value, ERC-20 via transferFrom").
+        inputs: { amountIn: req.inputKind === 'native' ? resources.native(chainId) : resources.erc20(req.inputToken as `0x${string}`, chainId) },
       });
 
       const swap = (i: number, amountIn: Bindable<'resource'>) =>

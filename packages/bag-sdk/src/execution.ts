@@ -19,6 +19,8 @@ import type { BagDocument, Hex } from './types';
 export interface ComposerCompileRequest {
   chainId: number;
   inputToken: string;
+  /** 'native': declare the input as the chain's native coin (deposited as msg.value). 'erc20': an ERC-20 input. */
+  inputKind: 'native' | 'erc20';
   /** Amount to swap (the plan's `swapAmountRaw`). */
   amountRaw: bigint;
   signer: string;
@@ -93,6 +95,8 @@ export class ProviderResponseError extends Error {
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const HEX_RE = /^0x[0-9a-fA-F]*$/;
 const UINT_RE = /^\d+$/;
+/** A transaction value: decimal or 0x-hex (providers use either). */
+const VALUE_RE = /^(\d+|0x[0-9a-fA-F]+)$/;
 
 interface TrustedContracts {
   targets: Set<string>;
@@ -120,6 +124,7 @@ function requestFor(plan: PurchasePlan): ComposerCompileRequest {
   return {
     chainId: plan.chainId,
     inputToken: plan.inputToken,
+    inputKind: plan.inputKind,
     amountRaw: plan.swapAmountRaw,
     signer: plan.signer,
     legs: plan.legs.map((l) => ({ token: l.token })),
@@ -135,10 +140,18 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
     throw new ProviderResponseError(`${provider}: ${m}`);
   };
   const tx = r.transaction;
-  if (!ADDRESS_RE.test(tx.to) || !HEX_RE.test(tx.data) || tx.data.length < 10 || !UINT_RE.test(tx.value)) fail('malformed transaction.');
+  if (!ADDRESS_RE.test(tx.to) || !HEX_RE.test(tx.data) || tx.data.length < 10 || !VALUE_RE.test(tx.value)) fail('malformed transaction.');
   if (tx.chainId === null || tx.chainId !== plan.chainId) fail(`transaction chain ${tx.chainId ?? 'missing'} does not match plan chain ${plan.chainId}.`);
   if (!trusted.targets.has(tx.to.toLowerCase())) fail(`transaction target ${tx.to} is not in the caller's trusted target allowlist.`);
-  if (BigInt(tx.value) !== BigInt(0)) fail('an ERC-20 purchase must not send native value.');
+  const value = BigInt(tx.value);
+  if (plan.inputKind === 'native') {
+    // The purchase's ETH travels as msg.value: exactly the swapped amount, never more (it would be spent or swept
+    // elsewhere), never less (the program would revert or under-buy). Nothing to approve.
+    if (value !== plan.swapAmountRaw) fail(`a native purchase must send exactly ${plan.swapAmountRaw} wei, the transaction sends ${value}.`);
+    if (r.approvals.length > 0) fail('a native purchase needs no approval, the provider requested one.');
+  } else if (value !== BigInt(0)) {
+    fail('an ERC-20 purchase must not send native value.');
+  }
 
   const approvals = r.approvals.map((a) => {
     if (normalizeAddress(a.token) !== plan.inputToken) fail(`approval requested for ${a.token}, not the input token.`);
@@ -153,6 +166,7 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
     const got = r.legs[i];
     if (got.token !== null && normalizeAddress(got.token) !== l.token) fail(`leg ${i} delivers ${got.token}, planned ${l.token}.`);
     for (const v of [got.expectedOutRaw, got.minOutRaw]) if (v !== null && !UINT_RE.test(v)) fail(`leg ${i} has a malformed amount.`);
+    if (got.expectedOutRaw !== null && got.minOutRaw !== null && BigInt(got.minOutRaw) > BigInt(got.expectedOutRaw)) fail(`leg ${i} minimum output is above its expected output.`);
     return { token: l.token, targetInputRaw: l.targetInputRaw, expectedOutRaw: got.expectedOutRaw, minOutRaw: got.minOutRaw };
   });
 
@@ -162,7 +176,7 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
 
   return {
     quote: { plan, provider, legs, priceImpactBps: r.priceImpactBps, fees: r.fees, gasLimit: r.gasLimit },
-    transaction: { to: tx.to as Hex, data: tx.data as Hex, value: BigInt(0), chainId: plan.chainId },
+    transaction: { to: tx.to as Hex, data: tx.data as Hex, value, chainId: plan.chainId },
     approvals,
     executor: r.executor,
   };
@@ -182,9 +196,10 @@ export async function compileBag(bag: BagDocument, req: PurchaseRequest, options
   return checked(plan, options.provider.name, await options.provider.compile(requestFor(plan)), trusted);
 }
 
-/** Anything with viem's `readContract` and `call` (a viem PublicClient on the strategy's chain). */
+/** Anything with viem's `readContract` and `call` (a viem PublicClient on the strategy's chain); `getBalance` for a native purchase. */
 export interface SimulationClient {
   getChainId(): Promise<number>;
+  getBalance?(args: { address: Hex }): Promise<bigint>;
   readContract(args: { address: Hex; abi: readonly unknown[]; functionName: string; args?: readonly unknown[] }): Promise<unknown>;
   call(args: { account: Hex; to: Hex; data: Hex; value?: bigint }): Promise<unknown>;
 }
@@ -212,7 +227,14 @@ export async function simulateBag(compiled: CompiledPurchase, options: { client:
   if (chainId !== plan.chainId) throw new Error(`simulateBag: client is on chain ${chainId}, the purchase is for ${plan.chainId}.`);
   const signer = plan.signer as Hex;
 
-  const balance = BigInt((await client.readContract({ address: plan.inputToken as Hex, abi: ERC20_READ_ABI, functionName: 'balanceOf', args: [signer] })) as bigint);
+  let balance: bigint;
+  if (plan.inputKind === 'native') {
+    if (!client.getBalance) throw new Error('simulateBag: a native purchase needs a client with getBalance.');
+    // The value only; the network fee comes on top and the wallet shows it.
+    balance = BigInt(await client.getBalance({ address: signer }));
+  } else {
+    balance = BigInt((await client.readContract({ address: plan.inputToken as Hex, abi: ERC20_READ_ABI, functionName: 'balanceOf', args: [signer] })) as bigint);
+  }
   if (balance < plan.swapAmountRaw) return { status: 'INSUFFICIENT_BALANCE', balanceRaw: balance, requiredRaw: plan.swapAmountRaw };
 
   const missing: CompiledPurchase['approvals'] = [];

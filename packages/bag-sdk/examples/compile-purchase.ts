@@ -107,7 +107,8 @@ async function main() {
     client,
     registry: registry && expectedCreator ? { address: registry as Hex, expectedCreator } : undefined,
   });
-  console.log(JSON.stringify(report, null, 2));
+  // simulate can carry bigint amounts (INSUFFICIENT_BALANCE); print them as decimal strings.
+  console.log(JSON.stringify(report, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2));
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {

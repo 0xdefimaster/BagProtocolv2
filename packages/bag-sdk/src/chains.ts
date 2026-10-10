@@ -28,6 +28,16 @@ export function chainIdOf(chain: BagChain): number {
   return BAG_V1_CHAINS[chain];
 }
 
+/**
+ * The chain's native coin (ETH on every v1 chain) as a purchase input: the zero address, the same sentinel BAG
+ * uses. It is never an ERC-20: it is paid as the transaction's value, with no approval.
+ */
+export const NATIVE_TOKEN = '0x0000000000000000000000000000000000000000';
+
+export function isNativeToken(address: string): boolean {
+  return address.trim().toLowerCase() === NATIVE_TOKEN;
+}
+
 /** Every v1 chain is EVM: addresses are 20-byte hex, case-insensitive, compared lowercase. */
 export function normalizeAddress(address: string): string {
   return address.trim().toLowerCase();

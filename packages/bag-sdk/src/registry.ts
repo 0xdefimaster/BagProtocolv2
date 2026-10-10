@@ -1,4 +1,5 @@
 import { encodeAbiParameters, keccak256 } from 'viem';
+import { BAG_V1_CHAINS, type BagChain } from './chains';
 import { computeDefinitionHash } from './definition';
 import type { BagDocument, Hex } from './types';
 
@@ -22,6 +23,22 @@ const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const ZERO_ADDRESS = `0x${'0'.repeat(40)}`;
 const ZERO32 = `0x${'0'.repeat(64)}`;
+
+/** A StrategyRegistry deployment: the full address on one chain. */
+export interface StrategyRegistryDeployment {
+  chainId: number;
+  address: Hex;
+  /** Block of the deployment transaction; reads before it see no code. */
+  deployedAtBlock: number;
+}
+
+/**
+ * Known StrategyRegistry deployments, by v1 chain. A chain without an entry has no registry: verification there
+ * needs an address the caller trusts. Robinhood Chain: deployed by BAG at block 85332074.
+ */
+export const STRATEGY_REGISTRY_DEPLOYMENTS: Readonly<Partial<Record<BagChain, StrategyRegistryDeployment>>> = Object.freeze({
+  robinhood: Object.freeze({ chainId: BAG_V1_CHAINS.robinhood, address: '0x907cc27d644c8ea1c24b8320ad09ecf2819209a8' as Hex, deployedAtBlock: 85332074 }),
+});
 
 /** offChainRef of a BAG strategy UUID: the 16 UUID bytes, left-padded to bytes32. */
 export function offChainRefOf(strategyUuid: string): Hex {

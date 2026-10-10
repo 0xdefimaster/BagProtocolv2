@@ -238,6 +238,29 @@ creator is not in `definitionHash`. `verifyRegistryCommitment` takes the creator
 stated `definitionHash` are never used as authority. If you copy the creator
 from the JSON, you only verify what the JSON claims.
 
+**Deployments** (`STRATEGY_REGISTRY_DEPLOYMENTS`):
+
+| Chain | Chain id | StrategyRegistry | Deployed at block |
+|---|---|---|---|
+| robinhood | 4663 | `0x907cc27d644c8ea1c24b8320ad09ecf2819209a8` | 85332074 |
+
+No other chain has a registry; there, verification needs an address you trust.
+
+**Live check, read-only** (`examples/verify-registry.ts`): it checks that the RPC is on the registry's chain, that the
+registry has contract code, and that the registry holds the recomputed `definitionHash` for your expected creator. It
+uses a public client only and sends nothing. For the `feetest` v1 commitment:
+
+```
+RPC_URL=… npx tsx packages/bag-sdk/examples/verify-registry.ts \
+  <BAG app origin>/api/strategies/170e5e72-d5d5-4f16-b180-24b3dc525b37/versions/1 \
+  0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46
+```
+
+The bag.json can also be a local file: `packages/bag-sdk/test/fixtures/feetest.v1.bag.json` is that document as served.
+
+Each check prints `PASS` or `FAIL`, then `VERDICT PASS|FAIL|BLOCKED`. Exit code 0 PASS, 1 FAIL, 3 BLOCKED (the RPC or
+the URL could not be reached; nothing was checked). The RPC URL is never printed.
+
 ## Execution: quote, simulate, compile
 
 ```ts
@@ -254,6 +277,20 @@ const compiled = await compileBag(bag, { inputToken, amountRaw, signer }, { prov
 const check = await simulateBag(compiled, { client });   // your viem client: OK | NEEDS_APPROVAL | INSUFFICIENT_BALANCE | REVERTED
 // your wallet sends compiled.approvals, then signs and sends compiled.transaction
 ```
+
+**Native ETH or an ERC-20.** `inputToken` is either an ERC-20 address or `NATIVE_TOKEN`
+(`0x0000000000000000000000000000000000000000`, the chain's ETH). The plan says which: `plan.inputKind` is
+`'native'` or `'erc20'`.
+
+| | ERC-20 (e.g. USDG) | Native ETH |
+|---|---|---|
+| Paid as | the approved token amount | the transaction's `value` |
+| `compiled.transaction.value` | must be `0` | must equal `amountRaw` exactly |
+| `compiled.approvals` | the spender's allowance, if needed | must be empty |
+| Kept (unswapped) share | the asset that is the input token | none: ETH is never a basket asset (`NATIVE_INPUT_KEPT`) |
+| `simulateBag` balance | `balanceOf(signer)` | `getBalance(signer)` (the network fee comes on top) |
+
+A provider answer that breaks any row is refused with `ProviderResponseError`.
 
 | Function | What it does |
 |---|---|
@@ -300,7 +337,34 @@ LIFI_API_KEY=… RPC_URL=… COMPOSER_TRUSTED_TARGETS=0x… COMPOSER_TRUSTED_SPE
 
 The target and spender values must be independently verified for the strategy's chain. If the transaction needs an approval and no trusted spender is configured, compilation fails closed.
 
-The test suite runs the same script with the real `@lifi/composer-sdk` and the network mocked.
+The test suite runs the same script with the real `@lifi/composer-sdk` and the network mocked. That proves the
+pipeline, **not** the live API.
+
+**Live compile test** (`examples/live-compile.ts`): the same script against the real LI.FI Composer API and a real
+RPC, quote and compile only. It asserts the unsigned result (chain id, trusted target, calldata, `value` = amount for
+ETH and 0 for an ERC-20, no approval for ETH, trusted spenders, every leg's minimum output ≤ its expected output) and
+prints `VERDICT PASS|FAIL|BLOCKED`. It never signs or sends, and never prints the key or the RPC URL.
+
+```
+LIFI_API_KEY=… RPC_URL=… COMPOSER_TRUSTED_TARGETS=0x… npx tsx packages/bag-sdk/examples/live-compile.ts \
+  <bag.json|URL> 0x0000000000000000000000000000000000000000 1000000000000000 <your address>
+```
+
+`COMPOSER_TRUSTED_TARGETS` is the LI.FI Composer contract on the strategy's chain, verified by you (for example the
+`to` of a Composer purchase you already made, checked on the block explorer). Exit code 0 PASS, 1 FAIL, 3 BLOCKED
+(credentials not set, or the network unreachable).
+
+## Package
+
+```
+cd packages/bag-sdk
+npm run typecheck   # tsc, no output
+npm run build       # dist/: ES2022 ESM .js + .d.ts for ".", "./http", "./evm", "./lifi"
+npm pack --dry-run  # what a tarball would contain: dist/, README.md, package.json
+npm run smoke:consumer  # packs, installs the tarball in a fresh temp project, imports every entry point, typechecks a TS consumer
+```
+
+No build dependency beyond TypeScript. The package stays `private` and `UNLICENSED`: it is not published.
 
 ## v1 freeze
 
