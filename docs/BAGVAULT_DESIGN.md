@@ -1,6 +1,8 @@
 # BagVault — Design & Spec (Phase 19.X-6)
 
 > **Status: NOT IMPLEMENTED** — design / decision only. Current state: [docs/STATUS.md](STATUS.md).
+>
+> A later spike takes the opposite approach (in-kind mint/redeem, no oracle, no signer, no swaps): [docs/BAG_VAULT_DESIGN.md](BAG_VAULT_DESIGN.md).
 
 **Status: DESIGN ONLY. No `BagVault.sol` exists. No `BagFactory.createBagVault()`
 exists. No custodial wallet, no private-key custody, nothing in this
