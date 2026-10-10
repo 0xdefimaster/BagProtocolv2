@@ -3,6 +3,7 @@ import type { Bindable, ComposeSdkOptions } from '@lifi/composer-sdk';
 import type { ProducedResource } from '@lifi/compose-spec';
 import { ChainId } from '@/types/basket-protocol';
 import { toLiFiChainId } from './lifi-config';
+import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 
 // -----------------------------------------------------------------------------
 // lifi-composer-adapter.ts — genuinely single-signature multi-asset purchase,
@@ -255,6 +256,10 @@ export function composerLegSimulatedOutputRaw(
  * outright.
  */
 export async function buildComposerPurchase(request: ComposerPurchaseRequest): Promise<ComposerPurchaseResult> {
+  // The flow below pulls an ERC-20 (`resources.erc20`); native ETH is never a Composer input.
+  if (isNativeAssetIdentity({ chain: request.chain, address: request.inputTokenAddress })) {
+    throw new ComposerIneligibleError('A native-token payment is not a Composer input — use the sequential lifi-purchase-quote.ts path instead.');
+  }
   if (!isComposerEligible(request.chain, request.legs)) {
     throw new ComposerIneligibleError(
       `Chain "${request.chain}" with ${request.legs.length} leg(s) is not eligible for a Composer flow — use the sequential lifi-purchase-quote.ts path instead.`

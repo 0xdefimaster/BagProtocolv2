@@ -18,8 +18,17 @@ import Link from 'next/link';
 import { AssetIcon } from '@/components/create/AssetIcon';
 import { DeployBagPanel } from '@/components/bags/DeployBagPanel';
 import { PurchasePreviewModal } from '@/components/app/PurchasePreviewModal';
+import { isNativePaymentChain } from '@/lib/payments/native-payment';
 
-const INVEST_PRESETS = [0, 10, 100, 500, 1000];
+const INVEST_PRESETS = ['0', '10', '100', '500', '1000'];
+const ETH_INVEST_PRESETS = ['0', '0.01', '0.05', '0.1', '0.5'];
+
+type LaunchPayment = 'settlement' | 'native';
+
+/** A positive plain decimal ("0.05", "100"), the only launch-buy amounts that start a purchase. */
+function isPositiveAmount(value: string): boolean {
+  return /^\d+(\.\d+)?$/.test(value.trim()) && /[1-9]/.test(value);
+}
 
 // Proportionally shrinks/grows the other allocations so the total always stays at 100.
 function rebalance(
@@ -77,10 +86,13 @@ export default function CreatePage() {
   const [allocations, setAllocations] = useState<Record<string, number>>({});
   // The creator's own launch buy: 0 creates the bag on-chain without buying;
   // anything above buys into it right after the deploy (pump.fun style).
-  const [investmentAmount, setInvestmentAmount] = useState(0);
+  // A decimal string, never a float: it is handed to the purchase as typed.
+  const [investmentAmount, setInvestmentAmount] = useState('0');
+  // What the launch buy is paid with: the chain's stablecoin, or its native ETH where that is offered.
+  const [launchPayment, setLaunchPayment] = useState<LaunchPayment>('settlement');
   // Set once the draft exists: the deploy (and launch buy) then happen right
   // here, pump.fun-style, and only the finished bag's page is opened after.
-  const [launch, setLaunch] = useState<{ bagId: string; name: string; buy?: string; buying: boolean } | null>(null);
+  const [launch, setLaunch] = useState<{ bagId: string; name: string; buy?: string; buying: boolean; payment: LaunchPayment } | null>(null);
   // Production-hardening P0-1 — SINGLE-CHAIN network model. A Bag lives on
   // exactly one chain everywhere else in this codebase (`BasketRecipe.chain`,
   // `ExecutionPlan`, `BagExecutionGraph.chainId`); this used to be a
@@ -182,6 +194,10 @@ export default function CreatePage() {
   const handleNetworkChange = (networkId: string) => {
     if (networkId === selectedNetworkId) return;
     setSelectedNetworkId(networkId);
+    if (!isNativePaymentChain(networkId) && launchPayment === 'native') {
+      setLaunchPayment('settlement');
+      setInvestmentAmount('0');
+    }
     if (selectedAssetIds.length > 0) {
       setSelectedAssetIds([]);
       setAllocations({});
@@ -269,7 +285,12 @@ export default function CreatePage() {
 
   // POST /api/bags is the only way a Bag is created: it needs a signed-in
   // wallet and lands in the database as DRAFT until deployed on-chain.
-  const launchBuy = investmentAmount > 0;
+  const launchBuy = isPositiveAmount(investmentAmount);
+  const nativeLaunch = launchPayment === 'native' && isNativePaymentChain(selectedNetworkId);
+  const settlementSymbol = selectedNetworkId === 'robinhood' ? 'USDG' : 'USDC';
+  // Display only (allocation previews); the purchase gets the exact string.
+  const investmentNumber = Number(investmentAmount) || 0;
+  const formatLaunchAmount = (value: string | number) => (nativeLaunch ? `${value} ETH` : formatUSD(Number(value) || 0));
 
   const handlePublish = async () => {
     if (!isValid) return;
@@ -348,7 +369,7 @@ export default function CreatePage() {
       // verified. Only then does the creator land on the bag page. If they
       // reject, the deploy panel below stays here to retry.
       addActivity(`Created bag: ${bag.name}`);
-      setLaunch({ bagId: bag.id, name: bag.name, buy: launchBuy ? String(investmentAmount) : undefined, buying: false });
+      setLaunch({ bagId: bag.id, name: bag.name, buy: launchBuy ? investmentAmount.trim() : undefined, buying: false, payment: nativeLaunch ? 'native' : 'settlement' });
     } catch (err) {
       // No local "saved on this device" copy any more: it never reached
       // Explore or Portfolio, showed a made-up TVL and let the creator follow
@@ -462,25 +483,46 @@ export default function CreatePage() {
               <div className="invest-box">
                 <span className="lbl">How much do you want to buy at launch?</span>
                 <div className="nm" style={{ marginBottom: 8 }}>
-                  $0 just creates the bag on-chain. Any amount buys into it right after it&apos;s deployed.
+                  {nativeLaunch ? '0 ETH' : '$0'} just creates the bag on-chain. Any amount buys into it right after it&apos;s deployed.
                 </div>
+                {isNativePaymentChain(selectedNetworkId) && (
+                  <div className="invest-presets" style={{ marginBottom: 10 }} role="group" aria-label="Pay the launch buy with">
+                    {(['settlement', 'native'] as const).map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        aria-pressed={launchPayment === p}
+                        className={`invest-preset ${launchPayment === p ? 'active' : ''}`}
+                        onClick={() => {
+                          if (p === launchPayment) return;
+                          setLaunchPayment(p);
+                          // Dollar presets mean nothing in ETH and back: start from "just create".
+                          setInvestmentAmount('0');
+                        }}
+                      >
+                        {p === 'native' ? 'ETH' : settlementSymbol}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="invest-input-row">
-                  <span className="dollar">$</span>
+                  <span className="dollar">{nativeLaunch ? 'Ξ' : '$'}</span>
                   <input
-                    type="number"
-                    min={0}
+                    type="text"
+                    inputMode="decimal"
+                    aria-label={nativeLaunch ? 'Launch buy in ETH' : 'Launch buy in dollars'}
                     value={investmentAmount}
-                    onChange={(e) => setInvestmentAmount(Math.max(0, Number(e.target.value) || 0))}
+                    onChange={(e) => setInvestmentAmount(e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))}
                   />
                 </div>
                 <div className="invest-presets">
-                  {INVEST_PRESETS.map((amt) => (
+                  {(nativeLaunch ? ETH_INVEST_PRESETS : INVEST_PRESETS).map((amt) => (
                     <button
                       key={amt}
                       className={`invest-preset ${investmentAmount === amt ? 'active' : ''}`}
                       onClick={() => setInvestmentAmount(amt)}
                     >
-                      {amt === 0 ? 'Just create' : formatUSD(amt)}
+                      {amt === '0' ? 'Just create' : formatLaunchAmount(amt)}
                     </button>
                   ))}
                 </div>
@@ -574,7 +616,8 @@ export default function CreatePage() {
                 assetPool={assetPool}
                 assetIds={selectedAssetIds}
                 allocations={allocations}
-                investmentAmount={investmentAmount}
+                investmentAmount={investmentNumber}
+                investmentCurrency={nativeLaunch ? 'ETH' : 'USD'}
                 onAllocationChange={handleAllocationChange}
                 onAutoBalance={handleAutoBalance}
                 noRouteAssetIds={noRouteAssetIds}
@@ -655,7 +698,7 @@ export default function CreatePage() {
                         <div className="asset-meta">
                           <div className="sym">{asset!.symbol}</div>
                           <div className="nm">
-                            {asset!.name}{launchBuy ? ` · ${formatUSD((pct / 100) * investmentAmount)}` : ''}
+                            {asset!.name}{launchBuy ? ` · ${nativeLaunch ? `≈${((pct / 100) * investmentNumber).toFixed(6).replace(/\.?0+$/, '')} ETH` : formatUSD((pct / 100) * investmentNumber)}` : ''}
                           </div>
                         </div>
                       </div>
@@ -704,7 +747,7 @@ export default function CreatePage() {
                 <div style={{ fontSize: 13.5 }}>
                   {launchBuy ? (
                     <>
-                      Launch buy: <strong>{formatUSD(investmentAmount)}</strong> — starts right after the deploy is confirmed.
+                      Launch buy: <strong>{formatLaunchAmount(investmentAmount)}</strong> — starts right after the deploy is confirmed.
                     </>
                   ) : (
                     'No launch buy — the bag is only created on-chain.'
@@ -742,7 +785,7 @@ export default function CreatePage() {
                     onClick={handlePublish}
                   >
                     {isPublishing ? <Check size={17} /> : <Save size={17} />}
-                    {isPublishing ? 'Opening your wallet…' : launchBuy ? `Deploy & buy ${formatUSD(investmentAmount)}` : 'Deploy bag'}
+                    {isPublishing ? 'Opening your wallet…' : launchBuy ? `Deploy & buy ${formatLaunchAmount(investmentAmount)}` : 'Deploy bag'}
                   </button>
                 </div>
               )}
@@ -753,7 +796,7 @@ export default function CreatePage() {
         <div className="summary-card">
           <span className="section-label">Bag Summary</span>
           <div className="summary-row"><span className="l">Name</span><span className="v">{bagName || '-'}</span></div>
-          <div className="summary-row"><span className="l">Launch buy</span><span className="v">{launchBuy ? formatUSD(investmentAmount) : 'None'}</span></div>
+          <div className="summary-row"><span className="l">Launch buy</span><span className="v">{launchBuy ? formatLaunchAmount(investmentAmount) : 'None'}</span></div>
           <div className="summary-row"><span className="l">Assets</span><span className="v">{selectedAssetIds.length}</span></div>
           <div className="summary-row"><span className="l">Network</span><span className="v">{NETWORKS.find((n) => n.id === selectedNetworkId)?.label ?? selectedNetworkId}</span></div>
           <div className="summary-row">
@@ -774,6 +817,7 @@ export default function CreatePage() {
           bagId={launch.bagId}
           bagName={launch.name}
           initialAmount={launch.buy}
+          preferNativeInput={launch.payment === 'native'}
           autoStart
           onCompleted={() => router.push(`/dashboard/bag/${launch.bagId}`)}
           onClose={() => router.push(`/dashboard/bag/${launch.bagId}`)}

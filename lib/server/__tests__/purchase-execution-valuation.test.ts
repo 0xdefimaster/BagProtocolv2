@@ -40,7 +40,8 @@ vi.mock('@/lib/server/purchase-intent-repo', () => ({
   createPurchaseIntent: (...a: unknown[]) => createPurchaseIntentMock(...a),
   findActivePurchaseIntentForBag: async () => null,
 }));
-vi.mock('@/lib/server/price-provider', () => ({ getPriceProvider: () => ({ getPrice: async () => { throw new Error('unused'); } }) }));
+const priceMock = vi.fn();
+vi.mock('@/lib/server/price-provider', () => ({ getPriceProvider: () => ({ getPrice: (...a: unknown[]) => priceMock(...a) }) }));
 
 const { createPurchaseIntentForUser } = await import('../purchase-execution');
 
@@ -94,6 +95,9 @@ const insertedShares = () => BigInt((createPurchaseIntentMock.mock.calls[0][1] a
 
 beforeEach(() => {
   vi.clearAllMocks();
+  priceMock.mockImplementation(async () => {
+    throw new Error('unused');
+  });
   delete process.env.LIFI_API_KEY;
   delete process.env.BAG_EXECUTION_COMPILER_ENABLED;
   stockGuardMock.mockResolvedValue({ ok: true });
@@ -223,5 +227,65 @@ describe('oracle available: unchanged behaviour', () => {
     expect(insertedShares()).toBe(BigInt(e18(10)));
     expect(getBagAssetHoldingsMock).not.toHaveBeenCalled();
     expect(priceHoldingsIndividuallyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('paying with native ETH', () => {
+  const NATIVE = '0x0000000000000000000000000000000000000000';
+  const WETH_MAINNET = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
+  const ethStep = (i: number, address: string, wei: string, minOut: number) =>
+    step(i, address, 0, minOut, { inputAsset: { chain: 'ethereum', address: NATIVE }, inputAmountRaw: wei, targetValueRaw: wei });
+  const buyWithEth = (amount: string) =>
+    createPurchaseIntentForUser({ admin: {} as never, session: { userId: 'u', walletAddress: '0xREALWALLET000000000000000000000000000001' }, bagId: 'bag_1', inputAssetId: 'native:ethereum', amount });
+  const inserted = () => createPurchaseIntentMock.mock.calls[0][1] as { inputAsset: AssetIdentity; inputAmountRaw: string; depositAmount: string; sharesRaw: string; status: string };
+
+  beforeEach(() => {
+    priceMock.mockImplementation(async (asset: AssetIdentity): Promise<AssetPrice> => {
+      if (asset.address !== WETH_MAINNET) throw new Error(`unexpected price request ${asset.address}`);
+      return { asset, price: '3000', quoteCurrency: 'USD', timestamp: new Date().toISOString(), source: 'test' };
+    });
+    buildPurchaseIntentStepsMock.mockResolvedValue({
+      steps: [ethStep(0, NVDA, '30000000000000000', 9.9), ethStep(1, AAPL, '20000000000000000', 4)],
+      allSwapsQuoted: true,
+      firstFailure: null,
+      composerTransaction: null,
+    });
+  });
+
+  it('oracle NAV: routes wei, but shares and cost basis are the USD value (0.05 ETH × $3000 = $150 → 15 shares at $10)', async () => {
+    getBagNavSafeMock.mockResolvedValue({ ok: true, nav: oracleNav('1000') });
+    expect((await buyWithEth('0.05')).ok).toBe(true);
+    const row = inserted();
+    expect(row.inputAsset).toEqual({ chain: 'ethereum', address: NATIVE });
+    expect(row.inputAmountRaw).toBe('50000000000000000');
+    expect(BigInt(row.sharesRaw)).toBe(BigInt(e18(15)));
+    expect(row.depositAmount).toMatch(/^150(\.0+)?$/);
+    // The legs the routes are quoted for spend ETH, never USDC.
+    const routedSteps = buildPurchaseIntentStepsMock.mock.calls[0][0] as { route: { inputAsset: AssetIdentity; inputAmountRaw: string } }[];
+    expect(routedSteps.every((st) => st.route.inputAsset.address === NATIVE)).toBe(true);
+  });
+
+  it('oracle down: shares from the ETH execution quote, valued in USD — the in-kind ratio still holds (10% of every holding → ≤ 10 shares)', async () => {
+    getBagNavSafeMock.mockResolvedValue(navDown);
+    expect((await buyWithEth('0.05')).ok).toBe(true);
+    expect(insertedShares()).toBeLessThanOrEqual(BigInt(e18(10)));
+    expect(insertedShares()).toBeGreaterThan(BigInt(e18(9.999)));
+    expect(inserted().status).toBe('READY');
+  });
+
+  it('no ETH price: the purchase stops before any route is quoted or row written (nothing is estimated)', async () => {
+    getBagNavSafeMock.mockResolvedValue({ ok: true, nav: oracleNav('1000') });
+    priceMock.mockRejectedValue(new Error('price source down'));
+    const outcome = await buyWithEth('0.05');
+    expect(outcome).toMatchObject({ ok: false, error: { kind: 'PREVIEW_ERROR' } });
+    expect(buildPurchaseIntentStepsMock).not.toHaveBeenCalled();
+    expect(createPurchaseIntentMock).not.toHaveBeenCalled();
+  });
+
+  it('a minimum investment is checked in USD: 0.0003 ETH ($0.90) is below a $1 minimum', async () => {
+    getBagNavSafeMock.mockResolvedValue({ ok: true, nav: oracleNav('1000') });
+    const outcome = await buyWithEth('0.0003');
+    expect(outcome).toMatchObject({ ok: false, error: { kind: 'PREVIEW_ERROR' } });
+    expect(createPurchaseIntentMock).not.toHaveBeenCalled();
   });
 });

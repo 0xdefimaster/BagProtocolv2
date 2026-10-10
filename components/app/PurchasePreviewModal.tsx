@@ -109,6 +109,8 @@ interface PurchasePreviewResponse {
   quotesError: string | null;
   /** The creator's rule for legs with no swap route: 'BLOCK' | 'HOLD_INPUT' | 'REFUND'. */
   unroutablePolicy?: string;
+  /** The payment in USD (a stablecoin 1:1; native ETH at its oracle price) — what shares and the minimum investment use. */
+  quoteAmount?: string;
 }
 
 interface PurchasePreviewModalProps {
@@ -116,6 +118,8 @@ interface PurchasePreviewModalProps {
   bagName: string;
   /** Prefills "You pay" — e.g. the creator's launch-buy amount from the deploy panel. */
   initialAmount?: string;
+  /** Selects the chain's native token (ETH) as the payment asset when it is offered — the Create page's launch buy in ETH. */
+  preferNativeInput?: boolean;
   /** Starts the purchase by itself once the preview and routes are ready (launch buy right after deploy). The wallet still asks for every signature. */
   autoStart?: boolean;
   /** Called once the purchase completes (the Create page uses it to move on to the new bag's page). */
@@ -135,7 +139,7 @@ const PRICE_CAUSE_LABEL: Record<string, string> = {
 };
 const priceCauseLabel = (cause: string) => PRICE_CAUSE_LABEL[cause] ?? 'unavailable';
 
-export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart, onCompleted, onClose }: PurchasePreviewModalProps) {
+export function PurchasePreviewModal({ bagId, bagName, initialAmount, preferNativeInput, autoStart, onCompleted, onClose }: PurchasePreviewModalProps) {
   // No default amount: a pre-filled "100" made the background preparation
   // build a $100 route before the buyer had typed anything.
   const [amount, setAmount] = useState(initialAmount ?? '');
@@ -348,7 +352,8 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
       .then((data) => {
         if (cancelled) return;
         setInputAssets(data.inputAssets);
-        setSelectedAssetId(data.inputAssets[0]?.id ?? null);
+        const native = preferNativeInput ? data.inputAssets.find((a) => isNativePaymentAsset(a)) : undefined;
+        setSelectedAssetId(native?.id ?? data.inputAssets[0]?.id ?? null);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -360,7 +365,7 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
     return () => {
       cancelled = true;
     };
-  }, [bagId]);
+  }, [bagId, preferNativeInput]);
 
   // Recompute the preview whenever amount/asset changes (debounced —
   // "Calculating..." for the network round trip, not for pure local math,
@@ -636,7 +641,7 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
               ))}
             </select>
           ) : (
-            <span style={{ fontSize: 12.5, color: 'var(--ink-soft, #B4AEA2)' }}>No payment token on this network yet (USDG on Robinhood Chain)</span>
+            <span style={{ fontSize: 12.5, color: 'var(--ink-soft, #B4AEA2)' }}>No supported payment asset on this network yet.</span>
           )}
         </div>
 
@@ -697,6 +702,13 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
           </div>
         )}
 
+        {/* Native ETH: what the payment is worth in USD (shares and the minimum investment use this value). */}
+        {payingNative && preview?.quoteAmount && !previewError && !calculating && (
+          <div data-testid="payment-usd-value" style={{ marginTop: -6, marginBottom: 14, fontSize: 12, color: 'var(--ink-soft, #B4AEA2)', textAlign: 'right' }}>
+            ≈ {formatDecimalStringUsd(preview.quoteAmount)} at the current {selectedAsset?.symbol} price
+          </div>
+        )}
+
         {previewError && (
           <div
             role="alert"
@@ -727,7 +739,12 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
             </div>
             <div style={{ marginBottom: 14 }}>
               {preview.depositPlan.allocations.map((a) => {
-                const valueDisplay = selectedAsset ? formatRawAmountUsd(a.valueRaw, selectedAsset.decimals) : '$0.00';
+                // Allocations are in the payment asset: dollars for a stablecoin, ETH amounts for native ETH.
+                const valueDisplay = !selectedAsset
+                  ? '$0.00'
+                  : payingNative
+                    ? `${formatRawAmount(a.valueRaw, selectedAsset.decimals, { maxFractionDigits: 6 })} ${selectedAsset.symbol}`
+                    : formatRawAmountUsd(a.valueRaw, selectedAsset.decimals);
                 return (
                   <div
                     key={a.targetSymbol}

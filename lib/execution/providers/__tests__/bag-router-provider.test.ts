@@ -146,6 +146,14 @@ describe('BagRouterProvider — eligibility', () => {
     expect(provider.supports(makeIntent(), graph)).toBe(false);
   });
 
+  it('refuses a native-ETH input (the router pulls its input with transferFrom: ERC-20 only)', () => {
+    const provider = new BagRouterProvider(makeConfig());
+    const ETH = { chain: 'base' as const, address: '0x0000000000000000000000000000000000000000' };
+    const g = makeGraph();
+    const graph = { ...g, inputAsset: ETH, legs: g.legs.map((l) => ({ ...l, sourceAsset: ETH })) };
+    expect(provider.supports(makeIntent({ inputAsset: ETH }), graph)).toBe(false);
+  });
+
   it('refuses an empty graph rather than compiling a plan with no legs (which the contract rejects outright)', () => {
     const provider = new BagRouterProvider(makeConfig());
     expect(provider.supports(makeIntent(), makeGraph({ legs: [] }))).toBe(false);

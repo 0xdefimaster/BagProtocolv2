@@ -60,3 +60,16 @@ describe('LiFiComposerProvider — providerEnforcedMinOutputRaw', () => {
     expect(Object.values(legQuotes).map((q) => q.outputAmountRaw)).toEqual(['1000', '2000', '3000']);
   });
 });
+
+describe('LiFiComposerProvider — native ETH input', () => {
+  it('declines a native-ETH payment (ERC-20 inputs only); the sequential provider takes it', async () => {
+    const { LiFiSequentialProvider } = await import('../lifi-sequential-provider');
+    const ETH = { chain: 'robinhood' as const, address: '0x0000000000000000000000000000000000000000' };
+    const g = graph();
+    const native = { ...g, inputAsset: ETH, legs: g.legs.map((l) => ({ ...l, sourceAsset: ETH })) } as BagExecutionGraph;
+    const provider = new LiFiComposerProvider({ apiKey: 'k' });
+    expect(provider.supports({} as BagExecutionIntent, g)).toBe(true);
+    expect(provider.supports({} as BagExecutionIntent, native)).toBe(false);
+    expect(new LiFiSequentialProvider().supports({} as BagExecutionIntent, native)).toBe(true);
+  });
+});

@@ -143,3 +143,27 @@ describe('Composer refusal -> failed intent with the reason, never one route per
     expect(buildComposerPurchaseMock).toHaveBeenCalledWith(expect.objectContaining({ maxPriceImpactBps: 651 }));
   });
 });
+
+describe('buildPurchaseIntentSteps — native ETH input', () => {
+  it('never tries Composer for a native-ETH payment: each leg is a sequential LI.FI quote spending ETH (no approval)', async () => {
+    const ETH = { chain: 'ethereum', address: '0x0000000000000000000000000000000000000000' } as const;
+    const { getLiFiTokenData } = await import('../lifi-token-data');
+    vi.mocked(getLiFiTokenData).mockReturnValue({ prime: vi.fn() } as unknown as ReturnType<typeof getLiFiTokenData>);
+    getQuoteMock.mockResolvedValue({
+      tool: 'uniswap',
+      estimate: { toAmount: '100', toAmountMin: '99' },
+      action: { fromToken: {}, toToken: { decimals: 18 } },
+    });
+    const ethStep = { ...step('SWAP', WETH, '50000000000000000'), route: { ...step('SWAP', WETH, '50000000000000000').route, inputAsset: ETH } } as ExecutionStep;
+    const result = await buildPurchaseIntentSteps([ethStep], '0xwallet', 18, {
+      apiKey: 'k',
+      slippageBps: 100,
+      resolveOutputDecimals: () => 18,
+    });
+    expect(buildComposerPurchaseMock).not.toHaveBeenCalled();
+    expect(result.composerTransaction).toBeNull();
+    expect(result.allSwapsQuoted).toBe(true);
+    expect(getQuoteMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ fromToken: ETH.address, fromAmount: '50000000000000000', fromAddress: '0xwallet', toAddress: '0xwallet' }));
+    expect(result.steps[0]).toMatchObject({ action: 'SWAP', status: 'PENDING', minOutputRaw: '99' });
+  });
+});

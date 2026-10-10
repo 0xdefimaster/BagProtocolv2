@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
 import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
-import { paymentAssetsFor } from '@/lib/server/payment-assets';
+import { purchaseInputAssetsFor } from '@/lib/server/payment-assets';
+import { valuePayment } from '@/lib/server/payment-value';
 import { getBagAssetHoldings, getBagNavSafe, priceHoldingsIndividually } from '@/lib/server/bag-nav';
 import { getShareSupply } from '@/lib/server/bag-share-state-repo';
 import { getVerifiedIdentityKeys, listAssets } from '@/lib/server/asset-repo';
@@ -12,6 +13,7 @@ import { assetIdentitiesEqual, recipeAssetIdentity } from '@/lib/domain/basket-p
 import { AssetIdentity, DEFAULT_UNROUTABLE_POLICY } from '@/types/basket-protocol';
 import { liFiExecutionAdapter } from '@/lib/blockchain/lifi-execution-adapter';
 import { ExecutionResult } from '@/lib/blockchain/execution-adapter';
+import { isValidDecimalString } from '@/lib/domain/basket-protocol/pricing/price-precision';
 import { checkRateLimit, getClientIp, rateLimitedResponseBody } from '@/lib/server/rate-limit';
 
 // Production-hardening P1-10 — this POST is unauthenticated by design (spec:
@@ -83,9 +85,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   // Only VERIFIED registry assets are ever offered as an input — never a
-  // hardcoded native-equity ticker list (spec section 6) — and only the
-  // stablecoins/WETH on the Bag's own chain (see payment-assets.ts).
-  const inputAssets = paymentAssetsFor(await listAssets(admin, { status: 'VERIFIED', chain: bag.chain }), bag.chain);
+  // hardcoded native-equity ticker list (spec section 6): the settlement
+  // stablecoin on the Bag's own chain, plus that chain's native token where
+  // native payments are on (see payment-assets.ts).
+  const inputAssets = purchaseInputAssetsFor(await listAssets(admin, { status: 'VERIFIED', chain: bag.chain }), bag.chain);
 
   return NextResponse.json({
     bag: { id: bag.id, name: bag.name, symbol: bag.symbol, status: bag.status },
@@ -173,7 +176,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // GET response's `inputAssets`, it never supplies chain/address/decimals
   // directly (spec section 25: client-provided identity is never trusted).
   const inputAssets = await listAssets(admin, { status: 'VERIFIED' });
-  const inputAsset = paymentAssetsFor(inputAssets, bag.chain).find((a) => a.id === body.inputAssetId);
+  const inputAsset = purchaseInputAssetsFor(inputAssets, bag.chain).find((a) => a.id === body.inputAssetId);
   if (!inputAsset) {
     return NextResponse.json({ error: 'Unknown or unverified input asset.' }, { status: 400 });
   }
@@ -206,12 +209,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const identity: AssetIdentity = { chain: inputAsset.chain, address: inputAsset.address };
+  const amount = body.amount.trim();
+  if (!isValidDecimalString(amount) || amount.startsWith('-')) {
+    return NextResponse.json({ error: 'Enter a valid amount.' }, { status: 422 });
+  }
+  // The payment in USD (a stablecoin 1:1; native ETH at its oracle price).
+  let payment: { quoteAmount: string; inputUsdPrice: string };
+  try {
+    payment = await valuePayment(identity, amount, priceProvider);
+  } catch {
+    // No price (or not a usable one): nothing is estimated.
+    return NextResponse.json({ error: `Unable to value ${inputAsset.symbol} right now. Try again shortly.` }, { status: 503 });
+  }
   const outcome = computePurchasePreview({
     recipe: version.recipe,
     inputAsset: identity,
     inputSymbol: inputAsset.symbol,
     inputDecimals: inputAsset.decimals,
-    amount: body.amount,
+    amount,
+    quoteAmount: payment.quoteAmount,
     nav,
     shareSupply,
   });
@@ -224,6 +240,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       NAV_UNAVAILABLE: 'NAV is currently unavailable.',
     };
     if (outcome.error.kind === 'BELOW_MIN_INVESTMENT') messageByKind.BELOW_MIN_INVESTMENT = outcome.error.message;
+    if (outcome.error.kind === 'NATIVE_INPUT_KEPT') messageByKind.NATIVE_INPUT_KEPT = outcome.error.message;
     return NextResponse.json({ error: messageByKind[outcome.error.kind] ?? 'Unable to calculate allocation.' }, { status: 422 });
   }
 
@@ -245,5 +262,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // buyer what happens to a leg with no route (the purchase itself applies
   // it server-side — lib/server/purchase-execution.ts).
   const unroutablePolicy = version.recipe.unroutablePolicy ?? DEFAULT_UNROUTABLE_POLICY;
-  return NextResponse.json({ preview: { ...outcome, quotes, quotesError, unroutablePolicy, valuation } });
+  return NextResponse.json({
+    preview: { ...outcome, quotes, quotesError, unroutablePolicy, valuation, quoteAmount: payment.quoteAmount, inputUsdPrice: payment.inputUsdPrice },
+  });
 }

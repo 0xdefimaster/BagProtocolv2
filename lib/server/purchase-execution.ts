@@ -15,7 +15,8 @@ import {
 import { SessionPayload } from '@/lib/auth/session';
 import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
 import { claimNewlyVerifiedTxHashes, TX_HASH_RE } from '@/lib/server/intent-tx-claims';
-import { paymentAssetsFor } from '@/lib/server/payment-assets';
+import { purchaseInputAssetsFor } from '@/lib/server/payment-assets';
+import { valuePayment } from '@/lib/server/payment-value';
 import { FORK_ROYALTY_BPS } from '@/lib/config/rewards';
 import { cancelPurchaseIfFeeSaleOpen, openFeeRedemptionFor } from '@/lib/server/fee-redemption-lock';
 import { getBagAssetHoldings, getBagNavSafe, priceHoldingsIndividually } from '@/lib/server/bag-nav';
@@ -360,6 +361,9 @@ interface PreparedBagPurchaseContext {
   outcome: PurchasePreviewResult;
   /** Set when the Bag's unroutable-asset policy changed what this purchase buys — persisted on the intent. */
   fallback: PurchaseIntentFallback | null;
+  /** The (effective) payment in USD, and the USD price of one payment-asset unit it was valued at ('1' for a stablecoin) — lib/server/payment-value.ts. */
+  quoteAmount: string;
+  inputUsdPrice: string;
 }
 
 /**
@@ -403,7 +407,7 @@ async function prepareBagPurchaseContext(
   // Input asset resolved by registry id ONLY — the client never supplies
   // chain/address/decimals directly (same invariant as the preview route).
   const inputAssets = await listAssets(admin, { status: 'VERIFIED' });
-  const inputAsset = paymentAssetsFor(inputAssets, bag.chain).find((a) => a.id === inputAssetId);
+  const inputAsset = purchaseInputAssetsFor(inputAssets, bag.chain).find((a) => a.id === inputAssetId);
   if (!inputAsset) return { ok: false, error: { kind: 'UNKNOWN_INPUT_ASSET' } };
 
   // Stock Tokens are re-checked against Robinhood's LIVE registry: still the
@@ -465,12 +469,25 @@ async function prepareBagPurchaseContext(
     }
   }
 
+  // The payment in USD: shares, the minimum investment and the cost basis
+  // are in USD. A stablecoin counts 1:1; native ETH is valued at its oracle
+  // price, and without one there is no purchase (nothing is estimated).
+  let payment: { quoteAmount: string; inputUsdPrice: string } = { quoteAmount: effectiveAmount, inputUsdPrice: '1' };
+  if (isValidDecimalString(effectiveAmount.trim()) && !effectiveAmount.trim().startsWith('-')) {
+    try {
+      payment = await valuePayment(identity, effectiveAmount, priceProvider);
+    } catch {
+      return { ok: false, error: { kind: 'PREVIEW_ERROR', message: `Unable to value ${inputAsset.symbol} right now. Try again shortly.` } };
+    }
+  }
+
   const outcome = computePurchasePreview({
     recipe: effectiveRecipe,
     inputAsset: identity,
     inputSymbol: inputAsset.symbol,
     inputDecimals: inputAsset.decimals,
     amount: effectiveAmount,
+    quoteAmount: payment.quoteAmount,
     nav,
     shareSupply,
   });
@@ -483,10 +500,14 @@ async function prepareBagPurchaseContext(
       NAV_UNAVAILABLE: 'NAV is currently unavailable.',
     };
     if (outcome.error.kind === 'BELOW_MIN_INVESTMENT') messageByKind.BELOW_MIN_INVESTMENT = outcome.error.message;
+    if (outcome.error.kind === 'NATIVE_INPUT_KEPT') messageByKind.NATIVE_INPUT_KEPT = outcome.error.message;
     return { ok: false, error: { kind: 'PREVIEW_ERROR', message: messageByKind[outcome.error.kind] ?? 'Unable to calculate allocation.' } };
   }
 
-  return { ok: true, value: { bag, version, outputIdentityKeys, inputAsset, identity, nav, shareSupply, outcome, fallback } };
+  return {
+    ok: true,
+    value: { bag, version, outputIdentityKeys, inputAsset, identity, nav, shareSupply, outcome, fallback, quoteAmount: payment.quoteAmount, inputUsdPrice: payment.inputUsdPrice },
+  };
 }
 
 /**
@@ -501,11 +522,14 @@ async function priceSharesFromExecution(
   steps: PurchaseIntentStepRecord[],
   inputAsset: CanonicalAsset,
   shareSupply: ShareSupply,
+  /** The payment in USD (the quote currency the deposit is valued in). */
   depositAmount: string,
   slippageBps: number,
   /** Display symbols by identity key (recipe assets), only to name an unpriced holding in the error. */
   knownSymbols: ReadonlyMap<string, string>,
-  now: Date
+  now: Date,
+  /** USD per one payment-asset unit ('1' for a stablecoin): turns the legs' payment-unit prices into USD. */
+  inputUsdPrice: string
 ): Promise<PurchaseExecutionOutcome<{ depositQuote: DepositQuote; nav: NavResult }>> {
   const executionPrices = executionPricesFromLegs(
     steps.map((st) => ({
@@ -520,7 +544,7 @@ async function priceSharesFromExecution(
     { asset: { chain: inputAsset.chain, address: inputAsset.address }, decimals: inputAsset.decimals },
     now.toISOString(),
     // Only used when a leg reports no minimum at all: the same tolerance the transaction is built with.
-    { expectedHaircutBps: slippageBps }
+    { expectedHaircutBps: slippageBps, inputUsdPrice }
   );
   const holdings = await getBagAssetHoldings(admin, bagId);
   const uncovered = holdings.filter((h) => !executionPrices.has(assetIdentityKey(h.asset)));
@@ -628,7 +652,7 @@ export async function createPurchaseIntentForUser(
 
   const prepared = await prepareBagPurchaseContext(admin, bagId, inputAssetId, amount);
   if (!prepared.ok) return prepared;
-  const { bag, version, outputIdentityKeys, inputAsset, identity, nav: oracleNav, shareSupply, outcome, fallback } = prepared.value;
+  const { bag, version, outputIdentityKeys, inputAsset, identity, nav: oracleNav, shareSupply, outcome, fallback, quoteAmount, inputUsdPrice } = prepared.value;
 
   const openFeeSale = await openFeeRedemptionFor(admin, session.userId, bag, version);
   if (openFeeSale) return { ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: openFeeSale.id } };
@@ -776,7 +800,7 @@ export async function createPurchaseIntentForUser(
       };
     }
     const knownSymbols = new Map(version.recipe.assets.map((a) => [assetIdentityKey(a), a.symbol] as const));
-    const priced = await priceSharesFromExecution(admin, bagId, steps, inputAsset, shareSupply, outcome.inputAmountDisplay, bagSlippageBps(version), knownSymbols, new Date());
+    const priced = await priceSharesFromExecution(admin, bagId, steps, inputAsset, shareSupply, quoteAmount, bagSlippageBps(version), knownSymbols, new Date(), inputUsdPrice);
     if (!priced.ok) return priced;
     depositQuote = priced.value.depositQuote;
     nav = priced.value.nav;

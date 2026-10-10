@@ -83,7 +83,10 @@ vi.mock('@/lib/blockchain/lifi-execution-adapter', () => ({
   },
 }));
 
-const { POST } = await import('@/app/api/bags/[id]/purchase-preview/route');
+const priceMock = vi.fn();
+vi.mock('@/lib/server/price-provider', () => ({ getPriceProvider: () => ({ getPrice: (...args: unknown[]) => priceMock(...args) }) }));
+
+const { GET, POST } = await import('@/app/api/bags/[id]/purchase-preview/route');
 
 const USDC: CanonicalAsset = {
   id: 'asset_usdc',
@@ -200,6 +203,13 @@ beforeEach(() => {
   checkRateLimitMock.mockReset().mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
   navSafeOverride.value = null;
   priceHoldingsIndividuallyMock.mockReset().mockResolvedValue({ prices: new Map(), failures: [] });
+  priceMock.mockReset().mockImplementation(async (asset: { chain: string; address: string }) => ({
+    asset,
+    price: '3000',
+    quoteCurrency: 'USD',
+    timestamp: new Date().toISOString(),
+    source: 'test',
+  }));
 });
 
 afterEach(() => {
@@ -301,5 +311,41 @@ describe('POST /api/bags/:id/purchase-preview — market price unavailable (e.g.
     expect(preview.depositQuote).not.toBeNull();
     expect(preview.valuation).toEqual({ available: true });
     expect(priceHoldingsIndividuallyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('purchase-preview — native ETH', () => {
+  const params = { params: Promise.resolve({ id: 'bag_1' }) };
+
+  it('GET offers the stablecoin first, then native ETH', async () => {
+    const res = await GET(new NextRequest('http://localhost/api/bags/bag_1/purchase-preview'), params);
+    const body = await res.json();
+    expect(body.inputAssets.map((a: { symbol: string }) => a.symbol)).toEqual(['USDC', 'ETH']);
+    expect(body.inputAssets[1]).toMatchObject({ id: 'native:ethereum', address: '0x0000000000000000000000000000000000000000', decimals: 18 });
+  });
+
+  it('POST values 0.05 ETH at the WETH price: shares from $150, allocations in wei', async () => {
+    const res = await POST(postRequest({ inputAssetId: 'native:ethereum', amount: '0.05' }), params);
+    expect(res.status).toBe(200);
+    const { preview } = await res.json();
+    expect(preview.quoteAmount).toBe('150.000000000000000000');
+    expect(preview.inputUsdPrice).toBe('3000');
+    expect(preview.inputAmountRaw).toBe('50000000000000000');
+    // NAV $1000 / 100 shares = $10 a share → 15 shares.
+    expect(preview.depositQuote.sharesRaw).toBe('15000000000000000000');
+    expect(priceMock).toHaveBeenCalledWith({ chain: 'ethereum', address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' });
+  });
+
+  it('POST with a stablecoin never asks for a price', async () => {
+    const res = await POST(postRequest({ inputAssetId: 'asset_usdc', amount: '100' }), params);
+    const { preview } = await res.json();
+    expect(preview.quoteAmount).toBe('100');
+    expect(priceMock).not.toHaveBeenCalled();
+  });
+
+  it('POST: no ETH price → 503, never an estimate', async () => {
+    priceMock.mockRejectedValue(new Error('down'));
+    const res = await POST(postRequest({ inputAssetId: 'native:ethereum', amount: '0.05' }), params);
+    expect(res.status).toBe(503);
   });
 });
