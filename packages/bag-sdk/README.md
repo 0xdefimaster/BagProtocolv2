@@ -350,9 +350,19 @@ LIFI_API_KEY=… RPC_URL=… COMPOSER_TRUSTED_TARGETS=0x… npx tsx packages/bag
   <bag.json|URL> 0x0000000000000000000000000000000000000000 1000000000000000 <your address>
 ```
 
-`COMPOSER_TRUSTED_TARGETS` is the LI.FI Composer contract on the strategy's chain, verified by you (for example the
-`to` of a Composer purchase you already made, checked on the block explorer). Exit code 0 PASS, 1 FAIL, 3 BLOCKED
-(credentials not set, or the network unreachable).
+`COMPOSER_TRUSTED_TARGETS` is **your wallet's own LI.FI Composer proxy**, not one shared contract: Composer sends each
+signer's transaction to that signer's proxy, so the target differs per wallet (seen live: two wallets, two targets).
+Before a wallet's first Composer transaction the target is a Composer entry contract instead. Verify the address
+yourself, for example as the `to` of a Composer purchase this wallet already made, on the block explorer. Run with a
+placeholder such as `0x0000000000000000000000000000000000000001` and the refusal names the target Composer returned;
+trust it only after that check. Exit code 0 PASS, 1 FAIL, 3 BLOCKED (credentials not set, or the network unreachable).
+
+How LI.FI derives the proxy address is not documented, so the SDK cannot yet check it on its own.
+`scripts/spike/composer-proxy-probe.ts` (read-only) collects the on-chain facts such a check would need.
+
+**Verified live (2026-10-10, Robinhood Chain):** `verify-registry.ts` on the served `feetest` v1 document: 7/7 PASS.
+`live-compile.ts`, 0.001 ETH into `feetest` for a wallet with its proxy as the trusted target: 8/8 PASS, simulation OK.
+Nothing was signed or sent.
 
 ## Package
 

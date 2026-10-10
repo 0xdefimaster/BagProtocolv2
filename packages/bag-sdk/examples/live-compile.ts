@@ -7,12 +7,13 @@
 // live API. Run it yourself, with your own credentials from YOUR environment
 // (never printed, never logged):
 //
-//   LIFI_API_KEY=...  RPC_URL=...  COMPOSER_TRUSTED_TARGETS=0x<Composer contract>  [COMPOSER_TRUSTED_SPENDERS=0x...]  \
+//   LIFI_API_KEY=...  RPC_URL=...  COMPOSER_TRUSTED_TARGETS=0x<your wallet's Composer proxy>  [COMPOSER_TRUSTED_SPENDERS=0x...]  \
 //   [COMPOSER_URL=...]  npx tsx packages/bag-sdk/examples/live-compile.ts \
 //     <bag.json path|URL> <inputToken | 0x0000000000000000000000000000000000000000 for ETH> <amountRaw> <signer>
 //
 // The signer is only the address the transaction is built for; it needs no key
-// here and, for a quote, no balance (simulation then reports it).
+// here and, for a quote, no balance (simulation then reports it). The trusted
+// target is that signer's own Composer proxy, so it changes with the signer.
 //
 // Exit code: 0 PASS, 1 FAIL, 2 usage, 3 BLOCKED (credentials missing or network unreachable).
 // -----------------------------------------------------------------------------
