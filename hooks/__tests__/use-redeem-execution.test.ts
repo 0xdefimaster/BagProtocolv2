@@ -99,8 +99,9 @@ describe('useRedeemExecution', () => {
       deadline: 9999999999,
       signature: '0xsig',
     };
-    collectRequiredApprovalsMock.mockReturnValue([{ token: '0x1', amount: BigInt(100) }]);
-    sendRedeemTransactionMock.mockResolvedValue({ txHash: '0xtx1', confirmed: true });
+    // Approvals are now sent inside sendRedeemTransaction (shared wallet executor: one atomic
+    // EIP-5792 batch when the wallet supports it, exact approvals one by one otherwise).
+    sendRedeemTransactionMock.mockResolvedValue({ txHash: '0xtx1', confirmed: true, authorizationStrategy: 'EIP5792_ATOMIC_BATCH' });
 
     mockFetchSequence([
       { url: /\/redeem-intent$/, body: { intent: baseIntent({ id: 'intent_1' }) } },
@@ -114,8 +115,9 @@ describe('useRedeemExecution', () => {
       await result.current.start(BAG_ID, 5000, 'asset_usdg', WALLET_ADDRESS);
     });
 
-    expect(ensureRouterAllowanceMock).toHaveBeenCalledWith('0x1', WALLET_ADDRESS, ROUTER_ADDRESS, BigInt(100));
+    expect(ensureRouterAllowanceMock).not.toHaveBeenCalled();
     expect(sendRedeemTransactionMock).toHaveBeenCalledWith(ROUTER_ADDRESS, WALLET_ADDRESS, attestation);
+    expect(result.current.state.authorizationStrategy).toBe('EIP5792_ATOMIC_BATCH');
     expect(executeRouteMock).not.toHaveBeenCalled();
     expect(result.current.state.phase).toBe('completed');
 

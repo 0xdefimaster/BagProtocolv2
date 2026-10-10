@@ -134,12 +134,13 @@ describe('sendSweepBatch', () => {
     await expect(sendSweepBatch(prov(), WALLET, plan, plan.approvals, noSleep)).rejects.toThrow(/reverted/);
   });
 
-  it('rejects missing or false atomicity and incomplete receipt status', async () => {
-    wallet({ statuses: [{ status: 200, atomic: false, receipts: [{ transactionHash: SALE_HASH, status: '0x1' }] }] });
-    await expect(sendSweepBatch(prov(), WALLET, plan, plan.approvals, noSleep)).rejects.toThrow(/non-atomic/);
+  it('a done batch is reported, not hidden, when the wallet omits atomic or receipt status (the server verifies the hash on-chain)', async () => {
     wallet({ statuses: [{ status: 200, receipts: [{ transactionHash: SALE_HASH, status: '0x1' }] }] });
-    await expect(sendSweepBatch(prov(), WALLET, plan, plan.approvals, noSleep)).rejects.toThrow(/did not confirm.*atomically/);
+    expect(await sendSweepBatch(prov(), WALLET, plan, plan.approvals, noSleep)).toBe(SALE_HASH);
     wallet({ statuses: [{ status: 200, atomic: true, receipts: [{ transactionHash: SALE_HASH }] }] });
+    expect(await sendSweepBatch(prov(), WALLET, plan, plan.approvals, noSleep)).toBe(SALE_HASH);
+    // An explicit failure in any receipt is still an error.
+    wallet({ statuses: [{ status: 200, atomic: true, receipts: [{ transactionHash: '0x' + '1'.repeat(64), status: '0x0' }, { transactionHash: SALE_HASH, status: '0x1' }] }] });
     await expect(sendSweepBatch(prov(), WALLET, plan, plan.approvals, noSleep)).rejects.toThrow(/reverted/);
   });
 
@@ -188,11 +189,12 @@ describe('executeWalletSweep', () => {
     });
   });
 
-  it('only treats an unsupported capability method as absence; arbitrary capability errors fail closed', async () => {
+  it('a capability probe error falls back to the sequential flow; only the user refusing stops it', async () => {
     wallet({ capsThrows: true, capsError: new Error('RPC transport unavailable') });
-    await expect(executeWalletSweep(WALLET, plan)).rejects.toThrow(/RPC transport unavailable/);
-    expect(mocks.ensureAllowance).not.toHaveBeenCalled();
-    expect(mocks.send).not.toHaveBeenCalled();
+    expect(await executeWalletSweep(WALLET, plan)).toBe(SALE_HASH);
+    expect(mocks.send).toHaveBeenCalled();
+    wallet({ capsThrows: true, capsError: Object.assign(new Error('User rejected the request.'), { code: 4001 }) });
+    await expect(executeWalletSweep(WALLET, plan)).rejects.toThrow(/rejected/i);
   });
 
   it('wallet advertises batching but refuses it as unsupported: falls back to the sequential flow', async () => {

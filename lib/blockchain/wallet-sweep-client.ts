@@ -48,9 +48,11 @@ export async function walletSupportsAtomicBatch(provider: Eip1193Provider, walle
   try {
     caps = await provider.request({ method: 'wallet_getCapabilities', params: [walletAddress, [toHexChain(chainId)]] });
   } catch (err) {
-    const { code } = describeWalletError(err);
-    if (BATCH_UNSUPPORTED_CODES.has(Number(code))) return false; // no EIP-5792 at all
-    throw err;
+    // A capability probe never blocks the action: any answer other than the
+    // user refusing means "no usable batching", and the sequential flow
+    // (exact approvals, simulate, send, receipt) runs instead.
+    if (describeWalletError(err).rejected) throw err;
+    return false;
   }
   if (!caps || typeof caps !== 'object') return false;
   const byChain = caps as Record<string, { atomic?: { status?: string }; atomicBatch?: { supported?: boolean } } | undefined>;
@@ -125,17 +127,16 @@ export async function sendAtomicWalletCalls(
     const done = s === 200 || s === 'CONFIRMED';
     const failed = typeof s === 'number' ? s >= 400 : s === 'FAILED';
     if (failed) throw new Error('The wallet batch reverted or failed on-chain. The transaction was not accepted as successful.');
-    if (status?.atomic === false) {
-      throw new Error('Your wallet reported a non-atomic batch. The transaction was not accepted as successful.');
-    }
     if (done) {
-      if (status?.atomic !== true) {
-        throw new Error('Your wallet did not confirm that the batch executed atomically. The result must be verified before continuing.');
-      }
+      // Once the wallet reports the batch done, its calls are on-chain. Only an
+      // explicit failure is an error here: throwing on a missing `atomic` flag
+      // or receipt status (older EIP-5792 wallets omit them; the batch was sent
+      // with atomicRequired) would hide a sale that happened from the server,
+      // which verifies the transaction on-chain from its hash before recording it.
       const receipts = status?.receipts ?? [];
       const last = receipts[receipts.length - 1];
       if (!last?.transactionHash) throw new Error('Your wallet confirmed the batch but did not report its transaction.');
-      if (receipts.some((r) => r.status !== '0x1' && r.status !== 'success')) {
+      if (receipts.some((r) => r.status !== undefined && r.status !== '0x1' && r.status !== 'success')) {
         throw new Error('A transaction in the wallet batch reverted on-chain.');
       }
       return last.transactionHash as Hex;
