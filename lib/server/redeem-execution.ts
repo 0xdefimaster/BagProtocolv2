@@ -33,6 +33,8 @@ import {
 import { buildPurchaseIntentSteps } from '@/lib/blockchain/lifi-purchase-quote';
 import { trackStepStatus } from '@/lib/blockchain/lifi-status';
 import { trackComposerTransaction } from '@/lib/blockchain/composer-status';
+import { findComposerTransactionFromWallet } from '@/lib/blockchain/composer-tx-search';
+import { isBagChain } from '@/lib/config/chains';
 import { DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
 import { readSettlementResult } from '@/lib/blockchain/redeem-settlement-event';
 import { computeOnChainBagId } from '@/lib/domain/basket-protocol/onchain';
@@ -117,8 +119,16 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
   }
 
   const existing = await findActiveRedeemIntentForBag(admin, session.userId, bagId);
-  if (existing && !(await releaseAbandonedRedeemIntent(admin, existing))) {
-    return { ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: existing.id } };
+  if (existing) {
+    const outcome = await releaseAbandonedRedeemIntent(admin, existing);
+    let stillOpen = outcome === 'KEPT';
+    if (outcome === 'RECOVERED') {
+      // The sale did happen: book it now (verify is idempotent). Only a sale that reached a final state frees the
+      // position for a new one.
+      const verified = await verifyRedeemExecution(admin, session, existing.id);
+      stillOpen = !verified.ok || !TERMINAL_REDEEM_STATUSES.has(verified.value.status);
+    }
+    if (stillOpen) return { ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: existing.id } };
   }
   // A settlement attestation still valid on-chain (§9) blocks a new sale of the position even when its intent is
   // already terminal in the database: the old signature could otherwise run after this sale changed the ledger.
@@ -280,23 +290,57 @@ function isExpired(intent: RedeemIntent): boolean {
   return new Date(intent.expiresAt).getTime() < Date.now();
 }
 
+const TERMINAL_REDEEM_STATUSES: ReadonlySet<RedeemIntent['status']> = new Set(['COMPLETED', 'RECONCILIATION_REQUIRED', 'FAILED', 'CANCELLED', 'EXPIRED']);
+
+/**
+ * Extra time, after an intent's expiry, before a free sale awaiting signature counts as abandoned: the wallet may
+ * still be open on it (expiry is a few minutes after the quote, signing can take longer).
+ */
+export const ABANDONED_FREE_SALE_GRACE_MS = 10 * 60 * 1000;
+
 /**
  * An open sale nobody will finish — the wallet never signed and no report came back (tab closed, wallet dismissed
  * without a REJECTED report) — must not block the position forever. Released (→ EXPIRED) only when signing it can no
  * longer do anything:
  *  - not yet handed to the wallet (DRAFT / QUOTED / READY) and past its expiry: nothing was signed;
  *  - AWAITING_SIGNATURE of a settlement sale whose attestation deadline has passed: RedeemSettlement refuses the
- *    signed transaction after it (`deadline`, §8). The deadline is at most ~5 minutes after phase 2 (§9).
- * Anything else stays (a free Composer sale awaiting signature has no on-chain deadline of ours to rely on).
- * Returns true when the intent was released. The live-attestation lock is still checked by the caller.
+ *    signed transaction after it (`deadline`, §8). The deadline is at most ~5 minutes after phase 2 (§9);
+ *  - AWAITING_SIGNATURE of a free Composer sale, past its expiry plus ABANDONED_FREE_SALE_GRACE_MS, once the chain
+ *    shows the built transaction was never sent (#27). It has no on-chain deadline of ours, so the chain is asked
+ *    first (composer-tx-search.ts): found → the sale happened, it is recovered as SUBMITTED and booked by verify
+ *    ('RECOVERED'); not found, with nothing pending from the wallet → released; the chain cannot answer → kept.
+ * SUBMITTED / CONFIRMING are never touched here. The live-attestation lock is still checked by the caller.
  */
-async function releaseAbandonedRedeemIntent(admin: SupabaseClient, intent: RedeemIntent): Promise<boolean> {
+async function releaseAbandonedRedeemIntent(admin: SupabaseClient, intent: RedeemIntent): Promise<'RELEASED' | 'RECOVERED' | 'KEPT'> {
   const beforeWallet = intent.status === 'DRAFT' || intent.status === 'QUOTED' || intent.status === 'READY';
   const deadline = intent.settlementPlan?.deadline;
   const settlementLapsed = intent.status === 'AWAITING_SIGNATURE' && typeof deadline === 'number' && deadline < Math.floor(Date.now() / 1000);
-  if (!(beforeWallet && isExpired(intent)) && !settlementLapsed) return false;
+
+  if (!(beforeWallet && isExpired(intent)) && !settlementLapsed) {
+    const freeComposerSale = intent.status === 'AWAITING_SIGNATURE' && !intent.settlementPlan && !!intent.composerTransaction;
+    const abandoned = new Date(intent.expiresAt).getTime() + ABANDONED_FREE_SALE_GRACE_MS < Date.now();
+    if (!freeComposerSale || !abandoned || !intent.composerTransaction) return 'KEPT';
+    const swaps = intent.steps.filter((s) => s.action === 'SWAP');
+    const chain = swaps[0]?.sourceChain;
+    if (!chain || !isBagChain(chain)) return 'KEPT';
+    const search = await findComposerTransactionFromWallet({
+      chain,
+      wallet: intent.walletAddress,
+      soldTokens: [...new Set(swaps.map((s) => s.inputAsset.address))],
+      expected: intent.composerTransaction,
+      since: new Date(intent.createdAt),
+    });
+    if (search.kind === 'UNKNOWN') return 'KEPT';
+    if (search.kind === 'FOUND') {
+      const steps = intent.steps.map((s) =>
+        s.action === 'SWAP' && s.status !== 'COMPLETED' && s.status !== 'FAILED' ? { ...s, status: 'SUBMITTED' as const, txHash: s.txHash ?? search.txHash } : s
+      );
+      const recovered = await updateRedeemIntentStatus(admin, { id: intent.id, from: 'AWAITING_SIGNATURE', to: 'SUBMITTED', steps });
+      return recovered ? 'RECOVERED' : 'KEPT';
+    }
+  }
   const released = await updateRedeemIntentStatus(admin, { id: intent.id, from: intent.status, to: 'EXPIRED', failureCode: 'ROUTE_EXPIRED' });
-  return released !== null;
+  return released !== null ? 'RELEASED' : 'KEPT';
 }
 
 export { saleStillCovered };
