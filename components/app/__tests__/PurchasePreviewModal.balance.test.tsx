@@ -106,6 +106,76 @@ describe('PurchasePreviewModal — payment balance', () => {
     getBalance.mockResolvedValue(BigInt(10) ** BigInt(16));
     render(<PurchasePreviewModal bagId="b1" bagName="Test" initialAmount="300" autoStart onClose={() => {}} />);
     await waitFor(() => expect(purchaseButton().textContent).toBe('Insufficient USDG balance'));
+    expect(screen.getByRole('status').textContent).toMatch(/Automatic purchase stopped: your balance does not cover this amount/);
     expect(start).not.toHaveBeenCalled();
+  });
+});
+
+describe('PurchasePreviewModal — autoStart waits for, and respects, the balance', () => {
+  function deferred<T>() {
+    let resolve!: (v: T) => void;
+    const promise = new Promise<T>((r) => (resolve = r));
+    return { promise, resolve };
+  }
+
+  it('preview ready before the balance: nothing is sent until the balance is read, then it starts once', async () => {
+    const balance = deferred<bigint>();
+    readContract.mockReturnValue(balance.promise);
+    getBalance.mockResolvedValue(BigInt(10) ** BigInt(16));
+    render(<PurchasePreviewModal bagId="b1" bagName="Test" initialAmount="10" autoStart onClose={() => {}} />);
+    // The preview arrives (Purchase becomes enabled) while the balance is still loading.
+    await waitFor(() => expect(purchaseButton()).not.toBeDisabled());
+    expect(screen.getByTestId('payment-balance').textContent).toContain('Balance: …');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(start).not.toHaveBeenCalled();
+
+    balance.resolve(BigInt(250_000_000));
+    await waitFor(() => expect(start).toHaveBeenCalledTimes(1));
+    expect(start).toHaveBeenCalledWith('b1', 'usdg', '10', WALLET, undefined, undefined);
+  });
+
+  it('balance unreadable: no automatic purchase, a visible notice, and the manual Purchase still works', async () => {
+    readContract.mockRejectedValue(new Error('rpc down'));
+    getBalance.mockResolvedValue(BigInt(10) ** BigInt(16));
+    render(<PurchasePreviewModal bagId="b1" bagName="Test" initialAmount="10" autoStart onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByRole('status').textContent).toMatch(/balance couldn't be read/));
+    await waitFor(() => expect(purchaseButton()).not.toBeDisabled());
+    await new Promise((r) => setTimeout(r, 50));
+    expect(start).not.toHaveBeenCalled();
+
+    fireEvent.click(purchaseButton());
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('after an insufficient-balance stop, a new amount / preview / balance never restarts it; only Purchase does', async () => {
+    readContract.mockResolvedValue(BigInt(1_000_000)); // 1 USDG
+    getBalance.mockResolvedValue(BigInt(10) ** BigInt(16));
+    render(<PurchasePreviewModal bagId="b1" bagName="Test" initialAmount="300" autoStart onClose={() => {}} />);
+    await waitFor(() => expect(purchaseButton().textContent).toBe('Insufficient USDG balance'));
+
+    // The buyer lowers the amount; a fresh preview arrives and the balance now covers it.
+    fireEvent.change(screen.getByPlaceholderText('Enter amount'), { target: { value: '0.5' } });
+    await waitFor(() => expect(purchaseButton().textContent).toBe('Purchase'));
+    await waitFor(() => expect(purchaseButton()).not.toBeDisabled());
+    // A balance refresh (e.g. Retry) does not re-arm it either.
+    readContract.mockResolvedValue(BigInt(2_000_000));
+    await new Promise((r) => setTimeout(r, 400));
+    expect(start).not.toHaveBeenCalled();
+
+    fireEvent.click(purchaseButton());
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(start).toHaveBeenCalledWith('b1', 'usdg', '0.5', WALLET, undefined, undefined);
+  });
+
+  it('without autoStart the manual flow is unchanged and no notice is shown', async () => {
+    readContract.mockResolvedValue(BigInt(250_000_000));
+    getBalance.mockResolvedValue(BigInt(10) ** BigInt(16));
+    render(<PurchasePreviewModal bagId="b1" bagName="Test" initialAmount="10" onClose={() => {}} />);
+    await waitFor(() => expect(purchaseButton()).not.toBeDisabled());
+    await waitFor(() => expect(screen.getByTestId('payment-balance').textContent).toContain('Balance: 250.00 USDG'));
+    expect(start).not.toHaveBeenCalled();
+    expect(screen.queryByRole('status')).toBeNull();
+    fireEvent.click(purchaseButton());
+    expect(start).toHaveBeenCalledTimes(1);
   });
 });

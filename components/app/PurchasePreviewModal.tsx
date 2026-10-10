@@ -449,19 +449,34 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
     onCompleted?.();
   }, [execution.state.phase, onCompleted]);
 
+  // The launch buy only goes ahead on a balance we have actually read and
+  // that covers the amount. It is turned off for the rest of this modal
+  // session (never re-armed by a new amount, preview or balance) when the
+  // balance cannot be read or does not cover it: the buyer then decides and
+  // presses Purchase themselves. Without that, lowering the amount after an
+  // insufficient-balance stop would fire the purchase mid-typing.
   const autoStartedRef = useRef(false);
+  const [autoStartStopped, setAutoStartStopped] = useState<'INSUFFICIENT_BALANCE' | 'BALANCE_UNAVAILABLE' | null>(null);
   useEffect(() => {
-    if (!autoStart || autoStartedRef.current) return;
+    if (!autoStart || autoStartedRef.current || autoStartStopped) return;
+    if (paymentBalance.status === 'error') {
+      setAutoStartStopped('BALANCE_UNAVAILABLE');
+      return;
+    }
+    // Nothing is sent before the balance check has a result.
+    if (paymentBalance.status !== 'ready' || usableRaw === null) return;
+    if (insufficientBalance) {
+      setAutoStartStopped('INSUFFICIENT_BALANCE');
+      return;
+    }
     if (!preview || previewError || calculating || !selectedAssetId) return;
     if (noRouteBlocksPurchase || staleComparisonBlocksPurchase) return;
-    // A launch buy the wallet can't cover would only fail at the chain; don't start it.
-    if (insufficientBalance) return;
     if (!wallet.isConnected || !wallet.authUser || execution.state.phase !== 'idle') return;
     autoStartedRef.current = true;
     void execution.start(bagId, selectedAssetId, amount.trim(), wallet.walletAddress, selectedProviderId ?? undefined, takePrepared());
     // Fires once when every precondition is met; execution/wallet identities are stable enough here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoStart, preview, previewError, calculating, selectedAssetId, noRouteBlocksPurchase, staleComparisonBlocksPurchase, insufficientBalance, wallet.isConnected, wallet.authUser, execution.state.phase]);
+  }, [autoStart, autoStartStopped, paymentBalance.status, usableRaw, preview, previewError, calculating, selectedAssetId, noRouteBlocksPurchase, staleComparisonBlocksPurchase, insufficientBalance, wallet.isConnected, wallet.authUser, execution.state.phase]);
 
 
   const estimatedSharesDisplay = preview?.depositQuote
@@ -1029,6 +1044,13 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, autoStart,
           </button>
         )}
 
+        {autoStartStopped && !isExecuting && execution.state.phase === 'idle' && (
+          <div role="status" style={{ marginTop: 8, fontSize: 12, color: 'var(--gold, #D9B98B)' }}>
+            {autoStartStopped === 'INSUFFICIENT_BALANCE'
+              ? 'Automatic purchase stopped: your balance does not cover this amount. Adjust it and press Purchase to continue.'
+              : "Automatic purchase stopped: your balance couldn't be read. Check it and press Purchase to continue."}
+          </div>
+        )}
         {quotesLoading && preview && !isExecuting && (
           <div style={{ marginTop: 8, fontSize: 12, color: 'var(--ink-soft)' }}>Live route quotes are still loading — you can already purchase.</div>
         )}
