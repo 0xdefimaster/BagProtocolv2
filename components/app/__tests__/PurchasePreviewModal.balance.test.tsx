@@ -106,7 +106,8 @@ describe('PurchasePreviewModal — payment balance', () => {
     getBalance.mockResolvedValue(BigInt(10) ** BigInt(16));
     render(<PurchasePreviewModal bagId="b1" bagName="Test" initialAmount="300" autoStart onClose={() => {}} />);
     await waitFor(() => expect(purchaseButton().textContent).toBe('Insufficient USDG balance'));
-    expect(screen.getByRole('status').textContent).toMatch(/Automatic purchase stopped: your balance does not cover this amount/);
+    // The stop notice follows one render later (the launch-buy effect sets it), so wait for it too.
+    await waitFor(() => expect(screen.getByRole('status').textContent).toMatch(/Automatic purchase stopped: your balance does not cover this amount/));
     expect(start).not.toHaveBeenCalled();
   });
 });
@@ -152,6 +153,7 @@ describe('PurchasePreviewModal — autoStart waits for, and respects, the balanc
     getBalance.mockResolvedValue(BigInt(10) ** BigInt(16));
     render(<PurchasePreviewModal bagId="b1" bagName="Test" initialAmount="300" autoStart onClose={() => {}} />);
     await waitFor(() => expect(purchaseButton().textContent).toBe('Insufficient USDG balance'));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toMatch(/Automatic purchase stopped/));
 
     // The buyer lowers the amount; a fresh preview arrives and the balance now covers it.
     fireEvent.change(screen.getByPlaceholderText('Enter amount'), { target: { value: '0.5' } });
