@@ -252,9 +252,11 @@ uses a public client only and sends nothing. For the `feetest` v1 commitment:
 
 ```
 RPC_URL=… npx tsx packages/bag-sdk/examples/verify-registry.ts \
-  https://bagprotocolv2.netlify.app/api/strategies/170e5e72-d5d5-4f16-b180-24b3dc525b37/versions/1 \
+  <BAG app origin>/api/strategies/170e5e72-d5d5-4f16-b180-24b3dc525b37/versions/1 \
   0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46
 ```
+
+The bag.json can also be a local file: `packages/bag-sdk/test/fixtures/feetest.v1.bag.json` is that document as served.
 
 Each check prints `PASS` or `FAIL`, then `VERDICT PASS|FAIL|BLOCKED`. Exit code 0 PASS, 1 FAIL, 3 BLOCKED (the RPC or
 the URL could not be reached; nothing was checked). The RPC URL is never printed.
