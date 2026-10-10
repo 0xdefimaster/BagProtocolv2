@@ -28,6 +28,10 @@ const NOW = [
     b: 'Robinhood Stock Token registry and pricing, LI.FI crypto pricing, RPC failover and execution-aware valuation safeguards.',
   },
   {
+    t: 'On-chain strategy registry and SDK',
+    b: 'StrategyRegistry is live on Robinhood Chain: creators commit each version from their own wallet, anyone can verify a bag.json with the open SDK, and the app re-checks every registered version in the viewer’s browser.',
+  },
+  {
     t: 'On-chain redemption settlement',
     b: 'RedeemSettlement is live on Robinhood Chain; the first real fee-path sale has been reconciled from chain event to database ledger.',
   },
@@ -72,7 +76,7 @@ const NEXT = [
   {
     tag: 'COMING NEXT',
     t: 'Open strategy network, AI and agents',
-    b: 'Public strategy registry, portable strategy discovery, third-party verification, AI-to-bag.json workflows and authenticated agents.',
+    b: 'Portable strategy discovery, published bag.json URLs, a strategy marketplace, AI-to-bag.json workflows and authenticated agents.',
   },
 ];
 

@@ -326,7 +326,11 @@ export interface RegistrationStatus {
   viewerIsCreator: boolean;
   registryAddress: Hex | null;
   chainId: number | null;
+  /** The Bag's chain slug, so a client can look the registry up in the SDK rather than trust `registryAddress`. */
+  chain: string;
   registryStrategyId: string | null;
+  /** The wallet that signed the registration (the strategy's creator on-chain); null until something is registered. */
+  creatorWallet: string | null;
   versions: { version: number; definitionHash: string; registered: boolean; txHash: string | null }[];
   fork: { parentStrategyId: string; parentVersion: number | null } | null;
 }
@@ -343,7 +347,9 @@ export async function getRegistrationStatus(admin: SupabaseClient, bagId: string
     viewerIsCreator: viewerUserId !== null && viewerUserId === bag.creatorId,
     registryAddress: registry,
     chainId: getEvmChainIdFor(bag.chain),
+    chain: bag.chain,
     registryStrategyId: registrations[0]?.registry_strategy_id ?? null,
+    creatorWallet: registrations[0]?.creator_wallet ?? null,
     versions: rows
       .map((r) => {
         const definitionHash = buildBagJson(bag, r).definitionHash;
