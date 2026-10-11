@@ -38,6 +38,15 @@
 // robinhood only crypto tokens (WETH, USDG, ...) are imported; Stock Tokens
 // stay with import-robinhood-assets.ts, which is Robinhood's own source.
 //
+// Tokenized stocks on ethereum / base / arbitrum (LI.FI tags them `rwa`):
+//   npx tsx scripts/import-lifi-assets.ts --stocks --chain=base                    # dry run: every LI.FI-verified stock
+//   npx tsx scripts/import-lifi-assets.ts --stocks --chain=base --only=TSLAx,NVDAx --apply
+// --apply in stock mode requires --only: the owner names, from the dry run,
+// exactly which stocks become selectable in Create. Nothing else is written,
+// and --deprecate-stale is refused. A symbol two LI.FI-verified stocks claim
+// is skipped as ambiguous. Robinhood Stock Tokens stay with
+// import-robinhood-assets.ts.
+//
 // LIFI_API_KEY is optional (see lib/blockchain/lifi-config.ts) but raises
 // the rate limit — set it in your shell env for a production run.
 // Requires NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY for --apply,
@@ -50,8 +59,10 @@ import { applyLogoUpdates } from '@/lib/domain/basket-protocol/registry/logo-url
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
 import {
   applyLiFiImportPlan,
+  fetchLiFiStockCandidatesForChain,
   fetchLiFiTokenCandidatesForChain,
   LiFiImportTargetChain,
+  LiFiStockImportChain,
   planLiFiImportForChain,
 } from '@/lib/domain/basket-protocol/registry/lifi-import';
 
@@ -66,10 +77,73 @@ function parseChainArg(): LiFiImportTargetChain {
   return chain;
 }
 
+const STOCK_CHAINS: LiFiStockImportChain[] = ['ethereum', 'base', 'arbitrum'];
+
+function parseOnlyArg(): string[] {
+  const arg = process.argv.find((a) => a.startsWith('--only='));
+  return arg ? arg.slice('--only='.length).split(',').map((s) => s.trim()).filter(Boolean) : [];
+}
+
+async function importStocks(chain: LiFiImportTargetChain, apply: boolean) {
+  if (!(STOCK_CHAINS as string[]).includes(chain)) {
+    throw new Error(`--stocks supports ${STOCK_CHAINS.join(', ')}; Robinhood Stock Tokens come from import-robinhood-assets.ts.`);
+  }
+  if (process.argv.includes('--deprecate-stale')) throw new Error('--deprecate-stale is not available with --stocks.');
+  const only = parseOnlyArg();
+  if (apply && only.length === 0) {
+    throw new Error('--stocks --apply needs --only=SYM1,SYM2: name, from the dry run, exactly which stocks to register.');
+  }
+
+  console.log(`Fetching LI.FI's tokenized stocks on "${chain}"...`);
+  const { candidates, skipped, fetchError } = await fetchLiFiStockCandidatesForChain(chain as LiFiStockImportChain, { only });
+  if (fetchError) {
+    console.error(`  Failed to fetch from LI.FI: ${fetchError}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`\nLI.FI-verified stocks${only.length > 0 ? ' (requested)' : ''}: ${candidates.length}`);
+  for (const c of candidates) {
+    const cap = c.marketCapUSD === null ? 'mcap —' : `mcap $${Math.round(c.marketCapUSD).toLocaleString('en-US')}`;
+    console.log(`  ${c.symbol.padEnd(10)} ${c.address}  dec ${String(c.decimals).padEnd(2)}  ${cap.padEnd(22)} price ${c.priceUSD ?? '—'}  ${c.name}`);
+  }
+  const notRequested = skipped.filter((s) => s.reason === 'NOT_REQUESTED').length;
+  const rejected = skipped.filter((s) => s.reason !== 'NOT_REQUESTED');
+  if (rejected.length > 0) {
+    console.log(`\nSkipped (${rejected.length}):`);
+    for (const s of rejected) console.log(`  ${s.symbol.padEnd(10)} ${s.reason.padEnd(18)} ${s.address}  ${s.name}`);
+  }
+  if (notRequested > 0) console.log(`\n${notRequested} other LI.FI-verified stock(s) not in --only.`);
+
+  let existing: Awaited<ReturnType<typeof listAssets>> = [];
+  if (isSupabaseConfigured()) existing = await listAssets(supabaseAdmin(), { chain, limit: 1000 });
+  else console.log('  Supabase not configured — planning against an empty existing-registry set.');
+  // No curated symbols: stock mode never marks an existing row stale.
+  const plan = planLiFiImportForChain(candidates, existing, []);
+  console.log(`\nPlan: toRegister ${plan.toRegister.length}, alreadyRegistered ${plan.alreadyRegistered.length}`);
+  for (const c of plan.toRegister) console.log(`  + ${c.symbol.padEnd(10)} ${c.address}  ${c.name}`);
+
+  if (!apply) {
+    console.log('\nDry run only — re-run with --only=SYM1,SYM2 --apply to register the stocks you choose.');
+    return;
+  }
+  if (!isSupabaseConfigured()) {
+    console.error('\n--apply requires Supabase env vars to be set (see .env.example). Aborting.');
+    process.exitCode = 1;
+    return;
+  }
+  const result = await applyLiFiImportPlan((input) => registerAsset(supabaseAdmin(), input), plan);
+  console.log(`\nRegistered: ${result.registered.length}`);
+  for (const f of result.failed) {
+    console.log(`  Failed ${f.input.symbol} ${f.input.address}: ${f.error}`);
+    process.exitCode = 1;
+  }
+}
+
 async function main() {
   const apply = process.argv.includes('--apply');
   const deprecateStale = process.argv.includes('--deprecate-stale');
   const chain = parseChainArg();
+  if (process.argv.includes('--stocks')) return importStocks(chain, apply);
 
   console.log(`Fetching LI.FI's known token list for chain "${chain}"...`);
   const { candidates, skipped, fetchError } = await fetchLiFiTokenCandidatesForChain(chain);
