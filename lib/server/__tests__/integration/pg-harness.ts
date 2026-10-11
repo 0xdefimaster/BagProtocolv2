@@ -202,6 +202,10 @@ class ShimQuery {
     this.filters.push([assertIdent(column), null, 'is not null']);
     return this;
   }
+  /** Type-only in supabase-js. */
+  returns() {
+    return this;
+  }
   /** `update(patch).eq()….select().maybeSingle()` → one `UPDATE … RETURNING *`, like supabase-js. */
   update(patch: Record<string, unknown>) {
     this.patch = patch;

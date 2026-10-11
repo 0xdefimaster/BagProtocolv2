@@ -10,6 +10,9 @@ import { paymentAssetsFor } from '@/lib/server/payment-assets';
 import { getBagNavSafe } from '@/lib/server/bag-nav';
 import { getShareSupply } from '@/lib/server/bag-share-state-repo';
 import { getInvestorPosition } from '@/lib/server/bag-investor-position-repo';
+import { getInvestorHoldings } from '@/lib/server/bag-investor-holdings-repo';
+import { getBagHoldings } from '@/lib/server/bag-holdings-repo';
+import { attributeSaleToLedger, ledgerKey, type LedgerCover, type SaleLeg } from '@/lib/domain/basket-protocol/redeem/ledger-attribution';
 import { listAssets } from '@/lib/server/asset-repo';
 import { getPriceProvider } from '@/lib/server/price-provider';
 import { InsufficientSharesError, getRedeemQuote, ZeroRedeemAmountError, ZeroShareSupplyError } from '@/lib/domain/basket-protocol/shares/shares';
@@ -767,20 +770,27 @@ async function reopenIfTransactionNowMatches(admin: SupabaseClient, intent: Rede
 const UNMATCHED_SALE_RECHECK_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
- * Books this user's earlier sales of the Bag that ran on-chain but were refused as unmatched, before a new sale is
- * sized from the position. Best effort: a sale that still does not verify stays FAILED, and an RPC error never
+ * Books this user's earlier sales of the Bag that ran on-chain but were refused as unmatched, or verified but did not
+ * finish booking, before a new sale is sized from the position. Best effort: a sale that still does not verify stays FAILED, and an RPC error never
  * blocks the new sale.
  */
 export async function recheckUnmatchedComposerSales(admin: SupabaseClient, session: SessionPayload, bagId: string): Promise<{ booked: number }> {
-  let unmatched: RedeemIntent[];
+  let pending: RedeemIntent[];
   try {
-    unmatched = await listUnmatchedComposerRedeems(admin, session.userId, bagId, new Date(Date.now() - UNMATCHED_SALE_RECHECK_MS));
+    const [unmatched, open] = await Promise.all([
+      listUnmatchedComposerRedeems(admin, session.userId, bagId, new Date(Date.now() - UNMATCHED_SALE_RECHECK_MS)),
+      findActiveRedeemIntentForBag(admin, session.userId, bagId),
+    ]);
+    // A sale whose transaction verified but whose booking did not finish (SUBMITTED / CONFIRMING) is finished here too.
+    const inFlight = open && (open.status === 'SUBMITTED' || open.status === 'CONFIRMING') ? [open] : [];
+    pending = [...unmatched, ...inFlight];
   } catch {
     return { booked: 0 };
   }
   let booked = 0;
   // Oldest first: the ledger books sales in the order they ran.
-  for (const intent of unmatched.reverse()) {
+  pending.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  for (const intent of pending) {
     try {
       const verified = await verifyRedeemExecution(admin, session, intent.id);
       if (verified.ok && verified.value.status === 'COMPLETED') booked++;
@@ -904,29 +914,30 @@ async function applyRedeemAccountingIdempotently(admin: SupabaseClient, intent: 
   // here the DEBITED side is the swap's input, fixed at quote time, not
   // something on-chain execution can vary).
   // A3: each sold leg carries what it actually returned (verified receipt output, in the output asset).
-  const soldFromSwaps = intent.steps
-    .filter((s) => s.action === 'SWAP' && s.status === 'COMPLETED')
+  // KEEP legs also remove exactly what was earmarked (already the output asset: it returns itself).
+  const legs: SaleLeg[] = intent.steps
+    .filter((s) => s.action === 'KEEP' || (s.action === 'SWAP' && s.status === 'COMPLETED'))
     .map((s) => ({
       chain: s.inputAsset.chain,
       address: s.inputAsset.address,
-      quantity_raw: s.inputAmountRaw,
-      ...(s.outputAmountRaw && /^\d+$/.test(s.outputAmountRaw) ? { proceeds_quote: rawToDecimalString(s.outputAmountRaw, intent.outputDecimals) } : {}),
+      quantityRaw: BigInt(s.inputAmountRaw),
+      proceedsRaw: s.action === 'KEEP' ? BigInt(s.inputAmountRaw) : s.outputAmountRaw && /^\d+$/.test(s.outputAmountRaw) ? BigInt(s.outputAmountRaw) : null,
     }));
 
-  // KEEP legs also remove exactly what was earmarked (already the output
-  // asset — nothing was swapped, but the depositor's holding of it is
-  // still leaving their position on this redemption).
-  const soldFromKeeps = intent.steps
-    .filter((s) => s.action === 'KEEP')
-    .map((s) => ({
-      chain: s.inputAsset.chain,
-      address: s.inputAsset.address,
-      quantity_raw: s.inputAmountRaw,
-      // A KEEP leg already is the output asset: it returns itself.
-      proceeds_quote: rawToDecimalString(s.inputAmountRaw, intent.outputDecimals),
-    }));
+  // The sale ran on-chain and verified; only what the ledger still tracks for this strategy is debited (an earlier
+  // sale booked late can have shrunk it since the quote). Unreadable ledger: debit as quoted, and the accounting
+  // function's own underflow guards decide.
+  const cover = await readLedgerCover(admin, intent);
+  const sale = cover
+    ? attributeSaleToLedger({ legs, sharesBurnRaw: BigInt(intent.sharesRaw), redeemValueQuote: intent.redeemValueQuote }, cover)
+    : { legs, sharesBurnRaw: BigInt(intent.sharesRaw), redeemValueQuote: intent.redeemValueQuote };
 
-  const holdingsSold = [...soldFromSwaps, ...soldFromKeeps];
+  const holdingsSold = sale.legs.map((l) => ({
+    chain: l.chain,
+    address: l.address,
+    quantity_raw: l.quantityRaw.toString(),
+    ...(l.proceedsRaw !== null ? { proceeds_quote: rawToDecimalString(l.proceedsRaw, intent.outputDecimals) } : {}),
+  }));
 
   // Phase 22 — performance fee. Resolved fresh here (never trusted from
   // the intent/client) from the bag's OWN creator + fee, same "re-read the
@@ -944,14 +955,36 @@ async function applyRedeemAccountingIdempotently(admin: SupabaseClient, intent: 
     p_intent_id: intent.id,
     p_bag_id: intent.bagId,
     p_holdings_sold: holdingsSold,
-    p_shares_burn_raw: intent.sharesRaw,
+    p_shares_burn_raw: sale.sharesBurnRaw.toString(),
     p_share_decimals: intent.shareDecimals,
     p_user_id: intent.userId,
-    p_redeem_value_quote: intent.redeemValueQuote,
+    p_redeem_value_quote: sale.redeemValueQuote,
     p_performance_fee_bps: performanceFeeBps,
     p_creator_id: bag?.creatorId ?? null,
   });
   if (rpcError) throw new Error(`apply_redeem_execution failed: ${rpcError.message}`);
 
   await markRedeemAccountingApplied(admin, intent.id);
+}
+
+/** What the ledger tracks for this user and strategy now: remaining shares and, per asset, the smaller of the user's and the Bag's holding. Null when it cannot be read. */
+async function readLedgerCover(admin: SupabaseClient, intent: RedeemIntent): Promise<LedgerCover | null> {
+  try {
+    const [position, investor, bagHoldings] = await Promise.all([
+      getInvestorPosition(admin, intent.userId, intent.bagId),
+      getInvestorHoldings(admin, intent.userId, intent.bagId),
+      getBagHoldings(admin, intent.bagId),
+    ]);
+    const bagQty = new Map(bagHoldings.map((h) => [ledgerKey(h.asset.chain, h.asset.address), BigInt(h.quantityRaw)]));
+    const trackedRaw = new Map<string, bigint>();
+    for (const h of investor) {
+      const key = ledgerKey(h.chain, h.address);
+      const own = BigInt(h.quantityRaw);
+      const total = bagQty.get(key) ?? BigInt(0);
+      trackedRaw.set(key, own < total ? own : total);
+    }
+    return { sharesRaw: BigInt(position.sharesRaw), trackedRaw };
+  } catch {
+    return null;
+  }
 }
