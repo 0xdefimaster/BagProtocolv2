@@ -105,6 +105,58 @@ describe('useRedeemExecution: declined fee-paying sale', () => {
     expect(result.current.state.error).toMatch(/still waiting for your signature/);
   });
 
+  it('an older open sale that cannot be re-signed is named, and closing it retries the sale the user asked for', async () => {
+    const { useRedeemExecution } = await import('../use-redeem-execution');
+    let blocked = true;
+    api([
+      { match: (u, i) => post('/bags/bag_1/redeem-intent')(u, i) && blocked, status: 409, body: { error: 'A redemption is already in progress for this Bag.', intentId: 'old_1' } },
+      { match: get('/redeem-intent/old_1'), body: { intent: intent({ id: 'old_1', status: 'AWAITING_SIGNATURE', composerTransaction: TX, createdAt: '2026-10-11T00:30:00Z' } as never) } },
+      { match: (u, i) => post('/redeem-intent/old_1/cancel')(u, i) && ((blocked = false), true), body: { result: 'CLOSED', status: 'CANCELLED' } },
+      { match: post('/bags/bag_1/redeem-intent'), body: { intent: intent({ status: 'DRAFT' }) } },
+      { match: post('/execute'), body: { intent: intent({ composerTransaction: TX }) } },
+      { match: post('/step/0/report'), body: { intent: intent() } },
+      { match: post('/verify'), body: { intent: intent({ status: 'COMPLETED' }) } },
+    ]);
+    sweep.mockImplementationOnce(async (_w: string, _plan: unknown, _p: unknown, opts: { onSubmitted: (h: string) => Promise<void> }) => {
+      await opts.onSubmitted(HASH);
+      return HASH;
+    });
+    const { result } = renderHook(() => useRedeemExecution());
+    await act(async () => {
+      await result.current.start('bag_1', 2500, 'usdg', WALLET);
+    });
+    expect(result.current.state.blocking).toMatchObject({ intentId: 'old_1', status: 'AWAITING_SIGNATURE' });
+    expect(result.current.state.error).toMatch(/earlier sale of this Bag.*still open \(AWAITING_SIGNATURE\)/);
+
+    await act(async () => {
+      await result.current.closeBlockingAndRetry();
+    });
+    await waitFor(() => expect(result.current.state.phase).toBe('completed'));
+    const created = calls.filter((c) => c.url.endsWith('/bags/bag_1/redeem-intent')).map((c) => JSON.parse(String(c.init?.body)));
+    expect(created).toEqual([
+      { fractionBps: 2500, outputAssetId: 'usdg' },
+      { fractionBps: 2500, outputAssetId: 'usdg' },
+    ]);
+  });
+
+  it('when the server refuses to close the earlier sale, its reason is shown and the sale stays blocked', async () => {
+    const { useRedeemExecution } = await import('../use-redeem-execution');
+    api([
+      { match: post('/bags/bag_1/redeem-intent'), status: 409, body: { error: 'A redemption is already in progress for this Bag.', intentId: 'old_1' } },
+      { match: get('/redeem-intent/old_1'), body: { intent: intent({ id: 'old_1', status: 'SUBMITTED', createdAt: '2026-10-11T00:30:00Z' } as never) } },
+      { match: post('/redeem-intent/old_1/cancel'), body: { result: 'REFUSED', status: 'SUBMITTED', reason: 'A transaction of this sale was sent and is still being verified on-chain.' } },
+    ]);
+    const { result } = renderHook(() => useRedeemExecution());
+    await act(async () => {
+      await result.current.start('bag_1', 2500, 'usdg', WALLET);
+    });
+    await act(async () => {
+      await result.current.closeBlockingAndRetry();
+    });
+    expect(result.current.state.error).toMatch(/still being verified on-chain/);
+    expect(result.current.state.blocking).toMatchObject({ intentId: 'old_1' });
+  });
+
   it('a pending sale too close to its deadline, already sent, or of another wallet is not offered', async () => {
     const { useRedeemExecution } = await import('../use-redeem-execution');
     for (const pending of [
@@ -120,8 +172,10 @@ describe('useRedeemExecution: declined fee-paying sale', () => {
       await act(async () => {
         await result.current.start('bag_1', 2500, 'usdg', WALLET);
       });
+      // Not re-signable: named instead, with the option to close it (chain-checked on the server).
       expect(result.current.state.resumable).toBeNull();
-      expect(result.current.state.error).toBe('A redemption is already in progress for this Bag.');
+      expect(result.current.state.blocking).toMatchObject({ intentId: 'intent_1' });
+      expect(result.current.state.error).toMatch(/^An earlier sale of this Bag is still open \(AWAITING_SIGNATURE\)/);
     }
   });
 

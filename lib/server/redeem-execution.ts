@@ -351,6 +351,84 @@ async function releaseAbandonedRedeemIntent(admin: SupabaseClient, intent: Redee
   return released !== null ? 'RELEASED' : 'KEPT';
 }
 
+/** What happened to an open sale the user asked to close (cancelOpenRedeemIntent). */
+export type CloseOpenSaleResult =
+  | { result: 'CLOSED'; status: RedeemIntent['status'] }
+  | { result: 'BOOKED'; status: RedeemIntent['status'] }
+  | { result: 'ALREADY_FINAL'; status: RedeemIntent['status'] }
+  | { result: 'REFUSED'; status: RedeemIntent['status']; reason: string };
+
+/**
+ * Closes an open sale of the user's at their explicit request, so it stops blocking a new one — but only once the
+ * chain shows its transaction cannot still land unbooked:
+ *  - not yet handed to the wallet (DRAFT / QUOTED / READY): cancelled, nothing was signed;
+ *  - a fee-paying sale awaiting signature: refused while its attestation is valid (it can be signed again), expired
+ *    after (RedeemSettlement refuses the transaction then), cancelled if phase 2 never signed one;
+ *  - a free Composer sale awaiting signature: the chain is searched for its transaction (composer-tx-search.ts);
+ *    found → recovered and booked by verify, not found → cancelled, cannot tell → refused with the reason;
+ *  - anything with a transaction already reported, SUBMITTED or CONFIRMING: verified, never cancelled.
+ */
+export async function cancelOpenRedeemIntent(admin: SupabaseClient, session: SessionPayload, intentId: string): Promise<RedeemExecutionOutcome<CloseOpenSaleResult>> {
+  const owned = await loadOwnedIntent(admin, session.userId, intentId);
+  if (!owned.ok) return owned;
+  const intent = owned.value;
+  const close = async (to: 'CANCELLED' | 'EXPIRED'): Promise<RedeemExecutionOutcome<CloseOpenSaleResult>> => {
+    const updated = await updateRedeemIntentStatus(admin, { id: intent.id, from: intent.status, to, failureCode: to === 'EXPIRED' ? 'ROUTE_EXPIRED' : null });
+    return updated
+      ? { ok: true, value: { result: 'CLOSED', status: updated.status } }
+      : { ok: true, value: { result: 'REFUSED', status: intent.status, reason: 'The sale changed while it was being closed. Try again.' } };
+  };
+  const verifyIt = async (): Promise<RedeemExecutionOutcome<CloseOpenSaleResult>> => {
+    const verified = await verifyRedeemExecution(admin, session, intent.id);
+    if (verified.ok && TERMINAL_REDEEM_STATUSES.has(verified.value.status)) return { ok: true, value: { result: 'BOOKED', status: verified.value.status } };
+    return { ok: true, value: { result: 'REFUSED', status: verified.ok ? verified.value.status : intent.status, reason: 'A transaction of this sale was sent and is still being verified on-chain; it closes on its own once it is.' } };
+  };
+
+  if (TERMINAL_REDEEM_STATUSES.has(intent.status)) return { ok: true, value: { result: 'ALREADY_FINAL', status: intent.status } };
+  const swaps = intent.steps.filter((s) => s.action === 'SWAP');
+  if (intent.status === 'SUBMITTED' || intent.status === 'CONFIRMING' || swaps.some((s) => s.txHash !== null)) return verifyIt();
+  if (intent.status === 'DRAFT' || intent.status === 'QUOTED' || intent.status === 'READY') return close('CANCELLED');
+  if (intent.status !== 'AWAITING_SIGNATURE') {
+    return { ok: true, value: { result: 'REFUSED', status: intent.status, reason: `A sale in status ${intent.status} cannot be closed here.` } };
+  }
+
+  if (intent.settlementPlan) {
+    const deadline = intent.settlementPlan.deadline;
+    if (typeof deadline !== 'number') return close('CANCELLED'); // phase 2 never signed: nothing valid exists
+    if (deadline >= Math.floor(Date.now() / 1000)) {
+      return { ok: true, value: { result: 'REFUSED', status: intent.status, reason: `This sale's signed settlement is valid until ${new Date(deadline * 1000).toISOString()}; sign it again, or it closes then.` } };
+    }
+    return close('EXPIRED');
+  }
+
+  if (intent.composerTransaction) {
+    const chain = swaps[0]?.sourceChain;
+    if (!chain || !isBagChain(chain)) return { ok: true, value: { result: 'REFUSED', status: intent.status, reason: 'The sale has no chain to search.' } };
+    const search = await findComposerTransactionFromWallet({
+      chain,
+      wallet: intent.walletAddress,
+      soldTokens: [...new Set(swaps.map((s) => s.inputAsset.address))],
+      expected: intent.composerTransaction,
+      since: new Date(intent.createdAt),
+    });
+    if (search.kind === 'UNKNOWN') {
+      return { ok: true, value: { result: 'REFUSED', status: intent.status, reason: `The chain could not confirm that this sale was never sent (${search.reason}). Try again in a minute.` } };
+    }
+    if (search.kind === 'FOUND') {
+      const steps = intent.steps.map((s) =>
+        s.action === 'SWAP' && s.status !== 'COMPLETED' && s.status !== 'FAILED' ? { ...s, status: 'SUBMITTED' as const, txHash: s.txHash ?? search.txHash } : s
+      );
+      const recovered = await updateRedeemIntentStatus(admin, { id: intent.id, from: 'AWAITING_SIGNATURE', to: 'SUBMITTED', steps });
+      if (!recovered) return { ok: true, value: { result: 'REFUSED', status: intent.status, reason: 'The sale changed while it was being closed. Try again.' } };
+      return verifyIt();
+    }
+    return close('CANCELLED');
+  }
+
+  // Per-asset LI.FI sale with nothing reported sent.
+  return close('CANCELLED');
+}
+
 export { saleStillCovered };
 
 // ----------------------------- 2. Execute (idempotent) ------------------------

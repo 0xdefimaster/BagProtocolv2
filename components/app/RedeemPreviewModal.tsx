@@ -558,6 +558,11 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
           <button onClick={() => void execution.resume()} style={primaryButtonStyle}>
             Sign again
           </button>
+        ) : execution.state.blocking ? (
+          // An earlier open sale blocks this one: close it (the server checks the chain first), then sell.
+          <button onClick={() => void execution.closeBlockingAndRetry()} style={primaryButtonStyle}>
+            Close the earlier sale and sell
+          </button>
         ) : execution.state.errorCode === 'SESSION_EXPIRED' ? (
           <button
             onClick={async () => {

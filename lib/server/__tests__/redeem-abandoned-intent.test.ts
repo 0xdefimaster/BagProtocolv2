@@ -49,7 +49,7 @@ vi.mock('@/lib/server/fee-redemption-lock', () => ({ liveSettlementAttestationFo
 vi.mock('@/lib/server/bag-repo', () => ({ getBagById: async () => null, getCurrentBagVersion: async () => null }));
 vi.mock('@/lib/server/price-provider', () => ({ getPriceProvider: () => ({}) }));
 
-const { createRedeemIntentForUser } = await import('../redeem-execution');
+const { createRedeemIntentForUser, cancelOpenRedeemIntent } = await import('../redeem-execution');
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 const past = new Date(Date.now() - 60_000).toISOString();
@@ -184,5 +184,49 @@ describe('createRedeemIntentForUser — a free Composer sale awaiting a signatur
     active = { ...freeSale(longPast), settlementPlan: { deadline: nowSec() + 60 } as never };
     expect(await create()).toEqual({ ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: 'old' } });
     expect(searchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('cancelOpenRedeemIntent — the owner closes a sale that blocks a new one, once the chain says it is safe', () => {
+  const cancel = () => cancelOpenRedeemIntent({} as never, { userId: 'u1', walletAddress: '0x1' } as never, 'old');
+  const swap = (txHash: string | null = null) => ({ stepIndex: 0, action: 'SWAP', status: 'AWAITING_SIGNATURE', txHash, sourceChain: 'robinhood', inputAsset: { address: '0xaa' } });
+  const composerTransaction = { to: '0x7', data: '0xdead', value: '0', chainId: 4663, approvals: [] };
+
+  it('a sale never handed to the wallet is cancelled', async () => {
+    active = { id: 'old', status: 'READY', steps: [swap()] as never, expiresAt: future };
+    expect(await cancel()).toEqual({ ok: true, value: { result: 'CLOSED', status: 'CANCELLED' } });
+    expect(transitions).toEqual([{ from: 'READY', to: 'CANCELLED' }]);
+  });
+
+  it('a free Composer sale the chain shows was never sent is cancelled; one the chain cannot answer for is refused with the reason', async () => {
+    active = { id: 'old', status: 'AWAITING_SIGNATURE', steps: [swap()] as never, composerTransaction, expiresAt: future, createdAt: past, walletAddress: '0x1' };
+    searchMock.mockResolvedValueOnce({ kind: 'NOT_FOUND' });
+    expect(await cancel()).toEqual({ ok: true, value: { result: 'CLOSED', status: 'CANCELLED' } });
+
+    transitions.length = 0;
+    active = { id: 'old', status: 'AWAITING_SIGNATURE', steps: [swap()] as never, composerTransaction, expiresAt: future, createdAt: past, walletAddress: '0x1' };
+    searchMock.mockResolvedValueOnce({ kind: 'UNKNOWN', reason: 'a transaction from the wallet is still pending' });
+    const refused = await cancel();
+    expect(refused).toMatchObject({ ok: true, value: { result: 'REFUSED', status: 'AWAITING_SIGNATURE', reason: expect.stringMatching(/still pending/) } });
+    expect(transitions).toEqual([]);
+  });
+
+  it('a fee-paying sale: refused while its signed settlement is valid, expired after, cancelled if never signed', async () => {
+    active = { id: 'old', status: 'AWAITING_SIGNATURE', steps: [swap()] as never, settlementPlan: { deadline: nowSec() + 60 } as never };
+    expect(await cancel()).toMatchObject({ ok: true, value: { result: 'REFUSED' } });
+    expect(transitions).toEqual([]);
+    active = { id: 'old', status: 'AWAITING_SIGNATURE', steps: [swap()] as never, settlementPlan: { deadline: nowSec() - 1 } as never };
+    expect(await cancel()).toEqual({ ok: true, value: { result: 'CLOSED', status: 'EXPIRED' } });
+    active = { id: 'old', status: 'AWAITING_SIGNATURE', steps: [swap()] as never, settlementPlan: {} as never };
+    expect(await cancel()).toEqual({ ok: true, value: { result: 'CLOSED', status: 'CANCELLED' } });
+  });
+
+  it('never cancels a sale whose transaction was reported sent, and leaves a final one alone', async () => {
+    active = { id: 'old', status: 'FAILED', steps: [swap()] as never };
+    expect(await cancel()).toEqual({ ok: true, value: { result: 'ALREADY_FINAL', status: 'FAILED' } });
+    active = { id: 'old', status: 'AWAITING_SIGNATURE', steps: [swap('0x' + 'a'.repeat(64))] as never, composerTransaction, expiresAt: future, createdAt: past, walletAddress: '0x1' };
+    const out = await cancel().catch(() => null);
+    expect(transitions.some((t) => t.to === 'CANCELLED')).toBe(false);
+    expect(out === null || (out.ok && out.value.result !== 'CLOSED')).toBe(true);
   });
 });

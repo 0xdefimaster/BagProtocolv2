@@ -75,6 +75,8 @@ export interface RedeemExecutionState {
   /** Machine-readable reason for `error`, e.g. SESSION_EXPIRED. */
   errorCode: string | null;
   resumable: ResumableSale | null;
+  /** An earlier open sale of this position that blocks a new one and cannot be re-signed: it can be closed. */
+  blocking: { intentId: string; status: string; createdAt: string } | null;
 }
 
 const INITIAL_STATE: RedeemExecutionState = {
@@ -85,6 +87,7 @@ const INITIAL_STATE: RedeemExecutionState = {
   failureCode: null,
   errorCode: null,
   resumable: null,
+  blocking: null,
 };
 
 /** A pending sale is offered for re-signing only with at least this much time left before its deadline. */
@@ -225,6 +228,8 @@ export function useRedeemExecution() {
   const offerResume = useCallback((sale: ResumableSale, error: string) => {
     setState((s) => ({ ...s, phase: 'failed', error, failureCode: null, errorCode: 'SIGNATURE_DECLINED', resumable: sale }));
   }, []);
+
+  const lastStartRef = useRef<{ bagId: string; fractionBps: number; outputAssetId: string; walletAddress: string } | null>(null);
 
   const executeOneStep = useCallback(async (intentId: string, step: RedeemIntentStepRecord, walletAddress: string): Promise<void> => {
     if (step.action !== 'SWAP' || !step.lifiStep) return;
@@ -387,6 +392,7 @@ export function useRedeemExecution() {
   const start = useCallback(
     async (bagId: string, fractionBps: number, outputAssetId: string, walletAddress: string): Promise<void> => {
       reset();
+      lastStartRef.current = { bagId, fractionBps, outputAssetId, walletAddress };
       setState((s) => ({ ...s, phase: 'creating' }));
 
       let createdIntentId: string | null = null;
@@ -446,9 +452,22 @@ export function useRedeemExecution() {
         if (createdIntentId === null || err instanceof RedeemExecutionHttpError) {
           if (err instanceof RedeemExecutionHttpError) {
             // Blocked by a pending sale of this position that can still be signed: offer exactly that one.
-            const pending = err.intentId ? resumableSaleOf(await getIntent(err.intentId), walletAddress) : null;
+            const blocker = err.intentId ? await getIntent(err.intentId) : null;
+            const pending = resumableSaleOf(blocker, walletAddress);
             if (pending) {
               offerResume(pending, `A signed sale of this position is still waiting for your signature until ${new Date(pending.deadline * 1000).toLocaleTimeString()}. Sign it now, or start a different one after that.`);
+              return;
+            }
+            if (blocker && err.intentId) {
+              // Any other open sale: say which one, and let the user close it (the server checks the chain first).
+              setState((s) => ({
+                ...s,
+                phase: 'failed',
+                error: `An earlier sale of this Bag${Number.isFinite(new Date(blocker.createdAt).getTime()) ? `, started ${new Date(blocker.createdAt).toLocaleString()},` : ''} is still open (${blocker.status}). Close it to sell again: BAG first checks on-chain that it was never sent.`,
+                failureCode: null,
+                errorCode: 'BLOCKED_BY_OPEN_SALE',
+                blocking: { intentId: blocker.id, status: blocker.status, createdAt: blocker.createdAt },
+              }));
               return;
             }
             fail(err.message, err.failureCode, err.code);
@@ -501,5 +520,25 @@ export function useRedeemExecution() {
     await runVerifyLoop(sale.intentId);
   }, [state.resumable, executeComposerSale, runVerifyLoop, offerResume, fail]);
 
-  return { state, start, resume, reset };
+  /** Closes the blocking sale (POST …/cancel, chain-checked on the server), then starts the sale the user asked for. */
+  const closeBlockingAndRetry = useCallback(async (): Promise<void> => {
+    const blocking = state.blocking;
+    const last = lastStartRef.current;
+    if (!blocking || !last) return;
+    setState((s) => ({ ...s, phase: 'creating', error: null, errorCode: null }));
+    try {
+      const out = await postJson<{ result: 'CLOSED' | 'BOOKED' | 'ALREADY_FINAL' | 'REFUSED'; status: string; reason?: string }>(`/api/redeem-intent/${blocking.intentId}/cancel`);
+      if (out.result === 'REFUSED') {
+        setState((s) => ({ ...s, phase: 'failed', error: out.reason ?? 'The earlier sale could not be closed yet.', errorCode: 'BLOCKED_BY_OPEN_SALE' }));
+        return;
+      }
+    } catch (err) {
+      if (err instanceof RedeemExecutionHttpError) fail(err.message, err.failureCode, err.code);
+      else fail(err instanceof Error ? err.message : 'The earlier sale could not be closed.');
+      return;
+    }
+    await start(last.bagId, last.fractionBps, last.outputAssetId, last.walletAddress);
+  }, [state.blocking, start, fail]);
+
+  return { state, start, resume, closeBlockingAndRetry, reset };
 }
