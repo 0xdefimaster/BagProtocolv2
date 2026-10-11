@@ -43,9 +43,11 @@ import {
   createRedeemIntent as insertRedeemIntent,
   findActiveRedeemIntentForBag,
   getRedeemIntentForUser,
+  listUnmatchedComposerRedeems,
   markRedeemAccountingApplied,
   markRedeemReconciliationApplied,
   recordRedeemSettlementResult,
+  reopenUnmatchedComposerRedeem,
   updateRedeemIntentStatus,
   updateRedeemIntentSteps,
   type CreateRedeemIntentInput,
@@ -116,6 +118,8 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
   } catch {
     return { ok: false, error: { kind: 'INVALID_FRACTION' } };
   }
+
+  await recheckUnmatchedComposerSales(admin, session, bagId);
 
   const existing = await findActiveRedeemIntentForBag(admin, session.userId, bagId);
   if (existing) {
@@ -600,6 +604,8 @@ export async function verifyRedeemExecution(
   if (!owned.ok) return owned;
   let intent = owned.value;
 
+  if (isUnmatchedComposerSale(intent)) intent = (await reopenIfTransactionNowMatches(admin, intent)) ?? intent;
+
   if (
     intent.status === 'COMPLETED' ||
     intent.status === 'RECONCILIATION_REQUIRED' ||
@@ -724,6 +730,65 @@ export async function verifyRedeemExecution(
     executedAt: new Date().toISOString(),
   });
   return { ok: true, value: completed ?? intent };
+}
+
+/**
+ * A Composer sale marked FAILED only because its transaction did not match the built call, with nothing booked.
+ * Wallet batches (EIP-5792 over EIP-7702, e.g. MetaMask) were refused that way before they were recognised, even
+ * though the sale ran on-chain.
+ */
+function isUnmatchedComposerSale(intent: RedeemIntent): boolean {
+  return (
+    intent.status === 'FAILED' &&
+    intent.failureCode === 'VERIFICATION_FAILED' &&
+    !!intent.composerTransaction &&
+    !intent.accountingAppliedAt &&
+    !intent.reconciliationAppliedAt &&
+    intent.steps.some((s) => s.action === 'SWAP' && s.txHash)
+  );
+}
+
+/**
+ * Re-checks an unmatched sale's transaction against its own built call; when it now matches (a wallet batch that
+ * carries the call), the sale goes back to CONFIRMING and the normal verification books it, with every check
+ * that applies to any sale (sold in full, output received, settlement event, hash not claimed by another intent).
+ */
+async function reopenIfTransactionNowMatches(admin: SupabaseClient, intent: RedeemIntent): Promise<RedeemIntent | null> {
+  const swaps = intent.steps.filter((s) => s.action === 'SWAP');
+  const txHash = swaps.find((s) => s.txHash)?.txHash;
+  if (!txHash || !intent.composerTransaction) return null;
+  const outcome = await trackComposerTransaction({ txHash, chain: swaps[0].sourceChain, recipient: intent.walletAddress, expectedTransaction: intent.composerTransaction });
+  if (outcome.kind !== 'DONE') return null;
+  const steps = intent.steps.map((s) => (s.action === 'SWAP' ? { ...s, txHash: s.txHash ?? txHash, status: 'CONFIRMING' as const, failureCode: null } : s));
+  return reopenUnmatchedComposerRedeem(admin, intent.id, steps);
+}
+
+/** How far back a new sale re-checks earlier unmatched sales of the same Bag. */
+const UNMATCHED_SALE_RECHECK_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Books this user's earlier sales of the Bag that ran on-chain but were refused as unmatched, before a new sale is
+ * sized from the position. Best effort: a sale that still does not verify stays FAILED, and an RPC error never
+ * blocks the new sale.
+ */
+export async function recheckUnmatchedComposerSales(admin: SupabaseClient, session: SessionPayload, bagId: string): Promise<{ booked: number }> {
+  let unmatched: RedeemIntent[];
+  try {
+    unmatched = await listUnmatchedComposerRedeems(admin, session.userId, bagId, new Date(Date.now() - UNMATCHED_SALE_RECHECK_MS));
+  } catch {
+    return { booked: 0 };
+  }
+  let booked = 0;
+  // Oldest first: the ledger books sales in the order they ran.
+  for (const intent of unmatched.reverse()) {
+    try {
+      const verified = await verifyRedeemExecution(admin, session, intent.id);
+      if (verified.ok && verified.value.status === 'COMPLETED') booked++;
+    } catch (err) {
+      console.warn(`[redeem] re-check of unmatched sale ${intent.id} failed:`, err instanceof Error ? err.message : err);
+    }
+  }
+  return { booked };
 }
 
 /**

@@ -1,6 +1,7 @@
 import { parseAbiItem, type PublicClient } from 'viem';
 import type { BagChain } from '@/lib/config/chains';
 import { getChainPublicClient, hasRpcEndpoint } from '@/lib/blockchain/rpc/clients';
+import { batchContainsCall } from '@/lib/blockchain/composer-status';
 
 // -----------------------------------------------------------------------------
 // "Did this wallet actually send the Composer transaction we built?" — for an
@@ -88,7 +89,10 @@ export async function findComposerTransactionFromWallet(input: FindComposerTrans
 
     for (const hash of candidates) {
       const tx = await client.getTransaction({ hash });
-      if (same(tx.from, input.wallet) && same(tx.to, input.expected.to) && same(tx.input, input.expected.data) && tx.value === BigInt(input.expected.value || '0')) {
+      const direct = same(tx.to, input.expected.to) && same(tx.input, input.expected.data) && tx.value === BigInt(input.expected.value || '0');
+      // A wallet batch (EIP-5792 / EIP-7702): the wallet calls itself and the exact Composer call is one of the batched calls.
+      const walletBatch = same(tx.to, input.wallet) && typeof tx.input === 'string' && batchContainsCall(tx.input, input.expected);
+      if (same(tx.from, input.wallet) && (direct || walletBatch)) {
         return { kind: 'FOUND', txHash: hash };
       }
     }

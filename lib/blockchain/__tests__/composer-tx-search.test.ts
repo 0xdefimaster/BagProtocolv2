@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { encodeFunctionData, parseAbi } from 'viem';
 import { COMPOSER_SEARCH_CHUNK_BLOCKS, findComposerTransactionFromWallet } from '../composer-tx-search';
 
 const WALLET = '0x1111111111111111111111111111111111111111';
@@ -67,6 +68,19 @@ describe('findComposerTransactionFromWallet', () => {
       },
     });
     expect(await run(client)).toEqual({ kind: 'NOT_FOUND' });
+  });
+
+  it('finds a wallet batch (the wallet calling itself) that carries the exact built call; a batch without it does not count', async () => {
+    const batch = (data: `0x${string}`) =>
+      encodeFunctionData({ abi: parseAbi(['function executeBatch((address target, uint256 value, bytes data)[] calls)']), functionName: 'executeBatch', args: [[{ target: VM, value: BigInt(0), data }]] });
+    const { client } = fakeClient({
+      logs: [{ block: BigInt(20_100), hash: h(6) }, { block: BigInt(20_200), hash: h(7) }],
+      txs: {
+        [h(6)]: { from: WALLET, to: WALLET, input: batch('0xcafebabe'), value: BigInt(0) },
+        [h(7)]: { from: WALLET, to: WALLET, input: batch('0xdeadbeef'), value: BigInt(0) },
+      },
+    });
+    expect(await run(client)).toEqual({ kind: 'FOUND', txHash: h(7) });
   });
 
   it('a wallet transaction still pending: UNKNOWN (it could be this sale), nothing searched', async () => {

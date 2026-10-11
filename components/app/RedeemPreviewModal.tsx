@@ -123,7 +123,10 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
     let cancelled = false;
     setLoadingPosition(true);
     setPositionError(null);
-    fetch(`/api/bags/${bagId}/redeem-preview`, { credentials: 'same-origin' })
+    // Books earlier sales that ran on-chain but were not matched yet (best effort), so the position below is current.
+    fetch(`/api/bags/${bagId}/redeem-recheck`, { method: 'POST', credentials: 'same-origin' })
+      .catch(() => undefined)
+      .then(() => fetch(`/api/bags/${bagId}/redeem-preview`, { credentials: 'same-origin' }))
       .then(async (res) => {
         if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `Request failed (${res.status})`);
         return res.json() as Promise<{ position: PositionView | null; outputAssets: OutputAssetOption[] }>;
