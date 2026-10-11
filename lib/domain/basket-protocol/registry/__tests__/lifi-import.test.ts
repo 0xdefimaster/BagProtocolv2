@@ -16,7 +16,7 @@ vi.mock('@lifi/sdk', async (importOriginal) => {
   };
 });
 
-const { fetchLiFiTokenCandidatesForChain, planLiFiImportForChain, applyLiFiImportPlan } = await import(
+const { fetchLiFiTokenCandidatesForChain, fetchLiFiStockCandidatesForChain, planLiFiImportForChain, applyLiFiImportPlan } = await import(
   '../lifi-import'
 );
 
@@ -388,5 +388,55 @@ describe('applyLiFiImportPlan', () => {
 
     expect(result.registered).toHaveLength(1);
     expect(result.failed).toEqual([{ input: plan.toRegister[1], error: 'boom' }]);
+  });
+});
+
+describe('fetchLiFiStockCandidatesForChain (tokenized stocks on ethereum / base / arbitrum)', () => {
+  const stock = (o: Record<string, unknown>) => ({ decimals: 18, tags: ['rwa'], verificationStatus: 'verified', ...o });
+  const tokens = () => ({
+    tokens: {
+      8453: [
+        stock({ address: '0xaaa', symbol: 'TSLAx', name: 'Tesla xStock', marketCapUSD: 1234567.8, priceUSD: '412.5' }),
+        stock({ address: '0xbbb', symbol: 'NVDAx', name: 'NVIDIA xStock' }),
+        stock({ address: '0xccc', symbol: 'FAKE', name: 'Unverified stock', verificationStatus: 'unverified' }),
+        stock({ address: '0xddd', symbol: 'BAD', name: 'Flagged stock', verificationStatus: 'flagged' }),
+        stock({ address: '0xe01', symbol: 'DUP', name: 'One' }),
+        stock({ address: '0xe02', symbol: 'DUP', name: 'Two' }),
+        { address: '0xfff', symbol: 'USDC', name: 'USDC', decimals: 6, tags: ['stablecoin'], verificationStatus: 'verified' },
+        stock({ address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', name: 'Ether' }),
+      ],
+    },
+  });
+
+  it('lists only LI.FI-verified rwa tokens, from LI.FI’s own fields, as stocks; crypto is never touched', async () => {
+    getTokensMock.mockResolvedValue(tokens());
+    const r = await fetchLiFiStockCandidatesForChain('base');
+    expect(r.fetchError).toBeUndefined();
+    expect(r.candidates.map((c) => [c.symbol, c.address, c.assetType, c.chain])).toEqual([
+      ['NVDAx', '0xbbb', 'stock', 'base'],
+      ['TSLAx', '0xaaa', 'stock', 'base'],
+    ]);
+    expect(r.candidates.find((c) => c.symbol === 'TSLAx')).toMatchObject({ marketCapUSD: 1234567.8, priceUSD: '412.5', decimals: 18, name: 'Tesla xStock' });
+    expect(Object.fromEntries(r.skipped.map((s) => [s.address, s.reason]))).toEqual({
+      '0xccc': 'UNVERIFIED_BY_LIFI',
+      '0xddd': 'FLAGGED_BY_LIFI',
+      '0xe01': 'AMBIGUOUS_SYMBOL',
+      '0xe02': 'AMBIGUOUS_SYMBOL',
+      '0x0000000000000000000000000000000000000000': 'NATIVE_TOKEN',
+    });
+  });
+
+  it('--only keeps just the requested symbols (case-insensitive); the rest are NOT_REQUESTED', async () => {
+    getTokensMock.mockResolvedValue(tokens());
+    const r = await fetchLiFiStockCandidatesForChain('base', { only: ['tslax'] });
+    expect(r.candidates.map((c) => c.symbol)).toEqual(['TSLAx']);
+    expect(r.skipped.find((s) => s.symbol === 'NVDAx')?.reason).toBe('NOT_REQUESTED');
+  });
+
+  it('a fetch failure is reported, never thrown; stock mode never marks an existing row stale', async () => {
+    getTokensMock.mockRejectedValue(new Error('rate limited'));
+    expect(await fetchLiFiStockCandidatesForChain('ethereum')).toEqual({ candidates: [], skipped: [], fetchError: 'rate limited' });
+    const plan = planLiFiImportForChain([], [makeCanonicalAsset({ symbol: 'WETH', status: 'VERIFIED', assetType: 'crypto' })], []);
+    expect(plan.staleVerified).toEqual([]);
   });
 });

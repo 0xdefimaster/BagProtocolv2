@@ -67,6 +67,7 @@ export interface LiFiRawToken {
 }
 
 export type SkippedLiFiTokenReason =
+  | 'NOT_REQUESTED'
   | 'NATIVE_TOKEN'
   | 'STOCK_TOKEN'
   | 'FLAGGED_BY_LIFI'
@@ -298,6 +299,87 @@ export async function fetchLiFiTokenCandidatesForChain(
     });
   }
 
+  return { candidates, skipped };
+}
+
+/** Networks whose tokenized stocks are imported from LI.FI. Robinhood Stock Tokens keep their first-party source (robinhood-import.ts). */
+export type LiFiStockImportChain = Extract<LiFiImportTargetChain, 'ethereum' | 'base' | 'arbitrum'>;
+
+export interface LiFiStockCandidate extends RegisterAssetInput {
+  /** LI.FI's market cap and USD price, printed for the owner's review; never written to the registry. */
+  marketCapUSD: number | null;
+  priceUSD: string | null;
+}
+
+/**
+ * Tokenized stocks LI.FI lists on an EVM network, for the owner to review: every
+ * token LI.FI tags `rwa` (its tokenized-equity signal) and marks VERIFIED. No
+ * exception for an unverified or flagged token, no native token, no missing
+ * field, and a symbol more than one such token claims is skipped as ambiguous.
+ * `only`, when given, keeps just those symbols; every other stock is reported
+ * as NOT_REQUESTED. Addresses, decimals and names come from LI.FI's response,
+ * never from this code. Never throws: a fetch failure is returned as `fetchError`.
+ */
+export async function fetchLiFiStockCandidatesForChain(
+  targetChain: LiFiStockImportChain,
+  options: { only?: string[] } = {}
+): Promise<{ candidates: LiFiStockCandidate[]; skipped: SkippedLiFiToken[]; fetchError?: string }> {
+  let rawTokens: (LiFiRawToken & { priceUSD?: string })[];
+  try {
+    const numericChainId = toLiFiChainId(targetChain);
+    const response = await getTokens(getLiFiClient(), { chains: [numericChainId], extended: true });
+    rawTokens = (response.tokens[numericChainId] ?? []) as unknown as (LiFiRawToken & { priceUSD?: string })[];
+  } catch (err) {
+    return { candidates: [], skipped: [], fetchError: err instanceof Error ? err.message : String(err) };
+  }
+
+  const only = options.only && options.only.length > 0 ? new Set(options.only.map((s) => s.toUpperCase())) : null;
+  const skipped: SkippedLiFiToken[] = [];
+  const bySymbol = new Map<string, (LiFiRawToken & { priceUSD?: string })[]>();
+  for (const token of rawTokens) {
+    if (classifyLiFiToken(token) !== 'stock') continue;
+    if (typeof token.decimals !== 'number' || !token.address || !token.symbol) continue; // never fabricate a missing field
+    const skip = (reason: SkippedLiFiTokenReason) => skipped.push({ symbol: token.symbol, address: token.address, name: token.name, reason });
+    if (token.address.toLowerCase() === NATIVE_TOKEN_ADDRESS) {
+      skip('NATIVE_TOKEN');
+      continue;
+    }
+    if (token.verificationStatus === 'flagged') {
+      skip('FLAGGED_BY_LIFI');
+      continue;
+    }
+    if (token.verificationStatus !== 'verified') {
+      skip('UNVERIFIED_BY_LIFI');
+      continue;
+    }
+    if (only && !only.has(token.symbol.toUpperCase())) {
+      skip('NOT_REQUESTED');
+      continue;
+    }
+    const key = token.symbol.toUpperCase();
+    bySymbol.set(key, [...(bySymbol.get(key) ?? []), token]);
+  }
+
+  const candidates: LiFiStockCandidate[] = [];
+  for (const tokens of bySymbol.values()) {
+    if (tokens.length > 1) {
+      for (const t of tokens) skipped.push({ symbol: t.symbol, address: t.address, name: t.name, reason: 'AMBIGUOUS_SYMBOL' });
+      continue;
+    }
+    const [t] = tokens;
+    candidates.push({
+      chain: targetChain,
+      address: t.address,
+      symbol: t.symbol,
+      decimals: t.decimals,
+      name: t.name || t.symbol,
+      assetType: 'stock',
+      logoUrl: sanitizeLogoUrl(t.logoURI),
+      marketCapUSD: typeof t.marketCapUSD === 'number' ? t.marketCapUSD : null,
+      priceUSD: typeof t.priceUSD === 'string' ? t.priceUSD : null,
+    });
+  }
+  candidates.sort((a, b) => a.symbol.localeCompare(b.symbol));
   return { candidates, skipped };
 }
 
