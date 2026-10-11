@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Scale, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { formatDecimalStringUsd } from '@/lib/format';
+import { Scale, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import { formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
 import type { PositionRebalancePreview } from '@/lib/domain/basket-protocol/rebalance/position-rebalance';
 
 // -----------------------------------------------------------------------------
@@ -17,10 +17,45 @@ interface Response {
   preview: PositionRebalancePreview;
 }
 
+interface QuoteLeg {
+  address: string;
+  symbol: string;
+  decimals: number;
+  amountRaw: string | null;
+  expectedOutRaw: string | null;
+  minOutRaw: string | null;
+}
+
+interface Quote {
+  sells: QuoteLeg[];
+  buys: QuoteLeg[];
+  slippageBps: number;
+  priceImpactBps: number | null;
+}
+
 const pct = (bps: number) => `${(bps / 100).toFixed(1)}%`;
 
 export function RebalancePreviewCard({ bagId }: { bagId: string }) {
   const [data, setData] = useState<Response | null>(null);
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quoting, setQuoting] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+
+  const getQuote = async () => {
+    setQuoting(true);
+    setQuoteError(null);
+    try {
+      const res = await fetch(`/api/bags/${encodeURIComponent(bagId)}/rebalance-quote`, { method: 'POST', credentials: 'same-origin' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'No quote right now.');
+      setQuote(body as Quote);
+    } catch (err) {
+      setQuote(null);
+      setQuoteError((err as Error).message);
+    } finally {
+      setQuoting(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -106,8 +141,46 @@ export function RebalancePreviewCard({ bagId }: { bagId: string }) {
                 {formatDecimalStringUsd(o.value)} of {label(o.asset.chain, o.asset.address, o.symbol)}
               </span>
             ))}
-            , in your own wallet, with no creator fee. One-click rebalance is coming next.
+            , in your own wallet, with no creator fee.
           </p>
+          <button onClick={() => void getQuote()} disabled={quoting} className="btn btn-primary mt-3">
+            {quoting ? (
+              <span className="inline-flex items-center gap-2">
+                <Loader2 size={14} className="spin" /> Getting a live quote…
+              </span>
+            ) : (
+              'Get a live rebalance quote'
+            )}
+          </button>
+          {quoteError && <p className="mt-2 text-red-400">{quoteError}</p>}
+          {quote && (
+            <div className="mt-3 rounded-lg border border-white/10 p-3 text-white/70">
+              <p className="mb-1">
+                Sell{' '}
+                {quote.sells.map((l, i) => (
+                  <span key={l.address}>
+                    {i > 0 ? ', ' : ''}
+                    {l.amountRaw ? formatRawAmount(l.amountRaw, l.decimals) : '?'} {l.symbol}
+                  </span>
+                ))}
+              </p>
+              <p className="mb-1">
+                Receive about{' '}
+                {quote.buys.map((l, i) => (
+                  <span key={l.address}>
+                    {i > 0 ? ', ' : ''}
+                    {l.expectedOutRaw ? formatRawAmount(l.expectedOutRaw, l.decimals) : '?'} {l.symbol}
+                    {l.minOutRaw ? ` (at least ${formatRawAmount(l.minOutRaw, l.decimals)})` : ''}
+                  </span>
+                ))}
+              </p>
+              <p className="text-xs text-white/50">
+                One LI.FI Composer transaction, {quote.slippageBps / 100}% max slippage per swap
+                {quote.priceImpactBps !== null ? `, ${(quote.priceImpactBps / 100).toFixed(2)}% price impact` : ''}. Live quote only: signing the
+                rebalance from your wallet is the next step.
+              </p>
+            </div>
+          )}
         </div>
       ) : (
         <p className="text-sm text-emerald-400 inline-flex items-center gap-1">

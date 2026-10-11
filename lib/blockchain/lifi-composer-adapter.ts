@@ -509,6 +509,169 @@ export async function buildComposerSweep(request: ComposerSweepRequest): Promise
 }
 
 // -----------------------------------------------------------------------------
+// Rebalance of one investor's position (R2): the overweight tokens the wallet
+// holds → the underweight ones, in ONE Composer transaction, into the same
+// wallet. The shortest shape that covers the trade:
+//   one sell  → split straight across the buys          (one swap per buy)
+//   one buy   → every sell swaps straight into it        (one swap per sell)
+//   otherwise → sells → hub stablecoin → merged → split across the buys
+// Same guards as purchase and sweep: per-swap slippage guard, Composer's
+// price-impact limit, approvals only for tokens sold and never above the
+// amount sold, no native ETH. Signs and sends nothing.
+// -----------------------------------------------------------------------------
+
+export interface ComposerRebalanceSell {
+  address: string;
+  amountRaw: string;
+  symbol: string;
+}
+
+export interface ComposerRebalanceBuy {
+  address: string;
+  /** Share of the proceeds this token receives; all buys sum to exactly 10000. */
+  weightBps: number;
+  symbol: string;
+}
+
+export interface ComposerRebalanceRequest {
+  chain: ChainId;
+  sells: ComposerRebalanceSell[];
+  buys: ComposerRebalanceBuy[];
+  /** The stablecoin the many-to-many shape routes through (the chain's settlement stablecoin). */
+  hubTokenAddress: string;
+  signerAddress: string;
+  slippageBps: number;
+  maxPriceImpactBps?: number;
+  apiKey: string;
+  baseUrl?: string;
+  fetchImpl?: typeof fetch;
+}
+
+export type RebalanceShape = 'ONE_SELL' | 'ONE_BUY' | 'HUB';
+
+/** Node ids: `rb_sell_<i>` swaps sell i; `rb_buy_<j>` produces buy j (its output port is `rb_buy_<j>.amountOut`). */
+export const rebalanceSellNodeId = (i: number) => `rb_sell_${i}`;
+export const rebalanceBuyNodeId = (j: number) => `rb_buy_${j}`;
+
+export function rebalanceShape(sells: number, buys: number): RebalanceShape {
+  return sells === 1 ? 'ONE_SELL' : buys === 1 ? 'ONE_BUY' : 'HUB';
+}
+
+export async function buildComposerRebalance(request: ComposerRebalanceRequest): Promise<ComposerPurchaseResult & { shape: RebalanceShape }> {
+  if (!COMPOSER_ELIGIBLE_CHAINS.includes(request.chain) || request.sells.length === 0 || request.buys.length === 0) {
+    throw new ComposerIneligibleError(`Chain "${request.chain}" with ${request.sells.length} sell(s) and ${request.buys.length} buy(s) cannot be rebalanced through Composer.`);
+  }
+  const hub = request.hubTokenAddress.toLowerCase();
+  const sold = new Set<string>();
+  for (const s of request.sells) {
+    const a = s.address.toLowerCase();
+    if (sold.has(a)) throw new Error(`${s.symbol} is sold twice.`);
+    if (!/^\d+$/.test(s.amountRaw) || BigInt(s.amountRaw) <= BigInt(0)) throw new Error(`${s.symbol}: sell amount must be a positive integer.`);
+    sold.add(a);
+  }
+  const bought = new Set<string>();
+  for (const b of request.buys) {
+    const a = b.address.toLowerCase();
+    if (sold.has(a)) throw new Error(`${b.symbol} cannot be both sold and bought.`);
+    if (bought.has(a)) throw new Error(`${b.symbol} is bought twice.`);
+    if (!Number.isInteger(b.weightBps) || b.weightBps <= 0) throw new Error(`${b.symbol}: weight must be a positive whole number of bps.`);
+    bought.add(a);
+  }
+  if (request.buys.reduce((sum, b) => sum + b.weightBps, 0) !== 10000) throw new Error('Buy weights must sum to exactly 10000 bps.');
+  if (sold.has(hub) || bought.has(hub)) {
+    // The hub never appears as a basket trade here: a stablecoin holding would need its own no-swap leg.
+    if (rebalanceShape(request.sells.length, request.buys.length) === 'HUB') throw new Error('The hub stablecoin cannot itself be sold or bought in a many-to-many rebalance.');
+  }
+
+  const chainId = toLiFiChainId(request.chain);
+  const sdkOptions: ComposeSdkOptions = { baseUrl: request.baseUrl ?? 'https://composer.li.quest', apiKey: request.apiKey };
+  if (request.fetchImpl !== undefined) {
+    (sdkOptions as { fetch?: typeof fetch }).fetch = request.fetchImpl;
+  }
+  const sdk = createComposeSdk(sdkOptions);
+
+  const inputSchema: Record<string, ReturnType<typeof resources.erc20>> = {};
+  request.sells.forEach((s, i) => {
+    inputSchema[`in_${i}`] = resources.erc20(s.address as `0x${string}`, chainId);
+  });
+  const shape = rebalanceShape(request.sells.length, request.buys.length);
+  const builder = sdk.flow(chainId, { name: `bag-rebalance-${request.sells.length}-to-${request.buys.length}`, inputs: inputSchema });
+  const builderInputs = builder.inputs as Record<string, Bindable<'resource'>>;
+  const slippage = request.slippageBps / 10000;
+  const swap = (id: string, source: Bindable<'resource'>, token: string) =>
+    builder.lifi.swap(id, {
+      bind: { amountIn: source },
+      config: { resourceOut: { kind: 'erc20', token: token as `0x${string}`, chainId }, slippage },
+      guards: [guards.slippage({ port: 'unspentIn', bps: request.slippageBps })],
+    });
+  // Cascade split of `source` across the buys (same arithmetic as the purchase flow).
+  const splitAcrossBuys = (source: Bindable<'resource'>) => {
+    const steps = computeCascadeSplitBps(request.buys);
+    let current = source;
+    for (let j = 0; j < request.buys.length - 1; j++) {
+      const { a, b } = builder.core.split(`rb_split_${j}`, { bind: { source: current }, config: { bps: steps[j] } });
+      swap(rebalanceBuyNodeId(j), a, request.buys[j].address);
+      current = b;
+    }
+    swap(rebalanceBuyNodeId(request.buys.length - 1), current, request.buys[request.buys.length - 1].address);
+  };
+
+  if (shape === 'ONE_SELL') {
+    splitAcrossBuys(builderInputs.in_0);
+  } else if (shape === 'ONE_BUY') {
+    // Each sell swaps straight into the one buy; the buy's output is each sell node's own output.
+    request.sells.forEach((_s, i) => swap(rebalanceSellNodeId(i), builderInputs[`in_${i}`], request.buys[0].address));
+  } else {
+    const parts = request.sells.map((_s, i) => swap(rebalanceSellNodeId(i), builderInputs[`in_${i}`], request.hubTokenAddress).amountOut);
+    let merged = parts[0];
+    for (let i = 1; i < parts.length; i++) merged = builder.core.merge(`rb_merge_${i}`, { bind: { a: merged, b: parts[i] } }).merged;
+    splitAcrossBuys(merged);
+  }
+
+  const runInputs: Record<string, ReturnType<typeof materialisers.directDeposit>> = {};
+  request.sells.forEach((s, i) => {
+    runInputs[`in_${i}`] = materialisers.directDeposit({ amount: BigInt(s.amountRaw) });
+  });
+  const result = await builder.compile({
+    signer: request.signerAddress as `0x${string}`,
+    inputs: runInputs as never,
+    sweepTo: { $ref: 'context.sender' },
+    checkOnChainAllowances: true,
+    ...(request.maxPriceImpactBps !== undefined ? { maxPriceImpactBps: request.maxPriceImpactBps } : {}),
+  });
+
+  if (result.status !== 'success') {
+    throw new Error(`Composer flow compilation failed: ${result.error.kind} — ${result.error.message}`);
+  }
+  if (!result.transactionRequest) {
+    throw new Error('Composer flow reported success but returned no transactionRequest.');
+  }
+  if (BigInt(result.transactionRequest.value ?? '0') !== BigInt(0)) {
+    throw new Error('Composer returned a rebalance transaction that also spends native ETH.');
+  }
+  const amountByToken = new Map(request.sells.map((s) => [s.address.toLowerCase(), BigInt(s.amountRaw)]));
+  const approvals: ComposerApproval[] = (result.approvals ?? []).map((a) => ({ token: a.token, spender: a.spender, amountRaw: a.amount }));
+  for (const a of approvals) {
+    const limit = amountByToken.get(a.token.toLowerCase());
+    if (limit === undefined) throw new Error(`Composer requested an approval for ${a.token}, which is not being sold.`);
+    if (!/^0x[0-9a-fA-F]{40}$/.test(a.spender) || !/^\d+$/.test(a.amountRaw) || BigInt(a.amountRaw) > limit) {
+      throw new Error('Composer returned an approval with an invalid spender or an amount above what is being sold.');
+    }
+  }
+
+  return {
+    shape,
+    approvals,
+    transactionRequest: { to: result.transactionRequest.to, data: result.transactionRequest.data, value: result.transactionRequest.value ?? '0', chainId },
+    userProxy: result.userProxy,
+    producedResources: result.producedResources,
+    gasLimitRaw: result.transactionRequest.gasLimit ?? null,
+    priceImpact: result.priceImpact ?? null,
+    fees: (result.fees ?? []).map((f) => ({ token: f.token, recipient: f.recipient, bps: f.bps, amount: f.amount })),
+  };
+}
+
+// -----------------------------------------------------------------------------
 // Fee-paying redemption through RedeemSettlement (docs/LIFI_COMPOSER_FEE_SETTLEMENT_FEASIBILITY.md §8–§9): every
 // held token sold into USDG (a USDG holding goes in as is), the outputs merged, the merged USDG transferred to the
 // settlement contract, then `settleFlat` called — the push shape proven live (P1 SP/SP2). The settle arguments are
