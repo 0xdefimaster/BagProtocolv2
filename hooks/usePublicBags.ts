@@ -24,15 +24,19 @@ export function usePublicBags() {
   /** HTTP status of the failed request (e.g. 503 = this deployment has no database configured), null on a network error. */
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
 
-  const refresh = useCallback(() => {
-    setStatus('loading');
-    setError(null);
-    setErrorStatus(null);
+  /** `silent`: a background refresh — the current list stays on screen, and a failed refresh keeps it. */
+  const refresh = useCallback((options: { silent?: boolean } = {}) => {
+    const silent = options.silent === true;
+    if (!silent) {
+      setStatus('loading');
+      setError(null);
+      setErrorStatus(null);
+    }
 
     fetch('/api/bags', { credentials: 'same-origin' })
       .then(async (res) => {
         if (!res.ok) {
-          setErrorStatus(res.status);
+          if (!silent) setErrorStatus(res.status);
           const body = await res.json().catch(() => ({}) as { error?: string });
           throw new Error(body.error ?? `Request failed (${res.status}).`);
         }
@@ -43,6 +47,7 @@ export function usePublicBags() {
         setStatus('success');
       })
       .catch((err: Error) => {
+        if (silent) return;
         setBags([]);
         setStatus('error');
         setError(err.message || 'Could not load bags.');

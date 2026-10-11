@@ -1,11 +1,14 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Trophy } from 'lucide-react';
 import { usePublicBags } from '@/hooks/usePublicBags';
 import { useWallet } from '@/lib/wallet-context';
 import { rankBags, rankCreators, type BagMetric } from '@/lib/domain/leaderboard/rank';
 import { BagLeaderboardTable, CreatorLeaderboardTable } from '@/components/leaderboard/LeaderboardTable';
+
+/** The NAV pass runs every 5 minutes; the page picks up new figures within a minute of it, while the tab is visible. */
+const LEADERBOARD_REFRESH_MS = 60_000;
 
 const METRICS: { id: BagMetric; label: string }[] = [
   { id: 'tvl', label: 'TVL' },
@@ -22,6 +25,18 @@ export default function LeaderboardPage() {
   const [view, setView] = useState<'bags' | 'creators'>('bags');
   const [metric, setMetric] = useState<BagMetric>('tvl');
   const selfAddress = isConnected ? walletAddress : undefined;
+
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState === 'visible') refresh({ silent: true });
+    };
+    const t = setInterval(tick, LEADERBOARD_REFRESH_MS);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [refresh]);
 
   const bagRows = useMemo(() => rankBags(bags, metric), [bags, metric]);
   const creatorRows = useMemo(() => rankCreators(bags), [bags]);
@@ -69,7 +84,7 @@ export default function LeaderboardPage() {
         ) : isError ? (
           <div className="positions-empty">
             Could not load the leaderboard: {error}{' '}
-            <button type="button" className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={refresh}>
+            <button type="button" className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={() => refresh()}>
               Retry
             </button>
           </div>
@@ -91,8 +106,9 @@ export default function LeaderboardPage() {
       </div>
 
       <p className="mono" style={{ fontSize: 11, color: 'var(--mute)', marginTop: 16, lineHeight: 1.6 }}>
-        TVL and returns come from recorded NAV snapshots, holders from positions BAG has verified on-chain. A Bag with
-        no recorded return for a period is not ranked by it. Rankings are not investment advice.
+        TVL and returns come from NAV snapshots taken every 5 minutes; holders are wallets that still hold the Bag&apos;s
+        assets. The page refreshes every minute. A Bag with no recorded return for a period is not ranked by it.
+        Rankings are not investment advice.
       </p>
     </main>
   );
