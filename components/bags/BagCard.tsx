@@ -9,6 +9,7 @@ import { useForkBag } from '@/hooks/useForkBag';
 import dynamic from 'next/dynamic';
 import { getCategoryBreakdown, getDiversificationScore, categoryForPosition, CATEGORY_COLORS } from '@/lib/categorize';
 import { Users, GitFork, TrendingUp, TrendingDown } from 'lucide-react';
+import { VerificationBadge } from '@/components/bags/VerificationBadge';
 
 // Loaded when Invest is opened: the purchase flow (LI.FI SDK, viem) stays out of every page that lists Bags.
 const PurchasePreviewModal = dynamic(() => import('@/components/app/PurchasePreviewModal').then((m) => m.PurchasePreviewModal), { ssr: false });
@@ -152,6 +153,7 @@ export function BagCard({ bag, isNew }: BagCardProps) {
           <span>
             <GitFork size={12} /> {formatCompact(bag.forks)} forks
           </span>
+          <VerificationBadge verification={bag.verification} />
         </div>
         <div className="bag-chains">
           {bag.chains.map((chain) => (

@@ -5,6 +5,7 @@ const reconcileWallet = vi.fn();
 const trackedAssets = vi.fn();
 const reconcileDue = vi.fn();
 const usersIn = vi.fn();
+const transferScan = vi.fn();
 vi.mock('@/lib/supabase/server', () => ({
   isSupabaseConfigured: () => true,
   supabaseAdmin: () => ({ from: () => ({ select: () => ({ in: (_c: string, v: string[]) => usersIn(v) }) }) }),
@@ -15,6 +16,8 @@ vi.mock('@/lib/server/wallet-reconciliation', () => ({
   trackedAssetsForUser: (...a: unknown[]) => trackedAssets(...a),
   reconcileDueWallets: (...a: unknown[]) => reconcileDue(...a),
 }));
+
+vi.mock('@/lib/server/wallet-transfer-scan', () => ({ scanTrackedWalletTransfers: (...a: unknown[]) => transferScan(...a) }));
 
 import { POST as webhook } from '@/app/api/webhooks/alchemy/address-activity/route';
 import { POST as cron } from '@/app/api/cron/reconcile-wallets/route';
@@ -67,6 +70,8 @@ describe('POST /api/cron/reconcile-wallets', () => {
     expect((await cron(new Request('http://x', { method: 'POST' }) as never)).status).toBe(401);
     const ok = await cron(new Request('http://x', { method: 'POST', headers: { authorization: 'Bearer a-long-enough-cron-secret-value-123456' } }) as never);
     expect(ok.status).toBe(200);
-    expect(reconcileDue).toHaveBeenCalled();
+    // Every holder through Transfer logs first, then a few wallets in full.
+    expect(transferScan).toHaveBeenCalled();
+    expect(reconcileDue).toHaveBeenCalledWith(expect.anything(), expect.anything(), 5);
   });
 });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getNavSummaries } from '@/lib/server/bag-nav-snapshots';
 import { getBagSocialCounts } from '@/lib/server/bag-social-counts';
+import { getBagVerification } from '@/lib/server/bag-verification';
 import { requireSession } from '@/lib/auth/require-session';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
 import { countRecentDraftBags, createBag, DRAFT_WINDOW_MS, getCurrentBagVersion, listBags, MAX_RECENT_DRAFTS } from '@/lib/server/bag-repo';
@@ -122,16 +123,23 @@ export async function GET(req: NextRequest) {
   const versions = await Promise.all(bags.map((bag) => getCurrentBagVersion(admin, bag.id)));
   const versionsById = new Map(bags.map((bag, i) => [bag.id, versions[i]]));
 
-  const [assetsByKey, creatorsById, navSummaries, socialCounts] = await Promise.all([
+  const [assetsByKey, creatorsById, navSummaries, socialCounts, verification] = await Promise.all([
     loadRecipeAssets(admin, versions),
     loadCreatorProfiles(admin, bags.map((b) => b.creatorId)),
     // TVL + 7D/30D/YTD from recorded NAV snapshots, one query for the whole
     // list. A failure (e.g. migration 0045 not applied) only hides them.
     getNavSummaries(admin, bags.map((b) => b.id)).catch(() => new Map()),
     getBagSocialCounts(admin, bags.map((b) => b.id)).catch(() => new Map()),
+    // How current each Bag is against the chain (wallet reconciliation). A failure only hides it.
+    getBagVerification(admin, bags.map((b) => b.id)).catch(() => new Map()),
   ]);
   return NextResponse.json(
-    { bags: mapBagRecordsToApiResponse(bags, versionsById, creatorsById, assetsByKey, navSummaries, socialCounts) },
+    {
+      bags: mapBagRecordsToApiResponse(bags, versionsById, creatorsById, assetsByKey, navSummaries, socialCounts).map((b) => {
+        const v = verification.get(b.id);
+        return v ? { ...b, verification: v } : b;
+      }),
+    },
     { status: 200 }
   );
 }

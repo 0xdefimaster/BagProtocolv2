@@ -3,14 +3,17 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
 import { requireCronSecret } from '@/lib/server/require-cron-secret';
 import { getRobinhoodPublicClient } from '@/lib/blockchain/robinhood-public-client';
 import { reconcileDueWallets } from '@/lib/server/wallet-reconciliation';
+import { scanTrackedWalletTransfers } from '@/lib/server/wallet-transfer-scan';
 
 // -----------------------------------------------------------------------------
-// GET|POST /api/cron/reconcile-wallets — the 5-minute safety pass of wallet
-// reconciliation (Accounting V2 / A2, lib/server/wallet-reconciliation.ts):
-// re-reads balances for the least recently checked users so a missed webhook
-// is corrected, and confirms drift that has persisted. Scheduled by
+// GET|POST /api/cron/reconcile-wallets — the 5-minute wallet reconciliation
+// pass (Accounting V2 / A2): every holder through Transfer logs
+// (lib/server/wallet-transfer-scan.ts), wallets that moved re-read in full,
+// drift confirmed; then a few least recently checked wallets in full. Scheduled by
 // netlify/functions/reconcile-wallets.mts; CRON_SECRET auth (fails closed).
 // -----------------------------------------------------------------------------
+
+const ROUND_ROBIN_BATCH = 5;
 
 async function handle(req: NextRequest) {
   const authError = requireCronSecret(req);
@@ -19,7 +22,13 @@ async function handle(req: NextRequest) {
     return NextResponse.json({ error: 'Supabase is not configured on this deployment yet.' }, { status: 503 });
   }
   try {
-    return NextResponse.json(await reconcileDueWallets(supabaseAdmin(), getRobinhoodPublicClient()));
+    const admin = supabaseAdmin();
+    const client = getRobinhoodPublicClient();
+    // Every holder through Transfer logs first; then a few wallets in full, least recently checked first
+    // (wallets the scan does not cover, and a safety net for anything a log scan cannot see).
+    const scan = await scanTrackedWalletTransfers(admin, client);
+    const roundRobin = await reconcileDueWallets(admin, client, ROUND_ROBIN_BATCH);
+    return NextResponse.json({ scan, roundRobin });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }
