@@ -52,12 +52,31 @@ function isRedeemSettlementConfigured(): boolean {
 /** `partial`: some legs sold and some failed (A4) — never reported as a completed sale. */
 export type RedeemExecutionPhase = 'idle' | 'creating' | 'preparing' | 'awaiting_signature' | 'confirming' | 'completed' | 'partial' | 'failed';
 
+/**
+ * A fee-paying sale whose wallet signature was declined while its settlement attestation is still valid on-chain.
+ * Declining is not final for such a sale: the same signed transaction can be signed again until `deadline`, and a
+ * DIFFERENT sale of the position stays locked until then (the lock protects the creator's fee, fee-redemption-lock.ts).
+ */
+export interface ResumableSale {
+  intentId: string;
+  composerTransaction: NonNullable<RedeemIntent['composerTransaction']>;
+  swapSteps: RedeemIntentStepRecord[];
+  walletAddress: string;
+  /** Unix seconds: RedeemSettlement refuses the transaction after it. */
+  deadline: number;
+}
+
 export interface RedeemExecutionState {
   phase: RedeemExecutionPhase;
   intent: RedeemIntent | null;
   activeStepIndex: number | null;
   error: string | null;
   failureCode: RedeemIntentFailureCode | null;
+  /** Machine-readable reason for `error`, e.g. SESSION_EXPIRED. */
+  errorCode: string | null;
+  resumable: ResumableSale | null;
+  /** An earlier open sale of this position that blocks a new one and cannot be re-signed: it can be closed. */
+  blocking: { intentId: string; status: string; createdAt: string } | null;
 }
 
 const INITIAL_STATE: RedeemExecutionState = {
@@ -66,7 +85,13 @@ const INITIAL_STATE: RedeemExecutionState = {
   activeStepIndex: null,
   error: null,
   failureCode: null,
+  errorCode: null,
+  resumable: null,
+  blocking: null,
 };
+
+/** A pending sale is offered for re-signing only with at least this much time left before its deadline. */
+const RESUME_MARGIN_MS = 15_000;
 
 async function postJson<T>(url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
@@ -77,16 +102,49 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new RedeemExecutionHttpError(data?.error ?? `Request failed (${res.status})`, data?.failureCode ?? null, data?.code ?? null);
+    if (res.status === 401) throw new RedeemExecutionHttpError('Your session has expired. Sign in again to continue.', null, 'SESSION_EXPIRED');
+    throw new RedeemExecutionHttpError(data?.error ?? `Request failed (${res.status})`, data?.failureCode ?? null, data?.code ?? null, data?.intentId ?? null);
   }
   return data as T;
+}
+
+/** Best effort: a failed read only means no "Sign again" offer, never a failed sale. */
+async function getIntent(intentId: string): Promise<RedeemIntent | null> {
+  try {
+    const res = await fetch(`/api/redeem-intent/${intentId}`, { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    const data = (await res.json().catch(() => null)) as { intent?: RedeemIntent } | null;
+    return data?.intent ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** The pending fee-paying sale `intent` can still be signed as is: awaiting signature, nothing sent, deadline ahead. */
+function resumableSaleOf(intent: RedeemIntent | null, walletAddress: string): ResumableSale | null {
+  const deadline = intent?.settlementPlan?.deadline;
+  if (!intent || intent.status !== 'AWAITING_SIGNATURE' || !intent.composerTransaction || typeof deadline !== 'number') return null;
+  if (deadline * 1000 - Date.now() <= RESUME_MARGIN_MS) return null;
+  if (intent.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) return null;
+  const swapSteps = intent.steps.filter((s) => s.action === 'SWAP');
+  if (swapSteps.some((s) => s.txHash !== null)) return null;
+  return { intentId: intent.id, composerTransaction: intent.composerTransaction, swapSteps, walletAddress, deadline };
+}
+
+/** Thrown by executeComposerSale when the wallet declined a sale that can still be signed again (see ResumableSale). */
+class ResumableRejectionError extends Error {
+  constructor(public readonly sale: ResumableSale) {
+    super('You declined the signature in your wallet.');
+    this.name = 'ResumableRejectionError';
+  }
 }
 
 class RedeemExecutionHttpError extends Error {
   constructor(
     message: string,
     public readonly failureCode: RedeemIntentFailureCode | null,
-    public readonly code: string | null = null
+    public readonly code: string | null = null,
+    public readonly intentId: string | null = null
   ) {
     super(message);
     this.name = 'RedeemExecutionHttpError';
@@ -163,9 +221,15 @@ export function useRedeemExecution() {
     lastReportedRef.current.clear();
   }, []);
 
-  const fail = useCallback((error: string, failureCode: RedeemIntentFailureCode | null = null) => {
-    setState((s) => ({ ...s, phase: 'failed', error, failureCode }));
+  const fail = useCallback((error: string, failureCode: RedeemIntentFailureCode | null = null, errorCode: string | null = null) => {
+    setState((s) => ({ ...s, phase: 'failed', error, failureCode, errorCode }));
   }, []);
+
+  const offerResume = useCallback((sale: ResumableSale, error: string) => {
+    setState((s) => ({ ...s, phase: 'failed', error, failureCode: null, errorCode: 'SIGNATURE_DECLINED', resumable: sale }));
+  }, []);
+
+  const lastStartRef = useRef<{ bagId: string; fractionBps: number; outputAssetId: string; walletAddress: string } | null>(null);
 
   const executeOneStep = useCallback(async (intentId: string, step: RedeemIntentStepRecord, walletAddress: string): Promise<void> => {
     if (step.action !== 'SWAP' || !step.lifiStep) return;
@@ -217,7 +281,14 @@ export function useRedeemExecution() {
    * verifies it against exactly the transaction it built.
    */
   const executeComposerSale = useCallback(
-    async (intentId: string, composerTransaction: NonNullable<RedeemIntent['composerTransaction']>, swapSteps: RedeemIntentStepRecord[], walletAddress: string) => {
+    async (
+      intentId: string,
+      composerTransaction: NonNullable<RedeemIntent['composerTransaction']>,
+      swapSteps: RedeemIntentStepRecord[],
+      walletAddress: string,
+      /** Settlement attestation deadline (unix seconds) of a fee-paying sale; undefined for a free sale. */
+      deadline?: number
+    ) => {
       setState((s) => ({ ...s, activeStepIndex: null, phase: 'awaiting_signature' }));
       const awaitingReported = reportStepsInOrder(intentId, swapSteps, { type: 'AWAITING_SIGNATURE' });
       let reportedSubmitted = false;
@@ -240,6 +311,11 @@ export function useRedeemExecution() {
         if (!reportedSubmitted) {
           const { message, rejected } = describeWalletError(err);
           await awaitingReported;
+          if (rejected && typeof deadline === 'number' && deadline * 1000 - Date.now() > RESUME_MARGIN_MS) {
+            // Not reported as REJECTED: the attestation is still valid on-chain, so the same transaction may be
+            // signed again until its deadline. Left unsigned, the server releases the intent at that deadline.
+            throw new ResumableRejectionError({ intentId, composerTransaction, swapSteps, walletAddress, deadline });
+          }
           await reportStepsInOrder(intentId, swapSteps, rejected ? { type: 'REJECTED' } : { type: 'FAILED', failureCode: 'UNKNOWN_ERROR', message });
         }
         throw err;
@@ -279,9 +355,44 @@ export function useRedeemExecution() {
     await postJson(`/api/redeem-intent/${intentId}/confirm-router-tx`, { txHash });
   }, []);
 
+  /** Polls the server's own on-chain verification until the intent reaches a final state. */
+  const runVerifyLoop = useCallback(
+    async (intentId: string): Promise<void> => {
+      setState((s) => ({ ...s, phase: 'confirming' }));
+      try {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const verified = await verifyIntent(intentId);
+          setState((s) => ({ ...s, intent: verified }));
+          if (verified.status === 'COMPLETED') {
+            setState((s) => ({ ...s, phase: 'completed' }));
+            return;
+          }
+          if (verified.status === 'PARTIAL_SUCCESS' || verified.status === 'RECONCILIATION_REQUIRED') {
+            setState((s) => ({ ...s, phase: 'partial' }));
+            return;
+          }
+          if (verified.status === 'FAILED' || verified.status === 'EXPIRED' || verified.status === 'CANCELLED') {
+            fail('The redemption could not be completed.', verified.failureCode);
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 4000));
+        }
+      } catch (err) {
+        if (err instanceof RedeemExecutionHttpError) fail(err.message, err.failureCode, err.code);
+        else fail(err instanceof Error ? err.message : 'Redemption failed.');
+      }
+    },
+    [fail]
+  );
+
+  const declinedMessage = (sale: ResumableSale) =>
+    `You declined the signature. This sale stays valid until ${new Date(sale.deadline * 1000).toLocaleTimeString()}: sign it again now, or start a different one after that.`;
+
   const start = useCallback(
     async (bagId: string, fractionBps: number, outputAssetId: string, walletAddress: string): Promise<void> => {
       reset();
+      lastStartRef.current = { bagId, fractionBps, outputAssetId, walletAddress };
       setState((s) => ({ ...s, phase: 'creating' }));
 
       let createdIntentId: string | null = null;
@@ -308,6 +419,7 @@ export function useRedeemExecution() {
         // a deployment that has them set.
         setState((s) => ({ ...s, phase: 'preparing' }));
         let prepared: RedeemIntent;
+        let deadline: number | undefined;
         try {
           ({ intent: prepared } = await postJson<{ intent: RedeemIntent }>(`/api/redeem-intent/${created.id}/execute`));
         } catch (err) {
@@ -319,21 +431,47 @@ export function useRedeemExecution() {
             `/api/redeem-intent/${created.id}/settlement-attest`
           );
           prepared = { ...created, composerTransaction };
+          // The attestation's deadline: until then a declined signature can be given again (ResumableSale).
+          deadline = (await getIntent(created.id))?.settlementPlan?.deadline;
         }
         setState((s) => ({ ...s, intent: prepared }));
 
         const swapSteps = prepared.steps.filter((s) => s.action === 'SWAP');
         if (prepared.composerTransaction) {
-          await executeComposerSale(prepared.id, prepared.composerTransaction, swapSteps, walletAddress);
+          await executeComposerSale(prepared.id, prepared.composerTransaction, swapSteps, walletAddress, deadline);
         } else {
           for (const step of swapSteps) {
             await executeOneStep(prepared.id, step, walletAddress);
           }
         }
       } catch (err) {
+        if (err instanceof ResumableRejectionError) {
+          offerResume(err.sale, declinedMessage(err.sale));
+          return;
+        }
         if (createdIntentId === null || err instanceof RedeemExecutionHttpError) {
-          if (err instanceof RedeemExecutionHttpError) fail(err.message, err.failureCode);
-          else fail(err instanceof Error ? err.message : 'Redemption failed.');
+          if (err instanceof RedeemExecutionHttpError) {
+            // Blocked by a pending sale of this position that can still be signed: offer exactly that one.
+            const blocker = err.intentId ? await getIntent(err.intentId) : null;
+            const pending = resumableSaleOf(blocker, walletAddress);
+            if (pending) {
+              offerResume(pending, `A signed sale of this position is still waiting for your signature until ${new Date(pending.deadline * 1000).toLocaleTimeString()}. Sign it now, or start a different one after that.`);
+              return;
+            }
+            if (blocker && err.intentId) {
+              // Any other open sale: say which one, and let the user close it (the server checks the chain first).
+              setState((s) => ({
+                ...s,
+                phase: 'failed',
+                error: `An earlier sale of this Bag${Number.isFinite(new Date(blocker.createdAt).getTime()) ? `, started ${new Date(blocker.createdAt).toLocaleString()},` : ''} is still open (${blocker.status}). Close it to sell again: BAG first checks on-chain that it was never sent.`,
+                failureCode: null,
+                errorCode: 'BLOCKED_BY_OPEN_SALE',
+                blocking: { intentId: blocker.id, status: blocker.status, createdAt: blocker.createdAt },
+              }));
+              return;
+            }
+            fail(err.message, err.failureCode, err.code);
+          } else fail(err instanceof Error ? err.message : 'Redemption failed.');
           return;
         }
         if (routerAddress) {
@@ -351,37 +489,56 @@ export function useRedeemExecution() {
         // outcome, never this client-side guess.
       }
 
-      setState((s) => ({ ...s, phase: 'confirming' }));
-
-      try {
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const verified = await verifyIntent(createdIntentId);
-          setState((s) => ({ ...s, intent: verified }));
-          if (verified.status === 'COMPLETED') {
-            setState((s) => ({ ...s, phase: 'completed' }));
-            return;
-          }
-          if (verified.status === 'PARTIAL_SUCCESS' || verified.status === 'RECONCILIATION_REQUIRED') {
-            setState((s) => ({ ...s, phase: 'partial' }));
-            return;
-          }
-          if (verified.status === 'FAILED' || verified.status === 'EXPIRED' || verified.status === 'CANCELLED') {
-            fail('The redemption could not be completed.', verified.failureCode);
-            return;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 4000));
-        }
-      } catch (err) {
-        if (err instanceof RedeemExecutionHttpError) {
-          fail(err.message, err.failureCode);
-        } else {
-          fail(err instanceof Error ? err.message : 'Redemption failed.');
-        }
-      }
+      await runVerifyLoop(createdIntentId);
     },
-    [executeOneStep, executeComposerSale, runRouterFlow, fail, reset]
+    [executeOneStep, executeComposerSale, runRouterFlow, runVerifyLoop, offerResume, fail, reset]
   );
 
-  return { state, start, reset };
+  /** Signs the pending sale in `state.resumable` again: the same transaction, before its deadline. */
+  const resume = useCallback(async (): Promise<void> => {
+    const sale = state.resumable;
+    if (!sale) return;
+    if (sale.deadline * 1000 - Date.now() <= RESUME_MARGIN_MS) {
+      fail('This sale has expired. Start a new one.');
+      setState((s) => ({ ...s, resumable: null }));
+      return;
+    }
+    setState((s) => ({ ...s, phase: 'awaiting_signature', error: null, errorCode: null, resumable: null }));
+    try {
+      await executeComposerSale(sale.intentId, sale.composerTransaction, sale.swapSteps, sale.walletAddress, sale.deadline);
+    } catch (err) {
+      if (err instanceof ResumableRejectionError) {
+        offerResume(err.sale, declinedMessage(err.sale));
+        return;
+      }
+      if (err instanceof RedeemExecutionHttpError) {
+        fail(err.message, err.failureCode, err.code);
+        return;
+      }
+      // A wallet error after the attempt: the server's on-chain check decides, as in start().
+    }
+    await runVerifyLoop(sale.intentId);
+  }, [state.resumable, executeComposerSale, runVerifyLoop, offerResume, fail]);
+
+  /** Closes the blocking sale (POST …/cancel, chain-checked on the server), then starts the sale the user asked for. */
+  const closeBlockingAndRetry = useCallback(async (): Promise<void> => {
+    const blocking = state.blocking;
+    const last = lastStartRef.current;
+    if (!blocking || !last) return;
+    setState((s) => ({ ...s, phase: 'creating', error: null, errorCode: null }));
+    try {
+      const out = await postJson<{ result: 'CLOSED' | 'BOOKED' | 'ALREADY_FINAL' | 'REFUSED'; status: string; reason?: string }>(`/api/redeem-intent/${blocking.intentId}/cancel`);
+      if (out.result === 'REFUSED') {
+        setState((s) => ({ ...s, phase: 'failed', error: out.reason ?? 'The earlier sale could not be closed yet.', errorCode: 'BLOCKED_BY_OPEN_SALE' }));
+        return;
+      }
+    } catch (err) {
+      if (err instanceof RedeemExecutionHttpError) fail(err.message, err.failureCode, err.code);
+      else fail(err instanceof Error ? err.message : 'The earlier sale could not be closed.');
+      return;
+    }
+    await start(last.bagId, last.fractionBps, last.outputAssetId, last.walletAddress);
+  }, [state.blocking, start, fail]);
+
+  return { state, start, resume, closeBlockingAndRetry, reset };
 }

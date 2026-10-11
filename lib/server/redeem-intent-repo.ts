@@ -212,6 +212,47 @@ export async function updateRedeemIntentStatus(admin: SupabaseClient, input: Upd
   return data ? fromRow(data) : null;
 }
 
+/**
+ * The one way out of FAILED: a Composer sale marked FAILED only because its transaction could not be matched to
+ * the built call (VERIFICATION_FAILED), with nothing ever booked for it, back to CONFIRMING so verification books
+ * it. The caller must have just matched the transaction on-chain against this intent's own built call. A sale
+ * that reverted, was rejected, or had any accounting applied is never reopened; the guards below are the same
+ * conditions, enforced in the update itself so a concurrent change wins.
+ */
+export async function reopenUnmatchedComposerRedeem(admin: SupabaseClient, id: string, steps: RedeemIntentStepRecord[]): Promise<RedeemIntent | null> {
+  const { data, error } = await admin
+    .from('redeem_intents')
+    .update({ status: 'CONFIRMING', failure_code: null, steps, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('status', 'FAILED')
+    .eq('failure_code', 'VERIFICATION_FAILED')
+    .is('accounting_applied_at', null)
+    .is('reconciliation_applied_at', null)
+    .not('composer_transaction', 'is', null)
+    .select()
+    .maybeSingle<RedeemIntentRow>();
+  if (error) throw new Error(error.message);
+  return data ? fromRow(data) : null;
+}
+
+/** This user's Composer sales of a Bag that are FAILED only for an unmatched transaction, newest first. */
+export async function listUnmatchedComposerRedeems(admin: SupabaseClient, userId: string, bagId: string, since: Date): Promise<RedeemIntent[]> {
+  const { data, error } = await admin
+    .from('redeem_intents')
+    .select()
+    .eq('user_id', userId)
+    .eq('bag_id', bagId)
+    .eq('status', 'FAILED')
+    .eq('failure_code', 'VERIFICATION_FAILED')
+    .is('accounting_applied_at', null)
+    .not('composer_transaction', 'is', null)
+    .gte('created_at', since.toISOString())
+    .order('created_at', { ascending: false })
+    .limit(5);
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as RedeemIntentRow[]).map(fromRow);
+}
+
 /** Updates only `steps` — same race guard as `updatePurchaseIntentSteps()`. */
 export async function updateRedeemIntentSteps(
   admin: SupabaseClient,

@@ -3,7 +3,6 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { recordNavSnapshot } from '@/lib/server/bag-nav-snapshots';
 import { AssetIdentity } from '@/types/basket-protocol';
 import { RedeemIntent, RedeemIntentFailureCode, RedeemIntentStepRecord } from '@/types/redeem-intent';
-import { PURCHASE_INTENT_TTL_MS } from '@/types/purchase-intent';
 import { SessionPayload } from '@/lib/auth/session';
 import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
 import { claimNewlyVerifiedTxHashes, TX_HASH_RE } from '@/lib/server/intent-tx-claims';
@@ -11,6 +10,9 @@ import { paymentAssetsFor } from '@/lib/server/payment-assets';
 import { getBagNavSafe } from '@/lib/server/bag-nav';
 import { getShareSupply } from '@/lib/server/bag-share-state-repo';
 import { getInvestorPosition } from '@/lib/server/bag-investor-position-repo';
+import { getInvestorHoldings } from '@/lib/server/bag-investor-holdings-repo';
+import { getBagHoldings } from '@/lib/server/bag-holdings-repo';
+import { attributeSaleToLedger, ledgerKey, type LedgerCover, type SaleLeg } from '@/lib/domain/basket-protocol/redeem/ledger-attribution';
 import { listAssets } from '@/lib/server/asset-repo';
 import { getPriceProvider } from '@/lib/server/price-provider';
 import { InsufficientSharesError, getRedeemQuote, ZeroRedeemAmountError, ZeroShareSupplyError } from '@/lib/domain/basket-protocol/shares/shares';
@@ -44,9 +46,11 @@ import {
   createRedeemIntent as insertRedeemIntent,
   findActiveRedeemIntentForBag,
   getRedeemIntentForUser,
+  listUnmatchedComposerRedeems,
   markRedeemAccountingApplied,
   markRedeemReconciliationApplied,
   recordRedeemSettlementResult,
+  reopenUnmatchedComposerRedeem,
   updateRedeemIntentStatus,
   updateRedeemIntentSteps,
   type CreateRedeemIntentInput,
@@ -73,7 +77,7 @@ export type RedeemExecutionError =
   | { kind: 'INSUFFICIENT_POSITION'; requestedRaw: string; ownedRaw: string }
   | { kind: 'ZERO_SUPPLY' }
   | { kind: 'QUOTE_FAILED'; failureCode: RedeemIntentFailureCode; message: string }
-  | { kind: 'REDEEM_IN_PROGRESS'; intentId: string }
+  | { kind: 'REDEEM_IN_PROGRESS'; intentId: string; /** Set when a still-valid settlement attestation is the blocker: when it lapses. */ retryAfterSeconds?: number }
   | { kind: 'NOT_FOUND' }
   | { kind: 'FORBIDDEN' }
   | { kind: 'EXPIRED' }
@@ -118,6 +122,8 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
     return { ok: false, error: { kind: 'INVALID_FRACTION' } };
   }
 
+  await recheckUnmatchedComposerSales(admin, session, bagId);
+
   const existing = await findActiveRedeemIntentForBag(admin, session.userId, bagId);
   if (existing) {
     const outcome = await releaseAbandonedRedeemIntent(admin, existing);
@@ -134,7 +140,15 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
   // already terminal in the database: the old signature could otherwise run after this sale changed the ledger.
   const liveAttestation = await liveSettlementAttestationFor(admin, session.userId, bagId);
   if (liveAttestation) {
-    return { ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: liveAttestation.id } };
+    const { deadline } = liveAttestation;
+    return {
+      ok: false,
+      error: {
+        kind: 'REDEEM_IN_PROGRESS',
+        intentId: liveAttestation.id,
+        ...(typeof deadline === 'number' ? { retryAfterSeconds: Math.max(1, deadline - Math.floor(Date.now() / 1000)) } : {}),
+      },
+    };
   }
 
   const bag = await getBagById(admin, bagId);
@@ -235,7 +249,7 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
   }
 
   const fingerprint = computeRedeemFingerprint({ bagId, sharesToRedeemRaw: sharesBurnRaw, outputAsset, steps: executionSteps });
-  const expiresAt = new Date(Date.now() + PURCHASE_INTENT_TTL_MS).toISOString();
+  const expiresAt = new Date(Date.now() + REDEEM_INTENT_TTL_MS).toISOString();
 
   const intentInput: CreateRedeemIntentInput = {
     userId: session.userId,
@@ -293,10 +307,16 @@ function isExpired(intent: RedeemIntent): boolean {
 const TERMINAL_REDEEM_STATUSES: ReadonlySet<RedeemIntent['status']> = new Set(['COMPLETED', 'RECONCILIATION_REQUIRED', 'FAILED', 'CANCELLED', 'EXPIRED']);
 
 /**
+ * How long a sale quote stays signable. Short on purpose: the wallet is asked right after the quote, and a sale left
+ * open blocks a new one of the same position until it lapses (or the owner closes it, cancelOpenRedeemIntent).
+ */
+export const REDEEM_INTENT_TTL_MS = 2 * 60 * 1000;
+
+/**
  * Extra time, after an intent's expiry, before a free sale awaiting signature counts as abandoned: the wallet may
  * still be open on it (expiry is a few minutes after the quote, signing can take longer).
  */
-export const ABANDONED_FREE_SALE_GRACE_MS = 10 * 60 * 1000;
+export const ABANDONED_FREE_SALE_GRACE_MS = 2 * 60 * 1000;
 
 /**
  * An open sale nobody will finish — the wallet never signed and no report came back (tab closed, wallet dismissed
@@ -304,7 +324,7 @@ export const ABANDONED_FREE_SALE_GRACE_MS = 10 * 60 * 1000;
  * longer do anything:
  *  - not yet handed to the wallet (DRAFT / QUOTED / READY) and past its expiry: nothing was signed;
  *  - AWAITING_SIGNATURE of a settlement sale whose attestation deadline has passed: RedeemSettlement refuses the
- *    signed transaction after it (`deadline`, §8). The deadline is at most ~5 minutes after phase 2 (§9);
+ *    signed transaction after it (`deadline`, §8). The deadline is at most ~2 minutes after phase 2 (§9);
  *  - AWAITING_SIGNATURE of a free Composer sale, past its expiry plus ABANDONED_FREE_SALE_GRACE_MS, once the chain
  *    shows the built transaction was never sent (#27). It has no on-chain deadline of ours, so the chain is asked
  *    first (composer-tx-search.ts): found → the sale happened, it is recovered as SUBMITTED and booked by verify
@@ -341,6 +361,84 @@ async function releaseAbandonedRedeemIntent(admin: SupabaseClient, intent: Redee
   }
   const released = await updateRedeemIntentStatus(admin, { id: intent.id, from: intent.status, to: 'EXPIRED', failureCode: 'ROUTE_EXPIRED' });
   return released !== null ? 'RELEASED' : 'KEPT';
+}
+
+/** What happened to an open sale the user asked to close (cancelOpenRedeemIntent). */
+export type CloseOpenSaleResult =
+  | { result: 'CLOSED'; status: RedeemIntent['status'] }
+  | { result: 'BOOKED'; status: RedeemIntent['status'] }
+  | { result: 'ALREADY_FINAL'; status: RedeemIntent['status'] }
+  | { result: 'REFUSED'; status: RedeemIntent['status']; reason: string };
+
+/**
+ * Closes an open sale of the user's at their explicit request, so it stops blocking a new one — but only once the
+ * chain shows its transaction cannot still land unbooked:
+ *  - not yet handed to the wallet (DRAFT / QUOTED / READY): cancelled, nothing was signed;
+ *  - a fee-paying sale awaiting signature: refused while its attestation is valid (it can be signed again), expired
+ *    after (RedeemSettlement refuses the transaction then), cancelled if phase 2 never signed one;
+ *  - a free Composer sale awaiting signature: the chain is searched for its transaction (composer-tx-search.ts);
+ *    found → recovered and booked by verify, not found → cancelled, cannot tell → refused with the reason;
+ *  - anything with a transaction already reported, SUBMITTED or CONFIRMING: verified, never cancelled.
+ */
+export async function cancelOpenRedeemIntent(admin: SupabaseClient, session: SessionPayload, intentId: string): Promise<RedeemExecutionOutcome<CloseOpenSaleResult>> {
+  const owned = await loadOwnedIntent(admin, session.userId, intentId);
+  if (!owned.ok) return owned;
+  const intent = owned.value;
+  const close = async (to: 'CANCELLED' | 'EXPIRED'): Promise<RedeemExecutionOutcome<CloseOpenSaleResult>> => {
+    const updated = await updateRedeemIntentStatus(admin, { id: intent.id, from: intent.status, to, failureCode: to === 'EXPIRED' ? 'ROUTE_EXPIRED' : null });
+    return updated
+      ? { ok: true, value: { result: 'CLOSED', status: updated.status } }
+      : { ok: true, value: { result: 'REFUSED', status: intent.status, reason: 'The sale changed while it was being closed. Try again.' } };
+  };
+  const verifyIt = async (): Promise<RedeemExecutionOutcome<CloseOpenSaleResult>> => {
+    const verified = await verifyRedeemExecution(admin, session, intent.id);
+    if (verified.ok && TERMINAL_REDEEM_STATUSES.has(verified.value.status)) return { ok: true, value: { result: 'BOOKED', status: verified.value.status } };
+    return { ok: true, value: { result: 'REFUSED', status: verified.ok ? verified.value.status : intent.status, reason: 'A transaction of this sale was sent and is still being verified on-chain; it closes on its own once it is.' } };
+  };
+
+  if (TERMINAL_REDEEM_STATUSES.has(intent.status)) return { ok: true, value: { result: 'ALREADY_FINAL', status: intent.status } };
+  const swaps = intent.steps.filter((s) => s.action === 'SWAP');
+  if (intent.status === 'SUBMITTED' || intent.status === 'CONFIRMING' || swaps.some((s) => s.txHash !== null)) return verifyIt();
+  if (intent.status === 'DRAFT' || intent.status === 'QUOTED' || intent.status === 'READY') return close('CANCELLED');
+  if (intent.status !== 'AWAITING_SIGNATURE') {
+    return { ok: true, value: { result: 'REFUSED', status: intent.status, reason: `A sale in status ${intent.status} cannot be closed here.` } };
+  }
+
+  if (intent.settlementPlan) {
+    const deadline = intent.settlementPlan.deadline;
+    if (typeof deadline !== 'number') return close('CANCELLED'); // phase 2 never signed: nothing valid exists
+    if (deadline >= Math.floor(Date.now() / 1000)) {
+      return { ok: true, value: { result: 'REFUSED', status: intent.status, reason: `This sale's signed settlement is valid until ${new Date(deadline * 1000).toISOString()}; sign it again, or it closes then.` } };
+    }
+    return close('EXPIRED');
+  }
+
+  if (intent.composerTransaction) {
+    const chain = swaps[0]?.sourceChain;
+    if (!chain || !isBagChain(chain)) return { ok: true, value: { result: 'REFUSED', status: intent.status, reason: 'The sale has no chain to search.' } };
+    const search = await findComposerTransactionFromWallet({
+      chain,
+      wallet: intent.walletAddress,
+      soldTokens: [...new Set(swaps.map((s) => s.inputAsset.address))],
+      expected: intent.composerTransaction,
+      since: new Date(intent.createdAt),
+    });
+    if (search.kind === 'UNKNOWN') {
+      return { ok: true, value: { result: 'REFUSED', status: intent.status, reason: `The chain could not confirm that this sale was never sent (${search.reason}). Try again in a minute.` } };
+    }
+    if (search.kind === 'FOUND') {
+      const steps = intent.steps.map((s) =>
+        s.action === 'SWAP' && s.status !== 'COMPLETED' && s.status !== 'FAILED' ? { ...s, status: 'SUBMITTED' as const, txHash: s.txHash ?? search.txHash } : s
+      );
+      const recovered = await updateRedeemIntentStatus(admin, { id: intent.id, from: 'AWAITING_SIGNATURE', to: 'SUBMITTED', steps });
+      if (!recovered) return { ok: true, value: { result: 'REFUSED', status: intent.status, reason: 'The sale changed while it was being closed. Try again.' } };
+      return verifyIt();
+    }
+    return close('CANCELLED');
+  }
+
+  // Per-asset LI.FI sale with nothing reported sent.
+  return close('CANCELLED');
 }
 
 export { saleStillCovered };
@@ -509,6 +607,8 @@ export async function verifyRedeemExecution(
   if (!owned.ok) return owned;
   let intent = owned.value;
 
+  if (isUnmatchedComposerSale(intent)) intent = (await reopenIfTransactionNowMatches(admin, intent)) ?? intent;
+
   if (
     intent.status === 'COMPLETED' ||
     intent.status === 'RECONCILIATION_REQUIRED' ||
@@ -636,6 +736,72 @@ export async function verifyRedeemExecution(
 }
 
 /**
+ * A Composer sale marked FAILED only because its transaction did not match the built call, with nothing booked.
+ * Wallet batches (EIP-5792 over EIP-7702, e.g. MetaMask) were refused that way before they were recognised, even
+ * though the sale ran on-chain.
+ */
+function isUnmatchedComposerSale(intent: RedeemIntent): boolean {
+  return (
+    intent.status === 'FAILED' &&
+    intent.failureCode === 'VERIFICATION_FAILED' &&
+    !!intent.composerTransaction &&
+    !intent.accountingAppliedAt &&
+    !intent.reconciliationAppliedAt &&
+    intent.steps.some((s) => s.action === 'SWAP' && s.txHash)
+  );
+}
+
+/**
+ * Re-checks an unmatched sale's transaction against its own built call; when it now matches (a wallet batch that
+ * carries the call), the sale goes back to CONFIRMING and the normal verification books it, with every check
+ * that applies to any sale (sold in full, output received, settlement event, hash not claimed by another intent).
+ */
+async function reopenIfTransactionNowMatches(admin: SupabaseClient, intent: RedeemIntent): Promise<RedeemIntent | null> {
+  const swaps = intent.steps.filter((s) => s.action === 'SWAP');
+  const txHash = swaps.find((s) => s.txHash)?.txHash;
+  if (!txHash || !intent.composerTransaction) return null;
+  const outcome = await trackComposerTransaction({ txHash, chain: swaps[0].sourceChain, recipient: intent.walletAddress, expectedTransaction: intent.composerTransaction });
+  if (outcome.kind !== 'DONE') return null;
+  const steps = intent.steps.map((s) => (s.action === 'SWAP' ? { ...s, txHash: s.txHash ?? txHash, status: 'CONFIRMING' as const, failureCode: null } : s));
+  return reopenUnmatchedComposerRedeem(admin, intent.id, steps);
+}
+
+/** How far back a new sale re-checks earlier unmatched sales of the same Bag. */
+const UNMATCHED_SALE_RECHECK_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Books this user's earlier sales of the Bag that ran on-chain but were refused as unmatched, or verified but did not
+ * finish booking, before a new sale is sized from the position. Best effort: a sale that still does not verify stays FAILED, and an RPC error never
+ * blocks the new sale.
+ */
+export async function recheckUnmatchedComposerSales(admin: SupabaseClient, session: SessionPayload, bagId: string): Promise<{ booked: number }> {
+  let pending: RedeemIntent[];
+  try {
+    const [unmatched, open] = await Promise.all([
+      listUnmatchedComposerRedeems(admin, session.userId, bagId, new Date(Date.now() - UNMATCHED_SALE_RECHECK_MS)),
+      findActiveRedeemIntentForBag(admin, session.userId, bagId),
+    ]);
+    // A sale whose transaction verified but whose booking did not finish (SUBMITTED / CONFIRMING) is finished here too.
+    const inFlight = open && (open.status === 'SUBMITTED' || open.status === 'CONFIRMING') ? [open] : [];
+    pending = [...unmatched, ...inFlight];
+  } catch {
+    return { booked: 0 };
+  }
+  let booked = 0;
+  // Oldest first: the ledger books sales in the order they ran.
+  pending.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  for (const intent of pending) {
+    try {
+      const verified = await verifyRedeemExecution(admin, session, intent.id);
+      if (verified.ok && verified.value.status === 'COMPLETED') booked++;
+    } catch (err) {
+      console.warn(`[redeem] re-check of unmatched sale ${intent.id} failed:`, err instanceof Error ? err.message : err);
+    }
+  }
+  return { booked };
+}
+
+/**
  * Verifies a one-transaction (Composer) redemption: one receipt covers every SWAP leg, so they complete or fail
  * together. The reported hash must be exactly the transaction built for this intent (composer-status.ts), it
  * must have succeeded, every sold token must have left the wallet in full, and the output token must have
@@ -748,29 +914,30 @@ async function applyRedeemAccountingIdempotently(admin: SupabaseClient, intent: 
   // here the DEBITED side is the swap's input, fixed at quote time, not
   // something on-chain execution can vary).
   // A3: each sold leg carries what it actually returned (verified receipt output, in the output asset).
-  const soldFromSwaps = intent.steps
-    .filter((s) => s.action === 'SWAP' && s.status === 'COMPLETED')
+  // KEEP legs also remove exactly what was earmarked (already the output asset: it returns itself).
+  const legs: SaleLeg[] = intent.steps
+    .filter((s) => s.action === 'KEEP' || (s.action === 'SWAP' && s.status === 'COMPLETED'))
     .map((s) => ({
       chain: s.inputAsset.chain,
       address: s.inputAsset.address,
-      quantity_raw: s.inputAmountRaw,
-      ...(s.outputAmountRaw && /^\d+$/.test(s.outputAmountRaw) ? { proceeds_quote: rawToDecimalString(s.outputAmountRaw, intent.outputDecimals) } : {}),
+      quantityRaw: BigInt(s.inputAmountRaw),
+      proceedsRaw: s.action === 'KEEP' ? BigInt(s.inputAmountRaw) : s.outputAmountRaw && /^\d+$/.test(s.outputAmountRaw) ? BigInt(s.outputAmountRaw) : null,
     }));
 
-  // KEEP legs also remove exactly what was earmarked (already the output
-  // asset — nothing was swapped, but the depositor's holding of it is
-  // still leaving their position on this redemption).
-  const soldFromKeeps = intent.steps
-    .filter((s) => s.action === 'KEEP')
-    .map((s) => ({
-      chain: s.inputAsset.chain,
-      address: s.inputAsset.address,
-      quantity_raw: s.inputAmountRaw,
-      // A KEEP leg already is the output asset: it returns itself.
-      proceeds_quote: rawToDecimalString(s.inputAmountRaw, intent.outputDecimals),
-    }));
+  // The sale ran on-chain and verified; only what the ledger still tracks for this strategy is debited (an earlier
+  // sale booked late can have shrunk it since the quote). Unreadable ledger: debit as quoted, and the accounting
+  // function's own underflow guards decide.
+  const cover = await readLedgerCover(admin, intent);
+  const sale = cover
+    ? attributeSaleToLedger({ legs, sharesBurnRaw: BigInt(intent.sharesRaw), redeemValueQuote: intent.redeemValueQuote }, cover)
+    : { legs, sharesBurnRaw: BigInt(intent.sharesRaw), redeemValueQuote: intent.redeemValueQuote };
 
-  const holdingsSold = [...soldFromSwaps, ...soldFromKeeps];
+  const holdingsSold = sale.legs.map((l) => ({
+    chain: l.chain,
+    address: l.address,
+    quantity_raw: l.quantityRaw.toString(),
+    ...(l.proceedsRaw !== null ? { proceeds_quote: rawToDecimalString(l.proceedsRaw, intent.outputDecimals) } : {}),
+  }));
 
   // Phase 22 — performance fee. Resolved fresh here (never trusted from
   // the intent/client) from the bag's OWN creator + fee, same "re-read the
@@ -788,14 +955,36 @@ async function applyRedeemAccountingIdempotently(admin: SupabaseClient, intent: 
     p_intent_id: intent.id,
     p_bag_id: intent.bagId,
     p_holdings_sold: holdingsSold,
-    p_shares_burn_raw: intent.sharesRaw,
+    p_shares_burn_raw: sale.sharesBurnRaw.toString(),
     p_share_decimals: intent.shareDecimals,
     p_user_id: intent.userId,
-    p_redeem_value_quote: intent.redeemValueQuote,
+    p_redeem_value_quote: sale.redeemValueQuote,
     p_performance_fee_bps: performanceFeeBps,
     p_creator_id: bag?.creatorId ?? null,
   });
   if (rpcError) throw new Error(`apply_redeem_execution failed: ${rpcError.message}`);
 
   await markRedeemAccountingApplied(admin, intent.id);
+}
+
+/** What the ledger tracks for this user and strategy now: remaining shares and, per asset, the smaller of the user's and the Bag's holding. Null when it cannot be read. */
+async function readLedgerCover(admin: SupabaseClient, intent: RedeemIntent): Promise<LedgerCover | null> {
+  try {
+    const [position, investor, bagHoldings] = await Promise.all([
+      getInvestorPosition(admin, intent.userId, intent.bagId),
+      getInvestorHoldings(admin, intent.userId, intent.bagId),
+      getBagHoldings(admin, intent.bagId),
+    ]);
+    const bagQty = new Map(bagHoldings.map((h) => [ledgerKey(h.asset.chain, h.asset.address), BigInt(h.quantityRaw)]));
+    const trackedRaw = new Map<string, bigint>();
+    for (const h of investor) {
+      const key = ledgerKey(h.chain, h.address);
+      const own = BigInt(h.quantityRaw);
+      const total = bagQty.get(key) ?? BigInt(0);
+      trackedRaw.set(key, own < total ? own : total);
+    }
+    return { sharesRaw: BigInt(position.sharesRaw), trackedRaw };
+  } catch {
+    return null;
+  }
 }

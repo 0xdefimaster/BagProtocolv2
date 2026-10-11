@@ -123,7 +123,10 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
     let cancelled = false;
     setLoadingPosition(true);
     setPositionError(null);
-    fetch(`/api/bags/${bagId}/redeem-preview`, { credentials: 'same-origin' })
+    // Books earlier sales that ran on-chain but were not matched yet (best effort), so the position below is current.
+    fetch(`/api/bags/${bagId}/redeem-recheck`, { method: 'POST', credentials: 'same-origin' })
+      .catch(() => undefined)
+      .then(() => fetch(`/api/bags/${bagId}/redeem-preview`, { credentials: 'same-origin' }))
       .then(async (res) => {
         if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? `Request failed (${res.status})`);
         return res.json() as Promise<{ position: PositionView | null; outputAssets: OutputAssetOption[] }>;
@@ -551,6 +554,33 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
               </span>
             ) : (
               'Sign in to continue'
+            )}
+          </button>
+        ) : execution.state.resumable ? (
+          // A declined fee-paying sale whose signed settlement is still valid: sign the same transaction again.
+          <button onClick={() => void execution.resume()} style={primaryButtonStyle}>
+            Sign again
+          </button>
+        ) : execution.state.blocking ? (
+          // An earlier open sale blocks this one: close it (the server checks the chain first), then sell.
+          <button onClick={() => void execution.closeBlockingAndRetry()} style={primaryButtonStyle}>
+            Close the earlier sale and sell
+          </button>
+        ) : execution.state.errorCode === 'SESSION_EXPIRED' ? (
+          <button
+            onClick={async () => {
+              await wallet.signIn();
+              if (selectedAssetId && fractionBps !== null) void execution.start(bagId, fractionBps, selectedAssetId, wallet.walletAddress);
+            }}
+            disabled={wallet.isSigningIn}
+            style={primaryButtonStyle}
+          >
+            {wallet.isSigningIn ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, justifyContent: 'center', width: '100%' }}>
+                <Loader2 size={14} className="spin" /> Confirm in wallet…
+              </span>
+            ) : (
+              'Sign in again'
             )}
           </button>
         ) : (

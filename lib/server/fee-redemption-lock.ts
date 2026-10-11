@@ -56,9 +56,9 @@ export async function openFeeRedemptionFor(
  * An intent of this position holding a settlement attestation that is still valid on-chain (its signed deadline has
  * not passed), in any status — the database status of an intent does not revoke a signature already handed out.
  */
-export async function liveSettlementAttestationFor(admin: SupabaseClient, userId: string, bagId: string, now = Date.now()): Promise<{ id: string } | null> {
+export async function liveSettlementAttestationFor(admin: SupabaseClient, userId: string, bagId: string, now = Date.now()): Promise<{ id: string; deadline?: number } | null> {
   const live = await listLiveSettlementAttestations(admin, userId, bagId, Math.floor(now / 1000));
-  return live.length > 0 ? { id: live[0].id } : null;
+  return live.length > 0 ? { id: live[0].id, deadline: live[0].settlementPlan?.deadline } : null;
 }
 
 /** The purchase of the same position that blocks a fee attestation, if any. */

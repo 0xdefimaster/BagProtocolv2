@@ -58,9 +58,39 @@ export interface TrackComposerTransactionInput {
    * (`PurchaseIntent.composerTransaction`). The reported txHash must BE that
    * transaction — same sender, target, calldata and value — otherwise any
    * successful tx that happened to move the right tokens into the wallet
-   * would "complete" the intent.
+   * would "complete" the intent. A wallet batch from the same wallet that
+   * carries this exact call is the same transaction (`batchContainsCall`).
    */
   expectedTransaction: { to: string; data: string; value: string };
+}
+
+const word = (hex: string) => hex.padStart(64, '0');
+
+/** True when `needle` occurs in `hay` at an index that satisfies `aligned`. */
+function alignedIndexOf(hay: string, needle: string, aligned: (i: number) => boolean): boolean {
+  for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + 1)) if (aligned(i)) return true;
+  return false;
+}
+
+/**
+ * True when a batch call's input carries exactly this call, in either encoding wallets use for a batched
+ * call: the ABI struct `(address target, uint256 value, bytes data)` (ERC-7579 batch, `executeBatch(Call[])`),
+ * where target and value are adjacent words and `data` is its length word followed by the bytes; or the packed
+ * `target ‖ value ‖ data` of an ERC-7579 single execution. Matches are byte- and word-aligned, the calldata
+ * must be non-empty, and the whole calldata must appear, so no other call can satisfy it by accident.
+ */
+export function batchContainsCall(batchInput: string, call: { to: string; data: string; value: string }): boolean {
+  const hay = batchInput.replace(/^0x/i, '').toLowerCase();
+  const to = call.to.replace(/^0x/i, '').toLowerCase();
+  const data = call.data.replace(/^0x/i, '').toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(to) || data.length < 8 || data.length % 2 !== 0 || hay.length < 8) return false;
+  const value = word(BigInt(call.value || '0').toString(16));
+  // ABI words start right after the 4-byte selector, on 32-byte boundaries.
+  const onWord = (i: number) => i >= 8 && (i - 8) % 64 === 0;
+  const abi =
+    alignedIndexOf(hay, word(to) + value, onWord) && alignedIndexOf(hay, word((data.length / 2).toString(16)) + data, onWord);
+  const packed = alignedIndexOf(hay, to + value + data, (i) => i % 2 === 0);
+  return abi || packed;
 }
 
 /**
@@ -95,9 +125,15 @@ export async function trackComposerTransaction(input: TrackComposerTransactionIn
   const same = (a: string | null | undefined, b: string) => typeof a === 'string' && a.toLowerCase() === b.toLowerCase();
   const mismatches: string[] = [];
   if (!same(tx.from, input.recipient)) mismatches.push('from');
-  if (!same(tx.to, input.expectedTransaction.to)) mismatches.push('to');
-  if (!same(tx.input, input.expectedTransaction.data)) mismatches.push('calldata');
-  if (tx.value !== BigInt(input.expectedTransaction.value || '0')) mismatches.push('value');
+  // A wallet batch (EIP-5792 over an EIP-7702 account, e.g. MetaMask) sends ONE transaction from the wallet to
+  // itself; its delegated code then runs the approvals and the Composer call. Accepted only when the wallet is
+  // both sender and target and the exact Composer call (target, value, calldata) is one of the batched calls.
+  const walletBatch = same(tx.to, input.recipient) && typeof tx.input === 'string' && batchContainsCall(tx.input, input.expectedTransaction);
+  if (!walletBatch) {
+    if (!same(tx.to, input.expectedTransaction.to)) mismatches.push('to');
+    if (!same(tx.input, input.expectedTransaction.data)) mismatches.push('calldata');
+    if (tx.value !== BigInt(input.expectedTransaction.value || '0')) mismatches.push('value');
+  }
   if (mismatches.length > 0) {
     return {
       kind: 'FAILED',

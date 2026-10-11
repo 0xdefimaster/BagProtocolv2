@@ -163,8 +163,8 @@ type Result<T> = { data: T | null; error: { message: string; code?: string } | n
 const toError = (err: unknown) => ({ message: err instanceof Error ? err.message : String(err), code: (err as { code?: string })?.code });
 
 class ShimQuery {
-  /** [column, value, op]: `=` (eq) or `in` (value is an array). */
-  private filters: Array<[string, unknown, '=' | 'in']> = [];
+  /** [column, value, op]: `=` (eq), `in` (value is an array), `>=` (gte), `is null` / `is not null` (value unused). */
+  private filters: Array<[string, unknown, '=' | 'in' | '>=' | 'is null' | 'is not null']> = [];
   private patch: Record<string, unknown> | null = null;
   private orders: Array<[string, boolean]> = [];
   private maxRows: number | null = null;
@@ -186,6 +186,26 @@ class ShimQuery {
     this.filters.push([assertIdent(column), values, 'in']);
     return this;
   }
+  gte(column: string, value: unknown) {
+    this.filters.push([assertIdent(column), value, '>=']);
+    return this;
+  }
+  /** Only `is(column, null)`, the form the server code uses. */
+  is(column: string, value: null) {
+    if (value !== null) throw new Error('pgSupabaseShim: is() supports null only');
+    this.filters.push([assertIdent(column), null, 'is null']);
+    return this;
+  }
+  /** Only `not(column, 'is', null)`, the form the server code uses. */
+  not(column: string, operator: 'is', value: null) {
+    if (operator !== 'is' || value !== null) throw new Error("pgSupabaseShim: not() supports 'is', null only");
+    this.filters.push([assertIdent(column), null, 'is not null']);
+    return this;
+  }
+  /** Type-only in supabase-js. */
+  returns() {
+    return this;
+  }
   /** `update(patch).eq()….select().maybeSingle()` → one `UPDATE … RETURNING *`, like supabase-js. */
   update(patch: Record<string, unknown>) {
     this.patch = patch;
@@ -202,7 +222,13 @@ class ShimQuery {
           .map(([c, v]) => (params.push(v !== null && typeof v === 'object' ? JSON.stringify(v) : v), `${assertIdent(c)} = $${params.length}`))
           .join(', ')
       : '';
-    const where = this.filters.map(([c, v, op]) => (params.push(v), op === 'in' ? `${c} = any($${params.length})` : `${c} = $${params.length}`)).join(' and ');
+    const where = this.filters
+      .map(([c, v, op]) => {
+        if (op === 'is null' || op === 'is not null') return `${c} ${op}`;
+        params.push(v);
+        return op === 'in' ? `${c} = any($${params.length})` : `${c} ${op} $${params.length}`;
+      })
+      .join(' and ');
     if (this.patch) {
       return (await this.pool.query(`update ${assertIdent(this.table)} set ${setSql}${where ? ` where ${where}` : ''} returning *`, params)).rows;
     }

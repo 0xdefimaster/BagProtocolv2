@@ -12,6 +12,8 @@ const trackComposerMock = vi.fn();
 const trackStepStatusMock = vi.fn();
 const readSettlementResultMock = vi.fn();
 const recordRedeemSettlementResultMock = vi.fn();
+const reopenMock = vi.fn();
+const listUnmatchedMock = vi.fn(async (..._a: unknown[]) => [] as RedeemIntent[]);
 
 vi.mock('@/lib/server/redeem-intent-repo', async () => {
   const { assertValidPurchaseIntentTransition } = await vi.importActual<typeof import('@/lib/domain/basket-protocol/purchase-intent/state-machine')>(
@@ -30,6 +32,8 @@ vi.mock('@/lib/server/redeem-intent-repo', async () => {
     recordRedeemSettlementResult: (...a: unknown[]) => recordRedeemSettlementResultMock(...a),
     createRedeemIntent: vi.fn(),
     findActiveRedeemIntentForBag: vi.fn(),
+    reopenUnmatchedComposerRedeem: (...a: unknown[]) => reopenMock(...a),
+    listUnmatchedComposerRedeems: (...a: unknown[]) => listUnmatchedMock(...a),
   };
 });
 vi.mock('@/lib/server/bag-repo', () => ({
@@ -52,7 +56,7 @@ vi.mock('@/lib/blockchain/lifi-status', () => ({ trackStepStatus: (...a: unknown
 vi.mock('@/lib/server/price-provider', () => ({ getPriceProvider: () => ({}) }));
 vi.mock('@/lib/server/bag-nav-snapshots', () => ({ recordNavSnapshot: async () => undefined }));
 
-const { verifyRedeemExecution } = await import('../redeem-execution');
+const { verifyRedeemExecution, recheckUnmatchedComposerSales } = await import('../redeem-execution');
 
 const WALLET = '0x1111111111111111111111111111111111111111';
 const MSFT = '0x2222222222222222222222222222222222222222';
@@ -123,6 +127,7 @@ beforeEach(() => {
   getRedeemIntentForUserMock.mockImplementation(async () => ({ ok: true, intent: row }));
   updateRedeemIntentStepsMock.mockImplementation(async (_a: unknown, _id: string, _st: string, steps: RedeemIntentStepRecord[]) => (row = { ...row, steps }));
   updateRedeemIntentStatusMock.mockImplementation(async (_a: unknown, u: { to: RedeemIntent['status'] }) => (row = { ...row, status: u.to }));
+  reopenMock.mockImplementation(async (_a: unknown, _id: string, steps: RedeemIntentStepRecord[]) => (row = { ...row, status: 'CONFIRMING', failureCode: null, steps }));
 });
 
 const accountingCall = () => rpc.mock.calls.find(([name]) => name === 'apply_redeem_execution') as unknown as [string, Record<string, unknown>] | undefined;
@@ -292,5 +297,70 @@ describe('verifyRedeemExecution — fee-paying sale settled through RedeemSettle
     await verify();
     expect(readSettlementResultMock).not.toHaveBeenCalled();
     expect(recordRedeemSettlementResultMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('verifyRedeemExecution — a sale refused as unmatched before wallet batches were recognised', () => {
+  const failedUnmatched = (): RedeemIntent => ({
+    ...intent(),
+    status: 'FAILED',
+    failureCode: 'VERIFICATION_FAILED',
+    steps: intent().steps.map((s) => ({ ...s, status: 'FAILED' as const, failureCode: 'VERIFICATION_FAILED' as const, txHash: HASH })),
+  });
+  const done = { kind: 'DONE', receivedAmountsByAddress: { [USDG]: '9900000' }, sentAmountsByAddress: { [MSFT]: '1000', [NVDA]: '2000' } };
+
+  it('re-checks the transaction; when it now matches (a wallet batch), the sale is reopened and booked once', async () => {
+    row = failedUnmatched();
+    trackComposerMock.mockResolvedValue(done);
+    const outcome = await verify();
+    expect(reopenMock).toHaveBeenCalledTimes(1);
+    expect(reopenMock.mock.calls[0][2].map((s: RedeemIntentStepRecord) => [s.status, s.failureCode, s.txHash])).toEqual([
+      ['CONFIRMING', null, HASH],
+      ['CONFIRMING', null, HASH],
+    ]);
+    expect(outcome.ok && outcome.value.status).toBe('COMPLETED');
+    expect(rpc.mock.calls.filter(([name]) => name === 'apply_redeem_execution')).toHaveLength(1);
+    expect(rpc).toHaveBeenCalledWith('claim_intent_tx_hash', expect.anything());
+  });
+
+  it('stays FAILED when the transaction still does not match, or no longer sold the position in full', async () => {
+    row = failedUnmatched();
+    trackComposerMock.mockResolvedValue({ kind: 'FAILED', failureCode: 'VERIFICATION_FAILED', message: 'x' });
+    expect((await verify()).ok && row.status).toBe('FAILED');
+    expect(reopenMock).not.toHaveBeenCalled();
+
+    row = failedUnmatched();
+    trackComposerMock.mockResolvedValue({ ...done, sentAmountsByAddress: { [MSFT]: '1000' } });
+    await verify();
+    expect(row.status).toBe('FAILED');
+    expect(accountingCall()).toBeUndefined();
+  });
+
+  it('recheckUnmatchedComposerSales books this user’s unmatched sales of the Bag and counts them; an error books nothing', async () => {
+    row = failedUnmatched();
+    listUnmatchedMock.mockResolvedValueOnce([row]);
+    trackComposerMock.mockResolvedValue(done);
+    const session = { userId: 'user_1', walletAddress: WALLET } as never;
+    expect(await recheckUnmatchedComposerSales({ rpc } as never, session, 'bag_1')).toEqual({ booked: 1 });
+    expect(listUnmatchedMock.mock.calls[0].slice(1, 3)).toEqual(['user_1', 'bag_1']);
+    expect(row.status).toBe('COMPLETED');
+
+    listUnmatchedMock.mockRejectedValueOnce(new Error('db down'));
+    expect(await recheckUnmatchedComposerSales({ rpc } as never, session, 'bag_1')).toEqual({ booked: 0 });
+  });
+
+  it('never re-checks a sale that reverted, has no transaction, or had accounting applied', async () => {
+    for (const r of [
+      { ...failedUnmatched(), failureCode: 'TRANSACTION_REVERTED' as const },
+      { ...failedUnmatched(), steps: failedUnmatched().steps.map((s) => ({ ...s, txHash: null })) },
+      { ...failedUnmatched(), accountingAppliedAt: '2026-01-01T00:00:00.000Z' },
+      { ...failedUnmatched(), composerTransaction: null },
+    ]) {
+      row = r;
+      await verify();
+      expect(row.status).toBe('FAILED');
+    }
+    expect(trackComposerMock).not.toHaveBeenCalled();
+    expect(reopenMock).not.toHaveBeenCalled();
   });
 });
