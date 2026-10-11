@@ -168,11 +168,11 @@ Portfolio action
 
 Make BAG strategies portable outside the BAG application.
 
-- [ ] Public Strategy Registry
-- [ ] Public strategy verification
+- [x] Public Strategy Registry (StrategyRegistry on Robinhood Chain)
+- [x] Public strategy verification (in the viewer's browser, with the SDK)
 - [ ] Published strategy versions
 - [ ] Portable `bag.json` URLs
-- [ ] Third-party verification
+- [x] Third-party verification (`packages/bag-sdk/examples/verify-registry.ts`)
 - [ ] Public execution provenance
 - [ ] Strategy discovery
 - [ ] Strategy marketplace

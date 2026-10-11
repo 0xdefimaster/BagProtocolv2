@@ -1,22 +1,27 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, Loader2, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Loader2, ShieldCheck, AlertTriangle, BadgeCheck } from 'lucide-react';
 import { useWallet } from '@/lib/wallet-context';
 import { useStrategyRegistration } from '@/hooks/use-strategy-registration';
+import { useRegistryBrowserVerification } from '@/hooks/use-registry-browser-verification';
 
 // -----------------------------------------------------------------------------
 // The Bag's StrategyRegistry status (docs/STRATEGY_REGISTRY_DESIGN.md): which
 // versions' bag.json definitionHash is committed on-chain, as BAG verified it
 // from the creator-signed transaction. Anyone can re-check a registered
-// version without BAG (scripts/verify-strategy-commitment.ts). The creator can
-// register what is missing from their own wallet; nobody else sees the button.
+// version without BAG (packages/bag-sdk/examples/verify-registry.ts), and the
+// panel does exactly that in the viewer's browser with the SDK: each registered
+// version gets an independent "verified in your browser" result. The creator
+// can register what is missing from their own wallet; nobody else sees the button.
 // -----------------------------------------------------------------------------
 
 interface Status {
   configured: boolean;
   viewerIsCreator: boolean;
   registryAddress: string | null;
+  chain?: string;
+  creatorWallet?: string | null;
   registryStrategyId: string | null;
   versions: { version: number; definitionHash: string; registered: boolean; txHash: string | null }[];
   fork: { parentStrategyId: string; parentVersion: number | null } | null;
@@ -26,6 +31,15 @@ export function StrategyRegistryPanel({ bagId }: { bagId: string }) {
   const { isConnected, walletAddress, connect } = useWallet();
   const [status, setStatus] = useState<Status | null>(null);
   const { phase, error, step, register } = useStrategyRegistration(bagId);
+  const registeredVersions = (status?.versions ?? []).filter((v) => v.registered).map((v) => v.version);
+  const { result: browser, checking } = useRegistryBrowserVerification({
+    bagId,
+    chain: status?.chain ?? null,
+    creatorWallet: status?.creatorWallet ?? null,
+    serverRegistryAddress: status?.registryAddress ?? null,
+    versions: registeredVersions,
+  });
+  const browserCheck = (version: number) => browser?.checks.find((c) => c.version === version) ?? null;
 
   const load = useCallback(() => {
     fetch(`/api/bags/${bagId}/registry`, { credentials: 'same-origin' })
@@ -60,8 +74,11 @@ export function StrategyRegistryPanel({ bagId }: { bagId: string }) {
             <span className="text-white/80">v{v.version}</span>
             <span className="font-mono text-xs text-white/40">{v.definitionHash.slice(0, 10)}…</span>
             {v.registered ? (
-              <span className="inline-flex items-center gap-1 text-emerald-400">
-                <CheckCircle2 size={14} /> Registered
+              <span className="inline-flex items-center gap-3">
+                <span className="inline-flex items-center gap-1 text-emerald-400">
+                  <CheckCircle2 size={14} /> Registered
+                </span>
+                <BrowserBadge check={browserCheck(v.version)} checking={checking} />
               </span>
             ) : (
               <span className="text-white/40">Not registered</span>
@@ -69,6 +86,17 @@ export function StrategyRegistryPanel({ bagId }: { bagId: string }) {
           </li>
         ))}
       </ul>
+      {browser?.registry && registered.length > 0 && (
+        <p className="text-xs text-white/50 mb-4">
+          Checked in your browser with the open-source BAG SDK: the registry at <span className="font-mono">{browser.registry}</span> holds each
+          version&apos;s definition hash, committed by <span className="font-mono">{status.creatorWallet}</span>. BAG&apos;s own record is not used for this check.
+        </p>
+      )}
+      {browser?.registryMismatch && (
+        <p className="text-xs text-amber-400 mb-4 inline-flex items-center gap-1">
+          <AlertTriangle size={12} /> BAG is configured with a different registry address than the SDK knows for this chain.
+        </p>
+      )}
       {status.fork && (
         <p className="text-xs text-white/50 mb-4">
           Fork of {status.fork.parentStrategyId.slice(0, 8)}… {status.fork.parentVersion ? `v${status.fork.parentVersion}` : '(parent version not recorded)'}
@@ -98,5 +126,28 @@ export function StrategyRegistryPanel({ bagId }: { bagId: string }) {
         </p>
       )}
     </div>
+  );
+}
+
+function BrowserBadge({ check, checking }: { check: { state: 'VERIFIED' | 'MISMATCH' | 'UNAVAILABLE'; detail?: string } | null; checking: boolean }) {
+  if (!check) return checking ? <span className="inline-flex items-center gap-1 text-white/40 text-xs"><Loader2 size={12} className="spin" /> Checking…</span> : null;
+  if (check.state === 'VERIFIED') {
+    return (
+      <span className="inline-flex items-center gap-1 text-emerald-300 text-xs" title="Recomputed and read from the chain in your browser">
+        <BadgeCheck size={14} /> Verified in your browser
+      </span>
+    );
+  }
+  if (check.state === 'MISMATCH') {
+    return (
+      <span className="inline-flex items-center gap-1 text-red-400 text-xs" title={check.detail}>
+        <AlertTriangle size={12} /> Does not match the chain
+      </span>
+    );
+  }
+  return (
+    <span className="text-white/40 text-xs" title={check.detail}>
+      Could not check
+    </span>
   );
 }

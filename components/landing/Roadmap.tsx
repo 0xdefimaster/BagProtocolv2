@@ -1,7 +1,8 @@
 // -----------------------------------------------------------------------------
 // Status — tags are literal:
 //   AVAILABLE NOW       implemented in the app and covered by its tests (local
-//                       chain + real PostgreSQL). Contracts are NOT on mainnet yet.
+//                       chain + real PostgreSQL). Live on Robinhood Chain where
+//                       the item says so; nothing on Ethereum, Base or Arbitrum.
 //   IN PROGRESS         being built or enabled now; not available to users yet
 //   COMING NEXT         not built
 // -----------------------------------------------------------------------------
@@ -26,6 +27,10 @@ const NOW = [
   {
     t: 'Live Robinhood asset and price layer',
     b: 'Robinhood Stock Token registry and pricing, LI.FI crypto pricing, RPC failover and execution-aware valuation safeguards.',
+  },
+  {
+    t: 'On-chain strategy registry and SDK',
+    b: 'StrategyRegistry is live on Robinhood Chain: creators commit each version from their own wallet, anyone can verify a bag.json with the open SDK, and the app re-checks every registered version in the viewer’s browser.',
   },
   {
     t: 'On-chain redemption settlement',
@@ -72,7 +77,7 @@ const NEXT = [
   {
     tag: 'COMING NEXT',
     t: 'Open strategy network, AI and agents',
-    b: 'Public strategy registry, portable strategy discovery, third-party verification, AI-to-bag.json workflows and authenticated agents.',
+    b: 'Portable strategy discovery, published bag.json URLs, a strategy marketplace, AI-to-bag.json workflows and authenticated agents.',
   },
 ];
 
@@ -84,7 +89,8 @@ export default function Roadmap() {
         <h2>What works today. What comes next.</h2>
         <p>
           Available now means implemented in the app and tested against a local chain and a real
-          database. No Bag Protocol contract is deployed to mainnet yet.
+          database. BagFactory, StrategyRegistry and RedeemSettlement are live on Robinhood Chain;
+          no Bag Protocol contract is deployed on Ethereum, Base or Arbitrum yet.
         </p>
       </div>
       <div className="status-grid" data-reveal>
