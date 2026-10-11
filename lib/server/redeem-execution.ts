@@ -3,7 +3,6 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { recordNavSnapshot } from '@/lib/server/bag-nav-snapshots';
 import { AssetIdentity } from '@/types/basket-protocol';
 import { RedeemIntent, RedeemIntentFailureCode, RedeemIntentStepRecord } from '@/types/redeem-intent';
-import { PURCHASE_INTENT_TTL_MS } from '@/types/purchase-intent';
 import { SessionPayload } from '@/lib/auth/session';
 import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
 import { claimNewlyVerifiedTxHashes, TX_HASH_RE } from '@/lib/server/intent-tx-claims';
@@ -243,7 +242,7 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
   }
 
   const fingerprint = computeRedeemFingerprint({ bagId, sharesToRedeemRaw: sharesBurnRaw, outputAsset, steps: executionSteps });
-  const expiresAt = new Date(Date.now() + PURCHASE_INTENT_TTL_MS).toISOString();
+  const expiresAt = new Date(Date.now() + REDEEM_INTENT_TTL_MS).toISOString();
 
   const intentInput: CreateRedeemIntentInput = {
     userId: session.userId,
@@ -301,10 +300,16 @@ function isExpired(intent: RedeemIntent): boolean {
 const TERMINAL_REDEEM_STATUSES: ReadonlySet<RedeemIntent['status']> = new Set(['COMPLETED', 'RECONCILIATION_REQUIRED', 'FAILED', 'CANCELLED', 'EXPIRED']);
 
 /**
+ * How long a sale quote stays signable. Short on purpose: the wallet is asked right after the quote, and a sale left
+ * open blocks a new one of the same position until it lapses (or the owner closes it, cancelOpenRedeemIntent).
+ */
+export const REDEEM_INTENT_TTL_MS = 2 * 60 * 1000;
+
+/**
  * Extra time, after an intent's expiry, before a free sale awaiting signature counts as abandoned: the wallet may
  * still be open on it (expiry is a few minutes after the quote, signing can take longer).
  */
-export const ABANDONED_FREE_SALE_GRACE_MS = 10 * 60 * 1000;
+export const ABANDONED_FREE_SALE_GRACE_MS = 2 * 60 * 1000;
 
 /**
  * An open sale nobody will finish — the wallet never signed and no report came back (tab closed, wallet dismissed
@@ -312,7 +317,7 @@ export const ABANDONED_FREE_SALE_GRACE_MS = 10 * 60 * 1000;
  * longer do anything:
  *  - not yet handed to the wallet (DRAFT / QUOTED / READY) and past its expiry: nothing was signed;
  *  - AWAITING_SIGNATURE of a settlement sale whose attestation deadline has passed: RedeemSettlement refuses the
- *    signed transaction after it (`deadline`, §8). The deadline is at most ~5 minutes after phase 2 (§9);
+ *    signed transaction after it (`deadline`, §8). The deadline is at most ~2 minutes after phase 2 (§9);
  *  - AWAITING_SIGNATURE of a free Composer sale, past its expiry plus ABANDONED_FREE_SALE_GRACE_MS, once the chain
  *    shows the built transaction was never sent (#27). It has no on-chain deadline of ours, so the chain is asked
  *    first (composer-tx-search.ts): found → the sale happened, it is recovered as SUBMITTED and booked by verify

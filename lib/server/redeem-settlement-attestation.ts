@@ -66,8 +66,8 @@ import {
 // Every input comes from the server; the request carries only the intent id.
 // -----------------------------------------------------------------------------
 
-const PLAN_TTL_MS = 3 * 60 * 1000;
-const ATTESTATION_TTL_MS = 5 * 60 * 1000;
+const PLAN_TTL_MS = 2 * 60 * 1000;
+const ATTESTATION_TTL_MS = 2 * 60 * 1000;
 
 export class SettlementNotConfiguredError extends Error {
   constructor(missing: string) {
