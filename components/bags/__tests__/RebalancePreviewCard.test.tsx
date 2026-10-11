@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { RebalancePreviewCard } from '../RebalancePreviewCard';
 
 const TSLA = '0x322f0929c4625ed5bad873c95208d54e1c003b2d';
@@ -42,6 +42,34 @@ describe('RebalancePreviewCard', () => {
     expect(screen.getByText('+10.0%')).toBeTruthy();
     expect(screen.getByText(/beyond this strategy.s 5.0% threshold/)).toBeTruthy();
     expect(screen.getByText(/A rebalance would sell/).textContent).toMatch(/sell .*of TSLA and buy .*of NVDA, in your own wallet, with no creator fee/);
+  });
+
+  it('gets a live quote on request and shows what would be sold and received, with the minimum', async () => {
+    const quote = {
+      sells: [{ address: TSLA, symbol: 'TSLA', decimals: 18, amountRaw: '10000000000000000000', expectedOutRaw: null, minOutRaw: null }],
+      buys: [{ address: NVDA, symbol: 'NVDA', decimals: 18, amountRaw: null, expectedOutRaw: '9900000000000000000', minOutRaw: '9801000000000000000' }],
+      slippageBps: 100,
+      priceImpactBps: 30,
+    };
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) =>
+      new Response(JSON.stringify(init?.method === 'POST' && url.endsWith('/rebalance-quote') ? quote : { symbols, preview: drifted }), { status: 200 })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<RebalancePreviewCard bagId="b1" />);
+    fireEvent.click(await screen.findByText('Get a live rebalance quote'));
+    await waitFor(() => expect(screen.getByText(/Receive about/)).toBeTruthy());
+    expect(screen.getByText(/Receive about/).textContent).toMatch(/9\.9.* NVDA \(at least 9\.80?1? ?/);
+    expect(screen.getByText(/0\.30% price impact/)).toBeTruthy();
+    expect(fetchMock.mock.calls.some(([u, i]) => String(u).endsWith('/b1/rebalance-quote') && i?.method === 'POST')).toBe(true);
+  });
+
+  it('shows the reason when no quote is available', async () => {
+    global.fetch = vi.fn(async (url: string, init?: RequestInit) =>
+      init?.method === 'POST' ? new Response(JSON.stringify({ error: 'The price impact of this rebalance is above the limit.' }), { status: 422 }) : new Response(JSON.stringify({ symbols, preview: drifted }), { status: 200 })
+    ) as unknown as typeof fetch;
+    render(<RebalancePreviewCard bagId="b1" />);
+    fireEvent.click(await screen.findByText('Get a live rebalance quote'));
+    await waitFor(() => expect(screen.getByText(/price impact of this rebalance is above the limit/)).toBeTruthy());
   });
 
   it('says so when the position is within tolerance', async () => {
