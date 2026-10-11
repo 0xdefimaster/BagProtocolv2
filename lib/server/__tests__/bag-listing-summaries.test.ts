@@ -29,14 +29,27 @@ describe('getNavSummaries', () => {
 });
 
 describe('getBagSocialCounts', () => {
-  it('counts child Bags as forks and non-zero positions as holders', async () => {
+  it('counts child Bags as forks, and wallets that still hold some of the Bag as holders (once each)', async () => {
     const admin = {
       from: (table: string) => ({
         select: () => ({
           in: (_col: string, ids: string[]) => {
             expect(ids).toEqual(['a', 'b']);
             if (table === 'bags') return Promise.resolve({ data: [{ parent_bag_id: 'a' }, { parent_bag_id: 'a' }], error: null });
-            return { gt: () => Promise.resolve({ data: [{ bag_id: 'a' }, { bag_id: 'b' }, { bag_id: 'b' }], error: null }) };
+            expect(table).toBe('bag_investor_holdings');
+            return Promise.resolve({
+              data: [
+                // u1 holds two assets of a: one holder.
+                { bag_id: 'a', user_id: 'u1', quantity_raw: '5' },
+                { bag_id: 'a', user_id: 'u1', quantity_raw: '7' },
+                // u2 moved everything out (reconciled to 0): not a holder.
+                { bag_id: 'a', user_id: 'u2', quantity_raw: '0' },
+                { bag_id: 'b', user_id: 'u1', quantity_raw: '1' },
+                { bag_id: 'b', user_id: 'u3', quantity_raw: '100000000000000000000000' },
+                { bag_id: 'b', user_id: 'u4', quantity_raw: 'garbage' },
+              ],
+              error: null,
+            });
           },
         }),
       }),

@@ -72,7 +72,7 @@ export function FeaturedBags() {
       {isError && (
         <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: 10 }}>
           <p style={{ color: '#E0847A', fontSize: 13.5 }}>{error ?? 'Could not load bags.'}</p>
-          <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={refresh}>
+          <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12.5 }} onClick={() => refresh()}>
             Retry
           </button>
         </div>
