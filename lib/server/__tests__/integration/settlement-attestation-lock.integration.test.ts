@@ -62,10 +62,13 @@ describe('§9 a live settlement attestation locks the position (real PostgreSQL)
     // Not an open intent any more — the old check alone would let a new sale start:
     expect(await listOpenRedeemIntentsForBag(db.client, userId, bagId)).toHaveLength(0);
     // …but it holds a live attestation, so a new sale is refused (createRedeemIntentForUser's check)…
-    expect(await liveSettlementAttestationFor(db.client, userId, bagId)).toEqual({ id: a });
+    const live = await liveSettlementAttestationFor(db.client, userId, bagId);
+    expect(live).toMatchObject({ id: a });
+    // …with the deadline it lapses at, which the refusal reports to the user.
+    expect(live!.deadline).toBeGreaterThan(nowSec());
     // …and so is a purchase (which would change the basis the attestation was signed with): cancelled.
     const p = await insertPurchase(userId, wallet);
-    expect(await cancelPurchaseIfFeeSaleOpen(db.client, { id: p, userId, status: 'READY' }, feeBag(), null)).toEqual({ id: a });
+    expect(await cancelPurchaseIfFeeSaleOpen(db.client, { id: p, userId, status: 'READY' }, feeBag(), null)).toMatchObject({ id: a });
     expect((await db.admin.query('select status from purchase_intents where id = $1', [p])).rows[0].status).toBe('CANCELLED');
 
     // A's deadline passes: its signature is dead on-chain; the position is free again.
