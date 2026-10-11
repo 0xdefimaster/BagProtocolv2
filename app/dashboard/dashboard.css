@@ -646,3 +646,5 @@ header .brand { flex-shrink: 0; white-space: nowrap; }
 .verify-badge.ok { color: var(--emerald); }
 .verify-badge.warn { color: #E0B04A; }
 .verify-badge.muted { color: var(--mute); }
+.proof-tx { display: inline-flex; align-items: center; gap: 4px; color: var(--gold-lt); }
+.proof-tx:hover { text-decoration: underline; }
