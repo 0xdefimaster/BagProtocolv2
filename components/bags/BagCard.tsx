@@ -6,9 +6,12 @@ import { useState } from 'react';
 import { Bag } from '@/types';
 import { bagReturns, formatCompact, formatReturn, formatUsdCompact } from '@/lib/format';
 import { useForkBag } from '@/hooks/useForkBag';
-import { PurchasePreviewModal } from '@/components/app/PurchasePreviewModal';
+import dynamic from 'next/dynamic';
 import { getCategoryBreakdown, getDiversificationScore, categoryForPosition, CATEGORY_COLORS } from '@/lib/categorize';
 import { Users, GitFork, TrendingUp, TrendingDown } from 'lucide-react';
+
+// Loaded when Invest is opened: the purchase flow (LI.FI SDK, viem) stays out of every page that lists Bags.
+const PurchasePreviewModal = dynamic(() => import('@/components/app/PurchasePreviewModal').then((m) => m.PurchasePreviewModal), { ssr: false });
 
 interface BagCardProps {
   bag: Bag;

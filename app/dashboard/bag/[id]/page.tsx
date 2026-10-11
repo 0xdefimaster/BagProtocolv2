@@ -1,6 +1,7 @@
 'use client';
 
 import { mockBags, mockUserBags } from '@/lib/mock-data';
+import { isDemoModeEnabled } from '@/lib/config/demo-mode';
 import { useUserBags } from '@/lib/user-bags-store';
 import { usePortfolio } from '@/lib/portfolio-store';
 import { useActivity } from '@/lib/activity-store';
@@ -20,8 +21,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import Link from 'next/link';
-import { PurchasePreviewModal } from '@/components/app/PurchasePreviewModal';
-import { RedeemPreviewModal } from '@/components/app/RedeemPreviewModal';
+import dynamic from 'next/dynamic';
 import { PerformanceTimeline } from '@/components/bags/PerformanceTimeline';
 import { DiversificationScore } from '@/components/bags/DiversificationScore';
 import { FollowButton, useIsSelf } from '@/components/creator/FollowButton';
@@ -69,6 +69,10 @@ function rebalanceLabel(frequency: string): string {
   }
 }
 
+// Loaded when Invest / Sell is opened, so the purchase and sale flows (LI.FI SDK, viem) do not delay the page.
+const PurchasePreviewModal = dynamic(() => import('@/components/app/PurchasePreviewModal').then((m) => m.PurchasePreviewModal), { ssr: false });
+const RedeemPreviewModal = dynamic(() => import('@/components/app/RedeemPreviewModal').then((m) => m.RedeemPreviewModal), { ssr: false });
+
 interface BagDetailPageProps {
   params: Promise<{ id: string }>;
 }
@@ -103,8 +107,10 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
   const { following, toggleFollow } = usePortfolio();
   const { addActivity } = useActivity();
   const api = useBag(id);
+  // Demo fixtures only in demo mode: a real deployment never shows an invented Bag at any URL.
   const localBag =
-    userBags.find((b) => b.id === id) ?? mockUserBags.find((b) => b.id === id) ?? mockBags.find((b) => b.id === id);
+    userBags.find((b) => b.id === id) ??
+    (isDemoModeEnabled() ? (mockUserBags.find((b) => b.id === id) ?? mockBags.find((b) => b.id === id)) : undefined);
   const { bag, view } = buildViewState(id, localBag, api);
 
   const [activeTab, setActiveTab] = useState('overview');

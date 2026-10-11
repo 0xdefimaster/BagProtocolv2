@@ -101,7 +101,21 @@ export default function CreatePage() {
   // the toggled chips did nothing except misrepresent the Bag as
   // multi-chain on the Review step. Now a single value, matching what
   // `NetworkSelector`/`handlePublish` actually do with it.
-  const [selectedNetworkId, setSelectedNetworkId] = useState<string>('ethereum');
+  // Robinhood Chain is where BAG's contracts live; other networks open up once a BagFactory is configured for them.
+  const [selectedNetworkId, setSelectedNetworkId] = useState<string>('robinhood');
+  const [deployableChains, setDeployableChains] = useState<string[]>(['robinhood']);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/deploy/chains')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { deployable?: string[] } | null) => {
+        if (!cancelled && Array.isArray(body?.deployable) && body.deployable.length > 0) setDeployableChains(body.deployable);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Surfaces the "Network changed. Your asset selections were cleared."
   // notice below the selector for a few seconds — cleared automatically so
   // it doesn't linger once the person has moved on.
@@ -435,7 +449,7 @@ export default function CreatePage() {
               </div>
               <div className="field">
                 <label>Deploy On</label>
-                <NetworkSelector selected={selectedNetworkId} onChange={handleNetworkChange} />
+                <NetworkSelector selected={selectedNetworkId} onChange={handleNetworkChange} deployable={deployableChains} />
                 {networkChangeNotice && (
                   <div
                     role="status"

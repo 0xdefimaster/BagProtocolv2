@@ -21,19 +21,24 @@ import { Check } from 'lucide-react';
 interface NetworkSelectorProps {
   selected: string;
   onChange: (networkId: string) => void;
+  /** Networks a Bag can be published on from this deployment (GET /api/deploy/chains). Others show as coming soon. */
+  deployable?: readonly string[];
 }
 
-export function NetworkSelector({ selected, onChange }: NetworkSelectorProps) {
+export function NetworkSelector({ selected, onChange, deployable }: NetworkSelectorProps) {
   return (
     <div className="network-grid" role="radiogroup" aria-label="Deploy network">
       {NETWORKS.map((net) => {
         const active = net.id === selected;
+        const available = !deployable || deployable.includes(net.id) || active;
         return (
           <button
             type="button"
             key={net.id}
             role="radio"
             aria-checked={active}
+            disabled={!available}
+            title={available ? undefined : 'No BagFactory on this network yet'}
             onClick={() => onChange(net.id)}
             className={`network-chip ${active ? 'active' : ''}`}
             style={active ? { borderColor: net.color, background: `${net.color}1A` } : undefined}
@@ -42,6 +47,7 @@ export function NetworkSelector({ selected, onChange }: NetworkSelectorProps) {
               {net.glyph}
             </span>
             <span className="network-label">{net.label}</span>
+            {!available && <span className="network-soon">Soon</span>}
             {active && <Check size={14} className="network-check" style={{ color: net.color }} />}
           </button>
         );

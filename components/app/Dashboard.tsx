@@ -6,21 +6,18 @@ import { useUserBags } from '@/lib/user-bags-store';
 import { useMyBags } from '@/hooks/useMyBags';
 import { useActivity, formatRelativeTime } from '@/lib/activity-store';
 import { usePortfolio } from '@/lib/portfolio-store';
-import { usePaperPortfolio } from '@/hooks/usePaperPortfolio';
-import { usePoints } from '@/hooks/usePoints';
-import { useLeaderboard } from '@/hooks/useLeaderboard';
-import { Plus, TrendingUp, Users, Upload, Send, Trophy, Boxes, Wallet2 } from 'lucide-react';
+import { usePositionsTotal } from '@/hooks/usePositionsTotal';
+import { formatDecimalStringUsd } from '@/lib/format';
+import { Plus, Users, Send, Trophy, Wallet2 } from 'lucide-react';
 import Link from 'next/link';
-import { useRef } from 'react';
 import { BagCard } from '../bags/BagCard';
-import { Bag } from '@/types';
 
 interface DashboardProps {
   isConnected: boolean;
 }
 
 export function Dashboard({ isConnected }: DashboardProps) {
-  const { userBags: localBags, addBag } = useUserBags();
+  const { userBags: localBags } = useUserBags();
   const {
     bags: apiBags,
     isLoading: myBagsLoading,
@@ -30,11 +27,8 @@ export function Dashboard({ isConnected }: DashboardProps) {
     refresh: refreshMyBags,
   } = useMyBags();
   const { activity } = useActivity();
-  const { following, totalInvested } = usePortfolio();
-  const { portfolio, unrealizedPnL, totalValue: paperTotalValue } = usePaperPortfolio();
-  const { points } = usePoints();
-  const { result: leaderboard } = useLeaderboard();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { following } = usePortfolio();
+  const positions = usePositionsTotal(isConnected && isAuthenticated);
 
   if (!isConnected) {
     return null;
@@ -64,36 +58,6 @@ export function Dashboard({ isConnected }: DashboardProps) {
   const allMyBags = demoMode ? [...userBags, ...mockUserBags] : userBags;
   const totalMyBags = demoMode ? mockUser.myBags + userBags.length : userBags.length;
   const totalFollowing = demoMode ? mockUser.following + following.length : following.length;
-  const portfolioValue = demoMode ? mockUser.balance + totalInvested : totalInvested;
-  // "Forks Made" has no real backend tracking yet (no fork-count endpoint
-  // exists) — rather than inventing one (out of scope for this sprint) or
-  // continuing to show a fabricated `mockUser.forks`, a real, connected
-  // user's true known fork count is honestly 0 until that feature ships.
-  const totalForks = demoMode ? mockUser.forks : 0;
-
-  const handleImportClick = () => fileInputRef.current?.click();
-
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // allow re-selecting the same file next time
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(reader.result as string);
-        const imported: Bag = {
-          ...parsed,
-          id: `imported-${Date.now()}`,
-          creator: parsed.creator || { name: 'You', avatar: '👤', address: mockUser.address, followers: 0, forks: 0 },
-        };
-        addBag(imported);
-      } catch {
-        alert('Could not read that file — make sure it\'s a valid bag.json export.');
-      }
-    };
-    reader.readAsText(file);
-  };
 
   return (
     <div style={{ paddingTop: 48, display: 'flex', flexDirection: 'column', gap: 48 }}>
@@ -101,10 +65,11 @@ export function Dashboard({ isConnected }: DashboardProps) {
         <div className="dash-stats">
           <div className="dash-stat">
             <span className="l">Portfolio Value</span>
-            <div className="v">${(portfolioValue / 1000).toFixed(0)}K</div>
-            <div className="d pos">
-              <TrendingUp size={13} />
-              +12.5% (7D)
+            <div className="v">
+              {positions.status === 'ready' ? `${formatDecimalStringUsd(positions.total)}${positions.complete ? '' : '*'}` : '—'}
+            </div>
+            <div className="d">
+              <Link href="/dashboard/portfolio">{positions.status === 'ready' && !positions.complete ? 'Some prices unavailable →' : 'Your positions →'}</Link>
             </div>
           </div>
           <div className="dash-stat">
@@ -120,48 +85,6 @@ export function Dashboard({ isConnected }: DashboardProps) {
             <div className="d">
               <Users size={13} />
               creators
-            </div>
-          </div>
-          <div className="dash-stat">
-            <span className="l">Forks Made</span>
-            <div className="v">{totalForks}</div>
-            <div className="d">custom portfolios</div>
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <span className="section-label">Paper Trading &amp; BAG Points</span>
-        <div className="dash-stats">
-          <div className="dash-stat">
-            <span className="l">Paper Portfolio</span>
-            <div className="v">${paperTotalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-            <div className={`d ${unrealizedPnL >= 0 ? 'pos' : ''}`} style={{ color: unrealizedPnL < 0 ? '#E0847A' : undefined }}>
-              <TrendingUp size={13} />
-              {unrealizedPnL >= 0 ? '+' : ''}${unrealizedPnL.toFixed(0)} unrealized
-            </div>
-          </div>
-          <div className="dash-stat">
-            <span className="l">Realized PnL</span>
-            <div className="v" style={{ color: (portfolio?.realizedPnL ?? 0) >= 0 ? 'var(--emerald)' : '#E0847A' }}>
-              {(portfolio?.realizedPnL ?? 0) >= 0 ? '+' : ''}${(portfolio?.realizedPnL ?? 0).toFixed(0)}
-            </div>
-            <div className="d">
-              <Link href="/dashboard/portfolio">Trade →</Link>
-            </div>
-          </div>
-          <div className="dash-stat">
-            <span className="l">BAG Points</span>
-            <div className="v">{points?.bagPoints ?? 0}</div>
-            <div className="d">
-              <Link href="/dashboard/inventory">Spend on boxes →</Link>
-            </div>
-          </div>
-          <div className="dash-stat">
-            <span className="l">Genesis Rank</span>
-            <div className="v">{leaderboard?.self ? `#${leaderboard.self.rank}` : '—'}</div>
-            <div className="d">
-              <Link href="/dashboard/leaderboard">View leaderboard →</Link>
             </div>
           </div>
         </div>
@@ -180,27 +103,12 @@ export function Dashboard({ isConnected }: DashboardProps) {
           </Link>
           <Link href="/dashboard/portfolio" className="qa-btn">
             <Wallet2 size={16} />
-            Trade
-          </Link>
-          <Link href="/dashboard/inventory" className="qa-btn">
-            <Boxes size={16} />
-            Open Boxes
+            Portfolio
           </Link>
           <Link href="/dashboard/leaderboard" className="qa-btn">
             <Trophy size={16} />
             Leaderboard
           </Link>
-          <button className="qa-btn" onClick={handleImportClick}>
-            <Upload size={16} />
-            Import JSON
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/json,.json"
-            onChange={handleImportFile}
-            style={{ display: 'none' }}
-          />
           <Link href="/dashboard/create" className="qa-btn">
             <Send size={16} />
             Publish

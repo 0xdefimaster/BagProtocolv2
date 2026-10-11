@@ -40,21 +40,24 @@ const { default: CreatePage } = await import('../page');
 /** One VERIFIED registry asset per chain, keyed by the `?chain=` query param the component's fetch sends — models a real GET /api/assets response for that one chain. */
 function registryAssetsFixture(): Record<string, unknown[]> {
   return {
-    ethereum: [
-      { id: 'ethereum:0xusdc', symbol: 'USDC', name: 'USD Coin', type: 'crypto', chain: 'ethereum', address: '0xusdc', decimals: 6 },
-      { id: 'ethereum:0xweth', symbol: 'WETH', name: 'Wrapped Ether', type: 'crypto', chain: 'ethereum', address: '0xweth', decimals: 18 },
+    robinhood: [
+      { id: 'robinhood:0xusdc', symbol: 'USDC', name: 'USD Coin', type: 'crypto', chain: 'robinhood', address: '0xusdc', decimals: 6 },
+      { id: 'robinhood:0xweth', symbol: 'WETH', name: 'Wrapped Ether', type: 'crypto', chain: 'robinhood', address: '0xweth', decimals: 18 },
     ],
+    ethereum: [],
     base: [
       { id: 'base:0xnvda', symbol: 'xNVDA', name: 'NVIDIA (Base)', type: 'stock', chain: 'base', address: '0xnvda', decimals: 18 },
     ],
     arbitrum: [],
-    robinhood: [],
   };
 }
+
+let deployable = ['robinhood', 'ethereum', 'base', 'arbitrum'];
 
 function stubFetchForRegistry() {
   const byChain = registryAssetsFixture();
   const fetchMock = vi.fn(async (url: string) => {
+    if (url.startsWith('/api/deploy/chains')) return { ok: true, json: async () => ({ deployable }) } as Response;
     const match = /[?&]chain=([^&]+)/.exec(url);
     const chain = match ? decodeURIComponent(match[1]) : 'robinhood';
     return {
@@ -73,6 +76,7 @@ async function goToAssetsStep() {
 }
 
 beforeEach(() => {
+  deployable = ['robinhood', 'ethereum', 'base', 'arbitrum'];
   stubFetchForRegistry();
 });
 
@@ -85,29 +89,31 @@ describe('Create Bag — single-chain network model', () => {
   it('1. NetworkSelector is a true single-select — choosing a network deselects whatever was chosen before', async () => {
     render(<CreatePage />);
 
-    const ethereumRadio = screen.getByRole('radio', { name: /ethereum/i });
+    const robinhoodRadio = screen.getByRole('radio', { name: /robinhood/i });
     const baseRadio = screen.getByRole('radio', { name: /base/i });
 
-    expect(ethereumRadio).toHaveAttribute('aria-checked', 'true');
+    expect(robinhoodRadio).toHaveAttribute('aria-checked', 'true');
     expect(baseRadio).toHaveAttribute('aria-checked', 'false');
+    await waitFor(() => expect(baseRadio).not.toBeDisabled());
 
     fireEvent.click(baseRadio);
 
     expect(baseRadio).toHaveAttribute('aria-checked', 'true');
-    expect(ethereumRadio).toHaveAttribute('aria-checked', 'false');
+    expect(robinhoodRadio).toHaveAttribute('aria-checked', 'false');
   });
 
   it('2. changing the network clears selected assets, and 3. clears allocations along with them', async () => {
     render(<CreatePage />);
     await goToAssetsStep();
 
-    // Select USDC (a real Ethereum-registry asset from the fixture).
+    // Select USDC (a real Robinhood-registry asset from the fixture).
     fireEvent.click(screen.getByText('USDC'));
     await waitFor(() => expect(screen.getByText(/selected \(1\)/i)).toBeInTheDocument());
 
     // Go back to Basic Info and switch the network — assets/allocations for
     // the PREVIOUS chain must not silently carry over to the new one.
     fireEvent.click(screen.getByRole('button', { name: /^bag info$/i }));
+    await waitFor(() => expect(screen.getByRole('radio', { name: /base/i })).not.toBeDisabled());
     fireEvent.click(screen.getByRole('radio', { name: /base/i }));
 
     // Explicit notice, not a silent clear.
@@ -143,7 +149,18 @@ describe('Create Bag — single-chain network model', () => {
       /ethereum|base|arbitrum|robinhood chain/i.test(el.textContent ?? '')
     );
     expect(chainTags).toHaveLength(1);
-    expect(chainTags[0].textContent).toMatch(/ethereum/i);
+    expect(chainTags[0].textContent).toMatch(/robinhood/i);
+  });
+
+  it('opens on Robinhood Chain; a network without a configured BagFactory is shown as coming soon and cannot be picked', async () => {
+    deployable = ['robinhood'];
+    render(<CreatePage />);
+    expect(screen.getByRole('radio', { name: /robinhood/i })).toHaveAttribute('aria-checked', 'true');
+    for (const name of [/ethereum/i, /base/i, /arbitrum/i]) {
+      const radio = screen.getByRole('radio', { name });
+      expect(radio).toBeDisabled();
+      expect(radio).toHaveTextContent(/soon/i);
+    }
   });
 
   it('registry-only asset pool: BTC (never a real deployment on any supported chain) is never selectable, and an empty registry shows the explicit empty state, not mock assets', async () => {
@@ -155,6 +172,7 @@ describe('Create Bag — single-chain network model', () => {
 
     // Switch to Arbitrum, which the fixture registry has nothing for.
     fireEvent.click(screen.getByRole('button', { name: /^bag info$/i }));
+    await waitFor(() => expect(screen.getByRole('radio', { name: /arbitrum/i })).not.toBeDisabled());
     fireEvent.click(screen.getByRole('radio', { name: /arbitrum/i }));
     fireEvent.click(screen.getByRole('button', { name: /^select assets$/i }));
 
