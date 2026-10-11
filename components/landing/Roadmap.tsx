@@ -1,7 +1,8 @@
 // -----------------------------------------------------------------------------
 // Status — tags are literal:
 //   AVAILABLE NOW       implemented in the app and covered by its tests (local
-//                       chain + real PostgreSQL). Contracts are NOT on mainnet yet.
+//                       chain + real PostgreSQL). Live on Robinhood Chain where
+//                       the item says so; nothing on Ethereum, Base or Arbitrum.
 //   IN PROGRESS         being built or enabled now; not available to users yet
 //   COMING NEXT         not built
 // -----------------------------------------------------------------------------
@@ -88,7 +89,8 @@ export default function Roadmap() {
         <h2>What works today. What comes next.</h2>
         <p>
           Available now means implemented in the app and tested against a local chain and a real
-          database. No Bag Protocol contract is deployed to mainnet yet.
+          database. BagFactory, StrategyRegistry and RedeemSettlement are live on Robinhood Chain;
+          no Bag Protocol contract is deployed on Ethereum, Base or Arbitrum yet.
         </p>
       </div>
       <div className="status-grid" data-reveal>
