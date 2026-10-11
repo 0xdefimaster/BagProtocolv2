@@ -8,6 +8,17 @@ export function formatAge(isoDate: string): string {
   return `${years} year${years === 1 ? '' : 's'}`;
 }
 
+/** How long ago, for recent events: "just now", "5 min ago", "3 h ago", "4 d ago". */
+export function formatTimeAgo(iso: string, now: number = Date.now()): string {
+  const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
+  if (!Number.isFinite(s)) return '—';
+  if (s < 60) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
+}
+
 export function formatCompact(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}K`;
