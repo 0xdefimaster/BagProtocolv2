@@ -1,48 +1,97 @@
 'use client';
 
-import { LeaderboardEntry } from '@/types/domain';
+import Link from 'next/link';
+import { CreatorAvatar } from '@/components/creator/CreatorAvatar';
+import { formatCompact, formatReturn, formatUsdCompact } from '@/lib/format';
+import type { BagMetric, RankedBag, RankedCreator } from '@/lib/domain/leaderboard/rank';
 
-interface LeaderboardTableProps {
-  entries: LeaderboardEntry[];
-  topN: number;
+const same = (a: string | undefined, b: string | undefined) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
+export function formatMetric(metric: BagMetric, value: number): string {
+  if (metric === 'tvl') return `$${formatUsdCompact(value)}`;
+  if (metric === 'return30d' || metric === 'return7d') return formatReturn(value);
+  return formatCompact(value);
 }
 
-export function LeaderboardTable({ entries, topN }: LeaderboardTableProps) {
+export function BagLeaderboardTable({ rows, metric, metricLabel, selfAddress }: { rows: RankedBag[]; metric: BagMetric; metricLabel: string; selfAddress?: string }) {
   return (
     <table className="leaderboard-table">
       <thead>
         <tr>
           <th>Rank</th>
-          <th>Trader</th>
-          <th>Realized PnL</th>
-          <th>BAG Points</th>
+          <th>Bag</th>
+          <th>Creator</th>
+          <th>{metricLabel}</th>
         </tr>
       </thead>
       <tbody>
-        {entries.map((entry) => (
-          <tr
-            key={entry.userId}
-            className={`${entry.isSelf ? 'self-row' : ''} ${entry.rank <= topN ? 'genesis-row' : ''}`.trim()}
-          >
-            <td>
-              <span className={`lb-rank mono ${entry.rank <= topN ? 'top' : ''}`}>#{entry.rank}</span>
-            </td>
-            <td>
-              <span className="lb-trader">
-                {entry.isSelf ? 'You' : entry.displayName}
-                {entry.rank <= topN && <span className="genesis-badge">Genesis Access</span>}
-              </span>
-            </td>
-            <td>
-              <span className={`lb-pnl mono ${entry.realizedPnL >= 0 ? 'pos' : 'neg'}`}>
-                {entry.realizedPnL >= 0 ? '+' : ''}${entry.realizedPnL.toLocaleString()}
-              </span>
-            </td>
-            <td>
-              <span className="lb-points mono">{entry.bagPoints}</span>
-            </td>
-          </tr>
-        ))}
+        {rows.map(({ rank, bag, value }) => {
+          const own = same(bag.creator?.address, selfAddress);
+          const signed = metric === 'return30d' || metric === 'return7d';
+          return (
+            <tr key={bag.id} className={own ? 'self-row' : undefined}>
+              <td>
+                <span className={`lb-rank mono ${rank <= 3 ? 'top' : ''}`}>#{rank}</span>
+              </td>
+              <td>
+                <Link href={`/dashboard/bag/${bag.id}`} className="lb-trader">
+                  {bag.name}
+                </Link>
+              </td>
+              <td>
+                <Link href={`/dashboard/creator/${bag.creator.address}`} className="lb-trader">
+                  {own ? 'You' : bag.creator.name}
+                </Link>
+              </td>
+              <td>
+                <span className={`mono ${signed ? (value >= 0 ? 'lb-pnl pos' : 'lb-pnl neg') : 'lb-points'}`}>{formatMetric(metric, value)}</span>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+export function CreatorLeaderboardTable({ rows, selfAddress }: { rows: RankedCreator[]; selfAddress?: string }) {
+  return (
+    <table className="leaderboard-table">
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Creator</th>
+          <th>TVL</th>
+          <th>Bags</th>
+          <th>Holders</th>
+          <th>Best 30D</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((c) => {
+          const own = same(c.address, selfAddress);
+          return (
+            <tr key={c.address} className={own ? 'self-row' : undefined}>
+              <td>
+                <span className={`lb-rank mono ${c.rank <= 3 ? 'top' : ''}`}>#{c.rank}</span>
+              </td>
+              <td>
+                <Link href={`/dashboard/creator/${c.address}`} className="lb-trader" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <CreatorAvatar avatarUrl={c.avatarUrl} fallback={c.avatar || '👤'} size={22} />
+                  {own ? 'You' : c.name}
+                </Link>
+              </td>
+              <td>
+                <span className="lb-points mono">${formatUsdCompact(c.tvl)}</span>
+              </td>
+              <td className="mono">{c.bags}</td>
+              <td className="mono">{formatCompact(c.holders)}</td>
+              <td>
+                <span className={`mono ${c.best30d === null ? '' : c.best30d >= 0 ? 'lb-pnl pos' : 'lb-pnl neg'}`}>{formatReturn(c.best30d)}</span>
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );

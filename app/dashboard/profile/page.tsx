@@ -15,15 +15,11 @@ import { useCreatorFollows } from '@/lib/creator-follow-store';
 import { useWallet, shortenAddress } from '@/lib/wallet-context';
 import { useXConnection } from '@/lib/x-connect-store';
 import { useCreatorRewards } from '@/hooks/useCreatorRewards';
-import { usePoints } from '@/hooks/usePoints';
-import { useLeaderboard } from '@/hooks/useLeaderboard';
-import { useBagNFTs } from '@/hooks/useBagNFTs';
 import { bagReturns, formatCompact, formatReturn, formatUsdCompact, formatAge } from '@/lib/format';
 import { Reputation } from '@/components/creator/Reputation';
 import { ActivityFeed } from '@/components/activity/ActivityFeed';
 import { formatRelativeTime } from '@/lib/activity-store';
 import { ConnectXModal } from '@/components/creator/ConnectXModal';
-import { NFTCard } from '@/components/nft/NFTCard';
 import { BagCard } from '@/components/bags/BagCard';
 import { Wallet, X as XIcon, Check, LayoutGrid, List as ListIcon } from 'lucide-react';
 
@@ -65,9 +61,6 @@ export default function ProfilePage() {
   const creatorLookupBags = demoMode ? [...publicBags, ...mockBags] : publicBags;
   const { rewards, totalQuote, claimableDisplay, claimableTokenSymbol, isVaultConfigured, isClaiming, claimError, lastClaimTxHash, claim } =
     useCreatorRewards(walletAddress);
-  const { points } = usePoints();
-  const { result: leaderboard } = useLeaderboard();
-  const { nfts } = useBagNFTs();
   const [showXModal, setShowXModal] = useState(false);
   const [bagFilter, setBagFilter] = useState<BagFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -121,12 +114,6 @@ export default function ProfilePage() {
     { label: 'Successful Bags', value: `${successfulBags}/${myBags.length || 0}` },
     { label: 'Forks', value: formatCompact(demoMode ? totalForksReceived + mockUser.forks : totalForksReceived) },
     ...(demoMode ? [{ label: 'Age', value: formatAge(mockUser.joinedAt) }] : []),
-  ];
-
-  const gameStats = [
-    { label: 'BAG Points', value: `${points?.bagPoints ?? 0}` },
-    { label: 'Genesis Rank', value: leaderboard?.self ? `#${leaderboard.self.rank}` : '—' },
-    { label: 'BAG NFTs', value: `${nfts.length}` },
   ];
 
   const selfAddress = isConnected ? walletAddress : mockUser.address;
@@ -241,18 +228,6 @@ export default function ProfilePage() {
         ))}
       </div>
 
-      <div className="profile-section" style={{ marginTop: 24 }}>
-        <h3>BAG Protocol Game</h3>
-        <div className="account-stats-grid">
-          {gameStats.map((s) => (
-            <div className="account-stat" key={s.label}>
-              <span className="sl">{s.label}</span>
-              <span className="sv">{s.value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {(rewards.length > 0 || Number(totalQuote) > 0) && (
         <div className="profile-section" style={{ marginTop: 24 }}>
           <h3>Creator Rewards</h3>
@@ -324,17 +299,6 @@ export default function ProfilePage() {
               ))}
             </div>
           )}
-        </div>
-      )}
-
-      {nfts.length > 0 && (
-        <div className="profile-section">
-          <h3>BAG NFTs</h3>
-          <div className="nft-grid">
-            {nfts.map((nft) => (
-              <NFTCard key={nft.id} nft={nft} />
-            ))}
-          </div>
         </div>
       )}
 

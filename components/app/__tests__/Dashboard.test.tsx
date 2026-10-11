@@ -9,8 +9,7 @@ import { render, screen, cleanup } from '@testing-library/react';
 // `mockUser.myBags`/`mockUser.following`/`mockUser.forks` and
 // `mockUserBags` into every real metric on screen. These tests prove that
 // blending only happens when `NEXT_PUBLIC_DEMO_MODE === 'true'`, and never
-// otherwise — a real user with a real $500 invested sees "$1K" (from real
-// data only), never the old "$125K" `mockUser.balance` floor.
+// otherwise. The portfolio value is the real total of the user's positions.
 // -----------------------------------------------------------------------------
 
 vi.mock('@/hooks/useMyBags', () => ({
@@ -37,17 +36,8 @@ vi.mock('@/lib/portfolio-store', () => ({
   usePortfolio: () => ({ following: ['bag-a'], totalInvested: 1000 }),
 }));
 
-vi.mock('@/hooks/usePaperPortfolio', () => ({
-  usePaperPortfolio: () => ({ portfolio: { realizedPnL: 0 }, unrealizedPnL: 0, totalValue: 10_000 }),
-}));
-
-vi.mock('@/hooks/usePoints', () => ({
-  usePoints: () => ({ season: null, points: { bagPoints: 0 }, transactions: [], refresh: vi.fn() }),
-}));
-
-vi.mock('@/hooks/useLeaderboard', () => ({
-  useLeaderboard: () => ({ result: null, refresh: vi.fn() }),
-}));
+let positionsTotal: unknown = { status: 'ready', total: '1234.5', complete: true };
+vi.mock('@/hooks/usePositionsTotal', () => ({ usePositionsTotal: () => positionsTotal }));
 
 // BagCard has its own hook dependencies (wallet, router, user-bags) and
 // rendering logic entirely unrelated to what this test verifies (Dashboard's
@@ -72,30 +62,37 @@ describe('Dashboard — demo-mode isolation (P0-4, regression test 17)', () => {
   it('production (demo mode off, the default): shows ONLY real numbers — no mockUser padding anywhere', () => {
     render(<Dashboard isConnected={true} />);
 
-    // Real totalInvested (1000) only, never mockUser.balance (125,000) added on top.
-    expect(screen.getByText('$1K')).toBeInTheDocument();
-    // Real bag count (1) only, never mockUser.myBags (3) added on top.
-    // "My Bags" stat value:
-    // "My Bags" text appears twice (the stat card label, and the section
-    // heading above the bag grid) — the stat card is first in DOM order.
-    const myBagsRow = screen.getAllByText('My Bags')[0].closest('.dash-stat');
+    // The portfolio value is the real total of the user's positions, never a fixed "+12.5% (7D)" or a mock balance.
+    const valueRow = screen.getByText('Portfolio Value').closest('.dash-stat');
+    expect(valueRow!.querySelector('.v')?.textContent).toBe('$1,234.50');
+    expect(screen.queryByText(/12\.5%/)).not.toBeInTheDocument();
     // Real following count (1) only, never mockUser.following (12) added.
     const followingRow = screen.getByText('Following').closest('.dash-stat');
     expect(followingRow!.querySelector('.v')?.textContent).toBe('1');
-    // No real fork-tracking feature yet — honestly 0, never mockUser.forks (7).
-    const forksRow = screen.getByText('Forks Made').closest('.dash-stat');
-    expect(forksRow!.querySelector('.v')?.textContent).toBe('0');
+    // No paper trading, points, boxes or JSON import on the dashboard.
+    expect(screen.queryByText(/Paper/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/BAG Points/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Open Boxes/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Import JSON/)).not.toBeInTheDocument();
     // Only the one real bag renders — mockUserBags never appended.
     expect(screen.getByText('Real Bag')).toBeInTheDocument();
     expect(screen.queryByText('AI Leaders')).not.toBeInTheDocument(); // a mockBags/mockUserBags fixture name
   });
 
-  it('demo mode explicitly enabled: mock values are blended in (opt-in only, never the default)', () => {
+  it('an incomplete total is marked, an unknown one is a dash', () => {
+    positionsTotal = { status: 'ready', total: '10', complete: false };
+    render(<Dashboard isConnected={true} />);
+    expect(screen.getByText('Portfolio Value').closest('.dash-stat')!.querySelector('.v')?.textContent).toBe('$10.00*');
+    cleanup();
+    positionsTotal = { status: 'error' };
+    render(<Dashboard isConnected={true} />);
+    expect(screen.getByText('Portfolio Value').closest('.dash-stat')!.querySelector('.v')?.textContent).toBe('—');
+    positionsTotal = { status: 'ready', total: '1234.5', complete: true };
+  });
+
+  it('demo mode explicitly enabled: mock bag counts are blended in (opt-in only, never the default)', () => {
     vi.stubEnv('NEXT_PUBLIC_DEMO_MODE', 'true');
     render(<Dashboard isConnected={true} />);
-
-    // mockUser.balance (125,000) + real totalInvested (1000) = 126000 -> "$126K"
-    expect(screen.getByText('$126K')).toBeInTheDocument();
     const myBagsRow = screen.getAllByText('My Bags')[0].closest('.dash-stat');
     expect(myBagsRow!.querySelector('.v')?.textContent).toBe('4'); // mockUser.myBags (3) + real (1)
   });
