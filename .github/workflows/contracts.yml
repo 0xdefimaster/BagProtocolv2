@@ -1,0 +1,29 @@
+name: Contracts
+
+# Contract tests (Hardhat), only when contract code, its tests or the Hardhat
+# config change. Split from ci.yml so most pull requests do not pay for a
+# Solidity compile and test run they cannot affect.
+
+on:
+  push:
+    branches: [main]
+    paths: ['contracts/**', 'hardhat.config.ts', 'package-lock.json', '.github/workflows/contracts.yml']
+  pull_request:
+    paths: ['contracts/**', 'hardhat.config.ts', 'package-lock.json', '.github/workflows/contracts.yml']
+
+concurrency:
+  group: contracts-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Contract tests (Hardhat)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run test:contracts

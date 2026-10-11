@@ -12,17 +12,21 @@ name: CI
 #     time) — GitHub-hosted runners have normal internet access, unlike a
 #     network-restricted sandbox.
 #
-# Five independent jobs, run in parallel: each answers one question ("does
-# it typecheck", "do the unit tests pass", "does it behave correctly against
-# a REAL database", "do the contracts pass", "does it build for real") and
-# none blocks the others from reporting — a broken build shouldn't hide a
-# passing test run or vice versa.
+# Two jobs, run in parallel: the fast checks (secrets, lint, typecheck, unit
+# tests) and the integration tests against a REAL database. Contract tests
+# live in contracts.yml and run only when contract code changes. The
+# production build is not repeated here: Netlify builds every pull request
+# (deploy preview) and every push to main, and reports a failed build on the
+# PR. Docs-only changes skip CI. Actions bills each job by the started minute,
+# so fewer, fuller jobs cost less for the same coverage.
 # -----------------------------------------------------------------------------
 
 on:
   push:
     branches: [main]
+    paths-ignore: ['**/*.md', 'docs/**']
   pull_request:
+    paths-ignore: ['**/*.md', 'docs/**']
 
 # A second push to the same branch/PR cancels whatever CI run is still in
 # flight for it — no point finishing a check on code that's already stale.
@@ -39,20 +43,16 @@ env:
   NODE_VERSION: '24'
 
 jobs:
-  secret-scan:
-    name: No tracked secrets
+  # One job for the fast checks: one checkout and one `npm ci` instead of three
+  # (Actions bills each job by the started minute).
+  checks:
+    name: Secrets, lint, typecheck & unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       # Fails on any tracked .env file other than .env.example, and on any
       # 32-byte hex private-key literal in the tree.
       - run: ./scripts/check-no-secrets.sh
-
-  lint-and-typecheck:
-    name: Lint & typecheck
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -60,17 +60,6 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
-
-  unit-tests:
-    name: Unit tests (lib/hooks/components)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
       - run: npm test
 
   integration-tests:
@@ -110,35 +99,3 @@ jobs:
       # contracts job below.
       - run: npx hardhat compile
       - run: npm run test:integration
-
-  contracts:
-    name: Contract tests (Hardhat)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
-      - run: npm run test:contracts
-
-  build:
-    name: Production build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
-      # No Supabase/RPC secrets set here on purpose: isSupabaseConfigured()
-      # (lib/supabase/server.ts) makes every server-side code path degrade
-      # to a clean "not configured" response instead of throwing, and
-      # `next build`'s static analysis/prerendering has already been
-      # verified to complete without them — this job is checking that the
-      # BUILD itself succeeds (bundling, font fetching, type-level route
-      # correctness), not exercising real backend behavior (that's what
-      # integration-tests and unit-tests are for).
-      - run: npm run build
