@@ -71,6 +71,7 @@ const feeBagHandler =
     if (url.includes('/step/')) return { status: 200, body: { intent: intent() } };
     if (url.endsWith('/attest-fee') || url.endsWith('/confirm-router-tx')) throw new Error(`the old router must not be used: ${url}`);
     if (url.endsWith('/verify')) return { status: 200, body: { intent: intent(verified) } };
+    if (url === '/api/redeem-intent/redeem_1') return { status: 200, body: { intent: intent() } };
     throw new Error(`unexpected ${url}`);
   };
 
@@ -92,6 +93,8 @@ describe('useRedeemExecution — fee-paying sale through RedeemSettlement', () =
       '/api/redeem-intent/redeem_1/execute',
       '/api/redeem-intent/redeem_1/settlement-quote',
       '/api/redeem-intent/redeem_1/settlement-attest',
+      // The attestation's deadline, read once: a declined signature can be given again until then.
+      '/api/redeem-intent/redeem_1',
       '/api/redeem-intent/redeem_1/verify',
     ]);
     expect(executeWalletSweepMock).toHaveBeenCalledTimes(1);

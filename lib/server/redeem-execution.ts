@@ -73,7 +73,7 @@ export type RedeemExecutionError =
   | { kind: 'INSUFFICIENT_POSITION'; requestedRaw: string; ownedRaw: string }
   | { kind: 'ZERO_SUPPLY' }
   | { kind: 'QUOTE_FAILED'; failureCode: RedeemIntentFailureCode; message: string }
-  | { kind: 'REDEEM_IN_PROGRESS'; intentId: string }
+  | { kind: 'REDEEM_IN_PROGRESS'; intentId: string; /** Set when a still-valid settlement attestation is the blocker: when it lapses. */ retryAfterSeconds?: number }
   | { kind: 'NOT_FOUND' }
   | { kind: 'FORBIDDEN' }
   | { kind: 'EXPIRED' }
@@ -134,7 +134,15 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
   // already terminal in the database: the old signature could otherwise run after this sale changed the ledger.
   const liveAttestation = await liveSettlementAttestationFor(admin, session.userId, bagId);
   if (liveAttestation) {
-    return { ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: liveAttestation.id } };
+    const { deadline } = liveAttestation;
+    return {
+      ok: false,
+      error: {
+        kind: 'REDEEM_IN_PROGRESS',
+        intentId: liveAttestation.id,
+        ...(typeof deadline === 'number' ? { retryAfterSeconds: Math.max(1, deadline - Math.floor(Date.now() / 1000)) } : {}),
+      },
+    };
   }
 
   const bag = await getBagById(admin, bagId);

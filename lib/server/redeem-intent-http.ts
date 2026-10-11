@@ -28,6 +28,14 @@ export function redeemExecutionErrorResponse(error: RedeemExecutionError): NextR
     case 'QUOTE_FAILED':
       return NextResponse.json({ error: error.message, failureCode: error.failureCode }, { status: 422 });
     case 'REDEEM_IN_PROGRESS':
+      if (error.retryAfterSeconds !== undefined) {
+        // A signed settlement of this position is still valid on-chain: a different sale must wait until it lapses.
+        const wait = error.retryAfterSeconds >= 60 ? `about ${Math.ceil(error.retryAfterSeconds / 60)} minute(s)` : `${error.retryAfterSeconds} seconds`;
+        return NextResponse.json(
+          { error: `Your previous signed sale of this Bag is still valid on-chain for ${wait}. You can start a new sale after that.`, intentId: error.intentId, retryAfterSeconds: error.retryAfterSeconds },
+          { status: 409 }
+        );
+      }
       return NextResponse.json({ error: 'A redemption is already in progress for this Bag.', intentId: error.intentId }, { status: 409 });
     case 'NOT_FOUND':
       return NextResponse.json({ error: 'Redeem intent not found.' }, { status: 404 });

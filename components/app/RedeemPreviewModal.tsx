@@ -553,6 +553,28 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
               'Sign in to continue'
             )}
           </button>
+        ) : execution.state.resumable ? (
+          // A declined fee-paying sale whose signed settlement is still valid: sign the same transaction again.
+          <button onClick={() => void execution.resume()} style={primaryButtonStyle}>
+            Sign again
+          </button>
+        ) : execution.state.errorCode === 'SESSION_EXPIRED' ? (
+          <button
+            onClick={async () => {
+              await wallet.signIn();
+              if (selectedAssetId && fractionBps !== null) void execution.start(bagId, fractionBps, selectedAssetId, wallet.walletAddress);
+            }}
+            disabled={wallet.isSigningIn}
+            style={primaryButtonStyle}
+          >
+            {wallet.isSigningIn ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, justifyContent: 'center', width: '100%' }}>
+                <Loader2 size={14} className="spin" /> Confirm in wallet…
+              </span>
+            ) : (
+              'Sign in again'
+            )}
+          </button>
         ) : (
           position &&
           !hasNoPosition && (
