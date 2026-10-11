@@ -29,8 +29,10 @@ export interface Bag {
   tvl: number;
   /** What the Bag holds, per asset (detail endpoint only; absent in listings). */
   holdings?: BagHoldingView[];
-  /** Live Bags: wallets holding shares (bag_investor_positions). Absent for demo/mock Bags. */
+  /** Live Bags: wallets that still hold some of the Bag's assets. Absent for demo/mock Bags. */
   holders?: number;
+  /** Live Bags: how current the figures are against the chain (lib/server/bag-verification.ts). */
+  verification?: { checkedAt: string | null; pendingOutflows: number };
   /** Live Bags: returns from recorded NAV snapshots (detail endpoint only). Absent for demo/mock Bags. */
   performanceRecorded?: BagPerformance;
   followers: number;

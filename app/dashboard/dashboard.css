@@ -204,7 +204,7 @@ header .brand { flex-shrink: 0; white-space: nowrap; }
 .bag-comp-more { font-family: var(--font-mono), monospace; font-size: 10.5px; color: var(--mute); }
 
 .bag-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
-.bag-footer-stats { display: flex; align-items: center; gap: 14px; }
+.bag-footer-stats { display: flex; align-items: center; gap: 6px 14px; flex-wrap: wrap; }
 .bag-footer-stats span {
   display: inline-flex; align-items: center; gap: 5px;
   font-family: var(--font-mono), monospace; font-size: 11px; color: var(--ink-soft);
@@ -640,3 +640,9 @@ header .brand { flex-shrink: 0; white-space: nowrap; }
 
 .assembly-reveal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(6px); z-index: 300; display: flex; align-items: center; justify-content: center; padding: 20px; }
 .assembly-reveal-card { width: 100%; max-width: 420px; border: 1px solid var(--gold); border-radius: 20px; background: var(--surface); padding: 40px 28px; text-align: center; }
+
+/* ---------- on-chain verification badge ---------- */
+.verify-badge { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono), monospace; font-size: 10.5px; letter-spacing: 0.02em; white-space: nowrap; }
+.verify-badge.ok { color: var(--emerald); }
+.verify-badge.warn { color: #E0B04A; }
+.verify-badge.muted { color: var(--mute); }

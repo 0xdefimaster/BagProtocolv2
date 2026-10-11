@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { CreatorAvatar } from '@/components/creator/CreatorAvatar';
+import { VerificationBadge } from '@/components/bags/VerificationBadge';
 import { formatCompact, formatReturn, formatUsdCompact } from '@/lib/format';
 import type { BagMetric, RankedBag, RankedCreator } from '@/lib/domain/leaderboard/rank';
 
@@ -22,6 +23,7 @@ export function BagLeaderboardTable({ rows, metric, metricLabel, selfAddress }: 
           <th>Bag</th>
           <th>Creator</th>
           <th>{metricLabel}</th>
+          <th>On-chain</th>
         </tr>
       </thead>
       <tbody>
@@ -45,6 +47,9 @@ export function BagLeaderboardTable({ rows, metric, metricLabel, selfAddress }: 
               </td>
               <td>
                 <span className={`mono ${signed ? (value >= 0 ? 'lb-pnl pos' : 'lb-pnl neg') : 'lb-points'}`}>{formatMetric(metric, value)}</span>
+              </td>
+              <td>
+                <VerificationBadge verification={bag.verification} />
               </td>
             </tr>
           );
