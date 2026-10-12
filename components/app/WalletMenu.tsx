@@ -78,7 +78,7 @@ export function WalletMenu() {
           </button>
           <p className="wallet-menu-hint">
             Picked another account in your wallet and this site still shows the old one? Wallets only share accounts you
-            connected: use Switch account, or press Connect in the wallet.
+            connected: use Switch account, or Disconnect and connect again, and the wallet asks which account to use.
           </p>
         </div>
       )}

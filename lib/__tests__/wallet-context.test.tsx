@@ -241,4 +241,48 @@ describe('switchAccount: a wallet never reports accounts the site is not connect
     expect(result.current.walletAddress).toBe('');
     expect(screen.getByRole('button', { name: /MetaMask|Browser wallet/ })).toBeInTheDocument();
   });
+
+  it('a picker the wallet cannot show (request already pending) also reconnects from scratch', async () => {
+    const { result } = renderHook(() => useWallet(), { wrapper: WalletProvider });
+    await waitFor(() => expect(result.current.isAuthReady).toBe(true));
+    await connectThroughPicker(result);
+    await waitFor(() => expect(result.current.walletAddress).not.toBe(''));
+
+    provider.request.mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') throw Object.assign(new Error('Request already pending'), { code: -32002 });
+      return null;
+    });
+    await act(async () => {
+      await result.current.switchAccount();
+    });
+    expect(result.current.walletAddress).toBe('');
+    expect(provider.request).toHaveBeenCalledWith({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] });
+  });
+});
+
+describe('disconnect revokes the site permission in the wallet', () => {
+  it('so the next Connect asks which account instead of silently returning the same one', async () => {
+    const { result } = renderHook(() => useWallet(), { wrapper: WalletProvider });
+    await waitFor(() => expect(result.current.isAuthReady).toBe(true));
+    await connectThroughPicker(result);
+    await waitFor(() => expect(result.current.walletAddress).not.toBe(''));
+
+    act(() => result.current.disconnect());
+    expect(result.current.walletAddress).toBe('');
+    expect(provider.request).toHaveBeenCalledWith({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] });
+  });
+
+  it('a wallet without the revoke method still disconnects', async () => {
+    const { result } = renderHook(() => useWallet(), { wrapper: WalletProvider });
+    await waitFor(() => expect(result.current.isAuthReady).toBe(true));
+    await connectThroughPicker(result);
+    await waitFor(() => expect(result.current.walletAddress).not.toBe(''));
+
+    provider.request.mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_revokePermissions') throw Object.assign(new Error('Method not found'), { code: -32601 });
+      return null;
+    });
+    act(() => result.current.disconnect());
+    expect(result.current.walletAddress).toBe('');
+  });
 });
