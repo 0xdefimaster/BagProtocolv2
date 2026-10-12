@@ -2,3 +2,9 @@
 # this file only adds the rule that skips builds which cannot change the site.
 [build]
   ignore = "bash scripts/netlify-skip-build.sh"
+
+# APP_ORIGIN is the site's public origin (it is in every page URL, the SIWE message and the schema $ids),
+# not a secret. If it is saved as a secret in the Netlify UI, the secrets scan would fail every build on
+# those files, so it is left out of the scan. Real secrets (keys, service role, session secret) stay scanned.
+[build.environment]
+  SECRETS_SCAN_OMIT_KEYS = "APP_ORIGIN"
