@@ -4,7 +4,7 @@ import { formatUsdCompact } from '../format';
 
 const HOUR = 60 * 60 * 1000;
 const NOW = Date.UTC(2026, 9, 1, 12);
-const p = (hoursAgo: number, v: string) => ({ capturedAt: new Date(NOW - hoursAgo * HOUR).toISOString(), grossNav: '0', navPerShare: v });
+const p = (hoursAgo: number, v: string) => ({ capturedAt: new Date(NOW - hoursAgo * HOUR).toISOString(), grossNav: '0', navPerShare: null, priceIndex: v });
 
 describe('recordedSeries', () => {
   it('starts the window from the value at its start, so the change covers the whole range', () => {
@@ -20,6 +20,11 @@ describe('recordedSeries', () => {
     expect(recordedSeries([p(48, '1'), p(0, '2')], 'ALL', NOW)!.changePct).toBeCloseTo(100, 9);
     expect(recordedSeries([p(0, '1')], 'ALL', NOW)).toBeNull();
     expect(recordedSeries([p(48, '1'), p(40, '1.1')], '24H', NOW)).toBeNull();
+  });
+
+  it('snapshots recorded before the price index existed are not drawn', () => {
+    const legacy = { capturedAt: new Date(NOW - 60 * HOUR).toISOString(), grossNav: '0', navPerShare: '5', priceIndex: null };
+    expect(recordedSeries([legacy, p(48, '100'), p(0, '110')], 'ALL', NOW)!.points.map((x) => x.value)).toEqual([100, 110]);
   });
 });
 

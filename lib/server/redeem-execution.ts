@@ -38,6 +38,7 @@ import { trackComposerTransaction } from '@/lib/blockchain/composer-status';
 import { findComposerTransactionFromWallet } from '@/lib/blockchain/composer-tx-search';
 import { isBagChain } from '@/lib/config/chains';
 import { DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
+import { feeRedemptionPath } from '@/lib/server/fee-redemption-path';
 import { readSettlementResult } from '@/lib/blockchain/redeem-settlement-event';
 import { computeOnChainBagId } from '@/lib/domain/basket-protocol/onchain';
 import { buildRedeemComposer, splitReceivedAcrossLegs } from '@/lib/server/redeem-composer';
@@ -220,13 +221,14 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
     : await buildPurchaseIntentSteps(executionSteps, session.walletAddress, outputAssetRecord.decimals);
 
   // `redeemValueQuote` is the legacy fee basis of apply_redeem_execution (value − consumed share cost basis).
-  // A performance-fee Bag keeps it NAV-based, exactly as RedeemFeeRouter's attestation expects (D4: fee
-  // semantics change only in their own PR). Without a fee it is the route's estimated proceeds — no NAV
-  // dependency on the sell path. Either way it is never realized P&L: that comes only from verified
-  // receipts (accounting/position-pnl.ts).
+  // It stays NAV-based only where something still prices the fee from it: RedeemFeeRouter's attestation and the
+  // database-booked fee (no settlement contract). Through RedeemSettlement the contract computes the fee on chain
+  // from the ledger basis (A3) and the proceeds that arrive, so such a sale, like a no-fee one, needs neither the
+  // Bag's NAV (every holding priced) nor shares (holdings may outlive them): it is the route's estimated proceeds.
+  // Either way it is never realized P&L: that comes only from verified receipts (accounting/position-pnl.ts).
   let redeemValueQuote: string;
   let sharePriceAtQuote: string;
-  if (feeBps > 0) {
+  if (feeBps > 0 && feeRedemptionPath() !== 'SETTLEMENT') {
     if (sharesBurnRaw === '0') return { ok: false, error: { kind: 'NO_POSITION' } };
     const [navOutcome, shareSupply] = await Promise.all([getBagNavSafe(admin, bagId, priceProvider), getShareSupply(admin, bagId)]);
     if (!navOutcome.ok) return { ok: false, error: { kind: 'PRICE_UNAVAILABLE', message: navOutcome.message } };

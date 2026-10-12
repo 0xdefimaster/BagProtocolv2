@@ -58,10 +58,10 @@ describe('A4: shares are not a position source', () => {
     expect(users).toEqual(['lib/domain/basket-protocol/shares/shares.ts', 'lib/server/redeem-execution.ts']);
   });
 
-  it('in the sell path, getRedeemQuote is reached only on the performance-fee branch', () => {
+  it('in the sell path, getRedeemQuote is reached only on the NAV-attested fee branch (never via RedeemSettlement)', () => {
     const src = read('lib/server/redeem-execution.ts');
     const call = src.indexOf('getRedeemQuote(');
-    const feeBranch = src.lastIndexOf('if (feeBps > 0) {', call);
+    const feeBranch = src.lastIndexOf("if (feeBps > 0 && feeRedemptionPath() !== 'SETTLEMENT') {", call);
     const elseBranch = src.indexOf('} else {', feeBranch);
     expect(call).toBeGreaterThan(-1);
     expect(feeBranch).toBeGreaterThan(-1);

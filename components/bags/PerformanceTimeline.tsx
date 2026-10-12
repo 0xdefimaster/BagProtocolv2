@@ -14,6 +14,9 @@ interface PerformanceTimelineProps {
 // Demo/mock Bags without recorded history but with reported 7D/30D/YTD
 // figures keep the illustrative curve (generatePerformanceSeries draws a
 // deterministic shape between those figures), labelled as such.
+/** Price index points (base 100), display only. */
+const fmtIndex = (v: number) => v.toFixed(2);
+
 export function PerformanceTimeline({ bag }: PerformanceTimelineProps) {
   if (bag.performanceRecorded) return <RecordedPerformanceTimeline bag={bag} />;
   const hasReportedReturns = bag.performance7d !== 0 || bag.performance30d !== 0 || bag.performanceYtd !== 0;
@@ -124,7 +127,6 @@ function IllustrativePerformanceTimeline({ bag }: PerformanceTimelineProps) {
 }
 
 const fmtPct = (n: number | null) => (n === null ? '—' : `${n > 0 ? '+' : ''}${n.toFixed(2)}%`);
-const fmtUsd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
 const fmtWhen = (t: number) => new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 function RecordedPerformanceTimeline({ bag }: PerformanceTimelineProps) {
@@ -187,10 +189,10 @@ function RecordedPerformanceTimeline({ bag }: PerformanceTimelineProps) {
         <div className="perf-headline">
           <span className={`val ${series.changePct >= 0 ? 'pos' : 'neg'}`}>{fmtPct(series.changePct)}</span>
           <span className="sub">
-            NAV per share {fmtUsd(series.points[0].value)} → {fmtUsd(series.points[series.points.length - 1].value)} · {fmtWhen(t0)} – {fmtWhen(t1)}
+            Price index {fmtIndex(series.points[0].value)} → {fmtIndex(series.points[series.points.length - 1].value)} · {fmtWhen(t0)} – {fmtWhen(t1)}
           </span>
         </div>
-        <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="auto" preserveAspectRatio="none" role="img" aria-label={`NAV per share, ${fmtPct(series.changePct)}`}>
+        <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="auto" preserveAspectRatio="none" role="img" aria-label={`Price index, ${fmtPct(series.changePct)}`}>
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={color} stopOpacity="0.28" />
@@ -204,13 +206,13 @@ function RecordedPerformanceTimeline({ bag }: PerformanceTimelineProps) {
         </svg>
         <div className="perf-stats-row">
           <div className="perf-stat">
-            High<b>{fmtUsd(series.high)}</b>
+            High<b>{fmtIndex(series.high)}</b>
           </div>
           <div className="perf-stat">
-            Low<b>{fmtUsd(series.low)}</b>
+            Low<b>{fmtIndex(series.low)}</b>
           </div>
           <div className="perf-stat">
-            Change<b style={{ color: series.changeAbs >= 0 ? 'var(--emerald)' : '#E0847A' }}>{`${series.changeAbs >= 0 ? '+' : '-'}${fmtUsd(Math.abs(series.changeAbs))}`} per share</b>
+            Change<b style={{ color: series.changeAbs >= 0 ? 'var(--emerald)' : '#E0847A' }}>{`${series.changeAbs >= 0 ? '+' : '-'}${fmtIndex(Math.abs(series.changeAbs))}`} points</b>
           </div>
         </div>
       </>
@@ -237,7 +239,7 @@ function RecordedPerformanceTimeline({ bag }: PerformanceTimelineProps) {
 
       {chart ?? (
         <p style={{ color: 'var(--ink-soft)', fontSize: 13.5, margin: '12px 0' }} role="status">
-          {data.points.length < 2
+          {data.points.filter((p) => p.priceIndex !== null).length < 2
             ? 'Performance history starts recording now — the chart appears once there are two snapshots.'
             : 'No recorded snapshots in this range yet.'}
         </p>
@@ -247,7 +249,7 @@ function RecordedPerformanceTimeline({ bag }: PerformanceTimelineProps) {
         <thead>
           <tr style={{ color: 'var(--mute)', textAlign: 'left' }}>
             <th style={{ padding: '6px 0', fontWeight: 500 }}>Period</th>
-            <th style={{ padding: '6px 0', fontWeight: 500, textAlign: 'right' }}>Gain / loss (NAV per share)</th>
+            <th style={{ padding: '6px 0', fontWeight: 500, textAlign: 'right' }}>Gain / loss (price index)</th>
           </tr>
         </thead>
         <tbody>
@@ -262,7 +264,7 @@ function RecordedPerformanceTimeline({ bag }: PerformanceTimelineProps) {
         </tbody>
       </table>
       <p style={{ color: 'var(--mute)', fontSize: 12, marginTop: 10 }}>
-        Recorded from this Bag&apos;s live NAV{perf.firstSnapshotAt ? ` since ${new Date(perf.firstSnapshotAt).toLocaleString()}` : ''} ({perf.snapshots} snapshot{perf.snapshots === 1 ? '' : 's'}). Deposits and redemptions change TVL but not NAV per share, so these figures show the holdings&apos; performance.
+        Recorded from this Bag&apos;s live NAV{perf.firstSnapshotAt ? ` since ${new Date(perf.firstSnapshotAt).toLocaleString()}` : ''} ({perf.snapshots} snapshot{perf.snapshots === 1 ? '' : 's'}). The price index follows only the prices of what the Bag holds: purchases, sales and tokens leaving a wallet change TVL, never the index.
       </p>
     </div>
   );

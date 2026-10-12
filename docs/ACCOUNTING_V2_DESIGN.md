@@ -218,8 +218,13 @@ bootstrap price (before 2026-10-12 such a Bag refused every purchase with
 "NAV is currently unavailable").
 
 **Fee basis.** `redeem_intents.redeem_value_quote` stays the legacy fee basis of
-`apply_redeem_execution`. For a performance-fee Bag it is still NAV-based
-(RedeemFeeRouter attests against it; D4 changes fee semantics in its own PR).
+`apply_redeem_execution`. It is NAV-based only where something still prices a
+fee from it: the RedeemFeeRouter attestation and the database-booked fee. Through
+RedeemSettlement (the live path once configured) the contract computes the fee on
+chain from the ledger basis and the proceeds that arrive, so since 2026-10-12 such
+a sale uses the route's estimate like a no-fee sale: no Bag NAV, no shares needed
+(holdings that outlived their shares can be sold). The per-leg price-quality check
+of the settlement quote is unchanged.
 For a no-fee Bag it is the route's estimated proceeds, so selling no longer
 needs NAV at all (e.g. when display prices are unavailable at the weekend).
 
@@ -367,6 +372,11 @@ error state.
   price. Uses the reconciled view, not `bag_holdings`.
 - **NAV snapshots** keep their table; the value they record switches to the
   reconciled TVL, with the snapshot's price sources stored alongside.
+- **Returns** (since migration 0055) come from a chained price index, not NAV
+  per share: each snapshot stores its holdings and prices, and the index moves by
+  the earlier snapshot's holdings valued at both snapshots' prices
+  (`nav/price-index.ts`). Purchases, sales and outflows never read as gain or
+  loss. Snapshots recorded before 0055 carry no index and are not used for returns.
 - **Settlement never uses NAV.** Purchases price from the executable quote
   (#44); redemptions book realized proceeds. NAV is valuation and reporting.
 - Price rules unchanged: missing, stale or out-of-band prices fail closed and

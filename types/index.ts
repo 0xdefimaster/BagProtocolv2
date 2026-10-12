@@ -115,7 +115,10 @@ export interface User {
 export interface NavSnapshotPoint {
   capturedAt: string;
   grossNav: string;
-  navPerShare: string;
+  /** Legacy display only (null where the Bag had no shares): never used for returns. */
+  navPerShare: string | null;
+  /** Chained price index (migration 0055), the basis of every return; null on snapshots recorded before it. */
+  priceIndex: string | null;
 }
 
 /** Returns (%) of NAV per share from recorded snapshots; null when the history does not reach back that far. */

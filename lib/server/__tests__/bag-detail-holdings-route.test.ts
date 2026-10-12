@@ -92,8 +92,8 @@ describe('GET /api/bags/:id — holdings breakdown', () => {
     const nav = { asOf: '2026-01-01T00:00:00.000Z', quoteCurrency: 'USD', grossNav: '2.00', netNav: '2.00', components: [] };
     getBagNavSafeMock.mockResolvedValue({ ok: true, nav });
     getNavSnapshotsMock.mockResolvedValue([
-      { capturedAt: '2026-01-01T00:00:00.000Z', grossNav: '2', navPerShare: '1.00' },
-      { capturedAt: new Date().toISOString(), grossNav: '2.2', navPerShare: '1.10' },
+      { capturedAt: '2026-01-01T00:00:00.000Z', grossNav: '2', navPerShare: '1.00', priceIndex: '100' },
+      { capturedAt: new Date().toISOString(), grossNav: '2.2', navPerShare: '1.10', priceIndex: '110' },
     ]);
     const bag = await get();
     expect(recordNavSnapshotMock).toHaveBeenCalledWith(expect.anything(), 'bag_1', { nav });

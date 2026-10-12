@@ -13,6 +13,8 @@ const sequentialMock = vi.fn();
 const sellableMock = vi.fn();
 const getIntentMock = vi.fn();
 const updateStatusMock = vi.fn();
+const positionMock = vi.fn();
+const feePathMock = vi.fn();
 
 vi.mock('@/lib/server/bag-repo', () => ({ getBagById: (...a: unknown[]) => bagMock(...a), getCurrentBagVersion: async () => ({ recipe: { performanceFeeBps: 0 } }) }));
 vi.mock('@/lib/server/redeem-intent-repo', () => ({
@@ -34,7 +36,8 @@ vi.mock('@/lib/server/asset-repo', () => ({
 vi.mock('@/lib/server/payment-assets', () => ({ paymentAssetsFor: (assets: { symbol: string }[]) => assets.filter((a) => a.symbol === 'USDG') }));
 vi.mock('@/lib/server/bag-nav', () => ({ getBagNavSafe: async () => ({ ok: false, reason: 'PRICE_UNAVAILABLE', message: 'weekend' }) }));
 vi.mock('@/lib/server/bag-share-state-repo', () => ({ getShareSupply: async () => ({ shareDecimals: 18 }) }));
-vi.mock('@/lib/server/bag-investor-position-repo', () => ({ getInvestorPosition: async () => ({ sharesRaw: '100', shareDecimals: 18 }) }));
+vi.mock('@/lib/server/bag-investor-position-repo', () => ({ getInvestorPosition: (...a: unknown[]) => positionMock(...a) }));
+vi.mock('@/lib/server/fee-redemption-path', () => ({ feeRedemptionPath: () => feePathMock() }));
 vi.mock('@/lib/server/position-valuation', () => ({
   observeUserHoldings: async () => ({ rows: [{ bagId: 'bag_1' }] }),
   sellableHoldingsForBag: (...a: unknown[]) => sellableMock(...a),
@@ -54,6 +57,8 @@ beforeEach(() => {
   vi.stubEnv('LIFI_API_KEY', '');
   bagMock.mockResolvedValue({ id: 'bag_1', chain: 'robinhood', creatorId: 'creator', performanceFeeBpsLocked: null });
   sellableMock.mockReturnValue(sellable('100', '100'));
+  positionMock.mockResolvedValue({ sharesRaw: '100', shareDecimals: 18 });
+  feePathMock.mockReturnValue('SETTLEMENT');
   sequentialMock.mockImplementation(async (steps: { route: { inputAsset: unknown; inputAmountRaw: string } }[]) => ({
     steps: steps.map((s, i) => ({ stepIndex: i, action: 'SWAP', status: 'PENDING', inputAsset: s.route.inputAsset, inputAmountRaw: s.route.inputAmountRaw, outputAmountRaw: '41500000', minOutputRaw: '41000000' })),
     allSwapsQuoted: true,
@@ -81,6 +86,27 @@ describe('createRedeemIntentForUser — A4', () => {
     const outcome = await create(10_000);
     expect(outcome.ok).toBe(true);
     expect(insertMock.mock.calls[0][1].redeemValueQuote).toBe('41.5');
+  });
+
+  it('performance fee through RedeemSettlement: no NAV and no shares needed (the contract prices the fee from the ledger)', async () => {
+    bagMock.mockResolvedValue({ id: 'bag_1', chain: 'robinhood', creatorId: 'creator', performanceFeeBpsLocked: 2000 });
+    const outcome = await create(10_000); // NAV is unavailable in this file
+    expect(outcome.ok).toBe(true);
+    expect(insertMock.mock.calls[0][1].redeemValueQuote).toBe('41.5');
+
+    // Holdings that outlived their shares can still be sold.
+    insertMock.mockClear();
+    positionMock.mockResolvedValue({ sharesRaw: '0', shareDecimals: 18 });
+    expect((await create(10_000)).ok).toBe(true);
+    expect(insertMock.mock.calls[0][1]).toMatchObject({ sharesRaw: '0', redeemValueQuote: '41.5' });
+  });
+
+  it('performance fee through RedeemFeeRouter still needs NAV (its attestation is NAV-based)', async () => {
+    bagMock.mockResolvedValue({ id: 'bag_1', chain: 'robinhood', creatorId: 'creator', performanceFeeBpsLocked: 2000 });
+    feePathMock.mockReturnValue('FEE_ROUTER');
+    expect(await create(10_000)).toEqual({ ok: false, error: { kind: 'PRICE_UNAVAILABLE', message: 'weekend' } });
+    positionMock.mockResolvedValue({ sharesRaw: '0', shareDecimals: 18 });
+    expect(await create(10_000)).toEqual({ ok: false, error: { kind: 'NO_POSITION' } });
   });
 
   it('unreadable balances refuse to quote instead of assuming the tokens are there', async () => {
