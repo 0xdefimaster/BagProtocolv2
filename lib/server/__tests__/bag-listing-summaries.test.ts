@@ -4,15 +4,15 @@ import { getBagSocialCounts } from '../bag-social-counts';
 import { bagReturns, formatReturn } from '@/lib/format';
 
 describe('getNavSummaries', () => {
-  it('maps the RPC rows to TVL and returns; Bags without a snapshot are left out', async () => {
+  it('maps the index RPC rows to TVL and returns; Bags without a snapshot are left out', async () => {
     const admin = {
       rpc: async (name: string, args: { p_bag_ids: string[] }) => {
-        expect(name).toBe('bag_nav_summaries');
+        expect(name).toBe('bag_nav_index_summaries');
         expect(args.p_bag_ids).toEqual(['a', 'b']);
         return {
           data: [
-            { bag_id: 'a', latest_at: '2026-10-01T00:00:00Z', gross_nav: '1.48', nav_per_share: '1.10', nav_per_share_7d: '1.00', nav_per_share_30d: null, nav_per_share_ytd: '1.21' },
-            { bag_id: 'b', latest_at: null, gross_nav: null, nav_per_share: null, nav_per_share_7d: null, nav_per_share_30d: null, nav_per_share_ytd: null },
+            { bag_id: 'a', latest_at: '2026-10-01T00:00:00Z', gross_nav: '1.48', price_index: '110', price_index_7d: '100', price_index_30d: null, price_index_ytd: '121' },
+            { bag_id: 'b', latest_at: null, gross_nav: null, price_index: null, price_index_7d: null, price_index_30d: null, price_index_ytd: null },
           ],
           error: null,
         };
@@ -24,7 +24,34 @@ describe('getNavSummaries', () => {
     expect(a.tvl).toBe(1.48);
     expect(a.performance['7D']).toBeCloseTo(10, 9);
     expect(a.performance['30D']).toBeNull();
-    expect(a.performance.YTD).toBeCloseTo(((1.1 - 1.21) / 1.21) * 100, 9);
+    expect(a.performance.YTD).toBeCloseTo(((110 - 121) / 121) * 100, 9);
+  });
+
+  it('a Bag with TVL but no indexed snapshot yet shows TVL and no returns', async () => {
+    const admin = {
+      rpc: async () => ({
+        data: [{ bag_id: 'a', latest_at: '2026-10-01T00:00:00Z', gross_nav: '3', price_index: null, price_index_7d: null, price_index_30d: null, price_index_ytd: null }],
+        error: null,
+      }),
+    } as never;
+    const a = (await getNavSummaries(admin, ['a'])).get('a')!;
+    expect(a.tvl).toBe(3);
+    expect(a.performance).toMatchObject({ '7D': null, '30D': null, YTD: null });
+  });
+
+  it('before migration 0055: TVL from bag_nav_summaries, returns withheld (NAV per share is not a return)', async () => {
+    const calls: string[] = [];
+    const admin = {
+      rpc: async (name: string) => {
+        calls.push(name);
+        if (name === 'bag_nav_index_summaries') return { data: null, error: { message: 'function does not exist' } };
+        return { data: [{ bag_id: 'a', latest_at: '2026-10-01T00:00:00Z', gross_nav: '2', nav_per_share: '1.1', nav_per_share_7d: '1' }], error: null };
+      },
+    } as never;
+    const a = (await getNavSummaries(admin, ['a'])).get('a')!;
+    expect(calls).toEqual(['bag_nav_index_summaries', 'bag_nav_summaries']);
+    expect(a.tvl).toBe(2);
+    expect(a.performance['7D']).toBeNull();
   });
 });
 

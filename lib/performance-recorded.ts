@@ -1,7 +1,8 @@
 import type { NavSnapshotPoint } from '@/types';
 
 // Pure helpers for the recorded-NAV Performance chart. Display-only math on
-// decimal strings (NAV per share), never used for accounting.
+// the chained price index (snapshots before migration 0055 have none and are
+// skipped), never used for accounting.
 
 export type RecordedRange = '24H' | '7D' | '30D' | 'YTD' | 'ALL';
 export const RECORDED_RANGES: RecordedRange[] = ['24H', '7D', '30D', 'YTD', 'ALL'];
@@ -27,7 +28,7 @@ export interface RecordedSeries {
   points: { t: number; value: number }[];
   /** % change first -> last point of the window. */
   changePct: number;
-  /** Absolute change of NAV per share, quote currency. */
+  /** Absolute change of the price index, in index points. */
   changeAbs: number;
   high: number;
   low: number;
@@ -41,7 +42,7 @@ export interface RecordedSeries {
 export function recordedSeries(points: NavSnapshotPoint[], range: RecordedRange, now: number = Date.now()): RecordedSeries | null {
   const start = rangeStart(range, now);
   const parsed = points
-    .map((p) => ({ t: Date.parse(p.capturedAt), value: Number(p.navPerShare) }))
+    .map((p) => ({ t: Date.parse(p.capturedAt), value: p.priceIndex === null ? NaN : Number(p.priceIndex) }))
     .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.value) && p.value > 0);
   let firstInside = parsed.findIndex((p) => p.t >= start);
   if (firstInside === -1) return null;

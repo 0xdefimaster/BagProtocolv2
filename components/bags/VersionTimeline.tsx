@@ -54,7 +54,7 @@ function Entry({ entry, isFirst }: { entry: VersionTimelineEntry; isFirst: boole
           {perf && (
             <span
               className={`ml-auto font-mono text-sm ${perf.returnPct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}
-              title={`NAV per share ${perf.fromNavPerShare} → ${perf.toNavPerShare} (${new Date(perf.fromAt).toLocaleDateString()} – ${new Date(perf.toAt).toLocaleDateString()})`}
+              title={`Price index ${Number(perf.fromIndex).toFixed(2)} → ${Number(perf.toIndex).toFixed(2)} (${new Date(perf.fromAt).toLocaleDateString()} – ${new Date(perf.toAt).toLocaleDateString()})`}
             >
               {perf.returnPct >= 0 ? '+' : ''}
               {perf.returnPct.toFixed(2)}% {entry.isCurrent ? 'since this version' : 'while live'}

@@ -20,7 +20,7 @@ function version(n: number, createdAt: string, assets: RecipeAsset[], reason = '
   };
 }
 
-const snap = (capturedAt: string, navPerShare: string): NavSnapshotPoint => ({ capturedAt, grossNav: '0', navPerShare });
+const snap = (capturedAt: string, priceIndex: string): NavSnapshotPoint => ({ capturedAt, grossNav: '0', navPerShare: null, priceIndex });
 
 const snapshots = [
   snap('2026-09-01T00:00:00Z', '1.00'),
@@ -30,9 +30,9 @@ const snapshots = [
 ];
 
 describe('versionPerformance', () => {
-  it('measures NAV per share from the first snapshot in the live period to the last one before the next version', () => {
+  it('measures the price index from the first snapshot in the live period to the last one before the next version', () => {
     const p = versionPerformance(snapshots, '2026-09-01T00:00:00Z', '2026-09-08T00:00:00Z');
-    expect(p).toMatchObject({ fromNavPerShare: '1.00', toNavPerShare: '1.10' });
+    expect(p).toMatchObject({ fromIndex: '1.00', toIndex: '1.10' });
     expect(p!.returnPct).toBeCloseTo(10, 6);
   });
 

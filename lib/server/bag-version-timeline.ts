@@ -5,17 +5,17 @@ import { diffRecipes, StrategyDiff } from '@/lib/domain/basket-protocol/strategy
 // -----------------------------------------------------------------------------
 // Version Timeline: every version of a Bag, newest first, each with who made
 // it, why (`bag_versions.reason`), its composition, the Strategy Diff from the
-// version before, and how NAV per share moved while it was the live version —
-// measured only from recorded NAV snapshots (bag_nav_snapshots), so a version
-// that predates the snapshot history shows no figure rather than an estimate.
+// version before, and how the price index moved while it was the live version —
+// measured only from recorded, indexed NAV snapshots (bag_nav_snapshots, 0055), so
+// a version that predates the indexed history shows no figure rather than an estimate.
 // -----------------------------------------------------------------------------
 
 export interface VersionPerformance {
   fromAt: string;
   toAt: string;
-  fromNavPerShare: string;
-  toNavPerShare: string;
-  /** Percent change of NAV per share over [fromAt, toAt]. */
+  fromIndex: string;
+  toIndex: string;
+  /** Percent change of the price index over [fromAt, toAt]: holdings' prices only, never purchases or sales. */
   returnPct: number;
 }
 
@@ -52,15 +52,16 @@ function lastBefore(snapshots: NavSnapshotPoint[], iso: string): NavSnapshotPoin
   return found;
 }
 
-export function versionPerformance(snapshots: NavSnapshotPoint[], liveFrom: string, liveUntil: string | null): VersionPerformance | null {
+export function versionPerformance(all: NavSnapshotPoint[], liveFrom: string, liveUntil: string | null): VersionPerformance | null {
+  const snapshots = all.filter((s) => s.priceIndex !== null);
   const start = firstAtOrAfter(snapshots, liveFrom);
   if (!start) return null;
   const end = liveUntil === null ? snapshots[snapshots.length - 1] : lastBefore(snapshots, liveUntil);
   if (!end || Date.parse(end.capturedAt) <= Date.parse(start.capturedAt)) return null;
-  const from = Number(start.navPerShare);
-  const to = Number(end.navPerShare);
+  const from = Number(start.priceIndex);
+  const to = Number(end.priceIndex);
   if (!(from > 0) || !Number.isFinite(to)) return null;
-  return { fromAt: start.capturedAt, toAt: end.capturedAt, fromNavPerShare: start.navPerShare, toNavPerShare: end.navPerShare, returnPct: (to / from - 1) * 100 };
+  return { fromAt: start.capturedAt, toAt: end.capturedAt, fromIndex: start.priceIndex!, toIndex: end.priceIndex!, returnPct: (to / from - 1) * 100 };
 }
 
 /**
