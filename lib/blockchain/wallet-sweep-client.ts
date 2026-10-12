@@ -10,7 +10,7 @@ import { ensureErc20AllowanceOnChain, getBrowserWalletClientForChain, sendCompos
 // the transaction; only the user's wallet signs.
 //
 // One confirmation when the wallet can (EIP-5792): if any approval is needed
-// and the wallet reports ATOMIC batching for this chain (Rabby, MetaMask smart
+// and the wallet reports ATOMIC batching for this chain (MetaMask smart
 // accounts, Coinbase Smart Wallet…), the exact-amount approvals and the sale
 // are sent as one `wallet_sendCalls` batch with `atomicRequired: true`: one
 // confirmation, and either everything lands or nothing does (a reverted sale
@@ -18,7 +18,9 @@ import { ensureErc20AllowanceOnChain, getBrowserWalletClientForChain, sendCompos
 // same amounts, same spender as the sequential path; nothing is loosened.
 // The sale cannot be dry-run before its approvals exist, so the batch relies
 // on atomicity (and the wallet's own simulation) instead. A wallet without
-// EIP-5792 or without atomic batching gets the sequential flow unchanged.
+// EIP-5792 or without atomic batching (Rabby, as of this writing) gets the
+// sequential flow: one confirmation per approval still missing, then the sale;
+// `onApproval` reports "approval i of n" so the UI can say so.
 // -----------------------------------------------------------------------------
 
 export interface SweepTransactionPlan {
@@ -137,6 +139,8 @@ export async function sendSweepBatch(
 export interface WalletSweepOptions {
   /** Called once with the sale's hash as soon as it is known (before its receipt on the sequential path), e.g. to record it server-side. Errors are ignored. */
   onSubmitted?: (hash: Hex) => Promise<unknown> | void;
+  /** Sequential path only: called before each approval the wallet must still sign (1-based index of `total`). */
+  onApproval?: (index: number, total: number, token: string) => void;
 }
 
 export async function executeWalletSweep(
@@ -154,11 +158,12 @@ export async function executeWalletSweep(
   };
   const { transaction } = plan;
 
+  let needed = plan.approvals;
   if (plan.approvals.length > 0) {
     await getBrowserWalletClientForChain(walletAddress, transaction.chainId); // switch network first
     const provider = getEthereumProvider();
     if (provider) {
-      const needed = await shortApprovals(provider, walletAddress, plan);
+      needed = await shortApprovals(provider, walletAddress, plan);
       if (needed.length > 0 && (await walletSupportsAtomicBatch(provider, walletAddress, transaction.chainId))) {
         onProgress('batching');
         try {
@@ -173,8 +178,10 @@ export async function executeWalletSweep(
     }
   }
 
-  if (plan.approvals.length > 0) onProgress('approving');
-  for (const approval of plan.approvals) {
+  // Only the approvals still short (already-sufficient ones were filtered above); each is re-checked on-chain anyway.
+  if (needed.length > 0) onProgress('approving');
+  for (const [i, approval] of needed.entries()) {
+    options.onApproval?.(i + 1, needed.length, approval.token);
     await ensureErc20AllowanceOnChain(walletAddress, transaction.chainId, approval.token, approval.spender, approval.amountRaw);
   }
   onProgress('simulating');

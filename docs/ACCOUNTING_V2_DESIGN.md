@@ -177,7 +177,7 @@ Decision D1 (recommended): **retire pooled shares as the economic quantity.**
 |---|---|---|
 | **Strategy exposure** | what BAG tracks for this strategy, at verified prices | `bag_investor_holdings` × display price |
 | **Observed in wallet** | what of that is still in the wallet: min(observed, tracked) per asset | `balanceOf` at one block × price |
-| **Effective position** | the wallet's balance attributed to this strategy (D3 pro rata): the *value* of what can be sold, at market prices | `effectiveQuantityRaw` × price |
+| **Effective position** | the wallet's balance attributed to this strategy (D3 pro rata): what portfolio totals add up. What can be sold is min(tracked, wallet) (D3.1), shown as "In wallet" | `effectiveQuantityRaw` × price |
 | **Estimated proceeds** | the *sellable amount*: what selling would return after price impact and fees | the real route quote only (never computed from prices) |
 | **Minimum proceeds** | the least the sale may return; below it the transaction reverts | the route's enforced minimum (`minOutputRaw` / Composer `providerEnforcedMinOutputRaw`) |
 
@@ -433,6 +433,14 @@ drift), `/users/me/ledger`, `/users/me/reconciliation`.
   is a separate layer on top of the ledger.
 - **D3** Shortfall allocation across strategies is pro rata, with the
   allocation snapshot stored on the record (§5.2).
+- **D3.1** (2026-10-12) Selling is not pro rata: a strategy may sell
+  min(its tracked quantity, the wallet balance). Pro rata selling left part of
+  a strategy's own tokens unsellable after "sell all" whenever another
+  strategy's holding of the same token had left the wallet. Effective
+  (pro rata) quantities still make up portfolio totals, so nothing is counted
+  twice; what a sale leaves short stays with the other strategies for the
+  reconciliation to book. A strategy shows drift only when the wallet holds
+  less than that strategy tracks.
 - **D4** Fee on realized proceeds enforced on-chain is a separate, audited
   contract PR **after** Accounting V2. Until then the existing enforceable fee
   path stays, and the docs state plainly: a BAG-enforced fee applies only to

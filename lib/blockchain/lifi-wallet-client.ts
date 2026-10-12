@@ -4,7 +4,7 @@ import { getEthereumProvider } from '@/lib/wallet/eth-provider';
 import { createClient, SDKClient } from '@lifi/sdk';
 import { EthereumProvider, EthereumSDKProvider } from '@lifi/sdk-provider-ethereum';
 import { createPublicClient, createWalletClient, custom, erc20Abi, type Chain, type WalletClient } from 'viem';
-import { arbitrum, base, mainnet } from 'viem/chains';
+import { BAG_CHAINS, bagChainByChainId } from '@/lib/config/chains';
 
 // -----------------------------------------------------------------------------
 // Phase 17 — spec Aşama 1/4/6: THE ONLY place a real transaction gets built
@@ -27,19 +27,8 @@ import { arbitrum, base, mainnet } from 'viem/chains';
 // for signing-domain/typed-data validation. `custom(window.ethereum)` is
 // what actually SENDS requests, so `rpcUrls` below is only ever a fallback
 // viem itself may consult, never load-bearing for signing.
-const ROBINHOOD_CHAIN: Chain = {
-  id: 4663,
-  name: 'Robinhood Chain',
-  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-  rpcUrls: { default: { http: ['https://rpc.robinhood.chain'] } },
-};
-
-const VIEM_CHAINS_BY_NUMERIC_ID: Record<number, Chain> = {
-  [mainnet.id]: mainnet,
-  [base.id]: base,
-  [arbitrum.id]: arbitrum,
-  [ROBINHOOD_CHAIN.id]: ROBINHOOD_CHAIN,
-};
+// Chain ids, names, public RPCs and explorers come from lib/config/chains.ts only.
+const VIEM_CHAINS_BY_NUMERIC_ID: Record<number, Chain> = Object.fromEntries(Object.values(BAG_CHAINS).map((c) => [c.chainId, c.viemChain]));
 
 function toHexChainId(numericChainId: number): `0x${string}` {
   return `0x${numericChainId.toString(16)}`;
@@ -69,18 +58,53 @@ async function buildWalletClient(walletAddress: string, preferredNumericChainId?
   });
 }
 
+/**
+ * EIP-3085 parameters to add `numericChainId` to a wallet that does not know it (Rabby and others do not ship
+ * Robinhood Chain): the chain's PUBLIC RPC and explorer from lib/config, never a keyed server RPC. Null for a
+ * chain BAG has no public RPC for (Ethereum mainnet: every wallet already knows it).
+ */
+export function addEthereumChainParams(numericChainId: number) {
+  const c = bagChainByChainId(numericChainId);
+  if (!c || c.publicRpcUrls.length === 0) return null;
+  return {
+    chainId: toHexChainId(numericChainId),
+    chainName: c.name,
+    nativeCurrency: c.nativeCurrency,
+    rpcUrls: [...c.publicRpcUrls],
+    blockExplorerUrls: [c.explorerUrl],
+  };
+}
+
+/** The wallet does not know the chain (EIP-3326 code 4902; some wallets answer -32603 with a message instead). */
+export function isUnknownChainError(err: unknown): boolean {
+  const code = err && typeof err === 'object' && 'code' in err ? Number((err as { code: unknown }).code) : undefined;
+  const nested = err && typeof err === 'object' && 'data' in err ? (err as { data?: { originalError?: { code?: unknown } } }).data?.originalError?.code : undefined;
+  if (code === 4902 || Number(nested) === 4902) return true;
+  const message = err instanceof Error ? err.message : typeof err === 'object' && err && 'message' in err ? String((err as { message: unknown }).message) : '';
+  return /unrecognized chain|unknown chain|chain .*not (been )?added|not added|try adding the chain/i.test(message);
+}
+
 /** Requests the wallet switch to `targetNumericChainId` (EIP-3326) and returns a fresh `WalletClient` bound to it — passed to `@lifi/sdk-provider-ethereum` as its `switchChain` hook, so LI.FI's own `executeRoute()` drives "Switch Network" prompts itself rather than this app pre-guessing which chain a route needs. */
 async function switchChainAndRebuildClient(walletAddress: string, targetNumericChainId: number): Promise<WalletClient> {
   const provider = requireInjectedProvider();
+  const rejected = (err: unknown) => err && typeof err === 'object' && 'code' in err && Number((err as { code: unknown }).code) === 4001;
   try {
     await provider.request({
       method: 'wallet_switchEthereumChain',
       params: [{ chainId: toHexChainId(targetNumericChainId) }],
     });
   } catch (err) {
-    const code = err && typeof err === 'object' && 'code' in err ? (err as { code: number }).code : undefined;
-    if (code === 4001) throw new Error('Network switch was rejected.');
-    throw err instanceof Error ? err : new Error('Could not switch networks.');
+    if (rejected(err)) throw new Error('Network switch was rejected.');
+    const params = isUnknownChainError(err) ? addEthereumChainParams(targetNumericChainId) : null;
+    if (!params) throw err instanceof Error ? err : new Error('Could not switch networks.');
+    // The wallet does not know the chain yet: offer to add it (most wallets switch to it on approval), then switch.
+    try {
+      await provider.request({ method: 'wallet_addEthereumChain', params: [params] });
+      await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: params.chainId }] });
+    } catch (addErr) {
+      if (rejected(addErr)) throw new Error(`Adding ${params.chainName} to your wallet was rejected.`);
+      throw addErr instanceof Error ? addErr : new Error(`Could not add ${params.chainName} to your wallet.`);
+    }
   }
   return buildWalletClient(walletAddress, targetNumericChainId);
 }

@@ -66,8 +66,19 @@ export interface ResumableSale {
   deadline: number;
 }
 
+/**
+ * Where a one-transaction sale is in the wallet: one batched confirmation (EIP-5792), or, for a wallet that
+ * cannot batch (Rabby), each missing approval and then the sale.
+ */
+export type WalletStep =
+  | { kind: 'batch' }
+  | { kind: 'approval'; index: number; total: number; token: string }
+  | { kind: 'sale'; afterApprovals: number };
+
 export interface RedeemExecutionState {
   phase: RedeemExecutionPhase;
+  /** Set during a one-transaction sale; null otherwise. */
+  walletStep: WalletStep | null;
   intent: RedeemIntent | null;
   activeStepIndex: number | null;
   error: string | null;
@@ -81,6 +92,7 @@ export interface RedeemExecutionState {
 
 const INITIAL_STATE: RedeemExecutionState = {
   phase: 'idle',
+  walletStep: null,
   intent: null,
   activeStepIndex: null,
   error: null,
@@ -289,17 +301,24 @@ export function useRedeemExecution() {
       /** Settlement attestation deadline (unix seconds) of a fee-paying sale; undefined for a free sale. */
       deadline?: number
     ) => {
-      setState((s) => ({ ...s, activeStepIndex: null, phase: 'awaiting_signature' }));
+      setState((s) => ({ ...s, activeStepIndex: null, phase: 'awaiting_signature', walletStep: null }));
       const awaitingReported = reportStepsInOrder(intentId, swapSteps, { type: 'AWAITING_SIGNATURE' });
       let reportedSubmitted = false;
+      let approvalsSigned = 0;
       try {
         await executeWalletSweep(
           walletAddress,
           { transaction: composerTransaction, approvals: composerTransaction.approvals },
           (step) => {
-            if (step === 'confirming') setState((s) => ({ ...s, phase: 'confirming' }));
+            if (step === 'batching') setState((s) => ({ ...s, walletStep: { kind: 'batch' } }));
+            else if (step === 'signing') setState((s) => ({ ...s, walletStep: { kind: 'sale', afterApprovals: approvalsSigned } }));
+            else if (step === 'confirming') setState((s) => ({ ...s, phase: 'confirming', walletStep: null }));
           },
           {
+            onApproval: (index, total, token) => {
+              approvalsSigned = total;
+              setState((s) => ({ ...s, walletStep: { kind: 'approval', index, total, token } }));
+            },
             onSubmitted: async (txHash) => {
               reportedSubmitted = true;
               await awaitingReported;

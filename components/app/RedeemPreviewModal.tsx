@@ -5,7 +5,7 @@ import { X, Loader2, CheckCircle2, AlertTriangle, Wallet } from 'lucide-react';
 import { formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
 import { estimatedProceedsRaw, minimumProceedsRaw, summarizeSale } from '@/lib/domain/basket-protocol/redeem/proceeds';
 import { useWallet } from '@/lib/wallet-context';
-import { useRedeemExecution } from '@/hooks/use-redeem-execution';
+import { useRedeemExecution, type RedeemExecutionState } from '@/hooks/use-redeem-execution';
 
 // -----------------------------------------------------------------------------
 // Phase 21 — Redeem Preview + real, wallet-signed redemption. Exit-side
@@ -48,6 +48,7 @@ interface PositionAssetView {
   symbol?: string;
   decimals: number;
   trackedRaw: string;
+  observedRaw: string | null;
   effectiveRaw: string | null;
   status: 'IN_SYNC' | 'DRIFT' | 'UNREADABLE';
 }
@@ -94,15 +95,40 @@ function percentToBps(input: string): number | null {
   return bps >= 1 && bps <= 10_000 ? bps : null;
 }
 
+/** What the wallet holds of this asset, up to what BAG tracks for the strategy: the sellable amount. */
+const inWalletRaw = (a: { observedRaw: string | null; trackedRaw: string }) =>
+  a.observedRaw !== null && BigInt(a.observedRaw) < BigInt(a.trackedRaw) ? a.observedRaw : a.observedRaw === null ? '0' : a.trackedRaw;
 const usdOrDash = (v: string | null | undefined) => (v === null || v === undefined ? '—' : formatDecimalStringUsd(v));
 
 interface RedeemPreviewModalProps {
   bagId: string;
   bagName: string;
   onClose: () => void;
+  /** Called once when a sale finishes (fully or partly), so the page behind can refetch holdings and the position. */
+  onCompleted?: () => void;
 }
 
-export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewModalProps) {
+/**
+ * What the wallet is asking for during a one-transaction sale. A wallet that batches (EIP-5792) shows one
+ * confirmation; one that cannot (Rabby) asks for each missing approval first, so say so instead of promising one.
+ */
+export function composerSaleLabel(
+  step: RedeemExecutionState['walletStep'],
+  swapSteps: { targetSymbol: string; inputAsset: { address: string } }[]
+): string {
+  const names = swapSteps.map((s) => s.targetSymbol).filter(Boolean).join(', ');
+  if (step?.kind === 'approval') {
+    const symbol = swapSteps.find((s) => s.inputAsset.address.toLowerCase() === step.token.toLowerCase())?.targetSymbol;
+    return `Step ${step.index} of ${step.total + 1}: approve ${symbol ?? 'a token'} for this sale (exact amount) in your wallet. Your wallet cannot combine the steps, so it asks one by one.`;
+  }
+  if (step?.kind === 'sale' && step.afterApprovals > 0) {
+    return `Step ${step.afterApprovals + 1} of ${step.afterApprovals + 1}: confirm the sale${names ? ` of ${names}` : ''} in your wallet`;
+  }
+  if (step?.kind === 'batch') return `Confirm the sale${names ? ` of ${names}` : ''} in your wallet (one confirmation)`;
+  return `Confirm the sale${names ? ` of ${names}` : ''} in your wallet`;
+}
+
+export function RedeemPreviewModal({ bagId, bagName, onClose, onCompleted }: RedeemPreviewModalProps) {
   const [position, setPosition] = useState<PositionView | null>(null);
   const [outputAssets, setOutputAssets] = useState<OutputAssetOption[] | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
@@ -118,6 +144,12 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
   const wallet = useWallet();
   const execution = useRedeemExecution();
   const isExecuting = execution.state.phase !== 'idle' && execution.state.phase !== 'failed';
+  const finished = execution.state.phase === 'completed' || execution.state.phase === 'partial';
+  useEffect(() => {
+    if (finished) onCompleted?.();
+    // Only on the transition into a finished sale, not when the parent re-renders with a new callback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finished]);
 
   useEffect(() => {
     let cancelled = false;
@@ -292,14 +324,14 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
               </div>
               <div>
                 <div style={{ color: 'var(--ink-soft, #B4AEA2)' }}>In your wallet</div>
-                <div style={{ fontWeight: 600 }}>{usdOrDash(position.effectivePositionQuote)}</div>
+                <div style={{ fontWeight: 600 }}>{usdOrDash(position.observedWalletQuote)}</div>
               </div>
             </div>
             {position.hasDrift && (
               <div style={{ padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(224,185,122,0.4)', color: '#E0B97A', fontSize: 12, marginBottom: 14 }}>
                 Your wallet holds less than BAG tracks for this strategy ({position.assets
                   .filter((a) => a.status === 'DRIFT')
-                  .map((a) => `${a.symbol ?? '?'}: ${formatRawAmount(a.effectiveRaw ?? '0', a.decimals, { maxFractionDigits: 6 })} of ${formatRawAmount(a.trackedRaw, a.decimals, { maxFractionDigits: 6 })}`)
+                  .map((a) => `${a.symbol ?? '?'}: ${formatRawAmount(inWalletRaw(a), a.decimals, { maxFractionDigits: 6 })} of ${formatRawAmount(a.trackedRaw, a.decimals, { maxFractionDigits: 6 })}`)
                   .join(', ')}). Only what is in the wallet can be sold.
               </div>
             )}
@@ -679,8 +711,7 @@ function RedeemExecutionPanel({
   if (state.phase === 'creating') label = 'Preparing your redemption…';
   else if (state.phase === 'preparing') label = 'Wallet confirmation required…';
   else if (state.phase === 'awaiting_signature' && state.intent?.composerTransaction) {
-    const names = swapSteps.map((s) => s.targetSymbol).filter(Boolean).join(', ');
-    label = `Confirm the sale${names ? ` of ${names}` : ''} in your wallet (one transaction)`;
+    label = composerSaleLabel(state.walletStep, swapSteps);
   } else if (state.phase === 'awaiting_signature') {
     const step = swapSteps[activeSwapIndex] ?? swapSteps[0];
     const position = swapSteps.length > 1 && activeSwapIndex >= 0 ? ` (${activeSwapIndex + 1}/${swapSteps.length})` : '';

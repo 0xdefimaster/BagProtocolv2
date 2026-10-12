@@ -164,6 +164,15 @@ describe('executeWalletSweep', () => {
     expect(steps).toEqual(['approving', 'simulating', 'signing', 'confirming']);
   });
 
+  it('wallet without batching (Rabby): reports approval i of n for the approvals still short only', async () => {
+    wallet({ capsThrows: true, allowances: { [A]: BigInt(1000) } });
+    const approvals: [number, number, string][] = [];
+    expect(await executeWalletSweep(WALLET, plan, () => {}, { onApproval: (i, n, t) => void approvals.push([i, n, t]) })).toBe(SALE_HASH);
+    expect(approvals).toEqual([[1, 1, B]]);
+    expect(mocks.ensureAllowance).toHaveBeenCalledTimes(1);
+    expect(mocks.ensureAllowance).toHaveBeenCalledWith(WALLET, 4663, B, SPENDER, '2000');
+  });
+
   it('wallet advertises batching but refuses it as unsupported: falls back to the sequential flow', async () => {
     wallet({ caps: atomic, sendCalls: () => { throw Object.assign(new Error('Unsupported'), { code: 5700 }); } });
     expect(await executeWalletSweep(WALLET, plan)).toBe(SALE_HASH);

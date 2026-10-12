@@ -22,11 +22,26 @@ function client(balances: Record<string, bigint | 'fail'>) {
 }
 
 describe('observeUserHoldings / sellableHoldingsForBag', () => {
-  it('attributes a short wallet pro rata across strategies, at one block', async () => {
+  it('a short wallet: each strategy may sell all it tracks that the wallet holds (D3.1), at one block', async () => {
+    // 80 held, 60 + 40 tracked: either strategy can sell its own tracked amount in full (the tokens are
+    // fungible); whatever then remains short stays with the other strategy for the reconciliation to book.
     const o = await observeUserHoldings(admin([{ bag_id: 'x', address: A, quantity_raw: '60' }, { bag_id: 'y', address: A, quantity_raw: '40' }]), client({ [A]: BigInt(80) }), user);
     expect(o.blockNumber).toBe('77');
-    expect(sellableHoldingsForBag(o, 'x')).toEqual([expect.objectContaining({ quantityRaw: '60', sellableRaw: '48' })]);
-    expect(sellableHoldingsForBag(o, 'y')).toEqual([expect.objectContaining({ quantityRaw: '40', sellableRaw: '32' })]);
+    expect(sellableHoldingsForBag(o, 'x')).toEqual([expect.objectContaining({ quantityRaw: '60', sellableRaw: '60' })]);
+    expect(sellableHoldingsForBag(o, 'y')).toEqual([expect.objectContaining({ quantityRaw: '40', sellableRaw: '40' })]);
+  });
+
+  it('the reported case: another strategy\'s holding left the wallet; this one still sells all of its own', async () => {
+    // Bag x tracks 12846 and the wallet holds exactly that; bag y's 3700 left earlier. Pro rata used to let x sell
+    // only 12846 × 12846 / 16546 and leave the rest in the wallet after "sell all".
+    const o = await observeUserHoldings(admin([{ bag_id: 'x', address: A, quantity_raw: '12846' }, { bag_id: 'y', address: A, quantity_raw: '3700' }]), client({ [A]: BigInt(12846) }), user);
+    expect(sellableHoldingsForBag(o, 'x')).toEqual([expect.objectContaining({ sellableRaw: '12846' })]);
+  });
+
+  it('never more than the wallet holds', async () => {
+    const o = await observeUserHoldings(admin([{ bag_id: 'x', address: A, quantity_raw: '60' }, { bag_id: 'y', address: A, quantity_raw: '40' }]), client({ [A]: BigInt(30) }), user);
+    expect(sellableHoldingsForBag(o, 'x')).toEqual([expect.objectContaining({ sellableRaw: '30' })]);
+    expect(sellableHoldingsForBag(o, 'y')).toEqual([expect.objectContaining({ sellableRaw: '30' })]);
   });
 
   it('one unreadable balance makes the whole strategy unsellable (fail-closed)', async () => {
