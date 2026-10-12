@@ -4,12 +4,17 @@ import { useEffect, useState } from 'react';
 import { Scale, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import { formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
 import type { PositionRebalancePreview } from '@/lib/domain/basket-protocol/rebalance/position-rebalance';
+import { useWallet } from '@/lib/wallet-context';
+import { executeWalletSweep, type SweepProgress } from '@/lib/blockchain/wallet-sweep-client';
+import { describeWalletError } from '@/lib/blockchain/wallet-error';
 
 // -----------------------------------------------------------------------------
-// R1 — the signed-in investor's allocation in this strategy against its current
-// version (GET /api/bags/:id/rebalance-preview). Read-only: it shows the drift
-// and what a rebalance would trade; nothing is quoted or traded here. Renders
-// nothing for a visitor without a position.
+// The signed-in investor's allocation in this strategy against its current
+// version (R1, GET /api/bags/:id/rebalance-preview), a live quote of the
+// rebalance (R2), and the rebalance itself (R3): BAG records the plan as an
+// intent, the wallet signs ONE Composer transaction (approvals batched into the
+// same confirmation where the wallet can), and BAG books it from the receipt.
+// No creator fee. Renders nothing for a visitor without a position.
 // -----------------------------------------------------------------------------
 
 interface Response {
@@ -33,10 +38,40 @@ interface Quote {
   priceImpactBps: number | null;
 }
 
-const pct = (bps: number) => `${(bps / 100).toFixed(1)}%`;
+interface IntentView {
+  id: string;
+  status: 'READY' | 'SUBMITTED' | 'SUCCEEDED' | 'FAILED' | 'EXPIRED';
+  expiresAt: string;
+  failureMessage: string | null;
+  composerTransaction: { to: string; data: string; value: string; chainId: number; approvals: { token: string; spender: string; amountRaw: string }[] } | null;
+}
 
-export function RebalancePreviewCard({ bagId }: { bagId: string }) {
+type RunPhase = 'idle' | 'planning' | 'wallet' | 'confirming' | 'done';
+
+const pct = (bps: number) => `${(bps / 100).toFixed(1)}%`;
+const VERIFY_POLL_MS = 3000;
+const VERIFY_ATTEMPTS = 60;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function postJson<T>(url: string, body?: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json as { error?: string }).error ?? 'Request failed.');
+  return json as T;
+}
+
+export function RebalancePreviewCard({ bagId, refreshKey, onRebalanced }: { bagId: string; refreshKey?: string | number; onRebalanced?: () => void }) {
+  const { authUser } = useWallet();
   const [data, setData] = useState<Response | null>(null);
+  const [phase, setPhase] = useState<RunPhase>('idle');
+  const [walletStep, setWalletStep] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -66,7 +101,61 @@ export function RebalancePreviewCard({ bagId }: { bagId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [bagId]);
+  }, [bagId, refreshKey, reloadKey]);
+
+  /** Plan → wallet signs the one transaction → BAG verifies it on-chain and books it. */
+  const runRebalance = async () => {
+    const walletAddress = authUser?.walletAddress;
+    if (!walletAddress) {
+      setRunError('Sign in with your wallet first.');
+      return;
+    }
+    setRunError(null);
+    setPhase('planning');
+    try {
+      const { intent } = await postJson<{ intent: IntentView }>(`/api/bags/${encodeURIComponent(bagId)}/rebalance-intent`);
+      const tx = intent.composerTransaction;
+      if (!tx || Date.parse(intent.expiresAt) <= Date.now()) throw new Error('This rebalance can no longer be signed. Try again.');
+      const verifyUrl = `/api/rebalance-intent/${encodeURIComponent(intent.id)}/verify`;
+      setPhase('wallet');
+      const stepLabel: Record<SweepProgress, string> = {
+        approving: 'Approve each token in your wallet…',
+        batching: 'Confirm the rebalance in your wallet (approvals and swaps in one confirmation)…',
+        simulating: 'Checking the transaction…',
+        signing: 'Confirm the rebalance in your wallet…',
+        confirming: 'Waiting for the transaction…',
+      };
+      await executeWalletSweep(
+        walletAddress,
+        { transaction: tx, approvals: tx.approvals },
+        (step) => setWalletStep(stepLabel[step]),
+        {
+          onApproval: (index, total) => setWalletStep(`Approval ${index} of ${total} in your wallet…`),
+          onSubmitted: (txHash) => postJson(verifyUrl, { txHash }),
+        }
+      );
+      setPhase('confirming');
+      setWalletStep('Confirming on-chain and updating your position…');
+      for (let attempt = 0; attempt < VERIFY_ATTEMPTS; attempt++) {
+        const { intent: now } = await postJson<{ intent: IntentView }>(verifyUrl).catch(() => ({ intent: null as IntentView | null }));
+        if (now?.status === 'SUCCEEDED') {
+          setPhase('done');
+          setWalletStep(null);
+          setQuote(null);
+          setReloadKey((k) => k + 1);
+          onRebalanced?.();
+          return;
+        }
+        if (now?.status === 'FAILED' || now?.status === 'EXPIRED') throw new Error(now.failureMessage ?? 'The rebalance did not go through. Nothing was booked.');
+        await sleep(VERIFY_POLL_MS);
+      }
+      throw new Error('Still confirming. Your position updates as soon as the transaction is confirmed.');
+    } catch (err) {
+      setRunError(describeWalletError(err).message ?? (err as Error).message);
+      setPhase('idle');
+      setWalletStep(null);
+    }
+  };
 
   if (!data || data.preview.status === 'NO_POSITION') return null;
   const { preview, symbols } = data;
@@ -153,6 +242,22 @@ export function RebalancePreviewCard({ bagId }: { bagId: string }) {
             )}
           </button>
           {quoteError && <p className="mt-2 text-red-400">{quoteError}</p>}
+          <button onClick={() => void runRebalance()} disabled={phase !== 'idle' && phase !== 'done'} className="btn btn-primary mt-3 ml-2">
+            {phase === 'idle' || phase === 'done' ? (
+              'Rebalance now'
+            ) : (
+              <span className="inline-flex items-center gap-2">
+                <Loader2 size={14} className="spin" /> {phase === 'planning' ? 'Planning…' : 'Rebalancing…'}
+              </span>
+            )}
+          </button>
+          {walletStep && <p className="mt-2 text-white/70">{walletStep}</p>}
+          {runError && <p className="mt-2 text-red-400">{runError}</p>}
+          {phase === 'done' && (
+            <p className="mt-2 text-emerald-400 inline-flex items-center gap-1">
+              <CheckCircle2 size={14} /> Rebalanced. Your position now follows strategy v{preview.targetVersion}.
+            </p>
+          )}
           {quote && (
             <div className="mt-3 rounded-lg border border-white/10 p-3 text-white/70">
               <p className="mb-1">
@@ -176,8 +281,8 @@ export function RebalancePreviewCard({ bagId }: { bagId: string }) {
               </p>
               <p className="text-xs text-white/50">
                 One LI.FI Composer transaction, {quote.slippageBps / 100}% max slippage per swap
-                {quote.priceImpactBps !== null ? `, ${(quote.priceImpactBps / 100).toFixed(2)}% price impact` : ''}. Live quote only: signing the
-                rebalance from your wallet is the next step.
+                {quote.priceImpactBps !== null ? `, ${(quote.priceImpactBps / 100).toFixed(2)}% price impact` : ''}. &quot;Rebalance now&quot;
+                plans it again at live prices; your wallet shows exactly what it signs.
               </p>
             </div>
           )}

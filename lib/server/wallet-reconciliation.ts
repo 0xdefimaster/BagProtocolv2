@@ -4,6 +4,7 @@ import { readBalancesAtBlock } from '@/lib/server/wallet-balances';
 import { verifyRedeemExecution } from '@/lib/server/redeem-execution';
 import { settleUnsettledPurchasesForUser } from '@/lib/server/purchase-execution';
 import { listUnsettledRedeemIntentsForUser } from '@/lib/server/redeem-intent-repo';
+import { settleOpenRebalances } from '@/lib/server/rebalance-execution';
 
 // -----------------------------------------------------------------------------
 // Accounting V2 / A2 — wallet reconciliation (docs/ACCOUNTING_V2_DESIGN.md §5).
@@ -46,6 +47,7 @@ async function settlePendingFor(admin: SupabaseClient, userId: string, walletAdd
   for (const intent of pending) {
     await verifyRedeemExecution(admin, session as never, intent.id).catch(() => undefined);
   }
+  await settleOpenRebalances(admin, { userId }).catch(() => undefined);
 }
 
 export async function reconcileWallet(

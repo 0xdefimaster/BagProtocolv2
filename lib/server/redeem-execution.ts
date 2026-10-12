@@ -39,6 +39,7 @@ import { findComposerTransactionFromWallet } from '@/lib/blockchain/composer-tx-
 import { isBagChain } from '@/lib/config/chains';
 import { DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
 import { feeRedemptionPath } from '@/lib/server/fee-redemption-path';
+import { hasOpenRebalance } from '@/lib/server/rebalance-execution';
 import { readSettlementResult } from '@/lib/blockchain/redeem-settlement-event';
 import { computeOnChainBagId } from '@/lib/domain/basket-protocol/onchain';
 import { buildRedeemComposer, splitReceivedAcrossLegs } from '@/lib/server/redeem-composer';
@@ -79,6 +80,7 @@ export type RedeemExecutionError =
   | { kind: 'ZERO_SUPPLY' }
   | { kind: 'QUOTE_FAILED'; failureCode: RedeemIntentFailureCode; message: string }
   | { kind: 'REDEEM_IN_PROGRESS'; intentId: string; /** Set when a still-valid settlement attestation is the blocker: when it lapses. */ retryAfterSeconds?: number }
+  | { kind: 'REBALANCE_IN_PROGRESS'; intentId: string }
   | { kind: 'NOT_FOUND' }
   | { kind: 'FORBIDDEN' }
   | { kind: 'EXPIRED' }
@@ -137,6 +139,9 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
     }
     if (stillOpen) return { ok: false, error: { kind: 'REDEEM_IN_PROGRESS', intentId: existing.id } };
   }
+  // A rebalance of the position in flight sells some of the same tokens: the sale waits for it.
+  const openRebalance = await hasOpenRebalance(admin, session.userId, bagId);
+  if (openRebalance) return { ok: false, error: { kind: 'REBALANCE_IN_PROGRESS', intentId: openRebalance } };
   // A settlement attestation still valid on-chain (§9) blocks a new sale of the position even when its intent is
   // already terminal in the database: the old signature could otherwise run after this sale changed the ledger.
   const liveAttestation = await liveSettlementAttestationFor(admin, session.userId, bagId);

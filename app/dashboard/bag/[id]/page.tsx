@@ -244,7 +244,7 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
           {bag.status === 'ACTIVE' && (
             <div className="mb-8 space-y-6">
               <StrategyRegistryPanel bagId={bag.id} />
-              <RebalancePreviewCard bagId={bag.id} />
+              <RebalancePreviewCard bagId={bag.id} refreshKey={tradeRefresh} onRebalanced={refreshAfterTrade} />
             </div>
           )}
 

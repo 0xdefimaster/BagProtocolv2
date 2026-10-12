@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+
+const sweepMock = vi.fn();
+vi.mock('@/lib/wallet-context', () => ({ useWallet: () => ({ authUser: { id: 'u1', walletAddress: '0x' + '1'.repeat(40), displayName: null } }) }));
+vi.mock('@/lib/blockchain/wallet-sweep-client', () => ({ executeWalletSweep: (...a: unknown[]) => sweepMock(...a) }));
+
 import { RebalancePreviewCard } from '../RebalancePreviewCard';
 
 const TSLA = '0x322f0929c4625ed5bad873c95208d54e1c003b2d';
@@ -14,6 +19,7 @@ function serve(body: unknown, status = 200) {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  sweepMock.mockReset();
 });
 
 const drifted = {
@@ -88,5 +94,51 @@ describe('RebalancePreviewCard', () => {
     const second = render(<RebalancePreviewCard bagId="b1" />);
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     expect(second.container.textContent).toBe('');
+  });
+
+  it('Rebalance now: records the plan, the wallet signs the one transaction, and the card reports it once BAG booked it', async () => {
+    const tx = { to: '0x' + 'c'.repeat(40), data: '0xdead', value: '0', chainId: 4663, approvals: [{ token: TSLA, spender: '0x' + 's'.repeat(40), amountRaw: '1' }] };
+    const intent = { id: 'r1', status: 'READY', expiresAt: new Date(Date.now() + 300_000).toISOString(), failureMessage: null, composerTransaction: tx };
+    let verifies = 0;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/rebalance-intent')) return new Response(JSON.stringify({ intent }), { status: 200 });
+      if (url.endsWith('/verify')) {
+        verifies++;
+        const status = init?.body ? 'SUBMITTED' : 'SUCCEEDED';
+        return new Response(JSON.stringify({ intent: { ...intent, status, composerTransaction: null } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ symbols, preview: drifted }), { status: 200 });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    sweepMock.mockImplementation(async (_w: string, _plan: unknown, _p: unknown, opts: { onSubmitted: (h: string) => Promise<unknown> }) => {
+      await opts.onSubmitted('0x' + 'ab'.repeat(32));
+      return '0x' + 'ab'.repeat(32);
+    });
+    const onRebalanced = vi.fn();
+    render(<RebalancePreviewCard bagId="b1" onRebalanced={onRebalanced} />);
+    fireEvent.click(await screen.findByText('Rebalance now'));
+    await waitFor(() => expect(screen.getByText(/Rebalanced\. Your position now follows strategy v2/)).toBeTruthy());
+
+    // The wallet got exactly the recorded transaction and its approvals; the hash went to verify.
+    expect(sweepMock.mock.calls[0][0]).toBe('0x' + '1'.repeat(40));
+    expect(sweepMock.mock.calls[0][1]).toEqual({ transaction: tx, approvals: tx.approvals });
+    const verifyBodies = fetchMock.mock.calls.filter(([u]) => String(u).endsWith('/verify')).map(([, init]) => (init as RequestInit | undefined)?.body ?? null);
+    expect(verifyBodies[0]).toBe(JSON.stringify({ txHash: '0x' + 'ab'.repeat(32) }));
+    expect(verifies).toBeGreaterThanOrEqual(2);
+    expect(onRebalanced).toHaveBeenCalledTimes(1);
+  });
+
+  it('Rebalance now: a plan that cannot be made, or a declined signature, is shown and nothing else happens', async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      url.endsWith('/rebalance-intent')
+        ? new Response(JSON.stringify({ error: 'A sale of this position is in progress; rebalance once it has settled.' }), { status: 409 })
+        : new Response(JSON.stringify({ symbols, preview: drifted }), { status: 200 })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+    render(<RebalancePreviewCard bagId="b1" />);
+    fireEvent.click(await screen.findByText('Rebalance now'));
+    await waitFor(() => expect(screen.getByText(/A sale of this position is in progress/)).toBeTruthy());
+    expect(sweepMock).not.toHaveBeenCalled();
+    expect(screen.getByText('Rebalance now')).toBeTruthy(); // can try again
   });
 });

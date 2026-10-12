@@ -12,6 +12,7 @@ const transitions: { from: string; to: string; steps?: unknown[] }[] = [];
 const searchMock = vi.fn();
 const trackComposerMock = vi.fn();
 
+vi.mock('@/lib/server/rebalance-execution', () => ({ hasOpenRebalance: async () => null }));
 vi.mock('@/lib/server/redeem-intent-repo', async () => {
   const { assertValidPurchaseIntentTransition } = await vi.importActual<typeof import('@/lib/domain/basket-protocol/purchase-intent/state-machine')>(
     '@/lib/domain/basket-protocol/purchase-intent/state-machine'

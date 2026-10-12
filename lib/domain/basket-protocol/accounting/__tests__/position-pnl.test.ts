@@ -113,3 +113,42 @@ describe('computePositionPnl — external outflows and unknowns', () => {
     expect(computePositionPnl([...base, ev('ROYALTY_ACCRUED', [], { amountQuote: '1' }), ev('OUTFLOW_CLASSIFIED', [])]).assets).toEqual(computePositionPnl(base).assets);
   });
 });
+
+describe('computePositionPnl — rebalance (R3)', () => {
+  const C = { chain: 'robinhood', address: '0xccc' };
+  const rebalance = (sold: [typeof A, string][], bought: [typeof A, string, number][]) =>
+    ev('REBALANCE_FILL', [
+      ...sold.map(([a, d]) => ({ ...a, deltaRaw: `-${d}` })),
+      ...bought.map(([a, d, w]) => ({ ...a, deltaRaw: d, weightBps: w })),
+    ]);
+
+  it('realizes nothing: the basis of what was sold moves to what was bought, by weight', () => {
+    // 10 A for $1000; half of it rebalanced into B (60%) and C (40%).
+    const r = computePositionPnl([buy([A, '10', '1000']), rebalance([[A, '5']], [[B, '30', 6000], [C, '8', 4000]])]);
+    expect(r.exits).toEqual([]);
+    expect(r.realizedPnlQuote).toBe('0');
+    expect(r.assets).toEqual([
+      { ...A, quantityRaw: '5', costBasisQuote: '500' },
+      { ...B, quantityRaw: '30', costBasisQuote: '300' },
+      { ...C, quantityRaw: '8', costBasisQuote: '200' },
+    ]);
+    expect(r.costBasisQuote).toBe('1000'); // conserved
+  });
+
+  it('a gain made before the rebalance is still charged at the exit (it does not escape the fee base)', () => {
+    // Bought A for $100; A doubles; rebalanced fully into B; B sold for $200 → $100 realized at the exit.
+    const r = computePositionPnl([buy([A, '1', '100']), rebalance([[A, '1']], [[B, '4', 10000]]), sell([B, '4', '200'])]);
+    expect(r.exits[0]).toMatchObject({ proceedsQuote: '200', costOfSoldQuote: '100', realizedPnlQuote: '100', feeBaseQuote: '100' });
+  });
+
+  it('rounding: the last bought leg takes the remainder, so no basis is created or lost', () => {
+    const r = computePositionPnl([buy([A, '3', '1']), rebalance([[A, '3']], [[B, '1', 3333], [C, '1', 6667]])]);
+    expect(r.costBasisQuote).toBe('1');
+  });
+
+  it('selling something the books do not hold makes the bought basis unknown, never estimated', () => {
+    const r = computePositionPnl([rebalance([[A, '1']], [[B, '1', 10000]])]);
+    expect(r.assets).toEqual([{ ...B, quantityRaw: '1', costBasisQuote: null }]);
+    expect(r.costBasisQuote).toBeNull();
+  });
+});
