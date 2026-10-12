@@ -3,7 +3,7 @@ import { parseAbiItem, type PublicClient } from 'viem';
 import { reconcileWallet, type TrackedAsset } from '@/lib/server/wallet-reconciliation';
 
 // -----------------------------------------------------------------------------
-// Every wallet, every 5 minutes, without reading every balance.
+// Every wallet, every hour, without reading every balance.
 //
 // A wallet's ledger is verified up to the block of its last full check
 // (wallet_reconciliation_state.last_block_number). Holdings can only fall

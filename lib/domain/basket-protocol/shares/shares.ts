@@ -241,6 +241,27 @@ export function getDepositQuote(
 }
 
 /**
+ * The share quote a purchase books. Accounting V2 (D1, docs/ACCOUNTING_V2_DESIGN.md §4.1): shares are a mechanical
+ * counter, never a value, so a purchase is not refused because that counter no longer matches the Bag's holdings:
+ * zero shares with holdings left over (holdings that outlived their shares after a full exit), or shares outstanding
+ * with holdings at zero (every tracked token left the wallets). In both cases the counter restarts at the bootstrap
+ * price for this deposit. Nobody's value moves: each position is valued from its own holdings.
+ */
+export function getPurchaseDepositQuote(
+  nav: NavResult,
+  shareSupply: ShareSupply,
+  depositAmount: string,
+  bootstrapPolicy: ShareBootstrapPolicy = DEFAULT_SHARE_BOOTSTRAP_POLICY
+): DepositQuote {
+  try {
+    return getDepositQuote(nav, shareSupply, depositAmount, bootstrapPolicy);
+  } catch (err) {
+    if (!(err instanceof OrphanedNavError) && !(err instanceof ZeroNavError)) throw err;
+    return getDepositQuote({ ...nav, grossNav: '0' }, { ...shareSupply, totalSharesRaw: '0' }, depositAmount, bootstrapPolicy);
+  }
+}
+
+/**
  * Quotes the quote-currency value of redeeming `sharesRaw` shares right
  * now — MATH ONLY, no mutation, no burn (spec section 13).
  *

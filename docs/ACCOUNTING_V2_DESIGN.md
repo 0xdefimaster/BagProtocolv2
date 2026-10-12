@@ -212,6 +212,10 @@ shares untouched) and the UI shows "partially sold", never "sold".
 **Shares.** Still burned in the same proportion (`sharesToBurnForFraction`)
 only so the legacy columns keep their invariants; 0051 allows a zero burn so
 holdings that outlived their shares can still be sold.
+A purchase never fails on this counter (`getPurchaseDepositQuote`): zero shares
+with holdings left over, or shares with holdings at zero, restart it at the
+bootstrap price (before 2026-10-12 such a Bag refused every purchase with
+"NAV is currently unavailable").
 
 **Fee basis.** `redeem_intents.redeem_value_quote` stays the legacy fee basis of
 `apply_redeem_execution`. For a performance-fee Bag it is still NAV-based
@@ -292,16 +296,20 @@ hidden: every shortfall produces a reconciliation record and, once confirmed on
 two consecutive observations, an `EXTERNAL_OUTFLOW` event that brings tracked
 quantity down to effective.
 
-### 5.4 Cadence (decision D6: event-driven + 5-minute safety pass)
+### 5.4 Cadence (decision D6: event-driven + hourly safety pass; was 5 minutes)
 - **Real time:** a listener for `Transfer` events of tracked assets from/to
   tracked wallets triggers reconciliation of that wallet within seconds.
   Netlify functions cannot hold a WebSocket open, so the listener is either a
   small always-on worker (provider WebSocket endpoint) or a provider address-
   activity webhook that calls a BAG endpoint. Which one Robinhood Chain's
   provider supports is to be verified before A2.
-- **Backstop:** a scheduled pass every 5 minutes (same pattern as the #47
-  reconciler) re-reads balances, so a missed event is corrected.
-- Also on portfolio/activity visits. Pending BAG intents for the wallet are
+- **Backstop:** a scheduled pass every hour (same pattern as the #47
+  reconciler) re-reads balances, so a missed event is corrected. It was every
+  5 minutes; an idle site paid 288 runs a day for it. The Transfer-log scan
+  covers every wallet from its last checked block, so an hourly pass misses nothing.
+- **On connect:** a signed-in wallet is checked when it connects
+  (`POST /api/users/me/reconcile`, at most once per 5 minutes per user), and every
+  sale re-reads balances at one block before signing (`checkSaleCoverage`). Pending BAG intents for the wallet are
   settled first so an in-flight sale is not misread as an external exit.
 - Chain source of truth: provider RPC/WebSocket (Robinhood's documentation
   recommends a provider such as Alchemy over the public RPC for production,
@@ -415,7 +423,7 @@ Dropped (after migration and a release with both): `bag_share_state`,
 | PR | Content |
 |---|---|
 | A1 ✅ | `ledger_events` (insert-only, `seq` total order) + ledger writes in all five accounting RPCs + opening balances (stored state minus existing events) + `ledger_projection_mismatches()` + `GET /api/users/me/ledger`. Every economics and concurrency integration test now also asserts the ledger rebuilds the investor tables exactly. `definition_hash` stays null until the hash is computed server-side at intent time (A3). |
-| A2 ✅ | `apply_wallet_observation` (0049): drift recorded with its pro-rata allocation, booked as `EXTERNAL_OUTFLOW` only when still short ≥ 2 minutes later, resolved when the balance returns; skipped while a redemption is in flight or for a stale block. Balances read at one block, unreadable reads skipped (never 0). Triggers: Alchemy ADDRESS_ACTIVITY webhook (signed, payload only says which wallet to re-read) + 5-minute `/api/cron/reconcile-wallets` pass. `GET /api/users/me/reconciliation`. TVL follows confirmed outflows (bag aggregate reduced). Portfolio display from holdings moves to A4 with the share retirement; drift UI with it. |
+| A2 ✅ | `apply_wallet_observation` (0049): drift recorded with its pro-rata allocation, booked as `EXTERNAL_OUTFLOW` only when still short ≥ 2 minutes later, resolved when the balance returns; skipped while a redemption is in flight or for a stale block. Balances read at one block, unreadable reads skipped (never 0). Triggers: Alchemy ADDRESS_ACTIVITY webhook (signed, payload only says which wallet to re-read) + hourly `/api/cron/reconcile-wallets` pass (was 5 minutes) + on-connect check. `GET /api/users/me/reconciliation`. TVL follows confirmed outflows (bag aggregate reduced). Portfolio display from holdings moves to A4 with the share retirement; drift UI with it. |
 | A3 ✅ | Ledger legs carry `costQuote` (fills: cost basis split by input spent, exact) and `proceedsQuote` (sales: verified receipt output; router: reported swapOutput split by quoted output) — 0050. Pure engine `computePositionPnl` (average cost per asset, realized P&L only from verified proceeds, external outflows realize nothing, unknowns stay null, fee base above the realized high-water mark). `GET /api/users/me/positions/:strategyId/pnl`. Fees actually charged and the on-chain fee path are unchanged (D4). |
 | A4 ✅ | Redeem by fraction of the **effective** holdings (`fractionBps`), never more than the wallet holds; balances read at one block, fail-closed; re-checked before signing. Position value from holdings: exposure / in wallet / effective kept apart from estimated proceeds (route quote) and realized P&L (receipts). Partial sale shown as partial. Shares and NAV removed from the portfolio API/UI and from no-fee sales; non-authoritative columns listed in §4.1. 0051: zero legacy share burn allowed. Acceptance tests: partial exit, drift 60/100, failed leg, receipt-only realized P&L, idempotency (`a4-acceptance.integration.test.ts`). |
 | A4.1 ✅ | Hardening (P0): one pre-sign coverage check (`checkSaleCoverage`) on every sell path, including RedeemFeeRouter's `signFeeAttestation`; guard test that share/NAV values cannot become a position source; round-trip regression (buy → partial sell → external exit → full exit → P&L → ledger); 0051 shown to change no row when applied over existing data. |
@@ -447,7 +455,7 @@ drift), `/users/me/ledger`, `/users/me/reconciliation`.
   exits executed through BAG; a sale outside BAG carries no BAG fee.
 - **D5** Provider RPC/WebSocket is the chain source of truth; Blockscout is
   supplemental (classification, debugging, fallback).
-- **D6** Event-driven reconciliation plus a 5-minute safety pass.
+- **D6** Event-driven reconciliation plus a safety pass (hourly since 2026-10-12, with an on-connect check per wallet).
 
 One-click sell (exit the whole strategy in one plan) ships alongside A4: it is
 the end-to-end test of the books (buy → position → wallet → sell → realized

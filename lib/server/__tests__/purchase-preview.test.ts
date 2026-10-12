@@ -232,6 +232,18 @@ describe('computePurchasePreview', () => {
     expect(BigInt(outcome.depositQuote!.sharesRaw)).toBe(BigInt(1000) * BigInt(10) ** BigInt(outcome.depositQuote!.shareDecimals));
   });
 
+  it('a legacy share counter out of step with the holdings does not block the purchase (NAV unavailable bug)', () => {
+    const base = { recipe: recipe(), inputAsset: USDC, inputSymbol: 'USDC', inputDecimals: 6, amount: '1000' };
+    // Zero shares, holdings left over after everyone sold; and shares outstanding, holdings all gone.
+    for (const [n, supply] of [[nav('250'), zeroShareSupply()], [zeroNav(), shareSupply(40)]] as const) {
+      const outcome = computePurchasePreview({ ...base, nav: n, shareSupply: supply });
+      expect(outcome.ok).toBe(true);
+      if (!outcome.ok) return;
+      expect(outcome.depositQuote!.isBootstrap).toBe(true);
+      expect(outcome.depositQuote!.sharePrice).toBe('1');
+    }
+  });
+
   it('residual: total allocated + unallocated equals the input amount exactly', () => {
     const outcome = computePurchasePreview({
       recipe: recipe(),

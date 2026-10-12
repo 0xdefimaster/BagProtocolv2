@@ -7,7 +7,7 @@ import { useWallet } from '@/lib/wallet-context';
 import { rankBags, rankCreators, type BagMetric } from '@/lib/domain/leaderboard/rank';
 import { BagLeaderboardTable, CreatorLeaderboardTable } from '@/components/leaderboard/LeaderboardTable';
 
-/** The NAV pass runs every 5 minutes; the page picks up new figures within a minute of it, while the tab is visible. */
+/** The NAV pass runs hourly; the page picks up new figures within a minute of it, while the tab is visible. */
 const LEADERBOARD_REFRESH_MS = 60_000;
 
 const METRICS: { id: BagMetric; label: string }[] = [
@@ -106,7 +106,7 @@ export default function LeaderboardPage() {
       </div>
 
       <p className="mono" style={{ fontSize: 11, color: 'var(--mute)', marginTop: 16, lineHeight: 1.6 }}>
-        TVL and returns come from NAV snapshots taken every 5 minutes; holders are wallets that still hold the Bag&apos;s
+        TVL and returns come from NAV snapshots taken every hour; holders are wallets that still hold the Bag&apos;s
         assets. The page refreshes every minute. A Bag with no recorded return for a period is not ranked by it.
         Rankings are not investment advice.
       </p>

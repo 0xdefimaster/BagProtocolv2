@@ -52,7 +52,7 @@ that BAG already does all of it.
 | Wallet reconciliation (external outflows) | Done, does not scale (20 wallets / 5 min) | `lib/server/wallet-reconciliation.ts` |
 | Performance fee with HWM and loss carry, settled on-chain (RedeemSettlement) | Built; **positive fee not yet proven live** | `docs/FEE_ECONOMICS_DESIGN.md` |
 | Fork royalty accounting and creator rewards vault | Built; **withdrawal not yet proven live end to end** | `docs/CREATOR_REWARDS_SETTLEMENT.md` |
-| Leaderboard on live Bags, NAV every 5 minutes | Done | `lib/domain/leaderboard`, `lib/server/nav-snapshot-sweep.ts` |
+| Leaderboard on live Bags, NAV hourly | Done | `lib/domain/leaderboard`, `lib/server/nav-snapshot-sweep.ts` |
 | Rebalance preview and live quote | Done (no execution) | `lib/server/rebalance-*.ts` |
 | Rebalance execution (user-signed) | Missing | — |
 | TVL verified against on-chain balances | Missing | — |

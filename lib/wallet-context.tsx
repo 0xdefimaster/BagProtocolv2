@@ -141,6 +141,16 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // wallet B would leave B with no sign-in at all, and a late approval of
   // A's prompt would set A's session while B is shown connected.
   const signInInFlight = useRef<{ address: string; promise: Promise<void> } | null>(null);
+
+  // Once per signed-in wallet per page load: check that wallet against BAG's records (the server reuses a check from
+  // the last few minutes). This replaces checking every wallet every few minutes whether anyone is on the site or not.
+  const reconciledFor = useRef<string | null>(null);
+  useEffect(() => {
+    const address = authUser?.walletAddress?.toLowerCase();
+    if (!address || reconciledFor.current === address) return;
+    reconciledFor.current = address;
+    fetch('/api/users/me/reconcile', { method: 'POST' }).catch(() => {});
+  }, [authUser]);
   const currentWalletRef = useRef('');
   currentWalletRef.current = walletAddress;
 
@@ -334,8 +344,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   /**
    * Lets the user pick another account of the same wallet. A wallet never tells the site that the user selected an
-   * account the site is not connected to (privacy), so the site cannot notice by itself; this opens the wallet's own
-   * account/permission picker (EIP-2255). Picking another account ends the current session like any account switch.
+   * account the site is not connected to (privacy), so the site cannot notice by itself. MetaMask may answer a
+   * permission request for an already-connected site without showing anything, so this first revokes the site's
+   * account permission (EIP-2255 revoke) and then asks for accounts, which makes the wallet show its account list.
+   * Wallets without revoke get the permission picker (wallet_requestPermissions) instead. Any switch ends the
+   * current session like an account change from the wallet.
    */
   const switchAccount = useCallback(async () => {
     const provider = activeProvider;
@@ -344,18 +357,39 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       return;
     }
     setError(null);
+    const errorCode = (err: unknown) =>
+      err && typeof err === 'object' && 'code' in err ? Number((err as { code: unknown }).code) : undefined;
+
+    let revoked = false;
     try {
+      await provider.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] });
+      revoked = true;
+    } catch {
+      // No revoke in this wallet: use its permission picker below.
+    }
+
+    try {
+      if (revoked) {
+        // The site holds no account permission now, so the wallet has to ask which account to connect.
+        const accounts = (await provider.request({ method: 'eth_requestAccounts' })) as string[];
+        if (accounts.length === 0) {
+          disconnect();
+          return;
+        }
+        applyAccounts(accounts);
+        window.localStorage.setItem(LAST_CONNECTED_KEY, '1');
+        return;
+      }
       await provider.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] });
       const accounts = (await provider.request({ method: 'eth_accounts' })) as string[];
       // Most wallets also emit accountsChanged; applying here covers the ones that do not.
       if (accounts[0] && accounts[0].toLowerCase() !== walletAddress.toLowerCase()) applyAccounts(accounts);
     } catch (err) {
-      const code = err && typeof err === 'object' && 'code' in err ? Number((err as { code: unknown }).code) : undefined;
-      if (code === 4001) return; // the user closed the picker
-      // No permission picker, or the wallet could not show it (e.g. another request still pending): reconnect from
-      // scratch. disconnect() revokes this site's permission, so the next connection asks for an account again.
+      if (!revoked && errorCode(err) === 4001) return; // closed the picker: still connected as before
+      // Closed the account list after the revoke (the site is no longer connected), or the wallet could not show a
+      // picker: reconnect from scratch.
       disconnect();
-      setPickerOpen(true);
+      if (errorCode(err) !== 4001) setPickerOpen(true);
     }
   }, [activeProvider, walletAddress, applyAccounts, disconnect]);
 

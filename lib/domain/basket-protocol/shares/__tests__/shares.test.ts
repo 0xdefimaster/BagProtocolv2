@@ -11,6 +11,7 @@ import {
 import { formatNavValue, NAV_VALUE_DECIMALS, ZeroShareSupplyError } from '../../nav/nav';
 import {
   getDepositQuote,
+  getPurchaseDepositQuote,
   getRedeemQuote,
   getSharePrice,
   InsufficientSharesError,
@@ -293,5 +294,31 @@ describe('Share accounting integration — recipe weights never leak into share 
     expect(quoteFromSkewed).toEqual(quoteFromInverted);
     void skewedRecipe;
     void invertedRecipe; // neither recipe is ever passed into share math — this test makes that fact explicit
+  });
+});
+
+describe('getPurchaseDepositQuote: the legacy share counter never blocks a purchase (Accounting V2, D1)', () => {
+  it('matches getDepositQuote whenever the counter is consistent', () => {
+    expect(getPurchaseDepositQuote(navResult(1000), shareSupply('1000000000000000000000'), '100')).toEqual(
+      getDepositQuote(navResult(1000), shareSupply('1000000000000000000000'), '100')
+    );
+    expect(getPurchaseDepositQuote(navResult(0), shareSupply(0), '100')).toEqual(getDepositQuote(navResult(0), shareSupply(0), '100'));
+  });
+
+  it('zero shares with holdings left over restarts the counter at the bootstrap price', () => {
+    const q = getPurchaseDepositQuote(navResult(500), shareSupply(0), '1000');
+    expect(q.isBootstrap).toBe(true);
+    expect(q.sharePrice).toBe(DEFAULT_SHARE_BOOTSTRAP_POLICY.initialSharePrice);
+    expect(q.sharesRaw).toBe(getDepositQuote(navResult(0), shareSupply(0), '1000').sharesRaw);
+  });
+
+  it('shares outstanding with holdings at zero restarts the counter too', () => {
+    const q = getPurchaseDepositQuote(navResult(0), shareSupply('5000000000000000000'), '1000');
+    expect(q.isBootstrap).toBe(true);
+    expect(BigInt(q.sharesRaw) > BigInt(0)).toBe(true);
+  });
+
+  it('other errors still surface', () => {
+    expect(() => getPurchaseDepositQuote(navResult(500), shareSupply(0), '0')).toThrow(ZeroDepositAmountError);
   });
 });

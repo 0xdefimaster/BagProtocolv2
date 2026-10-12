@@ -21,7 +21,7 @@ import { FORK_ROYALTY_BPS } from '@/lib/config/rewards';
 import { cancelPurchaseIfFeeSaleOpen, openFeeRedemptionFor } from '@/lib/server/fee-redemption-lock';
 import { getBagAssetHoldings, getBagNavSafe, priceHoldingsIndividually } from '@/lib/server/bag-nav';
 import { EXECUTION_QUOTE_PRICE_SOURCE, executionPricesFromLegs, navAtExecutionPrices } from '@/lib/domain/basket-protocol/shares/execution-valuation';
-import { getDepositQuote, OrphanedNavError, ZeroNavError } from '@/lib/domain/basket-protocol/shares/shares';
+import { getPurchaseDepositQuote, OrphanedNavError, ZeroNavError } from '@/lib/domain/basket-protocol/shares/shares';
 import type { DepositQuote, ShareSupply } from '@/types/basket-protocol';
 import { getShareSupply } from '@/lib/server/bag-share-state-repo';
 import { getVerifiedIdentityKeys, listAssets } from '@/lib/server/asset-repo';
@@ -555,7 +555,7 @@ async function priceSharesFromExecution(
     return { ok: false, error: { kind: 'VALUATION_UNAVAILABLE', assets: valued.unpriced, labels } };
   }
   try {
-    return { ok: true, value: { depositQuote: getDepositQuote(valued.nav, shareSupply, depositAmount), nav: valued.nav } };
+    return { ok: true, value: { depositQuote: getPurchaseDepositQuote(valued.nav, shareSupply, depositAmount), nav: valued.nav } };
   } catch (err) {
     if (err instanceof OrphanedNavError || err instanceof ZeroNavError) {
       return { ok: false, error: { kind: 'PREVIEW_ERROR', message: 'NAV is currently unavailable.' } };

@@ -11,7 +11,7 @@ import type { ProtocolProof } from '@/lib/server/protocol-proof';
 
 const STATE_LABEL: Record<VerificationState, string> = {
   VERIFIED: 'Verified on-chain',
-  STALE: 'Last verified over 15 min ago',
+  STALE: 'Last verified over 90 min ago',
   PENDING_OUTFLOW: 'Outflow being confirmed',
   UNVERIFIED: 'Not yet verified',
 };
@@ -67,7 +67,7 @@ export function ProofView({ proof }: { proof: ProtocolProof }) {
           <span className="l">Verified TVL</span>
           <div className="v">${formatUsdCompact(tvl.byState.VERIFIED)}</div>
           <div className="d">
-            {verifiedShare === null ? 'No TVL yet' : `${verifiedShare}% of $${formatUsdCompact(tvl.total)} checked against wallets in the last 15 min`}
+            {verifiedShare === null ? 'No TVL yet' : `${verifiedShare}% of $${formatUsdCompact(tvl.total)} checked against wallets in the last 90 min`}
           </div>
         </div>
         <div className="dash-stat">

@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
       await reconcileWallet(admin, client, { userId: u.id, walletAddress: u.wallet_address, assets });
       reconciled++;
     } catch {
-      // The 5-minute pass will retry this wallet.
+      // The hourly pass will retry this wallet.
     }
   }
   return NextResponse.json({ reconciled });

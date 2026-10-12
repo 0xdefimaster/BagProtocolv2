@@ -4,7 +4,7 @@ import { requireCronSecret } from '@/lib/server/require-cron-secret';
 import { snapshotActiveBags } from '@/lib/server/nav-snapshot-sweep';
 
 // -----------------------------------------------------------------------------
-// GET|POST /api/cron/snapshot-bag-navs — the 5-minute NAV pass
+// GET|POST /api/cron/snapshot-bag-navs — the hourly NAV pass
 // (lib/server/nav-snapshot-sweep.ts): keeps TVL, returns and the leaderboard
 // current for every live Bag. Scheduled by netlify/functions/snapshot-bag-navs.mts;
 // CRON_SECRET auth (fails closed).
