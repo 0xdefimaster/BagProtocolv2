@@ -173,6 +173,7 @@ export async function loadProtocolProof(admin: SupabaseClient, now: number = Dat
       decimals: r.output_decimals,
       receivedRaw: String(result.received),
       feeRaw: String(result.fee),
+      royaltyRaw: String(result.royalty ?? '0'),
       userProceedsRaw: String(result.userProceeds),
       consumedBasisRaw: String(r.settlement_plan?.consumedBasisRaw ?? ''),
     });

@@ -100,9 +100,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // Deliberately NOT copied from the source — this is a new creator's
       // fork, not the original creator's bag. Starting at 0 avoids silently
       // charging the forker's depositors a fee the forker never chose. The
-      // fork DOES still owe the source's root creator FORK_ROYALTY_BPS on
-      // every deposit (see lib/config/rewards.ts) — a completely separate
-      // reward from this field.
+      // root creator's royalty is a share of THIS fee when the forker sets
+      // one (lib/config/rewards.ts FORK_ROYALTY_FEE_SHARE_BPS): a fork kept
+      // at 0% pays no royalty.
       performanceFeeBps: 0,
     },
   }, source, sourceVersion.version);

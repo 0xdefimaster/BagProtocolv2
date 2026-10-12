@@ -196,6 +196,11 @@ const SHIPPED: Day[] = [
 const NEXT = [
   {
     tag: 'IN PROGRESS',
+    t: 'Fork royalty paid on-chain',
+    b: 'A fork pays its root creator 20% of its performance fee in the sale transaction. Built and tested; the new RedeemSettlement is not deployed yet.',
+  },
+  {
+    tag: 'IN PROGRESS',
     t: 'BAG Router production enablement',
     b: 'Resolve the plan-signer trust boundary, deploy the router, configure allowlists and enable the native execution path.',
   },

@@ -3,7 +3,7 @@ import { BagRecord, BagVersionRecord, CanonicalAsset } from '@/types/basket-prot
 import type { BagPerformance, CreatorProfile } from '@/types';
 import { PassportForkNode, PassportPerson, PassportVersionNode, STRATEGY_PASSPORT_SCHEMA_VERSION, SourceInfo, StrategyPassport } from '@/types/strategy-passport';
 import { assetIdentityKey } from '@/lib/domain/basket-protocol/asset-identity';
-import { FORK_ROYALTY_BPS } from '@/lib/config/rewards';
+import { FORK_ROYALTY_FEE_SHARE_BPS } from '@/lib/config/rewards';
 import { BAG_CHAINS, BagChain } from '@/lib/config/chains';
 import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
 import { BagDeployment, getDeployment } from '@/lib/server/bag-deployment-repo';
@@ -179,7 +179,7 @@ export function buildStrategyPassport(input: StrategyPassportInput): StrategyPas
         isOriginal: bag.parentBagId === null,
         children: input.children.map((b) => forkNode(b, input.viewerUserId, creators)).filter((n) => n.visible),
         childCount: input.childCount,
-        forkRoyaltyBps: FORK_ROYALTY_BPS,
+        forkRoyaltyFeeShareBps: FORK_ROYALTY_FEE_SHARE_BPS,
         forkedFromVersion: null,
       },
     },

@@ -96,6 +96,9 @@ describe('landing page — copy says only what the code does', () => {
       /lineage is recorded on-chain/i,
       /multi-chain vaults/i,
       /computed live from composition/i,
+      // The fork royalty is a share of the fork's performance fee, paid at sale; no deposit royalty exists.
+      /1\.5%/,
+      /of every deposit/i,
     ]) {
       expect(text, String(forbidden)).not.toMatch(forbidden);
     }

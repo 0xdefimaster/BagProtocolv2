@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { getAddress } from 'viem';
+import { getAddress, zeroAddress } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { computeOnChainBagId } from '@/lib/domain/basket-protocol/onchain';
 import { computeB0Fee, decimalToRawCeil, feeBasisFromPositionPnl } from '@/lib/domain/basket-protocol/redeem/performance-fee-b0';
@@ -146,6 +146,8 @@ interface SettlementState {
   contextHash: `0x${string}`;
   redeemer: `0x${string}`;
   creator: `0x${string}`;
+  /** The root creator of the Bag's lineage when it is a fork by someone else; null otherwise. */
+  rootCreator: `0x${string}` | null;
   feeRateBps: number;
   creatorIsRedeemer: boolean;
   consumedBasisRaw: bigint;
@@ -190,13 +192,19 @@ async function loadSettlementState(admin: SupabaseClient, userId: string, intent
   const creatorIsRedeemer = bag.creatorId === userId;
   const feeRateBps = creatorIsRedeemer ? 0 : lockedRate;
 
-  const wallets = await admin.from('users').select('id, wallet_address').in('id', [bag.creatorId, userId]);
+  // Fork royalty: the root of the lineage, from BAG's own records (never the caller). Only a fork by someone else.
+  const rootBag = bag.rootBagId && bag.rootBagId !== bag.id ? await getBagById(admin, bag.rootBagId) : null;
+  const rootCreatorId = rootBag && rootBag.creatorId !== bag.creatorId ? rootBag.creatorId : null;
+
+  const wallets = await admin.from('users').select('id, wallet_address').in('id', [bag.creatorId, userId, ...(rootCreatorId ? [rootCreatorId] : [])]);
   if (wallets.error) throw new Error(wallets.error.message);
   const walletOf = (id: string) => (wallets.data as { id: string; wallet_address: string | null }[]).find((u) => u.id === id)?.wallet_address;
   const creatorWallet = walletOf(bag.creatorId);
   const redeemerWallet = walletOf(userId);
   if (!creatorWallet) throw new Error(`Bag ${intent.bagId}'s creator has no wallet_address on file.`);
   if (!redeemerWallet) throw new Error(`User ${userId} has no wallet_address on file.`);
+  const rootCreatorWallet = rootCreatorId ? walletOf(rootCreatorId) : null;
+  if (rootCreatorId && !rootCreatorWallet) throw new Error(`Bag ${intent.bagId}'s root creator has no wallet_address on file.`);
   if (redeemerWallet.toLowerCase() !== intent.walletAddress.toLowerCase()) throw new SettlementStateChangedError();
 
   // A4 pre-sign check: the wallet and the books still cover every leg.
@@ -238,6 +246,7 @@ async function loadSettlementState(admin: SupabaseClient, userId: string, intent
     redeemIntentId: intent.id,
     user: redeemerWallet,
     creator: creatorWallet,
+    rootCreator: rootCreatorWallet ?? null,
     sharesRaw: intent.sharesRaw,
     legs: legs.map((l) => ({ token: l.token, amountRaw: l.amountRaw.toString() })),
     ledgerHeadSeq: head,
@@ -252,6 +261,7 @@ async function loadSettlementState(admin: SupabaseClient, userId: string, intent
     contextHash: computeSettlementContextHash(context),
     redeemer: getAddress(redeemerWallet),
     creator: getAddress(creatorWallet),
+    rootCreator: rootCreatorWallet ? getAddress(rootCreatorWallet) : null,
     feeRateBps,
     creatorIsRedeemer,
     consumedBasisRaw,
@@ -333,6 +343,7 @@ export async function quoteSettlement(admin: SupabaseClient, userId: string, int
     executor: getAddress(quote.userProxy),
     user: state.redeemer,
     creator: state.creator,
+    rootCreator: state.rootCreator,
     consumedBasisRaw: state.consumedBasisRaw.toString(),
     lossCarryRaw: state.lossCarryRaw.toString(),
     feeRateBps: state.feeRateBps,
@@ -386,6 +397,7 @@ export async function attestSettlement(admin: SupabaseClient, userId: string, in
   if (
     plan.user.toLowerCase() !== state.redeemer.toLowerCase() ||
     plan.creator.toLowerCase() !== state.creator.toLowerCase() ||
+    (plan.rootCreator ?? null)?.toLowerCase() !== state.rootCreator?.toLowerCase() ||
     plan.consumedBasisRaw !== state.consumedBasisRaw.toString() ||
     plan.lossCarryRaw !== state.lossCarryRaw.toString() ||
     plan.feeRateBps !== state.feeRateBps
@@ -394,6 +406,7 @@ export async function attestSettlement(admin: SupabaseClient, userId: string, in
   }
 
   if (state.feeRateBps > 0 && (await creatorFrozen(state.creator)) === true) throw new CreatorFrozenError();
+  if (state.feeRateBps > 0 && state.rootCreator && (await creatorFrozen(state.rootCreator)) === true) throw new CreatorFrozenError();
 
   // Never valid past the intent's expiry (the purchase lock is released then) nor the plan's.
   const deadlineMs = Math.min(Date.now() + ATTESTATION_TTL_MS, new Date(state.intent.expiresAt).getTime(), new Date(plan.expiresAt).getTime());
@@ -412,6 +425,7 @@ export async function attestSettlement(admin: SupabaseClient, userId: string, in
     redemptionId: computeOnChainBagId(state.intent.id),
     user: state.redeemer,
     creator: state.creator,
+    rootCreator: state.rootCreator ?? zeroAddress,
     executor: getAddress(plan.executor),
     contextHash: state.contextHash,
     consumedBasis: state.consumedBasisRaw,

@@ -91,7 +91,7 @@ describe('buildStrategyPassport', () => {
     const p = buildStrategyPassport(input());
     expect(Object.keys(p).sort()).toEqual(['composition', 'creator', 'currentVersion', 'generatedAt', 'identity', 'lineage', 'onchain', 'performance', 'policy', 'schemaVersion']);
     expect(Object.keys(p.lineage).sort()).toEqual(['forks', 'versions']);
-    expect(Object.keys(p.lineage.forks).sort()).toEqual(['ancestors', 'childCount', 'children', 'forkRoyaltyBps', 'forkedFromVersion', 'isOriginal', 'rootBagId', 'sourceInfo']);
+    expect(Object.keys(p.lineage.forks).sort()).toEqual(['ancestors', 'childCount', 'children', 'forkRoyaltyFeeShareBps', 'forkedFromVersion', 'isOriginal', 'rootBagId', 'sourceInfo']);
   });
 
   it('uses the canonical StrategyPolicy, derived exactly as validate_bag derives it', () => {
@@ -127,7 +127,7 @@ describe('buildStrategyPassport', () => {
       expect.objectContaining({ bagId: 'bag-1', visible: true, name: 'AI Core', creator: expect.objectContaining({ name: 'Bob' }) }),
       expect.objectContaining({ bagId: 'bag-0', visible: false, name: null }),
     ]);
-    expect(p.lineage.forks.forkRoyaltyBps).toBe(150);
+    expect(p.lineage.forks.forkRoyaltyFeeShareBps).toBe(2000);
     expect(p.lineage.forks.forkedFromVersion).toBeNull();
   });
 

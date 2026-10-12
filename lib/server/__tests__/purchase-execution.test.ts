@@ -1442,9 +1442,11 @@ describe('verifyExecution', () => {
     expect(rpcMock).not.toHaveBeenCalledWith('claim_intent_tx_hash', expect.anything());
   });
 
-  // ----------------------------- Phase 22: fork royalty -------------------------
+  // ----------------------------- Fork royalty -------------------------
+  // A fork's root creator is paid on-chain from the fork's performance fee, at each sale (RedeemSettlement,
+  // FORK_ROYALTY_FEE_SHARE_BPS). A purchase accrues nothing: no royalty rate, no recipient, for forks too.
 
-  it('resolves the ROOT bag creator (not this fork bag\'s own creator) and passes FORK_ROYALTY_BPS when the bag has a root_bag_id', async () => {
+  it('a fork bag accrues no deposit royalty: zero rate and no recipient, and the root bag is not looked up', async () => {
     const submitted = intentFixture({
       status: 'SUBMITTED',
       steps: [swapStepRecord({ status: 'SUBMITTED', txHash: '0xabc' })],
@@ -1462,9 +1464,7 @@ describe('verifyExecution', () => {
     });
     updatePurchaseIntentStatusMock.mockResolvedValue({ ...submitted, status: 'COMPLETED', executedAt: new Date().toISOString() });
 
-    // This bag (bag_1) is itself a fork of bag_0, created by someone OTHER
-    // than bag_0's original creator — the exact case FORK_ROYALTY_BPS
-    // exists for.
+    // This bag (bag_1) is a fork of bag_0, created by someone other than bag_0's creator.
     getBagByIdMock.mockImplementation(async (_admin: unknown, id: string) => {
       if (id === 'bag_1') return { ...bagRecord(), id: 'bag_1', creatorId: 'forker_1', rootBagId: 'bag_0' };
       if (id === 'bag_0') return { ...bagRecord(), id: 'bag_0', creatorId: 'original_creator', rootBagId: null };
@@ -1479,10 +1479,11 @@ describe('verifyExecution', () => {
     expect(rpcMock).toHaveBeenCalledWith(
       'apply_purchase_execution',
       expect.objectContaining({
-        p_fork_royalty_bps: 150,
-        p_root_creator_id: 'original_creator',
+        p_fork_royalty_bps: 0,
+        p_root_creator_id: null,
       })
     );
+    expect(getBagByIdMock).not.toHaveBeenCalledWith(expect.anything(), 'bag_0');
   });
 
   it('passes zero royalty and no recipient for a non-fork bag (root_bag_id is null)', async () => {

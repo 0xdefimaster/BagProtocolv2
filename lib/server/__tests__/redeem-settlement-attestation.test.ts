@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getAddress, recoverTypedDataAddress } from 'viem';
+import { getAddress, recoverTypedDataAddress, zeroAddress } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { SETTLEMENT_TYPES, settlementDomain } from '@/lib/blockchain/redeem-settlement-eip712';
 import { parseDec } from '@/lib/domain/basket-protocol/accounting/decimal';
@@ -17,10 +17,13 @@ const AMKR = '0xdd356aa38f40a7b7076755ac854b6fbb1f0d305b';
 const SPY = '0x117cc2133c37b721f49de2a7a74833232b3b4c0c';
 const USER = '0xb193DE199EeB9bd1143607a11AD00999Ceb956b8';
 const CREATOR = '0x00000000000000000000000000000000000000c1';
+const ROOT = '0x00000000000000000000000000000000000000a1';
 
 type Plan = Record<string, unknown> | null;
 let intent: Record<string, unknown>;
 let bag: Record<string, unknown>;
+// The root of a fork's lineage, when `bag.rootBagId` names it.
+let rootBag: Record<string, unknown> | null;
 let version: Record<string, unknown>;
 let ledger: { seq: string }[];
 let wallets: { id: string; wallet_address: string }[];
@@ -79,7 +82,10 @@ vi.mock('@/lib/server/redeem-intent-repo', () => ({
   },
 }));
 vi.mock('@/lib/server/sale-coverage', () => ({ checkSaleCoverage: async () => 'COVERED' }));
-vi.mock('@/lib/server/bag-repo', () => ({ getBagById: async () => bag, getCurrentBagVersion: async () => version }));
+vi.mock('@/lib/server/bag-repo', () => ({
+  getBagById: async (_a: unknown, id: string) => (rootBag && id === rootBag.id ? rootBag : bag),
+  getCurrentBagVersion: async () => version,
+}));
 vi.mock('@/lib/server/ledger-repo', () => ({ listAllLedgerEventsForPosition: async () => ledger }));
 vi.mock('@/lib/server/fee-redemption-lock', () => ({ purchaseInFlightFor: async () => purchaseInFlight }));
 vi.mock('@/lib/domain/basket-protocol/accounting/position-pnl', () => ({ computePositionPnl: () => ({}) }));
@@ -151,6 +157,7 @@ beforeEach(() => {
     settlementPlan: null,
   };
   bag = { id: intent.bagId, creatorId: 'creator', performanceFeeBpsLocked: 1000, contractAddress: '0x00000000000000000000000000000000000000b1' };
+  rootBag = null;
   version = { version: 3, compositionHash: 'c0ffee12', recipe: { performanceFeeBps: 1000 } };
   ledger = [{ seq: '810' }, { seq: '812' }];
   wallets = [
@@ -324,6 +331,53 @@ describe('phase 2 — attestSettlement: re-check, sign, final transaction', () =
     await expect(attestSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(svc.CreatorFrozenError);
     frozen = new Error('no isFrozen on this token');
     await expect(attestSettlement(admin, 'user', intent.id as string)).resolves.toMatchObject({ deadline: expect.any(Number) });
+  });
+
+  it('not a fork: rootCreator is signed as the zero address and recorded as null', async () => {
+    await quoteSettlement(admin, 'user', intent.id as string);
+    const a = await attestSettlement(admin, 'user', intent.id as string);
+    expect(a.message.rootCreator).toBe(zeroAddress);
+    expect((savedPlans[0] as Record<string, unknown>).rootCreator).toBeNull();
+  });
+
+  it('a fork by someone else: the ROOT bag\'s creator wallet is signed, in the context hash and in the final flow', async () => {
+    rootBag = { id: 'root-bag', creatorId: 'root' };
+    bag = { ...bag, rootBagId: 'root-bag' };
+    wallets = [...wallets, { id: 'root', wallet_address: ROOT }];
+    await quoteSettlement(admin, 'user', intent.id as string);
+    const plan = savedPlans[0] as Record<string, unknown>;
+    expect(plan.rootCreator).toBe(getAddress(ROOT));
+    const a = await attestSettlement(admin, 'user', intent.id as string);
+    expect(a.message.rootCreator).toBe(getAddress(ROOT));
+    expect((finalBuilds[0].settle as Record<string, unknown>).rootCreator).toBe(getAddress(ROOT));
+    // The same Bag without the root in its lineage hashes differently: the root creator is part of the context.
+    rootBag = null;
+    bag = { ...bag, rootBagId: null };
+    intent = { ...intent, status: 'READY', settlementPlan: null };
+    savedPlans.length = 0;
+    await quoteSettlement(admin, 'user', intent.id as string);
+    expect((savedPlans[0] as Record<string, unknown>).contextHash).not.toBe(plan.contextHash);
+  });
+
+  it('a fork whose root creator is its own creator pays no royalty; a root creator with no wallet blocks the sale rather than skipping the royalty', async () => {
+    rootBag = { id: 'root-bag', creatorId: 'creator' };
+    bag = { ...bag, rootBagId: 'root-bag' };
+    await quoteSettlement(admin, 'user', intent.id as string);
+    expect((savedPlans[0] as Record<string, unknown>).rootCreator).toBeNull();
+    rootBag = { id: 'root-bag', creatorId: 'root' };
+    intent = { ...intent, settlementPlan: null };
+    await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toThrow(/root creator has no wallet_address/);
+  });
+
+  it('TOCTOU: the root creator\'s wallet changing between the phases → refused, nothing signed', async () => {
+    rootBag = { id: 'root-bag', creatorId: 'root' };
+    bag = { ...bag, rootBagId: 'root-bag' };
+    wallets = [...wallets, { id: 'root', wallet_address: ROOT }];
+    await quoteSettlement(admin, 'user', intent.id as string);
+    wallets = [...wallets.slice(0, 2), { id: 'root', wallet_address: '0x00000000000000000000000000000000000000a2' }];
+    await expect(attestSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(svc.SettlementStateChangedError);
+    expect(finalBuilds).toHaveLength(0);
+    expect(savedAttested).toHaveLength(0);
   });
 
   it('a creator selling their own Bag: rate 0 is signed, so the contract charges nothing', async () => {

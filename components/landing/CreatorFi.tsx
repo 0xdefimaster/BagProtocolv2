@@ -1,9 +1,11 @@
 // CreatorFi — the creator lifecycle and the economics behind "Earn".
-// Numbers are protocol constants: FORK_ROYALTY_BPS = 150 (lib/config/rewards.ts),
-// MAX_PERFORMANCE_FEE_BPS = 3000 (types/basket-protocol.ts). The royalty is not
-// paid on the root creator's own deposits; the fee is charged only on a
-// depositor's realized gain and is locked once outside capital arrives
-// (migration 0033). Rewards are recorded in a ledger and settled on-chain.
+// Numbers are protocol constants: FORK_ROYALTY_FEE_SHARE_BPS = 2000
+// (lib/config/rewards.ts, = RedeemSettlement.FORK_ROYALTY_SHARE_BPS) and
+// MAX_PERFORMANCE_FEE_BPS = 3000 (types/basket-protocol.ts). The fee is charged
+// only on a seller's realized gain and is locked once outside capital arrives
+// (migration 0033). RedeemSettlement pays it in the sale's transaction, and on a
+// fork splits it: the root creator's share, the rest to the fork's creator. The
+// investor pays nothing extra; a fork with a 0% fee pays no royalty.
 
 const LIFECYCLE = [
   { k: 'Create', body: 'Pick assets and weights, write the thesis, set a performance fee.' },
@@ -11,14 +13,14 @@ const LIFECYCLE = [
   { k: 'Discover', body: 'Investors find the strategy — and who made it — in Explore.' },
   { k: 'Invest', body: 'One action instead of rebuilding the portfolio position by position.' },
   { k: 'Fork', body: 'Another creator adapts it and publishes a new Bag. The lineage stays.' },
-  { k: 'Earn', body: 'Royalties from forks and a fee on investors’ realized profit.' },
+  { k: 'Earn', body: 'A fee on investors’ realized profit, and a share of what every fork of your Bag earns.' },
 ];
 
 const GUARANTEES = [
   'Fee only on realized profit — never on losses',
   'Performance fee capped at 30%',
   'Fee locked once outside capital arrives',
-  'No royalty on the creator’s own deposits',
+  'Fork royalty comes out of the fork’s fee — investors pay nothing extra',
 ];
 
 export default function CreatorFi() {
@@ -46,11 +48,12 @@ export default function CreatorFi() {
       <div className="reward-cards" data-reveal>
         <div className="reward-card">
           <span className="rc-tag mono">Fork royalty</span>
-          <div className="rc-num">1.5%</div>
-          <h3>of every deposit into a fork of your Bag</h3>
+          <div className="rc-num">20%</div>
+          <h3>of the performance fee every fork of your Bag earns</h3>
           <p>
-            Credited to the root creator at deposit time — forks of forks still point back to
-            the original. Recorded in a reward ledger and settled on-chain.
+            Paid to the root creator by the settlement contract, in the same transaction as the
+            sale — forks of forks still point back to the original. It comes out of the fork
+            creator&apos;s fee, so a fork with no fee pays no royalty.
           </p>
         </div>
         <div className="reward-card">

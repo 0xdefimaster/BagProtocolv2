@@ -79,7 +79,8 @@ Before sending, the script checks:
 - the deployer has ETH.
 
 After mining, it reads the contract back and checks:
-- chain, `usdg`, `owner`, `attestor` and `MAX_FEE_RATE_BPS`;
+- chain, `usdg`, `owner`, `attestor`, `MAX_FEE_RATE_BPS` and `FORK_ROYALTY_SHARE_BPS` (2000; reported missing on a
+  version `1` deployment);
 - the EIP-712 domain (`eip712Domain()`: name, version, chainId, verifyingContract);
 - the contract holds no USDG.
 
@@ -138,3 +139,23 @@ One real sale of a fee-paying Bag, then the chain and the database must describe
 - **Database**: legs' gross proceeds X, `FEE_CHARGED` (settledOnchain) Y, net X − Y,
   `realizedPnl = gross − basis`, `netRealizedPnl = realizedPnl − fee`.
 - `Settled` event ↔ receipt ↔ ledger match one to one.
+
+## 6. Version 2: fork royalty (not deployed yet)
+
+The code in this repository now signs for EIP-712 domain version `2` (`Settlement` gained `rootCreator`;
+`settleFlat` takes `rootCreator` and a packed `feeRateAndDeadline`). The live version `1` contract cannot
+verify those signatures, so **fee-paying sales fail until version 2 is deployed and configured**. Order:
+
+1. Deploy version 2 with §3 (same script, same owner and attestor addresses; a fresh one-off deployer key). The
+   attestor key does not change, so `REDEEM_SETTLEMENT_ATTESTOR_PRIVATE_KEY` stays as it is.
+2. `npx tsx scripts/deploy-redeem-settlement.ts --verify 0x…` must print `VERIFIED`, including
+   `EIP-712 version 2` and `FORK_ROYALTY_SHARE_BPS 2000`.
+3. At a quiet moment (no sale in progress — an attested plan names the old contract and would no longer verify),
+   set `REDEEM_SETTLEMENT_ADDRESS` and `NEXT_PUBLIC_REDEEM_SETTLEMENT_ADDRESS` to the new address, and deploy
+   the app from the branch that carries version 2 at the same time.
+4. Record the new address in §0 and mark `0x934a…70a0` superseded.
+5. Live test: a gain-bearing sale of a fork with a fee above 0, by an investor who is neither creator, then
+   `npx tsx scripts/verify-money-flows.ts --sale=0x…`. Until that passes, the royalty is **not verified live**.
+
+Rule, flows and tests: `docs/FORK_ROYALTY_ONCHAIN.md`.
+

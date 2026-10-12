@@ -49,6 +49,7 @@ const SETTLEMENT_READ_ABI = [
   { type: 'function', name: 'owner', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
   { type: 'function', name: 'attestor', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
   { type: 'function', name: 'MAX_FEE_RATE_BPS', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'FORK_ROYALTY_SHARE_BPS', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   {
     type: 'function',
     name: 'eip712Domain',
@@ -126,7 +127,7 @@ export interface DeploymentCheck {
  * run (no early exit) so a report shows everything that is wrong at once.
  */
 export async function verifySettlementDeployment(client: PublicClient, address: `0x${string}`, expected: SettlementExpectation): Promise<DeploymentCheck[]> {
-  const read = <F extends 'usdg' | 'owner' | 'attestor' | 'MAX_FEE_RATE_BPS' | 'eip712Domain'>(functionName: F) =>
+  const read = <F extends 'usdg' | 'owner' | 'attestor' | 'MAX_FEE_RATE_BPS' | 'FORK_ROYALTY_SHARE_BPS' | 'eip712Domain'>(functionName: F) =>
     client.readContract({ address, abi: SETTLEMENT_READ_ABI, functionName });
   const eq = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
   const check = (name: string, actual: string, want: string, same = eq): DeploymentCheck => ({ name, ok: same(actual, want), actual, expected: want });
@@ -134,12 +135,14 @@ export async function verifySettlementDeployment(client: PublicClient, address: 
   const code = await client.getCode({ address });
   if (!code || code === '0x') return [check('contract code', 'none', 'deployed bytecode', () => false)];
 
-  const [chainId, usdg, owner, attestor, maxFee, domain] = await Promise.all([
+  const [chainId, usdg, owner, attestor, maxFee, royaltyShare, domain] = await Promise.all([
     client.getChainId(),
     read('usdg'),
     read('owner'),
     read('attestor'),
     read('MAX_FEE_RATE_BPS'),
+    // A deployment from before the fork royalty has no such getter: reported as missing, not thrown.
+    read('FORK_ROYALTY_SHARE_BPS').then(String, () => 'missing'),
     read('eip712Domain'),
   ]);
   const [, name, version, domainChainId, verifyingContract] = domain;
@@ -153,6 +156,7 @@ export async function verifySettlementDeployment(client: PublicClient, address: 
     check('owner', owner, expected.owner),
     check('attestor', attestor, expected.attestor),
     check('MAX_FEE_RATE_BPS', String(maxFee), '3000'),
+    check('FORK_ROYALTY_SHARE_BPS', royaltyShare, '2000'),
     check('EIP-712 name', name, REDEEM_SETTLEMENT_EIP712_DOMAIN_NAME, (a, b) => a === b),
     check('EIP-712 version', version, REDEEM_SETTLEMENT_EIP712_DOMAIN_VERSION, (a, b) => a === b),
     check('EIP-712 chainId', String(domainChainId), String(expected.chainId)),

@@ -54,7 +54,7 @@ const passport: StrategyPassport = {
       isOriginal: false,
       children: [{ bagId: 'f1', visible: true, name: 'AI Momentum', symbol: 'AIM', status: 'ACTIVE', creator: null, createdAt: null }],
       childCount: 3,
-      forkRoyaltyBps: 150,
+      forkRoyaltyFeeShareBps: 2000,
       forkedFromVersion: null,
     },
   },

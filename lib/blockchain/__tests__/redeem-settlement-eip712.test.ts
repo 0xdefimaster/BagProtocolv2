@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { keccak256, toHex } from 'viem';
-import { computeSettlementContextHash, SETTLEMENT_TYPES, type SettlementContext } from '../redeem-settlement-eip712';
+import { computeSettlementContextHash, computeSettlementRoyalty, packFeeRateAndDeadline, SETTLEMENT_TYPES, type SettlementContext } from '../redeem-settlement-eip712';
 
 const ctx: SettlementContext = {
   chainId: 4663,
@@ -12,6 +12,7 @@ const ctx: SettlementContext = {
   redeemIntentId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
   user: '0xb193DE199EeB9bd1143607a11AD00999Ceb956b8',
   creator: '0x00000000000000000000000000000000000000c1',
+  rootCreator: null,
   sharesRaw: '5000000000000000000',
   legs: [
     { token: '0xdd356aa38f40a7b7076755ac854b6fbb1f0d305b', amountRaw: '20000000000000000' },
@@ -50,6 +51,7 @@ describe('computeSettlementContextHash — one logical state, one hash', () => {
       { redeemIntentId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeef' },
       { user: '0x00000000000000000000000000000000000000d1' },
       { creator: '0x00000000000000000000000000000000000000c2' },
+      { rootCreator: '0x00000000000000000000000000000000000000a1' },
       { sharesRaw: '5000000000000000001' },
       { legs: [ctx.legs[0], { ...ctx.legs[1], amountRaw: '1700000000000001' }] },
       { legs: [ctx.legs[0]] },
@@ -78,8 +80,30 @@ describe('computeSettlementContextHash — one logical state, one hash', () => {
   it('the EIP-712 type list matches the contract typehash string', () => {
     const sig = `Settlement(${SETTLEMENT_TYPES.Settlement.map((f) => `${f.type} ${f.name}`).join(',')})`;
     expect(sig).toBe(
-      'Settlement(bytes32 redemptionId,address user,address creator,address executor,bytes32 contextHash,uint256 consumedBasis,uint256 lossCarry,uint256 feeRateBps,uint256 minUserProceeds,uint256 deadline)'
+      'Settlement(bytes32 redemptionId,address user,address creator,address rootCreator,address executor,bytes32 contextHash,uint256 consumedBasis,uint256 lossCarry,uint256 feeRateBps,uint256 minUserProceeds,uint256 deadline)'
     );
     expect(keccak256(toHex(sig))).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+});
+
+describe('fork royalty and settleFlat packing (RedeemSettlement.computeRoyalty, settleFlat)', () => {
+  const creator = '0x00000000000000000000000000000000000000c1';
+  const root = '0x00000000000000000000000000000000000000A1';
+
+  it('the root creator gets 20% of the fee, rounded down; none when not a fork or when the root is the creator', () => {
+    expect(computeSettlementRoyalty(BigInt(115_000), creator, root)).toBe(BigInt(23_000));
+    expect(computeSettlementRoyalty(BigInt(9), creator, root)).toBe(BigInt(1));
+    expect(computeSettlementRoyalty(BigInt(4), creator, root)).toBe(BigInt(0));
+    expect(computeSettlementRoyalty(BigInt(115_000), creator, null)).toBe(BigInt(0));
+    expect(computeSettlementRoyalty(BigInt(115_000), creator, `0x${'0'.repeat(40)}`)).toBe(BigInt(0));
+    expect(computeSettlementRoyalty(BigInt(115_000), creator, creator.toUpperCase().replace('0X', '0x'))).toBe(BigInt(0));
+  });
+
+  it('packs deadline << 16 | feeRateBps and refuses a rate that does not fit 16 bits', () => {
+    const packed = packFeeRateAndDeadline(BigInt(1000), BigInt(1_791_221_521));
+    expect(packed & BigInt(0xffff)).toBe(BigInt(1000));
+    expect(packed >> BigInt(16)).toBe(BigInt(1_791_221_521));
+    expect(() => packFeeRateAndDeadline(BigInt(0x10000), BigInt(1))).toThrow(/16 bits/);
+    expect(() => packFeeRateAndDeadline(BigInt(-1), BigInt(1))).toThrow(/16 bits/);
   });
 });

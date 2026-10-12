@@ -104,8 +104,16 @@ describe('summarizeMoney', () => {
     expect(rest).toEqual([]);
     expect(m.token).toBe(USDG.toLowerCase());
     expect(m.performanceFeesPaidRaw).toBe('20000');
+    expect(m.forkRoyaltiesPaidRaw).toBe('0');
     expect(m.vaultCreditsRaw).toEqual({ FORK_ROYALTY: '15000', PERFORMANCE_FEE: '1' });
     expect(m.exits).toEqual({ count: 2, grossProceedsRaw: '1500000', costBasisRaw: '1700000', feesRaw: '20000', netRealizedPnlRaw: '-220000' });
+  });
+
+  it('a fork sale: the root creator\'s share is counted inside the fee and on its own; a royalty above the fee is malformed', () => {
+    const [m] = summarizeMoney([sale(), sale({ feeRaw: '100000', royaltyRaw: '20000' })], []);
+    expect(m.performanceFeesPaidRaw).toBe('120000');
+    expect(m.forkRoyaltiesPaidRaw).toBe('20000');
+    expect(summarizeMoney([sale({ feeRaw: '10', royaltyRaw: '11' })], [])).toEqual([]);
   });
 
   it('exact beyond float precision', () => {

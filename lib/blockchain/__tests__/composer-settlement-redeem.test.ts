@@ -35,6 +35,7 @@ const request = (fetchImpl: typeof fetch) => ({
     redemptionId: `0x${'aa'.repeat(32)}` as const,
     user: '0xb193DE199EeB9bd1143607a11AD00999Ceb956b8' as const,
     creator: '0x00000000000000000000000000000000000000c1' as const,
+    rootCreator: '0x00000000000000000000000000000000000000a1' as const,
     contextHash: `0x${'cc'.repeat(32)}` as const,
     consumedBasis: BigInt(2_000_000),
     lossCarry: BigInt(0),
@@ -73,9 +74,14 @@ describe('buildComposerSettlementRedeem', () => {
     expect(flow.nodes[5].config.target).toBe(SETTLEMENT);
     expect(flow.nodes[5].config.functionSignature).toBe(SETTLE_FLAT_SIGNATURE);
     expect((flow.nodes[5].config.args as { $ref: string }[]).map((a) => a.$ref)).toEqual(
-      ['redemptionId', 'user', 'creator', 'contextHash', 'consumedBasis', 'lossCarry', 'feeRateBps', 'minUserProceeds', 'deadline', 'r', 'vs'].map((n) => `input.${n}`)
+      ['redemptionId', 'user', 'creator', 'rootCreator', 'contextHash', 'consumedBasis', 'lossCarry', 'minUserProceeds', 'feeRateAndDeadline', 'r', 'vs'].map((n) => `input.${n}`)
     );
-    expect(run.inputs).toMatchObject({ settlementAddress: SETTLEMENT, feeRateBps: '1000', minUserProceeds: '2378287' });
+    expect(run.inputs).toMatchObject({
+      settlementAddress: SETTLEMENT,
+      rootCreator: '0x00000000000000000000000000000000000000a1',
+      feeRateAndDeadline: ((BigInt(1_791_221_521) << BigInt(16)) | BigInt(1000)).toString(),
+      minUserProceeds: '2378287',
+    });
     expect(run.sweepTo).toEqual({ $ref: 'context.sender' });
     // Push keeps Composer's own price-impact guard: no override is sent.
     expect(run).not.toHaveProperty('maxPriceImpactBps');

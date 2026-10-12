@@ -144,8 +144,8 @@ export interface StrategyPassport {
       children: PassportForkNode[];
       /** All direct forks, public or not (a count only). */
       childCount: number;
-      /** Royalty a fork pays the root creator on every deposit, in bps. */
-      forkRoyaltyBps: number;
+      /** Share of a fork's performance fee paid on-chain to the root creator at each sale (bps). */
+      forkRoyaltyFeeShareBps: number;
       /** Fork records do not store which parent version was copied, so this is always null. */
       forkedFromVersion: null;
     };

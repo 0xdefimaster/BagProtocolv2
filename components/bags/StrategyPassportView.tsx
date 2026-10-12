@@ -355,7 +355,7 @@ export function StrategyPassportView({ bagId }: { bagId: string }) {
               {forks.childCount} direct fork{forks.childCount === 1 ? '' : 's'}
               {forks.childCount > forks.children.length ? ` (${forks.childCount - forks.children.length} not public)` : ''}.
             </div>
-            <div>Forks pay the root creator {pct(forks.forkRoyaltyBps)} of every deposit.</div>
+            <div>Forks pay the root creator {pct(forks.forkRoyaltyFeeShareBps)} of their performance fee, on-chain at each sale.</div>
             {!forks.isOriginal && <div>Which parent version was copied is not recorded.</div>}
           </div>
         </Section>

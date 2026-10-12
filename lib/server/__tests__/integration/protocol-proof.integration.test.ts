@@ -62,6 +62,7 @@ describe('Protocol proof (real PostgreSQL)', () => {
       token: USDG.toLowerCase(),
       symbol: 'USDG',
       performanceFeesPaidRaw: '200000',
+      forkRoyaltiesPaidRaw: '0',
       vaultCreditsRaw: { FORK_ROYALTY: '0', PERFORMANCE_FEE: '500000' },
       exits: { count: 1, grossProceedsRaw: '10000000', costBasisRaw: '8000000', feesRaw: '200000', netRealizedPnlRaw: '1800000' },
     });

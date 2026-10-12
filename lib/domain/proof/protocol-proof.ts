@@ -10,7 +10,8 @@
 //                 public outcome; the success rate counts finished ones only.
 //   money         per token (raw base units, decimal strings — never floats):
 //                 performance fees paid to creators by RedeemSettlement
-//                 (`Settled`), rewards credited to CreatorRewardsVault
+//                 (`Settled`), the part of them paid to forks' root creators
+//                 (`RoyaltyPaid`), rewards credited to CreatorRewardsVault
 //                 (`Credited`), and what verified settled exits realized.
 //   recent        the latest of all of the above, each with its transaction.
 // TVL and returns are display figures from NAV snapshots (numbers, as on
@@ -135,6 +136,8 @@ export interface SettledSaleInput {
   decimals: number;
   receivedRaw: string;
   feeRaw: string;
+  /** The part of `feeRaw` paid to a fork's root creator (`RoyaltyPaid`); absent or '0' when none. */
+  royaltyRaw?: string;
   userProceedsRaw: string;
   consumedBasisRaw: string;
 }
@@ -157,6 +160,8 @@ export interface TokenMoney {
   decimals: number;
   /** Paid straight to creators by RedeemSettlement (`Settled.fee`). */
   performanceFeesPaidRaw: string;
+  /** The part of `performanceFeesPaidRaw` paid on-chain to forks' root creators (`RoyaltyPaid`). */
+  forkRoyaltiesPaidRaw: string;
   /** Credited to creators in CreatorRewardsVault (`Credited`), by reward type. */
   vaultCreditsRaw: Record<VaultRewardType, string>;
   exits: {
@@ -173,7 +178,12 @@ const UINT = /^\d+$/;
 export const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
 
 export function isValidSale(s: SettledSaleInput): boolean {
-  return TX_HASH.test(s.txHash) && [s.receivedRaw, s.feeRaw, s.userProceedsRaw, s.consumedBasisRaw].every((v) => UINT.test(v));
+  const royalty = s.royaltyRaw ?? '0';
+  return (
+    TX_HASH.test(s.txHash) &&
+    [s.receivedRaw, s.feeRaw, royalty, s.userProceedsRaw, s.consumedBasisRaw].every((v) => UINT.test(v)) &&
+    BigInt(royalty) <= BigInt(s.feeRaw)
+  );
 }
 
 export function isValidCredit(c: VaultCreditInput): boolean {
@@ -184,6 +194,7 @@ interface Acc {
   token: string;
   decimals: number;
   fees: bigint;
+  royalties: bigint;
   vault: Record<VaultRewardType, bigint>;
   exits: number;
   gross: bigint;
@@ -198,7 +209,7 @@ export function summarizeMoney(sales: SettledSaleInput[], credits: VaultCreditIn
     const key = token.toLowerCase();
     let a = byToken.get(key);
     if (!a) {
-      a = { token: key, decimals, fees: BigInt(0), vault: { FORK_ROYALTY: BigInt(0), PERFORMANCE_FEE: BigInt(0) }, exits: 0, gross: BigInt(0), basis: BigInt(0), exitFees: BigInt(0) };
+      a = { token: key, decimals, fees: BigInt(0), royalties: BigInt(0), vault: { FORK_ROYALTY: BigInt(0), PERFORMANCE_FEE: BigInt(0) }, exits: 0, gross: BigInt(0), basis: BigInt(0), exitFees: BigInt(0) };
       byToken.set(key, a);
     }
     return a;
@@ -208,6 +219,7 @@ export function summarizeMoney(sales: SettledSaleInput[], credits: VaultCreditIn
     const a = acc(s.token, s.decimals);
     const fee = BigInt(s.feeRaw);
     a.fees += fee;
+    a.royalties += BigInt(s.royaltyRaw ?? '0');
     a.exits += 1;
     a.gross += BigInt(s.receivedRaw);
     a.basis += BigInt(s.consumedBasisRaw);
@@ -223,6 +235,7 @@ export function summarizeMoney(sales: SettledSaleInput[], credits: VaultCreditIn
       token: a.token,
       decimals: a.decimals,
       performanceFeesPaidRaw: a.fees.toString(),
+      forkRoyaltiesPaidRaw: a.royalties.toString(),
       vaultCreditsRaw: { FORK_ROYALTY: a.vault.FORK_ROYALTY.toString(), PERFORMANCE_FEE: a.vault.PERFORMANCE_FEE.toString() },
       exits: {
         count: a.exits,
@@ -238,7 +251,7 @@ export function summarizeMoney(sales: SettledSaleInput[], credits: VaultCreditIn
 
 export type ProofEvent =
   | { type: 'EXECUTION'; at: string; bagId: string; kind: 'PURCHASE' | 'REDEEM'; outcome: ProofOutcome; tx: ProofTx }
-  | { type: 'FEE_PAID'; at: string; bagId: string; tx: ProofTx; token: string; decimals: number; amountRaw: string }
+  | { type: 'FEE_PAID'; at: string; bagId: string; tx: ProofTx; token: string; decimals: number; amountRaw: string; royaltyRaw: string }
   | { type: 'VAULT_CREDIT'; at: string; bagId: string; rewardType: VaultRewardType; tx: ProofTx; token: string; decimals: number; amountRaw: string };
 
 /**
@@ -259,7 +272,7 @@ export function recentEvents(
   }
   for (const s of sales) {
     if (isValidSale(s) && BigInt(s.feeRaw) > BigInt(0)) {
-      events.push({ type: 'FEE_PAID', at: s.at, bagId: s.bagId, tx: { chain: chainOf.settlement, txHash: s.txHash }, token: s.token.toLowerCase(), decimals: s.decimals, amountRaw: s.feeRaw });
+      events.push({ type: 'FEE_PAID', at: s.at, bagId: s.bagId, tx: { chain: chainOf.settlement, txHash: s.txHash }, token: s.token.toLowerCase(), decimals: s.decimals, amountRaw: s.feeRaw, royaltyRaw: s.royaltyRaw ?? '0' });
     }
   }
   for (const c of credits) {

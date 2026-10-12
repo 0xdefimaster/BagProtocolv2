@@ -33,6 +33,14 @@ import {ECDSA} from '@openzeppelin/contracts/utils/cryptography/ECDSA.sol';
 /// The fee goes straight to `creator` — no rewards vault in between
 /// (protocol share is 0, F6).
 ///
+/// Fork royalty (v2): when the Bag is a fork, `rootCreator` is the creator of
+/// the Bag at the root of its lineage, and FORK_ROYALTY_SHARE_BPS of the fee
+/// goes to them in the same transaction; `creator` gets the rest. The user
+/// pays nothing extra. A Bag that is not a fork (rootCreator = 0), or a fork
+/// whose root creator is its own creator, pays the whole fee to `creator`.
+/// The share is a constant of this contract: a different share is a
+/// different deployment, never a signed value.
+///
 /// Creator payout is a direct transfer: if USDG refuses it (USDG is a Paxos
 /// token and can freeze addresses), the whole settlement reverts and the
 /// user keeps their holdings. That revert is the guarantee. The backend's
@@ -65,6 +73,9 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
     /// MAX_PERFORMANCE_FEE_BPS). A signed rate above it is refused.
     uint256 public constant MAX_FEE_RATE_BPS = 3000;
 
+    /// @notice Share of the fee paid to the root creator of a fork (20%).
+    uint256 public constant FORK_ROYALTY_SHARE_BPS = 2000;
+
     /// @dev Every field is signed; none can be supplied unsigned.
     /// `creator` is the Bag's creator as BAG's own records and the Bag's
     /// on-chain identity give it — never a value the caller chooses.
@@ -78,6 +89,7 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
         bytes32 redemptionId;
         address user;
         address creator;
+        address rootCreator;
         address executor;
         bytes32 contextHash;
         uint256 consumedBasis;
@@ -88,7 +100,7 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
     }
 
     bytes32 public constant SETTLEMENT_TYPEHASH = keccak256(
-        'Settlement(bytes32 redemptionId,address user,address creator,address executor,bytes32 contextHash,uint256 consumedBasis,uint256 lossCarry,uint256 feeRateBps,uint256 minUserProceeds,uint256 deadline)'
+        'Settlement(bytes32 redemptionId,address user,address creator,address rootCreator,address executor,bytes32 contextHash,uint256 consumedBasis,uint256 lossCarry,uint256 feeRateBps,uint256 minUserProceeds,uint256 deadline)'
     );
 
     /// @notice The only token this contract settles. Fixed at deployment: a
@@ -125,6 +137,10 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
         uint256 fee,
         uint256 userProceeds
     );
+    /// @notice Emitted with `Settled` when part of the fee went to a fork's
+    /// root creator. `Settled.fee` is the whole fee; the creator received
+    /// `fee − royalty`.
+    event RoyaltyPaid(bytes32 indexed redemptionId, address indexed rootCreator, address indexed creator, uint256 royalty);
     event AttestorUpdated(address indexed previous, address indexed current);
     event OwnerUpdated(address indexed previous, address indexed current);
 
@@ -133,7 +149,7 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
         _;
     }
 
-    constructor(address _usdg, address _attestor, address _owner) EIP712('BagRedeemSettlement', '1') {
+    constructor(address _usdg, address _attestor, address _owner) EIP712('BagRedeemSettlement', '2') {
         if (_usdg == address(0) || _attestor == address(0) || _owner == address(0)) revert ZeroAddress();
         usdg = IERC20(_usdg);
         attestor = _attestor;
@@ -141,7 +157,8 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
     }
 
     /// @notice Settles one redemption: computes the fee on what actually
-    /// arrived, pays it to `s.creator`, and everything else to `s.user`.
+    /// arrived, pays it to `s.creator` (a fork's root creator gets their share
+    /// of it), and everything else to `s.user`.
     function settle(Settlement calldata s, bytes calldata signature) external nonReentrant returns (uint256 userProceeds) {
         Settlement memory m = s;
         return _settle(m, ECDSA.recover(_hashTypedDataV4(_hashSettlement(m)), signature));
@@ -153,32 +170,36 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
     /// `msg.sender`: the attestor signed the expected executor, so a call from
     /// anyone else recovers a different signer and is refused. The signature
     /// is passed in EIP-2098 compact form (r, vs) — one argument fewer than
-    /// (v, r, s), which keeps this within the legacy code generator's stack
-    /// limit without switching the whole project to via-IR.
+    /// (v, r, s) — and the fee rate travels with the deadline in one word
+    /// (`feeRateAndDeadline = deadline << 16 | feeRateBps`, the rate ≤ 3000
+    /// fits 16 bits); both keep this within the legacy code generator's stack
+    /// limit without switching the whole project to via-IR. The signed struct
+    /// still has them as separate fields.
     function settleFlat(
         bytes32 redemptionId,
         address user,
         address creator,
+        address rootCreator,
         bytes32 contextHash,
         uint256 consumedBasis,
         uint256 lossCarry,
-        uint256 feeRateBps,
         uint256 minUserProceeds,
-        uint256 deadline,
+        uint256 feeRateAndDeadline,
         bytes32 r,
         bytes32 vs
-    ) external nonReentrant returns (uint256 userProceeds) {
+    ) external nonReentrant returns (uint256) {
         Settlement memory m = Settlement({
             redemptionId: redemptionId,
             user: user,
             creator: creator,
+            rootCreator: rootCreator,
             executor: msg.sender,
             contextHash: contextHash,
             consumedBasis: consumedBasis,
             lossCarry: lossCarry,
-            feeRateBps: feeRateBps,
+            feeRateBps: feeRateAndDeadline & 0xFFFF,
             minUserProceeds: minUserProceeds,
-            deadline: deadline
+            deadline: feeRateAndDeadline >> 16
         });
         return _settle(m, ECDSA.recover(_hashTypedDataV4(_hashSettlement(m)), r, vs));
     }
@@ -202,7 +223,7 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
         userProceeds = received - fee;
         if (userProceeds < s.minUserProceeds) revert BelowMinimum(userProceeds, s.minUserProceeds);
 
-        if (fee > 0) usdg.safeTransfer(s.creator, fee);
+        _payFee(s, fee);
         usdg.safeTransfer(s.user, userProceeds);
 
         // Never hold anything between transactions.
@@ -210,6 +231,17 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
         if (remaining != 0) revert BalanceLeft(remaining);
 
         emit Settled(s.redemptionId, s.user, s.creator, s.executor, s.contextHash, received, feeBase, fee, userProceeds);
+    }
+
+    /// @dev The fee to the creator, minus a fork root creator's share (RoyaltyPaid).
+    function _payFee(Settlement memory s, uint256 fee) private {
+        if (fee == 0) return;
+        uint256 royalty = computeRoyalty(fee, s.creator, s.rootCreator);
+        if (fee > royalty) usdg.safeTransfer(s.creator, fee - royalty);
+        if (royalty > 0) {
+            usdg.safeTransfer(s.rootCreator, royalty);
+            emit RoyaltyPaid(s.redemptionId, s.rootCreator, s.creator, royalty);
+        }
     }
 
     /// @notice fee = floor(max(0, received − basis − carry) × rate / 10000).
@@ -226,6 +258,14 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
         fee = (feeBase * feeRateBps) / 10000;
     }
 
+    /// @notice The root creator's share of `fee`: FORK_ROYALTY_SHARE_BPS of it,
+    /// rounded down, when the Bag is a fork with a different root creator;
+    /// otherwise 0. `royalty ≤ fee` always.
+    function computeRoyalty(uint256 fee, address creator, address rootCreator) public pure returns (uint256 royalty) {
+        if (rootCreator == address(0) || rootCreator == creator) return 0;
+        return (fee * FORK_ROYALTY_SHARE_BPS) / 10000;
+    }
+
     /// @notice The EIP-712 struct hash of a settlement (exposed so off-chain
     /// signers and tests hash exactly what the contract verifies).
     function hashSettlement(Settlement calldata s) external pure returns (bytes32) {
@@ -239,6 +279,7 @@ contract RedeemSettlement is ReentrancyGuard, EIP712 {
                 s.redemptionId,
                 s.user,
                 s.creator,
+                s.rootCreator,
                 s.executor,
                 s.contextHash,
                 s.consumedBasis,

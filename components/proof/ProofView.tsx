@@ -169,6 +169,7 @@ export function ProofView({ proof }: { proof: ProtocolProof }) {
                 {(
                   [
                     ['Performance fees paid to creators (Settled)', (m) => m.performanceFeesPaidRaw],
+                    ['… of which fork royalties paid to root creators (RoyaltyPaid)', (m) => m.forkRoyaltiesPaidRaw],
                     ['Fork royalties credited (Credited)', (m) => m.vaultCreditsRaw.FORK_ROYALTY],
                     ['Performance fees credited to vault (Credited)', (m) => m.vaultCreditsRaw.PERFORMANCE_FEE],
                     ['Settled sells: gross proceeds', (m) => m.exits.grossProceedsRaw],
@@ -217,7 +218,9 @@ export function ProofView({ proof }: { proof: ProtocolProof }) {
                           ? 'Buy'
                           : 'Sell'
                         : e.type === 'FEE_PAID'
-                          ? 'Performance fee paid'
+                          ? BigInt(e.royaltyRaw) > BigInt(0)
+                            ? `Performance fee paid, ${amount(e.royaltyRaw, e.decimals, e.symbol)} of it to the root creator`
+                            : 'Performance fee paid'
                           : e.rewardType === 'FORK_ROYALTY'
                             ? 'Fork royalty credited'
                             : 'Performance fee credited'}
