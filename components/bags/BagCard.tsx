@@ -8,8 +8,10 @@ import { bagReturns, formatCompact, formatReturn, formatUsdCompact } from '@/lib
 import { useForkBag } from '@/hooks/useForkBag';
 import dynamic from 'next/dynamic';
 import { getCategoryBreakdown, getDiversificationScore, categoryForPosition, CATEGORY_COLORS } from '@/lib/categorize';
-import { Users, GitFork, TrendingUp, TrendingDown } from 'lucide-react';
+import { Users, GitFork, TrendingUp, TrendingDown, Star } from 'lucide-react';
 import { VerificationBadge } from '@/components/bags/VerificationBadge';
+import { assessRisk } from '@/lib/domain/discovery/bag-discovery';
+import { useWatchlist } from '@/lib/watchlist-store';
 
 // Loaded when Invest is opened: the purchase flow (LI.FI SDK, viem) stays out of every page that lists Bags.
 const PurchasePreviewModal = dynamic(() => import('@/components/app/PurchasePreviewModal').then((m) => m.PurchasePreviewModal), { ssr: false });
@@ -28,12 +30,6 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-function riskLabel(score: number) {
-  if (score >= 70) return 'Diversified';
-  if (score >= 40) return 'Balanced';
-  return 'Concentrated';
-}
-
 export function BagCard({ bag, isNew }: BagCardProps) {
   const returns = bagReturns(bag);
   const isPositive = (returns.d7 ?? 0) >= 0;
@@ -44,6 +40,9 @@ export function BagCard({ bag, isNew }: BagCardProps) {
   const diversification = getDiversificationScore(bag.composition);
   const dominantCategory = breakdown[0]?.category ?? 'Crypto';
   const accent = CATEGORY_COLORS[dominantCategory];
+  const risk = assessRisk(bag.composition);
+  const { isWatching, toggleWatch } = useWatchlist();
+  const watching = isWatching(bag.id);
 
   const router = useRouter();
 
@@ -85,7 +84,23 @@ export function BagCard({ bag, isNew }: BagCardProps) {
             </div>
           </div>
         </div>
-        {isNew && <span className="bag-new-badge">Just Published</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {isNew && <span className="bag-new-badge">Just Published</span>}
+          <button
+            type="button"
+            className={`watch-btn ${watching ? 'on' : ''}`}
+            aria-pressed={watching}
+            aria-label={watching ? `Remove ${bag.name} from watchlist` : `Add ${bag.name} to watchlist`}
+            title={watching ? 'Watching (saved in this browser)' : 'Watch (saved in this browser)'}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleWatch(bag.id);
+            }}
+          >
+            <Star size={15} fill={watching ? 'currentColor' : 'none'} />
+          </button>
+        </div>
       </div>
 
       <div className="bag-card-tags">
@@ -93,7 +108,11 @@ export function BagCard({ bag, isNew }: BagCardProps) {
           <span className="dot" style={{ background: accent }} />
           {dominantCategory}
         </span>
-        <span className="bag-risk-chip">{riskLabel(diversification)} risk</span>
+        {risk && (
+          <span className={`bag-risk-chip risk-${risk.level.toLowerCase()}`} title={`${risk.reasons.join(' · ')}. Rule-based estimate from the composition, not investment advice.`}>
+            {risk.level} risk
+          </span>
+        )}
         {/* Phase 11 — only strategy type today; falls back for pre-Phase-11 Bags. */}
         <span className="bag-risk-chip">{bag.strategyType === 'STATIC_BASKET' || !bag.strategyType ? 'Static Basket' : bag.strategyType}</span>
       </div>

@@ -71,6 +71,8 @@ export interface BagPosition {
   weight: number;
   /** From the asset registry when the API could resolve it — lets category/diversification views tell a stock token from a coin without guessing by symbol. */
   assetType?: 'crypto' | 'stock';
+  /** The chain's pinned settlement stablecoin (lib/domain/discovery/stablecoin.ts), matched by address. */
+  stable?: boolean;
   logoUrl?: string;
 }
 

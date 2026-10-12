@@ -1,7 +1,7 @@
 import { allAssets } from '@/lib/create-assets-data';
 import { BagPosition } from '@/types';
 
-export type AssetCategory = 'Crypto' | 'AI' | 'DeFi' | 'Stocks' | 'RWA' | 'Meme';
+export type AssetCategory = 'Crypto' | 'AI' | 'DeFi' | 'Stocks' | 'RWA' | 'Meme' | 'Stable';
 
 // Rough categorization by asset id — good enough for a "diversification score"
 // visualization without needing a real sector-classification service.
@@ -30,8 +30,10 @@ export function categoryForSymbol(symbol: string): AssetCategory {
  * resolve) over the static demo list: a real Robinhood Stock Token like
  * PFE or IBRX isn't in that list and used to fall through to 'Crypto'.
  * The sector map above still refines known symbols (e.g. KLAC -> AI).
+ * The chain's pinned settlement stablecoin (`stable`, set by the API) is 'Stable'.
  */
-export function categoryForPosition(pos: Pick<BagPosition, 'symbol' | 'assetType'>): AssetCategory {
+export function categoryForPosition(pos: Pick<BagPosition, 'symbol' | 'assetType' | 'stable'>): AssetCategory {
+  if (pos.stable) return 'Stable';
   if (!pos.assetType) return categoryForSymbol(pos.symbol);
   const sector = CATEGORY_BY_ID[pos.symbol.toLowerCase()];
   if (pos.assetType === 'stock') return sector && sector !== 'Meme' && sector !== 'DeFi' ? sector : 'Stocks';
@@ -80,4 +82,5 @@ export const CATEGORY_COLORS: Record<AssetCategory, string> = {
   Stocks: '#3B82F6',
   RWA: '#EC4899',
   Meme: '#EF4444',
+  Stable: '#94A3B8',
 };

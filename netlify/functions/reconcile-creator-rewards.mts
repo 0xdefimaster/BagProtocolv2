@@ -14,6 +14,15 @@ export default async function handler(): Promise<Response> {
     return new Response('not configured', { status: 503 });
   }
 
+  // The route needs the vault address (createVaultReadClient).
+  // Skipped here, before the route is invoked, so an unconfigured deployment does not spend a
+  // function run (and Netlify credits) every few minutes on a call that can only return 503.
+  const missing = ['CREATOR_REWARDS_VAULT_ADDRESS'].filter((k) => !process.env[k]);
+  if (missing.length > 0) {
+    console.log(`[cron:reconcile-creator-rewards] ${missing.join(', ')} not set — skipping.`);
+    return new Response(`skipped: ${missing.join(', ')} not set`, { status: 200 });
+  }
+
   const res = await fetch(`${base}/api/cron/reconcile-creator-rewards`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${secret}` },

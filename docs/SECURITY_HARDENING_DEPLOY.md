@@ -60,13 +60,25 @@ execution-authorization keys:
 
 ## 4. Scheduled jobs on Netlify
 
-Netlify does not read `vercel.json` crons. `netlify/functions/` contains two
+Netlify does not read `vercel.json` crons. `netlify/functions/` contains
 Scheduled Functions that call the cron routes with `Authorization: Bearer
 $CRON_SECRET`:
 
-- `settle-creator-rewards` — every 5 minutes
-- `reconcile-creator-rewards` — hourly
+- `settle-pending-executions` — every 5 minutes
+- `reconcile-wallets` — every 5 minutes
+- `snapshot-bag-navs` — every 5 minutes
+- `settle-creator-rewards` — every 15 minutes; skipped while
+  `CREATOR_REWARDS_VAULT_ADDRESS` or `CREATOR_REWARDS_SETTLEMENT_PRIVATE_KEY` is unset
+- `refresh-asset-routes` — hourly
+- `reconcile-creator-rewards` — hourly; skipped while `CREATOR_REWARDS_VAULT_ADDRESS` is unset
 
 They need `CRON_SECRET` in the Netlify environment (`URL` is set by
 Netlify). Without it they log and skip; the routes also refuse all calls.
+Each run costs Netlify credits, so a job whose configuration is missing
+returns before invoking its route.
+
+`netlify.toml` skips builds whose changes cannot affect the site (docs,
+Markdown, tests, CI workflows, contracts, operator scripts;
+`scripts/netlify-skip-build.sh`). A manual redeploy of the same commit,
+e.g. after changing an environment variable, always builds.
 After deploying, check Netlify → Functions → Scheduled for their runs.
