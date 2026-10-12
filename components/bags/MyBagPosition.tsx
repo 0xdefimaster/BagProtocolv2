@@ -15,6 +15,8 @@ interface PositionView {
   bagId: string;
   strategyExposure: string | null;
   effectivePosition: string | null;
+  /** What the wallet holds, up to what BAG tracks for this strategy: what can be sold. */
+  observedWallet: string | null;
   hasDrift: boolean;
   costBasis: string | null;
   realizedPnl: string | null;
@@ -66,7 +68,7 @@ export function MyBagPosition({ bagId, refreshKey }: { bagId: string; refreshKey
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <Stat label="Invested" value={usdOrDash(position.costBasis)} />
             <Stat label="Exposure" value={usdOrDash(position.strategyExposure)} />
-            <Stat label="In wallet" value={usdOrDash(position.effectivePosition)} />
+            <Stat label="In wallet" value={usdOrDash(position.observedWallet)} />
             <Stat
               label="Unrealized"
               value={pnl === null ? '—' : `${pnl >= 0 ? '+' : '-'}${formatDecimalStringUsd(Math.abs(pnl).toFixed(2))}`}

@@ -87,7 +87,8 @@ export function sellableHoldingsForBag(observed: ObservedHoldings, bagId: string
       address: r.address,
       decimals: r.decimals,
       quantityRaw: r.quantityRaw,
-      sellableRaw: effectiveQuantityRaw(tracked, observed.trackedAll.get(k) ?? tracked, balance).toString(),
+      // D3.1 (accounting/position-value.ts): a sale may take all this strategy tracks that the wallet holds.
+      sellableRaw: (balance < tracked ? balance : tracked).toString(),
     });
   }
   return out;

@@ -39,6 +39,14 @@ describe('valuePosition', () => {
     expect(v.assets[0]).toMatchObject({ status: 'DRIFT', effectiveRaw: units(87), driftRaw: units(13) });
   });
 
+  it('another strategy short of the same token: this one holds all it tracks (no drift, D3.1); totals stay pro rata', () => {
+    // This strategy tracks 100, another tracks 25, the wallet holds 100: the wallet lacks nothing for THIS strategy, so
+    // it can sell all 100 and shows no drift. Its effective share (what portfolio totals add) stays 100 × 100 / 125 = 80.
+    const v = valuePosition([asset({ trackedAllStrategiesRaw: units(125) })]);
+    expect(v).toMatchObject({ observedWalletQuote: '10000', effectivePositionQuote: '8000', hasDrift: false });
+    expect(v.assets[0]).toMatchObject({ status: 'IN_SYNC', effectiveRaw: units(80), driftRaw: '0' });
+  });
+
   it('in sync: all three agree and no drift', () => {
     const v = valuePosition([asset()]);
     expect(v).toMatchObject({ strategyExposureQuote: '10000', observedWalletQuote: '10000', effectivePositionQuote: '10000', hasDrift: false });

@@ -23,6 +23,14 @@ import { DEC_SCALE, formatDec, parseDec } from './decimal';
 // it across all of the user's strategies, each strategy's effective quantity is
 // its pro-rata share of the observed balance, floored. A wallet holding more
 // than BAG tracks is not more exposure: the surplus belongs to no strategy.
+// Effective quantities are what portfolio totals add up, so nothing is counted
+// twice. Selling is different (D3.1): one strategy may sell everything it
+// tracks that the wallet still holds — min(tracked, observed) — because the
+// tokens are fungible and pro-rata selling left part of a strategy's own tokens
+// unsellable whenever ANOTHER strategy's holding had left the wallet. Whatever
+// is then missing stays with the other strategies, where the wallet
+// reconciliation books it. "Drift" for a strategy therefore means the wallet
+// holds less than THIS strategy tracks.
 //
 // Unknowns stay unknown: an unreadable balance or a missing price makes the
 // dependent value null, never zero.
@@ -52,9 +60,9 @@ export interface PositionAssetValue {
   symbol?: string;
   trackedRaw: string;
   observedRaw: string | null;
-  /** Sellable for this strategy now; null when the wallet balance could not be read. */
+  /** This strategy's pro-rata share of the wallet balance (what portfolio totals add up); null when unreadable. */
   effectiveRaw: string | null;
-  /** trackedRaw − effectiveRaw (never negative); null when unreadable. */
+  /** trackedRaw − min(tracked, observed): what the wallet lacks for THIS strategy (never negative); null when unreadable. */
   driftRaw: string | null;
   status: PositionAssetStatus;
   price: string | null;
@@ -71,7 +79,7 @@ export interface PositionValue {
   observedWalletQuote: string | null;
   /** Σ effective × price. Null if any held asset is unreadable or unpriced. */
   effectivePositionQuote: string | null;
-  /** Some asset's effective quantity is below what BAG tracks for this strategy. */
+  /** The wallet holds less of some asset than BAG tracks for this strategy. */
   hasDrift: boolean;
   /** Some asset's wallet balance could not be read: sellable amounts are unknown. */
   hasUnreadable: boolean;
@@ -122,7 +130,7 @@ export function valuePosition(inputs: PositionAssetInput[]): PositionValue {
     const observed = a.observedRaw === null ? null : raw(a.observedRaw, 'observedRaw');
     const effective = observed === null ? null : effectiveQuantityRaw(tracked, trackedAll, observed);
     const inWallet = observed === null ? null : observed < tracked ? observed : tracked;
-    const status: PositionAssetStatus = effective === null ? 'UNREADABLE' : effective < tracked ? 'DRIFT' : 'IN_SYNC';
+    const status: PositionAssetStatus = inWallet === null ? 'UNREADABLE' : inWallet < tracked ? 'DRIFT' : 'IN_SYNC';
 
     const exposureQ = a.price === null ? null : valueOf(tracked, a.decimals, a.price);
     const observedQ = a.price === null || inWallet === null ? null : valueOf(inWallet, a.decimals, a.price);
@@ -139,7 +147,7 @@ export function valuePosition(inputs: PositionAssetInput[]): PositionValue {
       trackedRaw: tracked.toString(),
       observedRaw: observed === null ? null : observed.toString(),
       effectiveRaw: effective === null ? null : effective.toString(),
-      driftRaw: effective === null ? null : (tracked - effective).toString(),
+      driftRaw: inWallet === null ? null : (tracked - inWallet).toString(),
       status,
       price: a.price,
       exposureQuote: exposureQ === null ? null : formatDec(exposureQ),

@@ -48,6 +48,7 @@ interface PositionAssetView {
   symbol?: string;
   decimals: number;
   trackedRaw: string;
+  observedRaw: string | null;
   effectiveRaw: string | null;
   status: 'IN_SYNC' | 'DRIFT' | 'UNREADABLE';
 }
@@ -94,6 +95,9 @@ function percentToBps(input: string): number | null {
   return bps >= 1 && bps <= 10_000 ? bps : null;
 }
 
+/** What the wallet holds of this asset, up to what BAG tracks for the strategy: the sellable amount. */
+const inWalletRaw = (a: { observedRaw: string | null; trackedRaw: string }) =>
+  a.observedRaw !== null && BigInt(a.observedRaw) < BigInt(a.trackedRaw) ? a.observedRaw : a.observedRaw === null ? '0' : a.trackedRaw;
 const usdOrDash = (v: string | null | undefined) => (v === null || v === undefined ? '—' : formatDecimalStringUsd(v));
 
 interface RedeemPreviewModalProps {
@@ -320,14 +324,14 @@ export function RedeemPreviewModal({ bagId, bagName, onClose, onCompleted }: Red
               </div>
               <div>
                 <div style={{ color: 'var(--ink-soft, #B4AEA2)' }}>In your wallet</div>
-                <div style={{ fontWeight: 600 }}>{usdOrDash(position.effectivePositionQuote)}</div>
+                <div style={{ fontWeight: 600 }}>{usdOrDash(position.observedWalletQuote)}</div>
               </div>
             </div>
             {position.hasDrift && (
               <div style={{ padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(224,185,122,0.4)', color: '#E0B97A', fontSize: 12, marginBottom: 14 }}>
                 Your wallet holds less than BAG tracks for this strategy ({position.assets
                   .filter((a) => a.status === 'DRIFT')
-                  .map((a) => `${a.symbol ?? '?'}: ${formatRawAmount(a.effectiveRaw ?? '0', a.decimals, { maxFractionDigits: 6 })} of ${formatRawAmount(a.trackedRaw, a.decimals, { maxFractionDigits: 6 })}`)
+                  .map((a) => `${a.symbol ?? '?'}: ${formatRawAmount(inWalletRaw(a), a.decimals, { maxFractionDigits: 6 })} of ${formatRawAmount(a.trackedRaw, a.decimals, { maxFractionDigits: 6 })}`)
                   .join(', ')}). Only what is in the wallet can be sold.
               </div>
             )}
