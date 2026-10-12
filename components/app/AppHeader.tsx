@@ -4,8 +4,9 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Wallet, Loader2 } from 'lucide-react';
-import { useWallet, shortenAddress } from '@/lib/wallet-context';
+import { useWallet } from '@/lib/wallet-context';
 import { NotificationBell } from './NotificationBell';
+import { WalletMenu } from './WalletMenu';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 const APP_LINKS = [
@@ -20,8 +21,7 @@ const APP_LINKS = [
 const PANEL_ID = 'app-mobile-nav';
 
 export function AppHeader() {
-  const { isConnected, isConnecting, hasProvider, walletAddress, chainName, error, connect, disconnect } =
-    useWallet();
+  const { isConnected, isConnecting, hasProvider, chainName, error, connect } = useWallet();
   const [menuOpen, setMenuOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
 
@@ -71,10 +71,7 @@ export function AppHeader() {
               {isConnecting ? 'Connecting…' : hasProvider ? 'Connect Wallet' : 'Install Wallet'}
             </button>
           ) : (
-            <button onClick={disconnect} className="wallet-pill" title="Click to disconnect">
-              <span className="dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--emerald)' }} />
-              {shortenAddress(walletAddress)}
-            </button>
+            <WalletMenu />
           )}
 
           {error && (
