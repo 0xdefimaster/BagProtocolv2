@@ -5,7 +5,7 @@ import { X, Loader2, CheckCircle2, AlertTriangle, Wallet } from 'lucide-react';
 import { formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
 import { estimatedProceedsRaw, minimumProceedsRaw, summarizeSale } from '@/lib/domain/basket-protocol/redeem/proceeds';
 import { useWallet } from '@/lib/wallet-context';
-import { useRedeemExecution } from '@/hooks/use-redeem-execution';
+import { useRedeemExecution, type RedeemExecutionState } from '@/hooks/use-redeem-execution';
 
 // -----------------------------------------------------------------------------
 // Phase 21 — Redeem Preview + real, wallet-signed redemption. Exit-side
@@ -100,6 +100,26 @@ interface RedeemPreviewModalProps {
   bagId: string;
   bagName: string;
   onClose: () => void;
+}
+
+/**
+ * What the wallet is asking for during a one-transaction sale. A wallet that batches (EIP-5792) shows one
+ * confirmation; one that cannot (Rabby) asks for each missing approval first, so say so instead of promising one.
+ */
+export function composerSaleLabel(
+  step: RedeemExecutionState['walletStep'],
+  swapSteps: { targetSymbol: string; inputAsset: { address: string } }[]
+): string {
+  const names = swapSteps.map((s) => s.targetSymbol).filter(Boolean).join(', ');
+  if (step?.kind === 'approval') {
+    const symbol = swapSteps.find((s) => s.inputAsset.address.toLowerCase() === step.token.toLowerCase())?.targetSymbol;
+    return `Step ${step.index} of ${step.total + 1}: approve ${symbol ?? 'a token'} for this sale (exact amount) in your wallet. Your wallet cannot combine the steps, so it asks one by one.`;
+  }
+  if (step?.kind === 'sale' && step.afterApprovals > 0) {
+    return `Step ${step.afterApprovals + 1} of ${step.afterApprovals + 1}: confirm the sale${names ? ` of ${names}` : ''} in your wallet`;
+  }
+  if (step?.kind === 'batch') return `Confirm the sale${names ? ` of ${names}` : ''} in your wallet (one confirmation)`;
+  return `Confirm the sale${names ? ` of ${names}` : ''} in your wallet`;
 }
 
 export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewModalProps) {
@@ -679,8 +699,7 @@ function RedeemExecutionPanel({
   if (state.phase === 'creating') label = 'Preparing your redemption…';
   else if (state.phase === 'preparing') label = 'Wallet confirmation required…';
   else if (state.phase === 'awaiting_signature' && state.intent?.composerTransaction) {
-    const names = swapSteps.map((s) => s.targetSymbol).filter(Boolean).join(', ');
-    label = `Confirm the sale${names ? ` of ${names}` : ''} in your wallet (one transaction)`;
+    label = composerSaleLabel(state.walletStep, swapSteps);
   } else if (state.phase === 'awaiting_signature') {
     const step = swapSteps[activeSwapIndex] ?? swapSteps[0];
     const position = swapSteps.length > 1 && activeSwapIndex >= 0 ? ` (${activeSwapIndex + 1}/${swapSteps.length})` : '';
