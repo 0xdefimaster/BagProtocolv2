@@ -24,6 +24,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { PerformanceTimeline } from '@/components/bags/PerformanceTimeline';
 import { DiversificationScore } from '@/components/bags/DiversificationScore';
+import { RiskSummary } from '@/components/bags/RiskSummary';
 import { FollowButton, useIsSelf } from '@/components/creator/FollowButton';
 import { Reputation } from '@/components/creator/Reputation';
 import { CreatorAvatar } from '@/components/creator/CreatorAvatar';
@@ -242,6 +243,7 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
                   {bag.name}
                 </h1>
                 <p className="text-lg text-white/60">{bag.description}</p>
+                <RiskSummary composition={bag.composition} />
               </div>
 
               {/* Creator Info */}

@@ -648,3 +648,17 @@ header .brand { flex-shrink: 0; white-space: nowrap; }
 .verify-badge.muted { color: var(--mute); }
 .proof-tx { display: inline-flex; align-items: center; gap: 4px; color: var(--gold-lt); }
 .proof-tx:hover { text-decoration: underline; }
+
+/* discovery: risk tint, watchlist star, Explore filters */
+.bag-risk-chip.risk-low { color: var(--emerald); border-color: color-mix(in srgb, var(--emerald) 40%, transparent); }
+.bag-risk-chip.risk-medium { color: #E0B04A; border-color: color-mix(in srgb, #E0B04A 40%, transparent); }
+.bag-risk-chip.risk-high { color: #E0847A; border-color: color-mix(in srgb, #E0847A 40%, transparent); }
+.watch-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line-soft); background: transparent; color: var(--mute); cursor: pointer; transition: all .15s ease; }
+.watch-btn:hover { color: var(--ink); border-color: var(--line); }
+.watch-btn.on { color: var(--gold-lt); border-color: var(--gold); background: var(--gold-tint); }
+.discover-controls { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; }
+.discover-controls label { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono), monospace; font-size: 11px; color: var(--mute); text-transform: uppercase; letter-spacing: 0.05em; }
+.discover-controls select { background: var(--surface); color: var(--ink); border: 1px solid var(--line-soft); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; text-transform: none; letter-spacing: normal; }
+.risk-summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.risk-summary .risk-reasons { font-size: 12.5px; color: var(--ink-soft); }
+.risk-summary .risk-note { font-size: 11px; color: var(--mute); }
