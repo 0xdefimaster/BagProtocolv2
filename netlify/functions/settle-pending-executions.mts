@@ -1,6 +1,8 @@
 // Netlify Scheduled Function: settles purchases/redemptions that are on chain
 // but were never verified because the user left before confirmation
-// (/api/cron/settle-pending-executions, up to 25 of each per run). Same
+// (/api/cron/settle-pending-executions, up to 25 of each per run), hourly. A
+// returning user's own pending executions settle when the wallet connects
+// (/api/users/me/reconcile). Same
 // pattern as the other cron functions: calls the route with the deployment's
 // CRON_SECRET; the route fails closed when it is unset.
 
@@ -21,4 +23,4 @@ export default async function handler(): Promise<Response> {
   return new Response(body, { status: res.status });
 }
 
-export const config = { schedule: '*/5 * * * *' };
+export const config = { schedule: '0 * * * *' };

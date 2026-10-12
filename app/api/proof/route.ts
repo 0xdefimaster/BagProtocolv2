@@ -6,7 +6,7 @@ import { loadProtocolProof } from '@/lib/server/protocol-proof';
 // chain: TVL by verification state, execution outcomes, fees paid to creators,
 // realized results of verified exits, and the latest transactions
 // (lib/server/protocol-proof.ts). No session; never names a wallet.
-// Cached at the edge for a minute: the underlying passes run every 5 minutes.
+// Cached at the edge for a minute: the underlying passes run hourly.
 
 export const dynamic = 'force-dynamic';
 

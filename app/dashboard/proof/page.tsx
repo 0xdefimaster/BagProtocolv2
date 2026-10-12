@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ProofView } from '@/components/proof/ProofView';
 import type { ProtocolProof } from '@/lib/server/protocol-proof';
 
-/** The API is cached for a minute and the passes behind it run every 5; refresh at the cache's pace while visible. */
+/** The API is cached for a minute and the passes behind it run hourly; refresh at the cache's pace while visible. */
 const PROOF_REFRESH_MS = 60_000;
 
 // Public proof page: protocol-wide figures anyone can check against the chain, each linked to its transaction.
@@ -64,8 +64,8 @@ export default function ProofPage() {
       )}
 
       <p className="mono" style={{ fontSize: 11, color: 'var(--mute)', marginTop: 16, lineHeight: 1.6 }}>
-        TVL and returns come from NAV snapshots taken every 5 minutes. A Bag counts as verified when every holder&apos;s
-        wallet was checked against BAG&apos;s records on Robinhood Chain in the last 15 minutes with no outflow pending.
+        TVL and returns come from NAV snapshots taken every hour. A Bag counts as verified when every holder&apos;s
+        wallet was checked against BAG&apos;s records on Robinhood Chain in the last 90 minutes (hourly, and whenever the wallet connects) with no outflow pending.
         Fees and exits come from the RedeemSettlement <span>Settled</span> and CreatorRewardsVault <span>Credited</span>{' '}
         events; execution outcomes cover the last {proof?.windowDays ?? 30} days. Returns are before any performance fee
         charged on exit. Not investment advice.

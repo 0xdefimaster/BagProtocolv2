@@ -17,8 +17,8 @@
 // Explore); every money figure is bigint arithmetic over raw amounts.
 // -----------------------------------------------------------------------------
 
-/** A check older than this is stale: the 5-minute reconciliation should have refreshed it. */
-export const VERIFICATION_STALE_MS = 15 * 60 * 1000;
+/** A check older than this is stale: the hourly reconciliation (or the wallet connecting) should have refreshed it. */
+export const VERIFICATION_STALE_MS = 90 * 60 * 1000;
 
 export type VerificationState = 'VERIFIED' | 'STALE' | 'PENDING_OUTFLOW' | 'UNVERIFIED';
 

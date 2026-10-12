@@ -119,3 +119,37 @@ export async function trackedAssetsForUser(admin: SupabaseClient, userId: string
   }
   return [...seen.values()];
 }
+
+/** A wallet that connects is checked again only when its last full check is at least this old. */
+export const RECONCILE_ON_CONNECT_MIN_INTERVAL_MS = 5 * 60 * 1000;
+
+export type ConnectReconcileOutcome =
+  | { status: 'checked'; blockNumber: string | null }
+  | { status: 'recent' }
+  | { status: 'nothing-tracked' };
+
+/**
+ * The on-connect check: the signed-in user's own wallet, at most once per RECONCILE_ON_CONNECT_MIN_INTERVAL_MS. This is
+ * what keeps a returning user's positions current without a pass every few minutes for everyone. Their pending
+ * purchases and sales settle first (inside reconcileWallet).
+ */
+export async function reconcileWalletOnConnect(
+  admin: SupabaseClient,
+  client: PublicClient,
+  session: { userId: string; walletAddress: string },
+  now: number = Date.now()
+): Promise<ConnectReconcileOutcome> {
+  const { data, error } = await admin
+    .from('wallet_reconciliation_state')
+    .select('last_checked_at')
+    .eq('user_id', session.userId)
+    .maybeSingle<{ last_checked_at: string | null }>();
+  if (error) throw new Error(error.message);
+  const last = data?.last_checked_at ? Date.parse(data.last_checked_at) : NaN;
+  if (Number.isFinite(last) && now - last < RECONCILE_ON_CONNECT_MIN_INTERVAL_MS) return { status: 'recent' };
+
+  const assets = await trackedAssetsForUser(admin, session.userId);
+  if (assets.length === 0) return { status: 'nothing-tracked' };
+  const result = await reconcileWallet(admin, client, { userId: session.userId, walletAddress: session.walletAddress, assets });
+  return { status: 'checked', blockNumber: result.blockNumber };
+}

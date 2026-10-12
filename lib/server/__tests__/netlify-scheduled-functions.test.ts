@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import settleCreatorRewards, { config as settleConfig } from '@/netlify/functions/settle-creator-rewards.mjs';
 import reconcileCreatorRewards from '@/netlify/functions/reconcile-creator-rewards.mjs';
 import { config as refreshConfig } from '@/netlify/functions/refresh-asset-routes.mjs';
+import { config as reconcileWalletsConfig } from '@/netlify/functions/reconcile-wallets.mjs';
+import { config as settlePendingConfig } from '@/netlify/functions/settle-pending-executions.mjs';
+import { config as snapshotConfig } from '@/netlify/functions/snapshot-bag-navs.mjs';
 
 // The creator-reward schedules skip before invoking the route when the vault is not configured, so an
 // unconfigured deployment does not spend a function run every few minutes on a guaranteed 503.
@@ -54,5 +57,12 @@ describe('creator-reward scheduled functions', () => {
   it('schedules: royalty settlement every 15 minutes, asset routes hourly', () => {
     expect(settleConfig.schedule).toBe('*/15 * * * *');
     expect(refreshConfig.schedule).toBe('0 * * * *');
+  });
+
+  it('wallet reconciliation, pending settlement and NAV snapshots run hourly, not every 5 minutes', () => {
+    // Connecting a wallet checks that wallet (/api/users/me/reconcile); an idle site costs 24 runs a day per pass.
+    expect(reconcileWalletsConfig.schedule).toBe('0 * * * *');
+    expect(settlePendingConfig.schedule).toBe('0 * * * *');
+    expect(snapshotConfig.schedule).toBe('0 * * * *');
   });
 });

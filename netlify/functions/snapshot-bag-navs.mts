@@ -1,5 +1,6 @@
-// Netlify Scheduled Function: the 5-minute NAV pass (/api/cron/snapshot-bag-navs),
-// so TVL, returns and the leaderboard follow prices. Same pattern as the other
+// Netlify Scheduled Function: the hourly NAV pass (/api/cron/snapshot-bag-navs),
+// so TVL, returns and the leaderboard follow prices (a Bag page visit also records
+// a snapshot when the last one is over 15 minutes old). Same pattern as the other
 // cron functions: calls the route with the deployment's CRON_SECRET; the route
 // fails closed when it is unset.
 
@@ -20,4 +21,4 @@ export default async function handler(): Promise<Response> {
   return new Response(body, { status: res.status });
 }
 
-export const config = { schedule: '*/5 * * * *' };
+export const config = { schedule: '0 * * * *' };

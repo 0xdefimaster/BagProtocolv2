@@ -2,7 +2,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { getNavSummaries, recordNavSnapshot, type SnapshotOutcome } from '@/lib/server/bag-nav-snapshots';
 
 // -----------------------------------------------------------------------------
-// The scheduled NAV pass (every 5 minutes, /api/cron/snapshot-bag-navs): one
+// The scheduled NAV pass (hourly, /api/cron/snapshot-bag-navs): one
 // snapshot per ACTIVE Bag whose latest one is older than `minIntervalMs`, so TVL,
 // returns and the leaderboard follow prices even for a Bag nobody opens. A Bag
 // that a purchase, sale or page view snapshotted moments ago is skipped.

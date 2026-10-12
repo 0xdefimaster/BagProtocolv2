@@ -1,5 +1,7 @@
-// Netlify Scheduled Function: the 5-minute safety pass of wallet reconciliation
-// (/api/cron/reconcile-wallets). Same pattern as the other cron functions:
+// Netlify Scheduled Function: the hourly safety pass of wallet reconciliation
+// (/api/cron/reconcile-wallets). A signed-in wallet is also checked when it connects
+// (/api/users/me/reconcile), and every sale re-reads balances before signing, so
+// hourly is enough and an idle site costs 24 runs a day instead of 288. Same pattern as the other cron functions:
 // calls the route with the deployment's CRON_SECRET; the route fails closed
 // when it is unset.
 
@@ -20,4 +22,4 @@ export default async function handler(): Promise<Response> {
   return new Response(body, { status: res.status });
 }
 
-export const config = { schedule: '*/5 * * * *' };
+export const config = { schedule: '0 * * * *' };

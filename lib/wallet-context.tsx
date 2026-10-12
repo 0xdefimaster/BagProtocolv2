@@ -141,6 +141,16 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // wallet B would leave B with no sign-in at all, and a late approval of
   // A's prompt would set A's session while B is shown connected.
   const signInInFlight = useRef<{ address: string; promise: Promise<void> } | null>(null);
+
+  // Once per signed-in wallet per page load: check that wallet against BAG's records (the server reuses a check from
+  // the last few minutes). This replaces checking every wallet every few minutes whether anyone is on the site or not.
+  const reconciledFor = useRef<string | null>(null);
+  useEffect(() => {
+    const address = authUser?.walletAddress?.toLowerCase();
+    if (!address || reconciledFor.current === address) return;
+    reconciledFor.current = address;
+    fetch('/api/users/me/reconcile', { method: 'POST' }).catch(() => {});
+  }, [authUser]);
   const currentWalletRef = useRef('');
   currentWalletRef.current = walletAddress;
 

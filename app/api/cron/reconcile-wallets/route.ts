@@ -6,7 +6,7 @@ import { reconcileDueWallets } from '@/lib/server/wallet-reconciliation';
 import { scanTrackedWalletTransfers } from '@/lib/server/wallet-transfer-scan';
 
 // -----------------------------------------------------------------------------
-// GET|POST /api/cron/reconcile-wallets — the 5-minute wallet reconciliation
+// GET|POST /api/cron/reconcile-wallets — the hourly wallet reconciliation
 // pass (Accounting V2 / A2): every holder through Transfer logs
 // (lib/server/wallet-transfer-scan.ts), wallets that moved re-read in full,
 // drift confirmed; then a few least recently checked wallets in full. Scheduled by
