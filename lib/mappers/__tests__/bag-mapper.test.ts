@@ -195,6 +195,21 @@ describe('mapBagRecordToApiResponse — registry asset types and logos', () => {
   });
 });
 
+describe('mapBagRecordToApiResponse — settlement stablecoin', () => {
+  it('marks the pinned Robinhood USDG as stable, by address; a lookalike symbol elsewhere is not', () => {
+    const version = bagVersionRecord();
+    version.recipe.assets = [
+      { chain: 'robinhood', address: '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168', symbol: 'USDG', decimals: 6, weightBps: 5000 },
+      { chain: 'robinhood', address: '0x3333333333333333333333333333333333333333', symbol: 'USDG', decimals: 6, weightBps: 5000 },
+    ];
+    const bag = mapBagRecordToApiResponse(bagRecord(), version);
+    expect(bag.composition).toEqual([
+      { symbol: 'USDG', weight: 50, stable: true },
+      { symbol: 'USDG', weight: 50 },
+    ]);
+  });
+});
+
 describe('mapCreateBagRequestToRecipeInput — creator-chosen rules', () => {
   const base: CreateBagApiRequest = { name: 'Rules Bag', composition: [{ symbol: 'BTC', weight: 100 }] };
 

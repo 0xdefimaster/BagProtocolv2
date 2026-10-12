@@ -17,6 +17,7 @@ import {
 } from '@/types/basket-protocol';
 import { recipeAssetsToBagPositions } from '@/lib/domain/basket-protocol/recipe';
 import { assetIdentityKey } from '@/lib/domain/basket-protocol/asset-identity';
+import { isSettlementStablecoin } from '@/lib/domain/discovery/stablecoin';
 import { CreateBagInput } from '@/lib/server/bag-repo';
 
 // -----------------------------------------------------------------------------
@@ -215,7 +216,8 @@ export function mapBagRecordToApiResponse(
     ? recipeAssetsToBagPositions(version.recipe.assets).map((pos, i) => {
         const asset = version.recipe.assets[i];
         const known = ctx.assetsByKey?.get(assetIdentityKey({ chain: asset.chain, address: asset.address }));
-        return known ? { ...pos, assetType: known.assetType, logoUrl: known.logoUrl } : pos;
+        const withStable = isSettlementStablecoin(asset.chain, asset.address) ? { ...pos, stable: true } : pos;
+        return known ? { ...withStable, assetType: known.assetType, logoUrl: known.logoUrl } : withStable;
       })
     : [];
   const creator: CreatorProfile = ctx.creator ?? {
