@@ -15,6 +15,7 @@ const getIntentMock = vi.fn();
 const updateStatusMock = vi.fn();
 const positionMock = vi.fn();
 const feePathMock = vi.fn();
+const openRebalanceMock = vi.fn();
 
 vi.mock('@/lib/server/bag-repo', () => ({ getBagById: (...a: unknown[]) => bagMock(...a), getCurrentBagVersion: async () => ({ recipe: { performanceFeeBps: 0 } }) }));
 vi.mock('@/lib/server/redeem-intent-repo', () => ({
@@ -38,6 +39,7 @@ vi.mock('@/lib/server/bag-nav', () => ({ getBagNavSafe: async () => ({ ok: false
 vi.mock('@/lib/server/bag-share-state-repo', () => ({ getShareSupply: async () => ({ shareDecimals: 18 }) }));
 vi.mock('@/lib/server/bag-investor-position-repo', () => ({ getInvestorPosition: (...a: unknown[]) => positionMock(...a) }));
 vi.mock('@/lib/server/fee-redemption-path', () => ({ feeRedemptionPath: () => feePathMock() }));
+vi.mock('@/lib/server/rebalance-execution', () => ({ hasOpenRebalance: (...a: unknown[]) => openRebalanceMock(...a) }));
 vi.mock('@/lib/server/position-valuation', () => ({
   observeUserHoldings: async () => ({ rows: [{ bagId: 'bag_1' }] }),
   sellableHoldingsForBag: (...a: unknown[]) => sellableMock(...a),
@@ -59,6 +61,7 @@ beforeEach(() => {
   sellableMock.mockReturnValue(sellable('100', '100'));
   positionMock.mockResolvedValue({ sharesRaw: '100', shareDecimals: 18 });
   feePathMock.mockReturnValue('SETTLEMENT');
+  openRebalanceMock.mockResolvedValue(null);
   sequentialMock.mockImplementation(async (steps: { route: { inputAsset: unknown; inputAmountRaw: string } }[]) => ({
     steps: steps.map((s, i) => ({ stepIndex: i, action: 'SWAP', status: 'PENDING', inputAsset: s.route.inputAsset, inputAmountRaw: s.route.inputAmountRaw, outputAmountRaw: '41500000', minOutputRaw: '41000000' })),
     allSwapsQuoted: true,
@@ -107,6 +110,12 @@ describe('createRedeemIntentForUser — A4', () => {
     expect(await create(10_000)).toEqual({ ok: false, error: { kind: 'PRICE_UNAVAILABLE', message: 'weekend' } });
     positionMock.mockResolvedValue({ sharesRaw: '0', shareDecimals: 18 });
     expect(await create(10_000)).toEqual({ ok: false, error: { kind: 'NO_POSITION' } });
+  });
+
+  it('a rebalance of the position in flight blocks a new sale (both sell the same tokens)', async () => {
+    openRebalanceMock.mockResolvedValue('rb1');
+    expect(await create(10_000)).toEqual({ ok: false, error: { kind: 'REBALANCE_IN_PROGRESS', intentId: 'rb1' } });
+    expect(insertMock).not.toHaveBeenCalled();
   });
 
   it('unreadable balances refuse to quote instead of assuming the tokens are there', async () => {

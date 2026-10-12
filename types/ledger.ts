@@ -13,6 +13,8 @@ export const LEDGER_EVENT_KINDS = [
   'EXTERNAL_OUTFLOW',
   'OUTFLOW_CLASSIFIED',
   'RECONCILIATION_NOTE',
+  /** A user-signed rebalance (R3, migration 0056): sold legs negative, bought legs positive with `weightBps`. */
+  'REBALANCE_FILL',
 ] as const;
 export type LedgerEventKind = (typeof LEDGER_EVENT_KINDS)[number];
 
@@ -22,6 +24,8 @@ export interface LedgerLeg {
   decimals: number | null;
   /** Signed raw quantity change. */
   deltaRaw: string;
+  /** REBALANCE_FILL bought legs: share of the proceeds (bps, all bought legs sum to 10000). */
+  weightBps?: number;
 }
 
 export interface LedgerEvent {

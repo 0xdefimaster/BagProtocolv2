@@ -11,6 +11,10 @@ import { formatDec, mulDiv, parseDec } from './decimal';
 //   - Realized P&L exists only for exits through BAG and only from proceeds
 //     actually received (`proceedsQuote` on the leg, from the verified receipt).
 //     NAV and quotes are never used.
+//   - A rebalance (REBALANCE_FILL) realizes nothing either: the basis of what it
+//     sold moves to what it bought, split by each bought leg's `weightBps` (its
+//     share of the proceeds), so a gain stays unrealized until the position exits
+//     through BAG and the performance fee applies there.
 //   - An external outflow removes quantity and its basis but realizes nothing:
 //     BAG does not know the proceeds. It is NOT a sale, gain or loss: the basis
 //     that left is reported separately (`basisExitedExternallyQuote`) and must
@@ -30,6 +34,8 @@ export interface PnlLeg {
   deltaRaw: string;
   costQuote?: string | null;
   proceedsQuote?: string | null;
+  /** REBALANCE_FILL bought legs: share of the proceeds in bps. */
+  weightBps?: number | null;
 }
 
 export interface PnlEvent {
@@ -171,6 +177,32 @@ export function computePositionPnl(events: PnlEvent[]): PositionPnl {
           realizedPnlQuote: r === null ? null : formatDec(r),
           feeBaseQuote: feeBase === null ? null : formatDec(feeBase),
           partial: e.quote.partial === true,
+        });
+        break;
+      }
+      case 'REBALANCE_FILL': {
+        let moved: bigint | null = ZERO;
+        for (const leg of e.legs) {
+          const d = BigInt(leg.deltaRaw);
+          if (d >= ZERO) continue;
+          const consumed = remove(asset(leg), -d);
+          moved = moved === null || consumed === null ? null : moved + consumed;
+        }
+        const bought = e.legs.filter((leg) => BigInt(leg.deltaRaw) > ZERO);
+        const weights = bought.map((leg) => (Number.isInteger(leg.weightBps) && (leg.weightBps as number) > 0 ? BigInt(leg.weightBps as number) : ZERO));
+        const totalWeight = weights.reduce((a, w) => a + w, ZERO);
+        let left = moved;
+        bought.forEach((leg, i) => {
+          const s = asset(leg);
+          s.qty += BigInt(leg.deltaRaw);
+          if (left === null || moved === null || totalWeight === ZERO) {
+            s.known = false;
+            return;
+          }
+          // The last bought leg takes the rounding remainder, so the basis moved is conserved exactly.
+          const part = i === bought.length - 1 ? left : mulDiv(moved, weights[i], totalWeight);
+          s.basis += part;
+          left -= part;
         });
         break;
       }

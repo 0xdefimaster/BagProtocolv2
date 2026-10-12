@@ -37,6 +37,8 @@ export function redeemExecutionErrorResponse(error: RedeemExecutionError): NextR
         );
       }
       return NextResponse.json({ error: 'A redemption is already in progress for this Bag.', intentId: error.intentId }, { status: 409 });
+    case 'REBALANCE_IN_PROGRESS':
+      return NextResponse.json({ error: 'A rebalance of this position is being confirmed; sell once it has settled.', intentId: error.intentId }, { status: 409 });
     case 'NOT_FOUND':
       return NextResponse.json({ error: 'Redeem intent not found.' }, { status: 404 });
     case 'FORBIDDEN':

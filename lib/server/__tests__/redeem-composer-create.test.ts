@@ -14,6 +14,7 @@ const insertMock = vi.fn();
 const composerMock = vi.fn();
 const sequentialMock = vi.fn();
 
+vi.mock('@/lib/server/rebalance-execution', () => ({ hasOpenRebalance: async () => null }));
 vi.mock('@/lib/server/bag-repo', () => ({ getBagById: (...a: unknown[]) => bagMock(...a), getCurrentBagVersion: (...a: unknown[]) => versionMock(...a) }));
 vi.mock('@/lib/server/redeem-intent-repo', () => ({
   createRedeemIntent: (...a: unknown[]) => insertMock(...a),

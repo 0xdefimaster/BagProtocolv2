@@ -228,6 +228,40 @@ of the settlement quote is unchanged.
 For a no-fee Bag it is the route's estimated proceeds, so selling no longer
 needs NAV at all (e.g. when display prices are unavailable at the weekend).
 
+### 4.2 Rebalance (R3, migration 0056)
+
+A user brings a position back to the strategy's current version with ONE
+wallet-signed LI.FI Composer transaction: the overweight holdings sell, the
+proceeds buy the underweight ones, from and back to the user's own wallet
+(`lib/server/rebalance-execution.ts`).
+
+- **Intent first.** `POST /api/bags/:id/rebalance-intent` plans the route (R2's
+  `planRebalance`, from effective holdings at one block) and records it as a READY
+  `rebalance_intents` row with the exact transaction and exact-amount approvals;
+  only then does the wallet get the transaction. One open rebalance per
+  position, none while a sale of it is open; a plan expires after 5 minutes.
+- **Verified, then booked.** `POST /api/rebalance-intent/:id/verify {txHash}`:
+  the hash must be that transaction (or a wallet batch carrying it); from the
+  receipt, each sold token's net outflow (unspent input returned is netted) and
+  each bought token's inflow are booked by `apply_rebalance_execution`. A receipt
+  that does not match the plan books nothing.
+- **No fee, nothing realized.** One `REBALANCE_FILL` ledger event: sold legs
+  negative, bought legs positive with `weightBps`. The P&L engine moves the basis
+  of what was sold to what was bought by those weights; realized P&L and the
+  high-water mark do not move. A gain therefore stays unrealized until the
+  position exits through BAG, where the performance fee applies as before
+  (realizing it at the rebalance would let it escape the fee).
+- **Shares and the legacy cost basis do not move.** Holdings (investor and Bag
+  aggregate) move like a sale on the sold legs and a fill on the bought ones; the
+  ledger projection stays exact (tested).
+- **Lost reports.** An unreported intent past expiry is found from the wallet's
+  Transfer logs (`composer-tx-search.ts`) and verified, or expires. Run by the
+  hourly pass and when the wallet connects. Wallet reconciliation waits while a
+  rebalance is in flight (`apply_wallet_observation`, `REBALANCE_IN_FLIGHT`).
+- **Swap done, booking refused** (e.g. tokens moved out meanwhile): the intent
+  fails as `ACCOUNTING_FAILED`, nothing is forced; reconciliation books what is
+  missing as an outflow.
+
 #### What is no longer authoritative
 
 | Column / value | Status after A4 | Read by |

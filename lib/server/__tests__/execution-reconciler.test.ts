@@ -16,6 +16,8 @@ vi.mock('@/lib/server/redeem-intent-repo', () => ({
 }));
 vi.mock('@/lib/server/purchase-execution', () => ({ verifyExecution: (...a: unknown[]) => verifyPurchase(...a) }));
 vi.mock('@/lib/server/redeem-execution', () => ({ verifyRedeemExecution: (...a: unknown[]) => verifyRedeem(...a) }));
+const settleRebalances = vi.fn();
+vi.mock('@/lib/server/rebalance-execution', () => ({ settleOpenRebalances: (...a: unknown[]) => settleRebalances(...a) }));
 
 import { reconcilePendingExecutions, RECONCILE_BATCH, RECONCILE_GRACE_MS } from '../execution-reconciler';
 
@@ -28,6 +30,7 @@ beforeEach(() => {
   touchRedeem.mockResolvedValue(undefined);
   listPurchases.mockResolvedValue([]);
   listRedeems.mockResolvedValue([]);
+  settleRebalances.mockReset().mockResolvedValue({ checked: 0, settled: 0, expired: 0, failed: 0 });
 });
 
 describe('reconcilePendingExecutions', () => {
@@ -63,5 +66,12 @@ describe('reconcilePendingExecutions', () => {
     const summary = await reconcilePendingExecutions({} as never, NOW);
     expect(verifyRedeem.mock.calls[0].slice(1)).toEqual([{ userId: 'carol', walletAddress: '0xr1' }, 'r1']);
     expect(summary.redeems).toEqual({ checked: 1, settled: 1, failed: 0 });
+  });
+
+  it('settles open rebalances in the same pass, bounded like the others', async () => {
+    settleRebalances.mockResolvedValue({ checked: 2, settled: 1, expired: 1, failed: 0 });
+    const summary = await reconcilePendingExecutions({} as never, NOW);
+    expect(settleRebalances).toHaveBeenCalledWith({}, { now: NOW, limit: RECONCILE_BATCH });
+    expect(summary.rebalances).toEqual({ checked: 2, settled: 1, expired: 1, failed: 0 });
   });
 });

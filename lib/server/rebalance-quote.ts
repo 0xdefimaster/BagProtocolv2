@@ -16,10 +16,10 @@ import type { PriceProvider } from '@/lib/domain/basket-protocol/pricing';
 // underweight ones would arrive at, with Composer's own simulated and enforced
 // minimum outputs, price impact and fees.
 //
-// The compiled transaction is deliberately NOT returned. A rebalance changes
-// what a position holds, so it may only be signed once BAG records it as an
-// intent it can verify on-chain and book (R3); handing the calldata out now
-// would let a wallet trade outside the ledger. Signs and sends nothing.
+// `quoteRebalance` never returns the compiled transaction: a rebalance changes
+// what a position holds, so it is signed only through a recorded intent BAG
+// verifies on-chain and books (`planRebalance` → rebalance-execution.ts, R3).
+// Signs and sends nothing.
 // -----------------------------------------------------------------------------
 
 /** The most slippage a rebalance swap may take, whatever the strategy says. */
@@ -71,14 +71,51 @@ export function weightsFromValues(values: bigint[]): number[] {
 const str = (v: unknown) => (v === undefined || v === null ? null : String(v));
 const sumOrNull = (values: (string | null)[]) => (values.some((v) => v === null) ? null : values.reduce((s, v) => s + BigInt(v as string), BigInt(0)).toString());
 
-export async function quoteRebalance(
+/** One leg of a planned rebalance, as an intent records it. */
+export interface RebalancePlanSell {
+  chain: string;
+  address: string;
+  decimals: number;
+  symbol: string;
+  amountRaw: string;
+}
+export interface RebalancePlanBuy {
+  chain: string;
+  address: string;
+  decimals: number;
+  symbol: string;
+  weightBps: number;
+  expectedOutRaw: string | null;
+  minOutRaw: string | null;
+}
+
+export type RebalancePlanResult =
+  | (Extract<RebalanceQuoteResult, { ok: true }> & {
+      bagChain: string;
+      planSells: RebalancePlanSell[];
+      planBuys: RebalancePlanBuy[];
+      transaction: { to: string; data: string; value: string; chainId: number };
+      approvals: { token: string; spender: string; amountRaw: string }[];
+    })
+  | Extract<RebalanceQuoteResult, { ok: false }>;
+
+/** The live quote only (the R2 card). */
+export async function quoteRebalance(...args: Parameters<typeof planRebalance>): Promise<RebalanceQuoteResult> {
+  const plan = await planRebalance(...args);
+  if (!plan.ok) return plan;
+  const { bagChain: _c, planSells: _s, planBuys: _b, transaction: _t, approvals: _a, ...quote } = plan;
+  return quote;
+}
+
+/** The quote plus the compiled transaction and the legs an intent records. Only rebalance-execution.ts hands the transaction to a wallet. */
+export async function planRebalance(
   admin: SupabaseClient,
   client: PublicClient,
   priceProvider: PriceProvider,
   session: { userId: string; walletAddress: string },
   bagId: string,
   options: { apiKey: string | undefined; fetchImpl?: typeof fetch }
-): Promise<RebalanceQuoteResult> {
+): Promise<RebalancePlanResult> {
   if (!options.apiKey) return { ok: false, status: 503, error: 'Rebalancing is not configured on this deployment (LIFI_API_KEY).' };
   const loaded = await loadRebalancePreview(admin, client, priceProvider, session, bagId);
   if (!loaded.ok) return loaded;
@@ -135,11 +172,30 @@ export async function quoteRebalance(
       minOutRaw: sumOrNull(nodes.map((n) => str(produced(n)?.simulated?.amountOutMin))),
     };
   });
+  const sellLegs = sells.map((o) => ({ address: o.asset.address, symbol: label(o.asset.address), decimals: o.decimals, amountRaw: o.quantityRaw, weightBps: null, expectedOutRaw: null, minOutRaw: null }));
   return {
     ok: true,
+    bagChain: bag.chain,
+    planSells: sells.map((o) => ({ chain: o.asset.chain, address: o.asset.address, decimals: o.decimals, symbol: label(o.asset.address), amountRaw: o.quantityRaw as string })),
+    planBuys: buys.map((b, j) => ({
+      chain: b.order.asset.chain,
+      address: b.order.asset.address,
+      decimals: b.order.decimals,
+      symbol: label(b.order.asset.address),
+      weightBps: b.weightBps,
+      expectedOutRaw: buyLegs[j].expectedOutRaw,
+      minOutRaw: buyLegs[j].minOutRaw,
+    })),
+    transaction: {
+      to: compiled.transactionRequest.to,
+      data: compiled.transactionRequest.data,
+      value: compiled.transactionRequest.value,
+      chainId: Number(compiled.transactionRequest.chainId),
+    },
+    approvals: compiled.approvals,
     targetVersion: preview.targetVersion,
     shape: compiled.shape,
-    sells: sells.map((o) => ({ address: o.asset.address, symbol: label(o.asset.address), decimals: o.decimals, amountRaw: o.quantityRaw, weightBps: null, expectedOutRaw: null, minOutRaw: null })),
+    sells: sellLegs,
     buys: buyLegs,
     slippageBps,
     priceImpactBps: compiled.priceImpact?.impactBps ?? null,

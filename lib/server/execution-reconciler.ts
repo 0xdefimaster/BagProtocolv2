@@ -3,6 +3,7 @@ import { TERMINAL_PURCHASE_INTENT_STATUSES } from '@/types/purchase-intent';
 import { listUnsettledPurchaseIntents, touchUnsettledPurchaseIntent } from '@/lib/server/purchase-intent-repo';
 import { listUnsettledRedeemIntents, touchUnsettledRedeemIntent } from '@/lib/server/redeem-intent-repo';
 import { verifyExecution } from '@/lib/server/purchase-execution';
+import { settleOpenRebalances } from '@/lib/server/rebalance-execution';
 import { verifyRedeemExecution } from '@/lib/server/redeem-execution';
 
 // -----------------------------------------------------------------------------
@@ -28,6 +29,7 @@ export const RECONCILE_GRACE_MS = 60_000;
 export interface ReconcileSummary {
   purchases: { checked: number; settled: number; failed: number };
   redeems: { checked: number; settled: number; failed: number };
+  rebalances: { checked: number; settled: number; expired: number; failed: number };
 }
 
 async function settleEach<T extends { id: string; userId: string; walletAddress: string }>(
@@ -67,5 +69,6 @@ export async function reconcilePendingExecutions(admin: SupabaseClient, now = ne
       const r = await verifyRedeemExecution(admin, { userId: i.userId, walletAddress: i.walletAddress }, i.id);
       return { ok: r.ok, status: r.ok ? r.value.status : undefined };
     }, (id) => touchUnsettledRedeemIntent(admin, id)),
+    rebalances: await settleOpenRebalances(admin, { now, limit: RECONCILE_BATCH }),
   };
 }
