@@ -32,7 +32,7 @@ type Phase =
   | { kind: 'quoting' }
   | { kind: 'quoted'; quote: SweepQuote; acceptedPriceImpactBps?: number }
   | { kind: 'impact'; notice: ComposerFallbackNotice }
-  | { kind: 'executing'; step: SweepProgress; quote: SweepQuote }
+  | { kind: 'executing'; step: SweepProgress; quote: SweepQuote; approval?: { index: number; total: number; symbol: string | null } }
   | { kind: 'done'; txHash: string; received: string | null }
   | { kind: 'error'; message: string };
 
@@ -117,7 +117,16 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
     async (quote: SweepQuote) => {
       setPhase({ kind: 'executing', step: 'simulating', quote });
       try {
-        const hash = await executeWalletSweep(walletAddress, quote, (step) => setPhase({ kind: 'executing', step, quote }));
+        const hash = await executeWalletSweep(walletAddress, quote, (step) => setPhase({ kind: 'executing', step, quote }), {
+          // Wallets without batching (Rabby): one confirmation per approval still missing, then the sale.
+          onApproval: (index, total, token) =>
+            setPhase({
+              kind: 'executing',
+              step: 'approving',
+              quote,
+              approval: { index, total, symbol: quote.legs.find((l) => l.address.toLowerCase() === token.toLowerCase())?.symbol ?? null },
+            }),
+        });
         setPhase({ kind: 'done', txHash: hash, received: quote.expectedOutRaw });
         load();
       } catch (err) {
@@ -269,7 +278,7 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
                 {phase.quote.approvals.length > 0 && (
                   <div style={{ color: 'var(--ink-soft)' }}>
                     {phase.quote.approvals.length} token approval{phase.quote.approvals.length === 1 ? '' : 's'} first, then one sale transaction. Wallets
-                    that support batching (e.g. Rabby) ask for a single confirmation.
+                    that support batching (e.g. MetaMask) ask for a single confirmation; others (e.g. Rabby) ask for each approval, then the sale.
                   </div>
                 )}
               </div>
@@ -284,7 +293,10 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
                 </div>
               ) : (
                 <p style={{ margin: '12px 0 0', fontSize: 13.5 }}>
-                  <Loader2 size={14} className="animate-spin" style={{ verticalAlign: '-2px' }} /> {PROGRESS_LABEL[phase.step]}
+                  <Loader2 size={14} className="animate-spin" style={{ verticalAlign: '-2px' }} />{' '}
+                  {phase.kind === 'executing' && phase.step === 'approving' && phase.approval
+                    ? `Step ${phase.approval.index} of ${phase.approval.total + 1}: approve ${phase.approval.symbol ?? 'a token'} in your wallet (exact amount)…`
+                    : PROGRESS_LABEL[phase.step]}
                 </p>
               )}
             </>
