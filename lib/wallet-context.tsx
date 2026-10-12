@@ -39,6 +39,8 @@ interface WalletContextValue {
   /** Wallets found in this browser (EIP-6963, or the single injected one). */
   wallets: WalletOption[];
   disconnect: () => void;
+  /** Opens the wallet's account picker to connect a different account (see switchAccount in the provider). */
+  switchAccount: () => Promise<void>;
   /** @deprecated use connect()/disconnect() — kept for existing call sites */
   toggleConnect: () => void;
   /** Wallet -> Sign Message -> Nonce -> Session -> User -> Supabase. Non-null once the server has verified a signature for the currently-connected address. */
@@ -217,49 +219,51 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthReady, walletAddress]);
 
+  // An account switch (from the wallet, or from switchAccount below): the previous wallet's session ends here.
+  const applyAccounts = useCallback((accounts: string[]) => {
+    // Production-hardening P0-8 — invalidate the PREVIOUS wallet's
+    // session synchronously, in the same tick as the account switch
+    // itself, rather than leaving it to the async auto-sign-in effect
+    // below to eventually notice (that effect only starts a NEW sign-in
+    // for the new address; it never tore down the old session, so a
+    // stale cookie for wallet A stayed valid for as long as the
+    // nonce -> sign -> verify round trip for wallet B took).
+    //
+    // This is the actual security-relevant fix, not just cosmetic state
+    // clearing: purchase/redeem/deploy/fork/reward/create-bag all gate
+    // on `requireSession()` server-side, which reads the session
+    // COOKIE, never this client-side `authUser` mirror. Clearing
+    // `authUser` alone would still leave a valid A-session cookie able
+    // to authorize a request while the UI already shows B connected —
+    // killing the cookie here (fire-and-forget `/api/auth/logout`,
+    // exactly what the explicit `disconnect()` button below already
+    // does) is what actually blocks every one of those actions from
+    // running under the old identity during the switch window. The
+    // existing auto-sign-in effect (`isAuthReady`/`walletAddress`
+    // dependency, a few lines down) picks up from here once
+    // `walletAddress` changes and `authUser` is null — no changes
+    // needed there.
+    setAuthUser(null);
+    setAuthError(null);
+    signInInFlight.current = null;
+    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+
+    if (accounts.length === 0) {
+      // Wallet disconnected (from the extension side, not our own
+      // disconnect() button) — same treatment: no lingering session.
+      setWalletAddress('');
+      window.localStorage.removeItem(LAST_CONNECTED_KEY);
+    } else {
+      setWalletAddress(accounts[0]);
+    }
+  }, []);
+
   // Keep in sync with wallet-side account/network switches (of the picked wallet).
   useEffect(() => {
     const provider = activeProvider;
     if (!provider) return;
 
-    const onAccountsChanged = (...args: unknown[]) => {
-      const accounts = args[0] as string[];
-      // Production-hardening P0-8 — invalidate the PREVIOUS wallet's
-      // session synchronously, in the same tick as the account switch
-      // itself, rather than leaving it to the async auto-sign-in effect
-      // below to eventually notice (that effect only starts a NEW sign-in
-      // for the new address; it never tore down the old session, so a
-      // stale cookie for wallet A stayed valid for as long as the
-      // nonce -> sign -> verify round trip for wallet B took).
-      //
-      // This is the actual security-relevant fix, not just cosmetic state
-      // clearing: purchase/redeem/deploy/fork/reward/create-bag all gate
-      // on `requireSession()` server-side, which reads the session
-      // COOKIE, never this client-side `authUser` mirror. Clearing
-      // `authUser` alone would still leave a valid A-session cookie able
-      // to authorize a request while the UI already shows B connected —
-      // killing the cookie here (fire-and-forget `/api/auth/logout`,
-      // exactly what the explicit `disconnect()` button below already
-      // does) is what actually blocks every one of those actions from
-      // running under the old identity during the switch window. The
-      // existing auto-sign-in effect (`isAuthReady`/`walletAddress`
-      // dependency, a few lines down) picks up from here once
-      // `walletAddress` changes and `authUser` is null — no changes
-      // needed there.
-      setAuthUser(null);
-      setAuthError(null);
-      signInInFlight.current = null;
-      fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-
-      if (accounts.length === 0) {
-        // Wallet disconnected (from the extension side, not our own
-        // disconnect() button) — same treatment: no lingering session.
-        setWalletAddress('');
-        window.localStorage.removeItem(LAST_CONNECTED_KEY);
-      } else {
-        setWalletAddress(accounts[0]);
-      }
-    };
+    const onAccountsChanged = (...args: unknown[]) => applyAccounts(args[0] as string[]);
     const onChainChanged = (...args: unknown[]) => applyChainId(args[0]);
 
     provider.on('accountsChanged', onAccountsChanged);
@@ -268,7 +272,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       provider.removeListener('accountsChanged', onAccountsChanged);
       provider.removeListener('chainChanged', onChainChanged);
     };
-  }, [applyChainId, activeProvider]);
+  }, [applyChainId, activeProvider, applyAccounts]);
 
   // "Connect Wallet" never talks to a wallet by itself: it opens the picker,
   // and only the wallet the user clicks is asked for accounts.
@@ -325,6 +329,36 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
   }, [activeProvider, selectProvider]);
 
+  /**
+   * Lets the user pick another account of the same wallet. A wallet never tells the site that the user selected an
+   * account the site is not connected to (privacy), so the site cannot notice by itself; this opens the wallet's own
+   * account/permission picker (EIP-2255). Picking another account ends the current session like any account switch.
+   */
+  const switchAccount = useCallback(async () => {
+    const provider = activeProvider;
+    if (!provider) {
+      setPickerOpen(true);
+      return;
+    }
+    setError(null);
+    try {
+      await provider.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] });
+      const accounts = (await provider.request({ method: 'eth_accounts' })) as string[];
+      // Most wallets also emit accountsChanged; applying here covers the ones that do not.
+      if (accounts[0] && accounts[0].toLowerCase() !== walletAddress.toLowerCase()) applyAccounts(accounts);
+    } catch (err) {
+      const code = err && typeof err === 'object' && 'code' in err ? Number((err as { code: unknown }).code) : undefined;
+      if (code === 4001) return; // the user closed the picker
+      if (code === 4200 || code === -32601 || code === -32602) {
+        // No permission picker (some wallets): reconnect from scratch, which asks for an account again.
+        disconnect();
+        setPickerOpen(true);
+        return;
+      }
+      setError('Could not open your wallet to switch accounts. Switch in the wallet, then connect again.');
+    }
+  }, [activeProvider, walletAddress, applyAccounts, disconnect]);
+
   const toggleConnect = useCallback(() => {
     if (isConnected) {
       disconnect();
@@ -345,6 +379,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         connect,
         wallets,
         disconnect,
+        switchAccount,
         toggleConnect,
         authUser,
         updateAuthUser,

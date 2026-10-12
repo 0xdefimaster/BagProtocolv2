@@ -187,3 +187,58 @@ describe('WalletProvider — account switch invalidates the previous session (P0
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/logout', expect.objectContaining({ method: 'POST' }));
   });
 });
+
+describe('switchAccount: a wallet never reports accounts the site is not connected to', () => {
+  const B = '0xWALLETB000000000000000000000000000000B';
+
+  it('opens the wallet permission picker; picking another account ends the old session and switches', async () => {
+    const { result } = renderHook(() => useWallet(), { wrapper: WalletProvider });
+    await waitFor(() => expect(result.current.isAuthReady).toBe(true));
+    await connectThroughPicker(result);
+    await waitFor(() => expect(result.current.walletAddress).toBe('0xWALLETA000000000000000000000000000000A'));
+
+    provider.request.mockImplementation((async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') return [{ parentCapability: 'eth_accounts' }];
+      if (method === 'eth_accounts') return [B];
+      if (method === 'eth_chainId') return '0x1';
+      if (method === 'personal_sign') return '0xsig';
+      return null;
+    }) as never);
+    fetchMock.mockClear();
+    await act(async () => {
+      await result.current.switchAccount();
+    });
+
+    expect(provider.request).toHaveBeenCalledWith({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] });
+    expect(result.current.walletAddress).toBe(B);
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/logout', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('closing the picker changes nothing; a wallet without the picker reconnects from scratch', async () => {
+    const { result } = renderHook(() => useWallet(), { wrapper: WalletProvider });
+    await waitFor(() => expect(result.current.isAuthReady).toBe(true));
+    await connectThroughPicker(result);
+    await waitFor(() => expect(result.current.walletAddress).not.toBe(''));
+    const before = result.current.walletAddress;
+
+    provider.request.mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') throw Object.assign(new Error('User rejected'), { code: 4001 });
+      return null;
+    });
+    await act(async () => {
+      await result.current.switchAccount();
+    });
+    expect(result.current.walletAddress).toBe(before);
+    expect(result.current.error).toBeNull();
+
+    provider.request.mockImplementation(async ({ method }: { method: string }) => {
+      if (method === 'wallet_requestPermissions') throw Object.assign(new Error('Method not found'), { code: -32601 });
+      return null;
+    });
+    await act(async () => {
+      await result.current.switchAccount();
+    });
+    expect(result.current.walletAddress).toBe('');
+    expect(screen.getByRole('button', { name: /MetaMask|Browser wallet/ })).toBeInTheDocument();
+  });
+});
