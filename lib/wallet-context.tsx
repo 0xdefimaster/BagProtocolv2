@@ -325,6 +325,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     window.localStorage.removeItem(LAST_CONNECTED_KEY);
     window.localStorage.removeItem(LAST_WALLET_KEY);
     activeProvider?.disconnect?.().catch(() => {});
+    // Drop this site's account permission in the wallet too (EIP-2255 revoke; MetaMask and others). Without it the
+    // next Connect silently gets the same account back and the wallet never asks which account to use.
+    activeProvider?.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] }).catch(() => {});
     selectProvider(null);
     fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
   }, [activeProvider, selectProvider]);
@@ -349,13 +352,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       const code = err && typeof err === 'object' && 'code' in err ? Number((err as { code: unknown }).code) : undefined;
       if (code === 4001) return; // the user closed the picker
-      if (code === 4200 || code === -32601 || code === -32602) {
-        // No permission picker (some wallets): reconnect from scratch, which asks for an account again.
-        disconnect();
-        setPickerOpen(true);
-        return;
-      }
-      setError('Could not open your wallet to switch accounts. Switch in the wallet, then connect again.');
+      // No permission picker, or the wallet could not show it (e.g. another request still pending): reconnect from
+      // scratch. disconnect() revokes this site's permission, so the next connection asks for an account again.
+      disconnect();
+      setPickerOpen(true);
     }
   }, [activeProvider, walletAddress, applyAccounts, disconnect]);
 
