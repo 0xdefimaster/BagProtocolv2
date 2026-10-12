@@ -106,8 +106,27 @@ describe('landing page — copy says only what the code does', () => {
     const tags = Array.from(document.querySelectorAll('#roadmap .tag')).map((t) => t.textContent);
     expect(new Set(tags)).toEqual(new Set(['AVAILABLE NOW', 'IN PROGRESS', 'COMING NEXT']));
     // Contract deployment is never presented as available.
-    const now = Array.from(document.querySelectorAll('#roadmap .tag-now')).map((t) => t.parentElement?.textContent ?? '');
-    for (const item of now) expect(item).not.toMatch(/BagFactory on mainnet|BAG Router on Robinhood Chain|price pools/i);
+    const shipped = Array.from(document.querySelectorAll('#roadmap .tl-day')).map((d) => d.textContent ?? '');
+    for (const item of shipped) expect(item).not.toMatch(/BagFactory on mainnet|BAG Router on Robinhood Chain|price pools/i);
+  });
+
+  it('the changelog is dated, newest first, and every shipped item links to its merged pull request', async () => {
+    await renderLanding();
+    const dates = Array.from(document.querySelectorAll('#roadmap .tl-day time')).map((t) => t.getAttribute('datetime') ?? '');
+    expect(dates.length).toBeGreaterThan(0);
+    for (const d of dates) expect(d).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect([...dates].sort().reverse()).toEqual(dates);
+    const items = Array.from(document.querySelectorAll('#roadmap .tl-item'));
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) {
+      const links = Array.from(item.querySelectorAll('a')).map((a) => a.getAttribute('href') ?? '');
+      expect(links.length).toBeGreaterThan(0);
+      for (const href of links) expect(href).toMatch(/^https:\/\/github\.com\/0xdefimaster\/BagProtocolv2\/pull\/\d+$/);
+    }
+    // The newest day is open; the others can be expanded.
+    const details = Array.from(document.querySelectorAll('#roadmap .tl-day details'));
+    expect(details[0].hasAttribute('open')).toBe(true);
+    expect(details.slice(1).every((d) => !d.hasAttribute('open'))).toBe(true);
   });
 
   it('positions Bag as multi-chain (four EVM chains, no Solana) and non-custodial', async () => {
