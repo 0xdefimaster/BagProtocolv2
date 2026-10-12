@@ -100,6 +100,8 @@ interface RedeemPreviewModalProps {
   bagId: string;
   bagName: string;
   onClose: () => void;
+  /** Called once when a sale finishes (fully or partly), so the page behind can refetch holdings and the position. */
+  onCompleted?: () => void;
 }
 
 /**
@@ -122,7 +124,7 @@ export function composerSaleLabel(
   return `Confirm the sale${names ? ` of ${names}` : ''} in your wallet`;
 }
 
-export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewModalProps) {
+export function RedeemPreviewModal({ bagId, bagName, onClose, onCompleted }: RedeemPreviewModalProps) {
   const [position, setPosition] = useState<PositionView | null>(null);
   const [outputAssets, setOutputAssets] = useState<OutputAssetOption[] | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
@@ -138,6 +140,12 @@ export function RedeemPreviewModal({ bagId, bagName, onClose }: RedeemPreviewMod
   const wallet = useWallet();
   const execution = useRedeemExecution();
   const isExecuting = execution.state.phase !== 'idle' && execution.state.phase !== 'failed';
+  const finished = execution.state.phase === 'completed' || execution.state.phase === 'partial';
+  useEffect(() => {
+    if (finished) onCompleted?.();
+    // Only on the transition into a finished sale, not when the parent re-renders with a new callback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finished]);
 
   useEffect(() => {
     let cancelled = false;

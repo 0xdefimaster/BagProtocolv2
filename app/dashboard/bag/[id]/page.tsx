@@ -9,7 +9,7 @@ import { useBag } from '@/hooks/useBag';
 import { useForkBag } from '@/hooks/useForkBag';
 import { bagReturns, formatCompact, formatUsdCompact, formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
 import { Bag } from '@/types';
-import { use, useState } from 'react';
+import { use, useCallback, useState } from 'react';
 import {
   TrendingUp,
   ArrowDownLeft,
@@ -73,6 +73,8 @@ function rebalanceLabel(frequency: string): string {
 
 // Loaded when Invest / Sell is opened, so the purchase and sale flows (LI.FI SDK, viem) do not delay the page.
 const PurchasePreviewModal = dynamic(() => import('@/components/app/PurchasePreviewModal').then((m) => m.PurchasePreviewModal), { ssr: false });
+/** Second refetch after a trade: the wallet balance the RPC reports can lag the confirmed block. */
+const TRADE_REFRESH_RETRY_MS = 6000;
 const RedeemPreviewModal = dynamic(() => import('@/components/app/RedeemPreviewModal').then((m) => m.RedeemPreviewModal), { ssr: false });
 
 interface BagDetailPageProps {
@@ -109,6 +111,17 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
   const { following, toggleFollow } = usePortfolio();
   const { addActivity } = useActivity();
   const api = useBag(id);
+  // Bumped after a purchase or sale: refetches the Bag and the position now, and once more a few seconds later,
+  // when the wallet balance read by the RPC has caught up with the new block.
+  const [tradeRefresh, setTradeRefresh] = useState(0);
+  const refreshAfterTrade = useCallback(() => {
+    const bump = () => {
+      void api.refresh();
+      setTradeRefresh((n) => n + 1);
+    };
+    bump();
+    setTimeout(bump, TRADE_REFRESH_RETRY_MS);
+  }, [api]);
   // Demo fixtures only in demo mode: a real deployment never shows an invented Bag at any URL.
   const localBag =
     userBags.find((b) => b.id === id) ??
@@ -400,7 +413,7 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
               <DiversificationScore composition={bag.composition} />
 
               {/* Real position (bag_investor_positions + live NAV); refetched when the TVL changes after a purchase or redemption. */}
-              <MyBagPosition bagId={bag.id} refreshKey={bag.tvl} />
+              <MyBagPosition bagId={bag.id} refreshKey={`${bag.tvl}:${tradeRefresh}`} />
               <div className="grid md:grid-cols-2 gap-8">
                 <div>
                   <h3 className="text-lg font-bold text-white mb-4">Allocation</h3>
@@ -426,6 +439,7 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
                   <h3 className="text-lg font-bold text-white mb-4">Breakdown</h3>
                   <div className="space-y-2">
                     {bag.composition.map((pos) => {
+                      const anyHeld = !!bag.holdings?.some((h) => BigInt(h.quantityRaw) > BigInt(0));
                       const held = bag.holdings?.find((h) => h.symbol.toUpperCase() === pos.symbol.toUpperCase());
                       const hasQuantity = !!held && BigInt(held.quantityRaw) > BigInt(0);
                       return (
@@ -443,6 +457,18 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
                               <span className="block text-xs text-white/50">
                                 {formatRawAmount(held.quantityRaw, held.decimals, { maxFractionDigits: 6 })} {pos.symbol}
                                 {held.price !== null && <> · {formatDecimalStringUsd(held.price)} per token</>}
+                              </span>
+                            </span>
+                          ) : anyHeld ? (
+                            // The Bag holds other assets but none of this one (e.g. all of it was sold): a value
+                            // column must not suddenly show a per-token price, so say $0.00 and label the quote.
+                            <span className="text-right">
+                              <span className="block font-semibold text-white">$0.00</span>
+                              <span className="block text-xs text-white/50">
+                                Not held
+                                {isRobinhood && stockQuotes.quotes[pos.symbol.toUpperCase()] && (
+                                  <> · {pos.symbol} per token: <StockQuote quote={stockQuotes.quotes[pos.symbol.toUpperCase()]} /></>
+                                )}
                               </span>
                             </span>
                           ) : isRobinhood ? (
@@ -579,7 +605,7 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
         initialAmount={investInitialAmount}
         autoStart={investInitialAmount !== undefined}
         // Holdings (and so TVL) change once the purchase is accounted for.
-        onCompleted={() => void api.refresh()}
+        onCompleted={refreshAfterTrade}
         onClose={() => {
           setShowInvest(false);
           setInvestInitialAmount(undefined);
@@ -587,7 +613,13 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
       />
     )}
     {showRedeem && (
-      <RedeemPreviewModal bagId={bag.id} bagName={bag.name} onClose={() => setShowRedeem(false)} />
+      <RedeemPreviewModal
+        bagId={bag.id}
+        bagName={bag.name}
+        // Holdings, the position and the wallet balance all change once the sale is booked.
+        onCompleted={refreshAfterTrade}
+        onClose={() => setShowRedeem(false)}
+      />
     )}
     </>
   );
