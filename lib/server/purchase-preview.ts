@@ -1,7 +1,7 @@
 import { AssetIdentity, BasketRecipe, DepositAllocation, DepositPlan, DepositQuote, ExecutionPlan, NavResult, ShareSupply } from '@/types/basket-protocol';
 import { calculateDepositAllocation, InvalidRecipeWeightsError } from '@/lib/domain/basket-protocol/deposit/allocation';
 import { buildExecutionPlan } from '@/lib/domain/basket-protocol/deposit/execution-plan';
-import { getDepositQuote, OrphanedNavError, ZeroNavError, ZeroShareSupplyError } from '@/lib/domain/basket-protocol/shares/shares';
+import { getPurchaseDepositQuote, OrphanedNavError, ZeroNavError, ZeroShareSupplyError } from '@/lib/domain/basket-protocol/shares/shares';
 import { isValidDecimalString, toProtocolPrice } from '@/lib/domain/basket-protocol/pricing/price-precision';
 import { assetIdentitiesEqual, isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 
@@ -155,7 +155,7 @@ export function computePurchasePreview(input: ComputePurchasePreviewInput): Purc
   let depositQuote: DepositQuote | null = null;
   if (input.nav) {
     try {
-      depositQuote = getDepositQuote(input.nav, input.shareSupply, quoteAmount);
+      depositQuote = getPurchaseDepositQuote(input.nav, input.shareSupply, quoteAmount);
     } catch (err) {
       if (err instanceof OrphanedNavError || err instanceof ZeroNavError) {
         return { ok: false, error: { kind: 'NAV_UNAVAILABLE', message: err.message } };
