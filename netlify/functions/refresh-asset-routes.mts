@@ -20,4 +20,6 @@ export default async function handler(): Promise<Response> {
   return new Response(body, { status: res.status });
 }
 
-export const config = { schedule: '*/15 * * * *' };
+// Hourly: a route counts as stale after 6 hours (asset-route-refresh.ts), so 40 assets an hour keep
+// up to 240 assets fresh; checking every 15 minutes mostly found nothing stale.
+export const config = { schedule: '0 * * * *' };

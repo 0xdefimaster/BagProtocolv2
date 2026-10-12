@@ -1,0 +1,4 @@
+# Build command, publish directory and the Next.js runtime stay as configured in the Netlify UI;
+# this file only adds the rule that skips builds which cannot change the site.
+[build]
+  ignore = "bash scripts/netlify-skip-build.sh"
