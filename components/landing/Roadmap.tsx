@@ -197,7 +197,7 @@ const NEXT = [
   {
     tag: 'IN PROGRESS',
     t: 'Fork royalty paid on-chain',
-    b: 'A fork pays its root creator 20% of its performance fee in the sale transaction. Built and tested; the new RedeemSettlement is not deployed yet.',
+    b: 'A fork pays its root creator 20% of its performance fee in the sale transaction. The new RedeemSettlement is deployed on Robinhood Chain; it is switched on next, then proven with a live fork sale.',
   },
   {
     tag: 'IN PROGRESS',

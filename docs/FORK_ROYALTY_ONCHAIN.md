@@ -1,8 +1,9 @@
 # Fork royalty, paid on-chain at each sale
 
-Status: **built and tested on a local chain; not deployed.** The live RedeemSettlement
-(`0x934a…70a0`, EIP-712 version `1`) pays no royalty. The royalty starts when the version `2`
-contract is deployed and configured (`docs/REDEEM_SETTLEMENT_DEPLOYMENT.md` §6). Not verified live.
+Status: **version 2 deployed on Robinhood Chain (2026-10-13, `0x3eCD734eb53370c2795DB6Ca3CB2B1de0BEdF8A3`),
+not switched on yet.** The configured RedeemSettlement (`0x934a…70a0`, EIP-712 version `1`) pays no
+royalty. The royalty starts when the app is pointed at version 2 (`docs/REDEEM_SETTLEMENT_DEPLOYMENT.md`
+§6). Not verified live: no fork sale has gone through it yet.
 
 ## The rule
 
