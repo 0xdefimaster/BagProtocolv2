@@ -14,6 +14,7 @@ const APP_LINKS = [
   { href: '/dashboard/leaderboard', label: 'Leaderboard' },
   { href: '/dashboard/proof', label: 'Proof' },
   { href: '/dashboard/create', label: 'Create' },
+  { href: '/dashboard/swap', label: 'Swap' },
   { href: '/dashboard/portfolio', label: 'Portfolio' },
   { href: '/dashboard/profile', label: 'Profile' },
 ];
