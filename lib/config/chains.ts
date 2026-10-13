@@ -94,7 +94,8 @@ export const BAG_CHAINS: Record<BagChain, BagChainConfig> = {
     publicRpcUrls: arbitrum.rpcUrls.default.http,
     supportedAssetTypes: ['CRYPTO'],
     viemChain: arbitrum,
-    wrappedNativeAddress: null,
+    // Canonical WETH on Arbitrum One.
+    wrappedNativeAddress: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
     // Native USDC (not the bridged USDC.e).
     sweepOutputToken: { address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', symbol: 'USDC', decimals: 6 },
   },
@@ -108,7 +109,8 @@ export const BAG_CHAINS: Record<BagChain, BagChainConfig> = {
     publicRpcUrls: base.rpcUrls.default.http,
     supportedAssetTypes: ['CRYPTO'],
     viemChain: base as unknown as Chain,
-    wrappedNativeAddress: null,
+    // WETH predeploy on Base (OP Stack).
+    wrappedNativeAddress: '0x4200000000000000000000000000000000000006',
     sweepOutputToken: { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', decimals: 6 },
   },
   robinhood: {

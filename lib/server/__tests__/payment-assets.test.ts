@@ -66,10 +66,11 @@ describe('purchaseInputAssetsFor — native ETH as a purchase input', () => {
     expect(purchaseInputAssetsFor([usdc], 'ethereum').map((a) => a.symbol)).toEqual(['USDC', 'ETH']);
   });
 
-  it('chains without a configured wrapped native token get no native option', () => {
-    expect(nativePaymentAssetFor('base')).toBeNull();
-    expect(nativePaymentAssetFor('arbitrum')).toBeNull();
-    expect(purchaseInputAssetsFor([asset('USDC', BASE_USDC, { chain: 'base' })], 'base').map((a) => a.symbol)).toEqual(['USDC']);
+  it('Base and Arbitrum offer native ETH too (their WETH is configured); a non-EVM chain gets no native option', () => {
+    expect(nativePaymentAssetFor('base')).toMatchObject({ id: 'native:base', address: NATIVE_ASSET_ADDRESS, symbol: 'ETH', decimals: 18 });
+    expect(nativePaymentAssetFor('arbitrum')).toMatchObject({ id: 'native:arbitrum', address: NATIVE_ASSET_ADDRESS, decimals: 18 });
+    expect(purchaseInputAssetsFor([asset('USDC', BASE_USDC, { chain: 'base' })], 'base').map((a) => a.symbol)).toEqual(['USDC', 'ETH']);
+    expect(nativePaymentAssetFor('solana')).toBeNull();
   });
 
   it('a registry row at the zero address is never picked up as the payment token; redemptions stay stablecoin-only', () => {

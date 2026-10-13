@@ -32,10 +32,12 @@ describe('payment value in USD', () => {
     expect(paymentAmountInQuoteCurrency('0.000000000000000001', '3000.123456789012345678')).toBe('0.000000000000003000');
   });
 
-  it('refuses a non-USD quote, a zero price, and chains without native payments', async () => {
+  it('refuses a non-USD quote and a zero price; Base values native ETH by its WETH', async () => {
     await expect(paymentAssetUsdPrice(ETH_RH, provider('3000', 'EUR'))).rejects.toBeInstanceOf(PaymentValuationError);
     await expect(paymentAssetUsdPrice(ETH_RH, provider('0'))).rejects.toBeInstanceOf(PaymentValuationError);
-    await expect(paymentAssetUsdPrice({ chain: 'base', address: NATIVE_ASSET_ADDRESS }, provider('3000'))).rejects.toBeInstanceOf(PaymentValuationError);
+    const p = provider('3000');
+    expect(await paymentAssetUsdPrice({ chain: 'base', address: NATIVE_ASSET_ADDRESS }, p)).toBe('3000');
+    expect(p.getPrice).toHaveBeenCalledWith({ chain: 'base', address: '0x4200000000000000000000000000000000000006' });
   });
 
   it('a price outage propagates (no estimate)', async () => {

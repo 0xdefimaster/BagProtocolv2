@@ -20,12 +20,16 @@ const baseRegistry = [{ ...asset(BASE_USDC, 'USDC', 6), chain: 'base' as const }
 const listAssets = vi.fn(async (_admin: unknown, filter: { chain: string }) => (filter.chain === 'base' ? baseRegistry : filter.chain === 'robinhood' ? registry : []));
 vi.mock('@/lib/server/asset-repo', () => ({ listAssets: (...a: [unknown, { chain: string }]) => listAssets(...a) }));
 const buildComposerSweep = vi.fn();
+const buildComposerPurchase = vi.fn();
 vi.mock('@/lib/blockchain/lifi-composer-adapter', () => ({
   buildComposerSweep: (...args: unknown[]) => buildComposerSweep(...args),
+  buildComposerPurchase: (...args: unknown[]) => buildComposerPurchase(...args),
   sweepNodeId: (i: number) => `sweep_${i}`,
+  composerLegSimulatedOutputRaw: (pr: Record<string, { simulated?: { amountOut?: unknown } }>, i: number) => (pr[`swap_${i}.amountOut`]?.simulated?.amountOut ?? null)?.toString() ?? null,
+  composerLegEnforcedMinOutputRaw: (pr: Record<string, { simulated?: { amountOutMin?: unknown } }>, i: number) => (pr[`swap_${i}.amountOut`]?.simulated?.amountOutMin ?? null)?.toString() ?? null,
 }));
 
-import { getWalletHoldings, getWalletHoldingsAllChains, quoteWalletSweep, usdValueOf } from '../wallet-holdings';
+import { getWalletHoldings, getWalletHoldingsAllChains, quoteWalletBuy, quoteWalletSweep, usdValueOf } from '../wallet-holdings';
 
 const balances: Record<string, bigint> = {
   [USDG.toLowerCase()]: BigInt(2_500_000), // 2.5 USDG
@@ -174,6 +178,80 @@ describe('receive native ETH', () => {
     expect(r).toMatchObject({ ok: true, outputToken: { symbol: 'USDG', native: false } });
     expect(buildComposerSweep.mock.calls[0][0].nativeOutput).toBeUndefined();
     expect(await quoteWalletSweep(admin, fakeClient().client, WALLET, { receive: 'BTC' as never, tokens: [{ address: AAPL, amountRaw: '1' }] }, { apiKey: 'k' })).toMatchObject({ ok: false, status: 400 });
+  });
+});
+
+describe('quoteWalletBuy', () => {
+  const ETH = BigInt('20000000000000000'); // fakeClient's native balance: 0.02 ETH
+  const compiled = (value: string, approvals: unknown[] = []) => ({
+    transactionRequest: { to: '0xVM', data: '0xabc', value, chainId: 4663 },
+    approvals,
+    producedResources: {
+      'swap_0.amountOut': { simulated: { amountOut: BigInt(40), amountOutMin: BigInt(39) } },
+      'swap_1.amountOut': { simulated: { amountOut: BigInt(7), amountOutMin: BigInt(6) } },
+    },
+    priceImpact: { impactBps: 12 },
+  });
+  const buy = (req: Record<string, unknown>, chain: 'robinhood' | 'base' = 'robinhood') =>
+    quoteWalletBuy(admin, fakeClient().client, WALLET, req as never, { apiKey: 'k' }, chain);
+
+  beforeEach(() => buildComposerPurchase.mockReset());
+
+  it('pays with ETH by default: one Composer purchase from the native sentinel, no approval, legs with expected and minimum outputs', async () => {
+    buildComposerPurchase.mockResolvedValue(compiled('10000000000000000'));
+    const r = await buy({ amountRaw: '10000000000000000', buys: [{ address: AAPL, weightBps: 5000 }, { address: DOGE, weightBps: 5000 }] });
+    expect(r).toMatchObject({
+      ok: true,
+      transaction: { value: '10000000000000000', chainId: 4663 },
+      approvals: [],
+      payToken: { symbol: 'ETH', native: true },
+      legs: [
+        { symbol: 'AAPL', weightBps: 5000, expectedOutRaw: '40', minOutRaw: '39' },
+        { symbol: 'DOGE', weightBps: 5000, expectedOutRaw: '7', minOutRaw: '6' },
+      ],
+      priceImpactBps: 12,
+    });
+    expect(buildComposerPurchase.mock.calls[0][0]).toMatchObject({
+      chain: 'robinhood',
+      inputTokenAddress: '0x0000000000000000000000000000000000000000',
+      inputAmountRaw: '10000000000000000',
+      legs: [{ address: AAPL, weightBps: 5000 }, { address: DOGE, weightBps: 5000 }],
+      signerAddress: WALLET,
+    });
+  });
+
+  it('pays with the stablecoin when asked; the stablecoin itself cannot be bought then', async () => {
+    buildComposerPurchase.mockResolvedValue(compiled('0', [{ token: USDG, spender: '0xVM', amountRaw: '1000000' }]));
+    expect(await buy({ pay: 'STABLE', amountRaw: '1000000', buys: [{ address: AAPL, weightBps: 10000 }] })).toMatchObject({ ok: true, payToken: { symbol: 'USDG', native: false } });
+    expect(buildComposerPurchase.mock.calls[0][0]).toMatchObject({ inputTokenAddress: USDG });
+    expect(await buy({ pay: 'STABLE', amountRaw: '1000000', buys: [{ address: USDG, weightBps: 10000 }] })).toMatchObject({ ok: false, status: 400 });
+  });
+
+  it('refuses before asking LI.FI: no amount, unknown or duplicate tokens, shares not 100%, more than the wallet holds, a bad pay value', async () => {
+    const one = [{ address: AAPL, weightBps: 10000 }];
+    for (const req of [
+      { amountRaw: '0', buys: one },
+      { amountRaw: '1', buys: [] },
+      { amountRaw: '1', buys: [{ address: NONE.replace('e3', 'ff'), weightBps: 10000 }] },
+      { amountRaw: '1', buys: [{ address: AAPL, weightBps: 5000 }, { address: AAPL, weightBps: 5000 }] },
+      { amountRaw: '1', buys: [{ address: AAPL, weightBps: 6000 }, { address: DOGE, weightBps: 3000 }] },
+      { amountRaw: (ETH + BigInt(1)).toString(), buys: one },
+      { pay: 'BTC', amountRaw: '1', buys: one },
+    ]) {
+      expect(await buy(req), JSON.stringify(req)).toMatchObject({ ok: false, status: 400 });
+    }
+    expect(buildComposerPurchase).not.toHaveBeenCalled();
+  });
+
+  it('on Base, ETH pays for Base registry tokens; a Robinhood token is unknown there', async () => {
+    buildComposerPurchase.mockResolvedValue({ ...compiled('1000'), transactionRequest: { to: '0xVM', data: '0x', value: '1000', chainId: 8453 } });
+    expect(await buy({ amountRaw: '1000', buys: [{ address: BASE_WETH, weightBps: 10000 }] }, 'base')).toMatchObject({ ok: true, transaction: { chainId: 8453 } });
+    expect(await buy({ amountRaw: '1000', buys: [{ address: AAPL, weightBps: 10000 }] }, 'base')).toMatchObject({ ok: false, status: 400 });
+  });
+
+  it('a price-impact refusal is reported so the buyer can accept it', async () => {
+    buildComposerPurchase.mockRejectedValueOnce(new Error('Composer flow compilation failed: simulation — Price impact 820 bps exceeds maximum 500 bps (input: $10.00, output: $9.18)'));
+    expect(await buy({ amountRaw: '1000', buys: [{ address: AAPL, weightBps: 10000 }] })).toMatchObject({ ok: false, status: 422, composerFallback: { priceImpactBps: 820 } });
   });
 });
 
