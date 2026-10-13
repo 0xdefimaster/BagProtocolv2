@@ -384,6 +384,10 @@ export async function quoteWalletBuy(
     legs.push({ asset, weightBps: b.weightBps });
   }
   if (total !== 10000) return { ok: false, status: 400, error: 'The shares must add up to 100%.' };
+  const noRoute = legs.filter((l) => l.asset.routeStatus === 'NO_ROUTE').map((l) => l.asset.symbol);
+  if (noRoute.length > 0) {
+    return { ok: false, status: 400, error: `No swap route on ${BAG_CHAINS[chain].name} for ${noRoute.join(', ')} right now. Remove ${noRoute.length > 1 ? 'them' : 'it'} and try again.` };
+  }
 
   // The wallet must hold what it spends (for ETH, the network fee comes on top; the wallet's simulation catches a shortfall).
   const owner = walletAddress as `0x${string}`;

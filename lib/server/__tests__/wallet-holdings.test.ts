@@ -220,6 +220,16 @@ describe('quoteWalletBuy', () => {
     });
   });
 
+  it('refuses tokens the liquidity pass marked NO_ROUTE, naming them, before asking Composer', async () => {
+    const base = await listAssets(admin, { chain: 'robinhood' });
+    listAssets.mockImplementationOnce(async () => base.map((a) => (a.address === DOGE ? { ...a, routeStatus: 'NO_ROUTE' as const } : a)));
+    const r = await buy({ amountRaw: '10000000000000000', buys: [{ address: AAPL, weightBps: 5000 }, { address: DOGE, weightBps: 5000 }] });
+    expect(r).toMatchObject({ ok: false, status: 400 });
+    expect((r as { error: string }).error).toContain('DOGE');
+    expect((r as { error: string }).error).not.toContain('AAPL');
+    expect(buildComposerPurchase).not.toHaveBeenCalled();
+  });
+
   it('pays with the stablecoin when asked; the stablecoin itself cannot be bought then', async () => {
     buildComposerPurchase.mockResolvedValue(compiled('0', [{ token: USDG, spender: '0xVM', amountRaw: '1000000' }]));
     expect(await buy({ pay: 'STABLE', amountRaw: '1000000', buys: [{ address: AAPL, weightBps: 10000 }] })).toMatchObject({ ok: true, payToken: { symbol: 'USDG', native: false } });

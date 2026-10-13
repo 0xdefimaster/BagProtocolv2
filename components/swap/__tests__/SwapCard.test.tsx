@@ -135,6 +135,21 @@ describe('SwapCard — Multi-buy', () => {
   });
 });
 
+describe('SwapCard — tokens without a route', () => {
+  it('a token the liquidity pass marked NO_ROUTE is not offered for buying', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/assets?chain=')) return ok({ assets: assets.map((a) => (a.symbol === 'NVDA' ? { ...a, routeStatus: 'NO_ROUTE' } : a)) });
+      if (url === '/api/wallet/holdings?chain=all') return ok(holdings);
+      throw new Error('unexpected ' + url);
+    });
+    render(<SwapCard walletAddress={WALLET} />);
+    fireEvent.click(screen.getAllByRole('button', { name: /Add token/ })[0]);
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByRole('button', { name: 'Add AAPL' })).toBeTruthy();
+    expect(within(dialog).queryByRole('button', { name: 'Add NVDA' })).toBeNull();
+  });
+});
+
 describe('SwapCard — Multi-sell', () => {
   it('several wallet tokens → USDG: whole balances sent, total shown, one approval noted with MetaMask batching', async () => {
     render(<SwapCard walletAddress={WALLET} />);

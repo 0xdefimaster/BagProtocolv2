@@ -32,6 +32,8 @@ interface RegistryAsset {
   name: string;
   decimals: number;
   logoUrl?: string | null;
+  /** From the registry's liquidity pass; NO_ROUTE tokens are not offered for buying. */
+  routeStatus?: 'ROUTABLE' | 'NO_ROUTE';
 }
 
 interface PlanBase {
@@ -140,7 +142,10 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
   // What can go in each list: buy = registry tokens (not the stablecoin when paying with it); sell = held tokens
   // (not the stablecoin when receiving it).
   const buyable = useMemo(
-    () => (assets ?? []).filter((a) => /^0x[0-9a-fA-F]{40}$/.test(a.address) && !(money === 'STABLE' && a.address.toLowerCase() === stable)),
+    () =>
+      (assets ?? []).filter(
+        (a) => /^0x[0-9a-fA-F]{40}$/.test(a.address) && a.routeStatus !== 'NO_ROUTE' && !(money === 'STABLE' && a.address.toLowerCase() === stable)
+      ),
     [assets, money, stable]
   );
   const sellable = useMemo(() => walletTokens.filter((t) => t.sellable || money === 'NATIVE'), [walletTokens, money]);
