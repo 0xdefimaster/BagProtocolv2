@@ -16,7 +16,7 @@ vi.mock('@lifi/sdk', async (importOriginal) => {
   };
 });
 
-const { fetchLiFiTokenCandidatesForChain, fetchLiFiStockCandidatesForChain, planLiFiImportForChain, applyLiFiImportPlan } = await import(
+const { fetchLiFiTokenCandidatesForChain, fetchLiFiStockCandidatesForChain, planLiFiImportForChain, applyLiFiImportPlan, searchLiFiTokens } = await import(
   '../lifi-import'
 );
 
@@ -462,5 +462,27 @@ describe('fetchLiFiStockCandidatesForChain (tokenized stocks on ethereum / base 
     expect(await fetchLiFiStockCandidatesForChain('ethereum')).toEqual({ candidates: [], skipped: [], fetchError: 'rate limited' });
     const plan = planLiFiImportForChain([], [makeCanonicalAsset({ symbol: 'WETH', status: 'VERIFIED', assetType: 'crypto' })], []);
     expect(plan.staleVerified).toEqual([]);
+  });
+});
+
+describe('searchLiFiTokens (read-only lookup)', () => {
+  it('matches symbol or name case-insensitively and reports LI.FI status and tags', async () => {
+    getTokensMock.mockResolvedValue({
+      tokens: {
+        42161: [
+          { address: '0x1', symbol: 'bNVDA', name: 'Backed NVIDIA Corp', decimals: 18, tags: [], verificationStatus: 'verified' },
+          { address: '0x2', symbol: 'XYZ', name: 'Nvidia fan token', decimals: 18, verificationStatus: 'unverified' },
+          { address: '0x3', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
+        ],
+      },
+    });
+    const r = await searchLiFiTokens('arbitrum', 'nvda');
+    expect(r.matches.map((m) => [m.symbol, m.verificationStatus])).toEqual([['bNVDA', 'verified']]);
+    expect((await searchLiFiTokens('arbitrum', 'NVIDIA')).matches.map((m) => m.address)).toEqual(['0x1', '0x2']);
+  });
+
+  it('reports a fetch failure without throwing', async () => {
+    getTokensMock.mockRejectedValue(new Error('down'));
+    expect(await searchLiFiTokens('ethereum', 'NVDA')).toEqual({ matches: [], fetchError: 'down' });
   });
 });

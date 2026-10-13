@@ -409,6 +409,34 @@ export async function fetchLiFiStockCandidatesForChain(
   return { candidates, skipped };
 }
 
+/**
+ * Read-only lookup for the owner: every token in LI.FI's list for `targetChain`
+ * whose symbol or name contains `term` (case-insensitive), with LI.FI's own
+ * verification status and tags, so a stock LI.FI lists under an unexpected
+ * name can be found before any import rule is written for it. Never writes;
+ * never throws (a fetch failure is returned as `fetchError`).
+ */
+export async function searchLiFiTokens(
+  targetChain: LiFiImportTargetChain,
+  term: string
+): Promise<{ matches: Pick<LiFiRawToken, 'address' | 'symbol' | 'name' | 'decimals' | 'tags' | 'verificationStatus'>[]; fetchError?: string }> {
+  const needle = term.trim().toLowerCase();
+  if (!needle) return { matches: [] };
+  let rawTokens: LiFiRawToken[];
+  try {
+    const numericChainId = toLiFiChainId(targetChain);
+    const response = await getTokens(getLiFiClient(), { chains: [numericChainId], extended: true });
+    rawTokens = (response.tokens[numericChainId] ?? []) as unknown as LiFiRawToken[];
+  } catch (err) {
+    return { matches: [], fetchError: err instanceof Error ? err.message : String(err) };
+  }
+  const matches = rawTokens
+    .filter((t) => (t.symbol ?? '').toLowerCase().includes(needle) || (t.name ?? '').toLowerCase().includes(needle))
+    .map((t) => ({ address: t.address, symbol: t.symbol, name: t.name, decimals: t.decimals, tags: t.tags, verificationStatus: t.verificationStatus }))
+    .sort((a, b) => (a.symbol ?? '').localeCompare(b.symbol ?? ''));
+  return { matches };
+}
+
 export interface LiFiImportPlan {
   /** Not yet in the registry at this (chain, address) — safe to `registerAsset()`. */
   toRegister: RegisterAssetInput[];

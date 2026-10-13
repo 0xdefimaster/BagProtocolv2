@@ -43,6 +43,9 @@
 // "… (Ondo Tokenized)"/NVDAon; the dry run prints which one matched):
 //   npx tsx scripts/import-lifi-assets.ts --stocks --chain=base                    # dry run: every LI.FI-verified stock
 //   npx tsx scripts/import-lifi-assets.ts --stocks --chain=base --only=TSLAx,NVDAx --apply
+// Read-only lookup when a stock does not show up (prints LI.FI's name,
+// verification status and tags for every symbol/name containing the term):
+//   npx tsx scripts/import-lifi-assets.ts --search=NVDA --chain=arbitrum
 // --apply in stock mode requires --only: the owner names, from the dry run,
 // exactly which stocks become selectable in Create. Nothing else is written,
 // and --deprecate-stale is refused. A symbol two LI.FI-verified stocks claim
@@ -66,6 +69,7 @@ import {
   LiFiImportTargetChain,
   LiFiStockImportChain,
   planLiFiImportForChain,
+  searchLiFiTokens,
 } from '@/lib/domain/basket-protocol/registry/lifi-import';
 
 const SUPPORTED_CHAINS: LiFiImportTargetChain[] = ['ethereum', 'base', 'arbitrum', 'robinhood'];
@@ -141,10 +145,28 @@ async function importStocks(chain: LiFiImportTargetChain, apply: boolean) {
   }
 }
 
+async function searchTokens(chain: LiFiImportTargetChain, term: string) {
+  if (process.argv.includes('--apply')) throw new Error('--search is read-only; it cannot be combined with --apply.');
+  console.log(`Searching LI.FI's token list on "${chain}" for "${term}"...`);
+  const { matches, fetchError } = await searchLiFiTokens(chain, term);
+  if (fetchError) {
+    console.error(`  Failed to fetch from LI.FI: ${fetchError}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`\nMatches: ${matches.length}`);
+  for (const t of matches) {
+    console.log(`  ${String(t.symbol).padEnd(12)} ${t.address}  ${String(t.verificationStatus ?? '—').padEnd(10)} tags [${(t.tags ?? []).join(',')}]  ${t.name}`);
+  }
+  console.log('\nRead-only — nothing was written.');
+}
+
 async function main() {
   const apply = process.argv.includes('--apply');
   const deprecateStale = process.argv.includes('--deprecate-stale');
   const chain = parseChainArg();
+  const searchArg = process.argv.find((a) => a.startsWith('--search='));
+  if (searchArg) return searchTokens(chain, searchArg.slice('--search='.length));
   if (process.argv.includes('--stocks')) return importStocks(chain, apply);
 
   console.log(`Fetching LI.FI's known token list for chain "${chain}"...`);
