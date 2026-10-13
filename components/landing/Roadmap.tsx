@@ -196,6 +196,11 @@ const SHIPPED: Day[] = [
 const NEXT = [
   {
     tag: 'IN PROGRESS',
+    t: 'Strategy weights on-chain',
+    b: 'Each registered version can publish its assets and weights on-chain, readable by any app or contract. Built and tested; not deployed yet.',
+  },
+  {
+    tag: 'IN PROGRESS',
     t: 'Fork royalty paid on-chain',
     b: 'A fork pays its root creator 20% of its performance fee in the sale transaction. The new RedeemSettlement is deployed on Robinhood Chain; it is switched on next, then proven with a live fork sale.',
   },
