@@ -22,7 +22,7 @@ interface SweepQuote {
   transaction: { to: string; data: string; value: string; chainId: number };
   approvals: { token: string; spender: string; amountRaw: string }[];
   legs: { address: string; symbol: string; amountRaw: string; decimals: number; expectedOutRaw: string | null; minOutRaw: string | null }[];
-  outputToken: { address: string; symbol: string; decimals: number };
+  outputToken: { address: string; symbol: string; decimals: number; native?: boolean };
   expectedOutRaw: string | null;
   minOutRaw: string | null;
   priceImpactBps: number | null;
@@ -56,6 +56,9 @@ const chainTotal = (h: WalletHoldings) => h.tokens.reduce((sum, t) => sum + Numb
 export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) {
   const [all, setAll] = useState<ChainHoldingsResult[] | null>(null);
   const [active, setActive] = useState<BagChain>('robinhood');
+  // What the sale pays out: the chain's stablecoin, or its native ETH (then the stablecoin can be sold too).
+  const [receive, setReceive] = useState<'STABLE' | 'NATIVE'>('STABLE');
+  const [lastOut, setLastOut] = useState<{ symbol: string; decimals: number } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -97,7 +100,8 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
   const chainName = BAG_CHAINS[active].name;
   const tokens = holdings?.tokens ?? [];
   const grandTotal = (all ?? []).filter(isHoldings).reduce((sum, h) => sum + chainTotal(h), 0);
-  const sellable = tokens.filter((t) => t.sellable);
+  const canSell = (t: WalletTokenBalance) => t.sellable || receive === 'NATIVE';
+  const sellable = tokens.filter(canSell);
   const totalUsd = tokens.reduce((sum, t) => sum + Number(t.usdValue ?? 0), 0);
   const selectedTokens = useMemo(() => sellable.filter((t) => selected.has(t.address)), [sellable, selected]);
   const selectedUsd = selectedTokens.reduce((sum, t) => sum + Number(t.usdValue ?? 0), 0);
@@ -114,6 +118,7 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chain: active,
+          receive,
           tokens: list.map((t) => ({ address: t.address, amountRaw: t.balanceRaw })),
           ...(acceptedPriceImpactBps !== undefined ? { acceptedPriceImpactBps } : {}),
         }),
@@ -124,11 +129,12 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
         return;
       }
       if (!res.ok) throw new Error(body?.error ?? `Request failed (${res.status}).`);
+      setLastOut({ symbol: (body as SweepQuote).outputToken.symbol, decimals: (body as SweepQuote).outputToken.decimals });
       setPhase({ kind: 'quoted', quote: body as SweepQuote, acceptedPriceImpactBps });
     } catch (err) {
       setPhase({ kind: 'error', message: (err as Error).message });
     }
-  }, [active]);
+  }, [active, receive]);
 
   const confirm = useCallback(
     async (quote: SweepQuote) => {
@@ -163,7 +169,12 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
     });
 
   const out = holdings?.outputToken;
-  const fmtOut = (raw: string | null) => (raw === null || !out ? '—' : `${formatRawAmount(raw, out.decimals, { maxFractionDigits: 2 })} ${out.symbol}`);
+  const stableSymbol = out?.symbol ?? BAG_CHAINS[active].sweepOutputToken.symbol;
+  const nativeSymbol = BAG_CHAINS[active].nativeCurrency.symbol;
+  const outSymbol = receive === 'NATIVE' ? nativeSymbol : stableSymbol;
+  const shownOut = lastOut ?? out;
+  const fmtOut = (raw: string | null) =>
+    raw === null || !shownOut ? '—' : `${formatRawAmount(raw, shownOut.decimals, { maxFractionDigits: shownOut.decimals > 6 ? 6 : 2 })} ${shownOut.symbol}`;
 
   return (
     <div style={{ marginTop: 40 }}>
@@ -177,8 +188,7 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
         </button>
       </div>
       <p style={{ color: 'var(--ink-soft)', fontSize: 13, margin: '6px 0 14px' }}>
-        Tokens in your wallet, read from each chain. Select several to sell them all for {out?.symbol ?? BAG_CHAINS[active].sweepOutputToken.symbol} on{' '}
-        {chainName} in one transaction.
+        Tokens in your wallet, read from each chain. Select several to sell them all for {outSymbol} on {chainName} in one transaction.
       </p>
 
       {all && (
@@ -205,6 +215,28 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
             );
           })}
           <span className="sweep-chains-total mono">All networks {formatDecimalStringUsd(grandTotal.toFixed(2))}</span>
+        </div>
+      )}
+
+      {all && (
+        <div className="sweep-receive" role="radiogroup" aria-label="Receive">
+          <span>Receive</span>
+          {(['STABLE', 'NATIVE'] as const).map((r) => (
+            <button
+              key={r}
+              role="radio"
+              aria-checked={receive === r}
+              className={receive === r ? 'sweep-chain active' : 'sweep-chain'}
+              disabled={busy}
+              onClick={() => {
+                setReceive(r);
+                setSelected(new Set());
+                setPhase({ kind: 'idle' });
+              }}
+            >
+              {r === 'STABLE' ? stableSymbol : nativeSymbol}
+            </button>
+          ))}
         </div>
       )}
 
@@ -249,7 +281,7 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
               {tokens.map((t) => (
                 <tr key={t.address}>
                   <td>
-                    {t.sellable && (
+                    {canSell(t) && (
                       <input
                         type="checkbox"
                         aria-label={`Select ${t.symbol}`}
@@ -275,7 +307,7 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
                   <td className="mono">{t.priceUsd === null ? '—' : formatDecimalString(t.priceUsd, { maxFractionDigits: Number(t.priceUsd) < 1 ? 6 : 2, prefix: '$' })}</td>
                   <td className="mono">{t.usdValue === null ? '—' : formatDecimalStringUsd(t.usdValue)}</td>
                   <td>
-                    {t.sellable ? (
+                    {canSell(t) ? (
                       <button className="btn btn-ghost" disabled={busy} onClick={() => requestQuote([t])} style={{ padding: '6px 12px', fontSize: 12.5 }}>
                         Sell
                       </button>
@@ -297,7 +329,7 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
               disabled={busy || selectedTokens.length === 0}
               onClick={() => requestQuote(selectedTokens)}
             >
-              Sell selected ({selectedTokens.length}) · {formatDecimalStringUsd(selectedUsd.toFixed(2))} → {out?.symbol ?? BAG_CHAINS[active].sweepOutputToken.symbol}
+              Sell selected ({selectedTokens.length}) · {formatDecimalStringUsd(selectedUsd.toFixed(2))} → {outSymbol}
             </button>
           </div>
         </div>

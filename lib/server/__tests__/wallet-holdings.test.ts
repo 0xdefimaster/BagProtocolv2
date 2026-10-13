@@ -160,3 +160,20 @@ describe('other chains', () => {
   });
 });
 
+describe('receive native ETH', () => {
+  it('sells into ETH: compiled with nativeOutput, the stablecoin is allowed as an input, ETH reported as what you receive', async () => {
+    buildComposerSweep.mockResolvedValue({ transactionRequest: { to: '0xVM', data: '0x', value: '0', chainId: 4663 }, approvals: [], producedResources: {}, priceImpact: null });
+    const r = await quoteWalletSweep(admin, fakeClient().client, WALLET, { receive: 'NATIVE', tokens: [{ address: USDG, amountRaw: '2500000' }, { address: AAPL, amountRaw: '1' }] }, { apiKey: 'k' });
+    expect(r).toMatchObject({ ok: true, outputToken: { address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', decimals: 18, native: true } });
+    expect(buildComposerSweep.mock.calls[0][0]).toMatchObject({ nativeOutput: true });
+  });
+
+  it('the default stays the stablecoin, and an unknown receive value is refused', async () => {
+    buildComposerSweep.mockResolvedValue({ transactionRequest: { to: '0xVM', data: '0x', value: '0', chainId: 4663 }, approvals: [], producedResources: {}, priceImpact: null });
+    const r = await quoteWalletSweep(admin, fakeClient().client, WALLET, { tokens: [{ address: AAPL, amountRaw: '1' }] }, { apiKey: 'k' });
+    expect(r).toMatchObject({ ok: true, outputToken: { symbol: 'USDG', native: false } });
+    expect(buildComposerSweep.mock.calls[0][0].nativeOutput).toBeUndefined();
+    expect(await quoteWalletSweep(admin, fakeClient().client, WALLET, { receive: 'BTC' as never, tokens: [{ address: AAPL, amountRaw: '1' }] }, { apiKey: 'k' })).toMatchObject({ ok: false, status: 400 });
+  });
+});
+

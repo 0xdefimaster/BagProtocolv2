@@ -5,7 +5,7 @@ import { WalletAssetsPanel } from '@/components/portfolio/WalletAssetsPanel';
 
 // -----------------------------------------------------------------------------
 // Swap — sell one or several tokens in the connected wallet, on Robinhood
-// Chain, Ethereum, Arbitrum or Base, for that chain's stablecoin in ONE
+// Chain, Ethereum, Arbitrum or Base, for that chain's stablecoin or ETH in ONE
 // transaction (the same panel as Portfolio's Wallet section,
 // components/portfolio/WalletAssetsPanel.tsx). Tokens stay in the user's own
 // wallet until the user signs; slippage and price-impact limits are the panel's.
@@ -14,7 +14,7 @@ import { WalletAssetsPanel } from '@/components/portfolio/WalletAssetsPanel';
 const STEPS = [
   { n: '01', t: 'Select tokens', b: 'Pick one or several tokens in your wallet.' },
   { n: '02', t: 'One signature', b: 'They are all sold in a single transaction.' },
-  { n: '03', t: 'Stablecoin in your wallet', b: 'USDG on Robinhood Chain, USDC on Ethereum, Arbitrum and Base. No deposit, no pool.' },
+  { n: '03', t: 'Stablecoin or ETH', b: 'USDG on Robinhood Chain, USDC on Ethereum, Arbitrum and Base — or ETH on any of them. No deposit, no pool.' },
 ];
 
 export default function SwapPage() {
@@ -24,7 +24,7 @@ export default function SwapPage() {
     <main className="wrap" style={{ paddingBottom: 80, paddingTop: 44 }}>
       <div className="app-intro">
         <h1 style={{ marginTop: 16 }}>Swap</h1>
-        <p className="lead">Sell several tokens for a stablecoin in one transaction, straight from your wallet — on Robinhood Chain, Ethereum, Arbitrum and Base.</p>
+        <p className="lead">Sell several tokens for a stablecoin or ETH in one transaction, straight from your wallet — on Robinhood Chain, Ethereum, Arbitrum and Base.</p>
       </div>
 
       <ol className="swap-steps" style={{ marginTop: 28 }}>

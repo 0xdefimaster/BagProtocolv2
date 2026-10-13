@@ -90,6 +90,7 @@ describe('WalletAssetsPanel', () => {
     const quoteCall = fetchMock.mock.calls.find((c) => c[0] === '/api/wallet/sweep-quote')!;
     expect(JSON.parse(String((quoteCall[1] as RequestInit).body))).toEqual({
       chain: 'robinhood',
+      receive: 'STABLE',
       tokens: [
         { address: '0xAAPL', amountRaw: '500000000000000000' },
         { address: '0xDOGE', amountRaw: '1000000000' },
@@ -157,5 +158,20 @@ describe('WalletAssetsPanel', () => {
     });
     const quoteCall = fetchMock.mock.calls.find((c) => c[0] === '/api/wallet/sweep-quote')!;
     expect(JSON.parse(String((quoteCall[1] as RequestInit).body))).toMatchObject({ chain: 'base', tokens: [{ address: '0xWETH' }] });
+  });
+
+  it('receive ETH: the stablecoin becomes sellable, the button says ETH, and the request asks for NATIVE', async () => {
+    render(<WalletAssetsPanel walletAddress={WALLET} />);
+    await screen.findByText('Apple');
+    expect(screen.queryByLabelText('Select USDG')).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: 'ETH' }));
+    expect(screen.getByRole('radio', { name: 'ETH' }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByLabelText('Select USDG'));
+    expect(screen.getByRole('button', { name: /Sell selected \(1\).*→ ETH/ })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Sell selected \(1\)/ }));
+    });
+    const quoteCall = fetchMock.mock.calls.find((c) => c[0] === '/api/wallet/sweep-quote')!;
+    expect(JSON.parse(String((quoteCall[1] as RequestInit).body))).toMatchObject({ chain: 'robinhood', receive: 'NATIVE', tokens: [{ address: '0xUSDG' }] });
   });
 });

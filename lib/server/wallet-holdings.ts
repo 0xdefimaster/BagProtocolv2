@@ -3,6 +3,7 @@ import { erc20Abi, formatUnits, parseUnits, type PublicClient } from 'viem';
 import { CanonicalAsset } from '@/types/basket-protocol';
 import { ComposerFallbackNotice, MAX_ACCEPTABLE_PRICE_IMPACT_BPS, PRICE_IMPACT_ACCEPT_BUFFER_BPS } from '@/types/purchase-intent';
 import { BAG_CHAINS, type BagChain } from '@/lib/config/chains';
+import { NATIVE_ASSET_ADDRESS } from '@/lib/domain/basket-protocol/asset-identity';
 import { listAssets } from '@/lib/server/asset-repo';
 import { PriceProvider } from '@/lib/domain/basket-protocol/pricing/provider';
 import { buildComposerSweep, sweepNodeId } from '@/lib/blockchain/lifi-composer-adapter';
@@ -156,9 +157,22 @@ export async function getWalletHoldingsAllChains(
   );
 }
 
+/** What a sweep sells into: the chain's stablecoin (default) or its native token (ETH on every BAG chain). */
+export type SweepReceive = 'STABLE' | 'NATIVE';
+
+/** The token a sweep on `chain` pays out, for `receive`. Native is reported at the zero-address sentinel. */
+export function sweepOutputFor(chain: BagChain, receive: SweepReceive): { address: string; symbol: string; decimals: number; native: boolean } {
+  const cfg = BAG_CHAINS[chain];
+  return receive === 'NATIVE'
+    ? { address: NATIVE_ASSET_ADDRESS, symbol: cfg.nativeCurrency.symbol, decimals: cfg.nativeCurrency.decimals, native: true }
+    : { ...cfg.sweepOutputToken, native: false };
+}
+
 export interface SweepQuoteRequest {
   /** The chain the tokens are on and the sale happens on; Robinhood Chain when absent. */
   chain?: BagChain;
+  /** STABLE (default): the chain's stablecoin. NATIVE: the chain's native token — then the stablecoin can be sold too. */
+  receive?: SweepReceive;
   tokens: { address: string; amountRaw: string }[];
   acceptedPriceImpactBps?: number;
 }
@@ -178,7 +192,7 @@ export type SweepQuoteResult =
       transaction: { to: string; data: string; value: string; chainId: number };
       approvals: { token: string; spender: string; amountRaw: string }[];
       legs: SweepQuoteLeg[];
-      outputToken: { address: string; symbol: string; decimals: number };
+      outputToken: { address: string; symbol: string; decimals: number; native: boolean };
       /** Sums of the per-swap simulated / on-chain-enforced minimum outputs; null if any leg lacks one. */
       expectedOutRaw: string | null;
       minOutRaw: string | null;
@@ -200,6 +214,9 @@ export async function quoteWalletSweep(
   chain: BagChain = 'robinhood'
 ): Promise<SweepQuoteResult> {
   const cfg = BAG_CHAINS[chain];
+  const receive: SweepReceive = request.receive ?? 'STABLE';
+  if (receive !== 'STABLE' && receive !== 'NATIVE') return { ok: false, status: 400, error: 'receive must be STABLE or NATIVE.' };
+  const outToken = sweepOutputFor(chain, receive);
   if (!options.apiKey) return { ok: false, status: 503, error: 'Selling is not configured on this deployment (LIFI_API_KEY).' };
   if (!Array.isArray(request.tokens) || request.tokens.length === 0) return { ok: false, status: 400, error: 'Pick at least one token to sell.' };
   if (request.tokens.length > MAX_SWEEP_TOKENS) return { ok: false, status: 400, error: `At most ${MAX_SWEEP_TOKENS} tokens per sale.` };
@@ -211,14 +228,15 @@ export async function quoteWalletSweep(
   const registry = new Map(
     (await listAssets(admin, { chain, status: 'VERIFIED' })).map((a) => [a.address.toLowerCase(), a] as const)
   );
-  const output = cfg.sweepOutputToken.address.toLowerCase();
+  // Selling into native ETH: the stablecoin is an ordinary input. Selling into the stablecoin: it is what you receive.
+  const output = outToken.native ? null : outToken.address.toLowerCase();
   const seen = new Set<string>();
   const picked: { asset: CanonicalAsset; amountRaw: string }[] = [];
   for (const t of request.tokens) {
     const address = typeof t?.address === 'string' ? t.address.toLowerCase() : '';
     const asset = registry.get(address);
     if (!asset) return { ok: false, status: 400, error: `Unknown token ${String(t?.address)}.` };
-    if (address === output) return { ok: false, status: 400, error: `${asset.symbol} is what you receive; it cannot be sold here.` };
+    if (output !== null && address === output) return { ok: false, status: 400, error: `${asset.symbol} is what you receive; it cannot be sold here.` };
     if (seen.has(address)) return { ok: false, status: 400, error: `${asset.symbol} is listed twice.` };
     if (typeof t.amountRaw !== 'string' || !/^\d+$/.test(t.amountRaw) || BigInt(t.amountRaw) <= BigInt(0)) {
       return { ok: false, status: 400, error: `${asset.symbol}: invalid amount.` };
@@ -246,6 +264,7 @@ export async function quoteWalletSweep(
       chain,
       inputs: picked.map((p) => ({ address: p.asset.address, amountRaw: p.amountRaw, symbol: p.asset.symbol })),
       outputTokenAddress: cfg.sweepOutputToken.address,
+      ...(outToken.native ? { nativeOutput: true } : {}),
       signerAddress: walletAddress,
       slippageBps: DEFAULT_COMPOSER_SLIPPAGE_BPS,
       apiKey: options.apiKey,
@@ -285,7 +304,7 @@ export async function quoteWalletSweep(
     },
     approvals: compiled.approvals,
     legs,
-    outputToken: { ...cfg.sweepOutputToken },
+    outputToken: { address: outToken.address, symbol: outToken.symbol, decimals: outToken.decimals, native: outToken.native },
     expectedOutRaw: sumOrNull(legs.map((l) => l.expectedOutRaw)),
     minOutRaw: sumOrNull(legs.map((l) => l.minOutRaw)),
     priceImpactBps: compiled.priceImpact?.impactBps ?? null,
