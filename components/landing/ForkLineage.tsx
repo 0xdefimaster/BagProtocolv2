@@ -1,5 +1,5 @@
 // Forking, drawn as a lineage: each fork is a new Bag with its own creator and
-// version, pointing back to its parent; deposits into any fork credit the root.
+// version, pointing back to its parent; 20% of the performance fee any fork earns goes to the root.
 
 const CHAIN = [
   { creator: 'Creator A', name: 'AI Infrastructure', meta: 'root · v3', assets: 'NVDA · MSFT · AMD' },
@@ -38,8 +38,8 @@ export default function ForkLineage() {
           ))}
         </ol>
         <figcaption className="lineage-royalty">
-          <span className="mono">1.5%</span> of deposits into Creator B&apos;s or Creator C&apos;s Bag is
-          credited to Creator A, the root. <span className="lineage-example">Illustrative example.</span>
+          <span className="mono">20%</span> of the performance fee Creator B or Creator C earns on a sale is
+          paid to Creator A, the root, in the same transaction. <span className="lineage-example">Illustrative example.</span>
         </figcaption>
       </figure>
     </section>

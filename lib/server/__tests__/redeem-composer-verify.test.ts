@@ -206,7 +206,8 @@ describe('verifyRedeemExecution — fee-paying sale settled through RedeemSettle
     };
   }
 
-  const settled = (over: Record<string, string> = {}) => ({
+  const ROOT = '0x4444444444444444444444444444444444444444';
+  const settled = (over: Record<string, string | null> = {}) => ({
     txHash: HASH,
     blockNumber: '123',
     logIndex: '4',
@@ -219,6 +220,8 @@ describe('verifyRedeemExecution — fee-paying sale settled through RedeemSettle
     feeBase: '1000000',
     fee: '200000',
     userProceeds: '9800000',
+    royalty: '0',
+    rootCreator: null,
     ...over,
   });
 
@@ -249,7 +252,29 @@ describe('verifyRedeemExecution — fee-paying sale settled through RedeemSettle
       userProceeds: '9800000',
       creator: CREATOR,
       executor: '0x7777777777777777777777777777777777777777',
+      royalty: '0',
+      rootCreator: null,
     });
+  });
+
+  it('a fork sale: the royalty to the attested root creator is recorded with the result', async () => {
+    row = { ...row, settlementPlan: { ...row.settlementPlan, rootCreator: ROOT } as RedeemIntent['settlementPlan'] };
+    readSettlementResultMock.mockResolvedValue(settled({ royalty: '40000', rootCreator: ROOT }));
+    const outcome = await verify();
+    expect(outcome.ok && outcome.value.status).toBe('COMPLETED');
+    expect(recordRedeemSettlementResultMock.mock.calls[0][2].result).toMatchObject({ fee: '200000', royalty: '40000', rootCreator: ROOT });
+  });
+
+  it.each([
+    ['the plan attested no root creator', undefined],
+    ['the plan attested another root creator', '0x3333333333333333333333333333333333333333'],
+  ])('a royalty paid when %s: not verified, nothing booked', async (_name, attestedRoot) => {
+    row = { ...row, settlementPlan: { ...row.settlementPlan, rootCreator: attestedRoot } as RedeemIntent['settlementPlan'] };
+    readSettlementResultMock.mockResolvedValue(settled({ royalty: '40000', rootCreator: ROOT }));
+    const outcome = await verify();
+    expect(outcome.ok && outcome.value.status).toBe('FAILED');
+    expect(accountingCall()).toBeUndefined();
+    expect(recordRedeemSettlementResultMock).not.toHaveBeenCalled();
   });
 
   it('no Settled event for this redemption: not verified, nothing booked', async () => {

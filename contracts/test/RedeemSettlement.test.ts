@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { network } from 'hardhat';
 import { computeB0Fee } from '../../lib/domain/basket-protocol/redeem/performance-fee-b0';
-import { SETTLEMENT_TYPES, computeSettlementContextHash, settlementDomain, toCompactSignature } from '../../lib/blockchain/redeem-settlement-eip712';
+import { SETTLEMENT_TYPES, computeSettlementContextHash, computeSettlementRoyalty, packFeeRateAndDeadline, settlementDomain, toCompactSignature } from '../../lib/blockchain/redeem-settlement-eip712';
 import { SETTLED_EVENT_ABI, settlementResultFromLogs } from '../../lib/blockchain/redeem-settlement-event';
 import { privateKeyToAccount } from 'viem/accounts';
 import { encodeFunctionData, getAddress, keccak256, parseEventLogs, parseSignature, signatureToCompactSignature, toFunctionSelector, toHex, zeroAddress, type Hex } from 'viem';
@@ -19,6 +19,7 @@ type Settlement = {
   redemptionId: Hex;
   user: `0x${string}`;
   creator: `0x${string}`;
+  rootCreator: `0x${string}`;
   executor: `0x${string}`;
   contextHash: Hex;
   consumedBasis: bigint;
@@ -33,6 +34,7 @@ const TYPES = {
     { name: 'redemptionId', type: 'bytes32' },
     { name: 'user', type: 'address' },
     { name: 'creator', type: 'address' },
+    { name: 'rootCreator', type: 'address' },
     { name: 'executor', type: 'address' },
     { name: 'contextHash', type: 'bytes32' },
     { name: 'consumedBasis', type: 'uint256' },
@@ -64,7 +66,7 @@ const err = (...names: string[]) => new RegExp(names.flatMap((n) => [n, toFuncti
 async function setup() {
   const { viem } = await network.connect();
   const publicClient = await viem.getPublicClient();
-  const [ownerW, attestorW, user, otherUser, stranger, creator] = await viem.getWalletClients();
+  const [ownerW, attestorW, user, otherUser, stranger, creator, rootCreator] = await viem.getWalletClients();
   const usdg = await viem.deployContract('HookERC20', []);
   const settlement = await viem.deployContract('RedeemSettlement', [usdg.address, attestorW.account.address, ownerW.account.address]);
   const executor = await viem.deployContract('SettlementExecutorMock', []);
@@ -75,11 +77,12 @@ async function setup() {
   const now = (await publicClient.getBlock()).timestamp;
 
   const sign = (s: Settlement, signer = attestorW, verifyingContract = settlement.address) =>
-    signer.signTypedData({ domain: { name: 'BagRedeemSettlement', version: '1', chainId, verifyingContract }, types: TYPES, primaryType: 'Settlement', message: s });
+    signer.signTypedData({ domain: { name: 'BagRedeemSettlement', version: '2', chainId, verifyingContract }, types: TYPES, primaryType: 'Settlement', message: s });
   const base = (over: Partial<Settlement> = {}): Settlement => ({
     redemptionId: id('redemption-1'),
     user: user.account.address,
     creator: creator.account.address,
+    rootCreator: zeroAddress,
     executor: executor.address,
     contextHash: id('bag-v3|basis=100|carry=0'),
     consumedBasis: 0n,
@@ -93,7 +96,7 @@ async function setup() {
     const hash = await via.write.pushAndSettle([usdg.address, settlement.address, amount, s, sig]);
     return publicClient.waitForTransactionReceipt({ hash });
   };
-  return { viem, publicClient, ownerW, attestorW, user, otherUser, stranger, creator, usdg, settlement, executor, otherExecutor, sign, base, run, now };
+  return { viem, publicClient, ownerW, attestorW, user, otherUser, stranger, creator, rootCreator, usdg, settlement, executor, otherExecutor, sign, base, run, now };
 }
 
 describe('RedeemSettlement — settlement primitive with the creator fee on actual proceeds (B)', () => {
@@ -196,6 +199,68 @@ describe('RedeemSettlement — settlement primitive with the creator fee on actu
     assert.equal(await settlement.read.settled([s.redemptionId]), false);
   });
 
+  it('fork royalty: 20% of the fee goes to the root creator in the same transaction, the creator gets the rest, the user pays nothing extra', async () => {
+    const { usdg, settlement, user, creator, rootCreator, sign, base, run } = await setup();
+    // basis 1.0, rate 10%: received 2.15 → fee 0.115 → royalty 0.023, creator 0.092, user 2.035 (same as with no fork)
+    const s = base({ rootCreator: rootCreator.account.address, consumedBasis: 1_000_000n, feeRateBps: 1000n, minUserProceeds: 2_000_000n });
+    const receipt = await run(s, await sign(s), 2_150_000n);
+    const [e] = parseEventLogs({ abi: settlement.abi, logs: receipt.logs, eventName: 'Settled' });
+    assert.deepEqual([e.args.creator, e.args.fee, e.args.userProceeds], [getAddress(creator.account.address), 115_000n, 2_035_000n]);
+    const [r] = parseEventLogs({ abi: settlement.abi, logs: receipt.logs, eventName: 'RoyaltyPaid' });
+    assert.deepEqual(
+      [r.args.redemptionId, r.args.rootCreator, r.args.creator, r.args.royalty],
+      [s.redemptionId, getAddress(rootCreator.account.address), getAddress(creator.account.address), 23_000n]
+    );
+    assert.equal(await usdg.read.balanceOf([rootCreator.account.address]), 23_000n);
+    assert.equal(await usdg.read.balanceOf([creator.account.address]), 92_000n);
+    assert.equal(await usdg.read.balanceOf([user.account.address]), 2_035_000n);
+    assert.equal(await usdg.read.balanceOf([settlement.address]), 0n);
+    // The backend decoder reports the royalty with the whole fee.
+    const decoded = settlementResultFromLogs(receipt.logs, settlement.address, s.redemptionId);
+    assert.deepEqual(decoded && [decoded.fee, decoded.royalty, decoded.rootCreator], ['115000', '23000', getAddress(rootCreator.account.address)]);
+  });
+
+  it('fork royalty: none when the Bag is not a fork, when the root creator is the creator, or when there is no fee', async () => {
+    const { usdg, settlement, creator, rootCreator, sign, base, run } = await setup();
+    const notFork = base({ redemptionId: id('not-fork'), consumedBasis: 1_000_000n, feeRateBps: 1000n, minUserProceeds: 0n });
+    const own = base({ redemptionId: id('own-root'), rootCreator: creator.account.address, consumedBasis: 1_000_000n, feeRateBps: 1000n, minUserProceeds: 0n });
+    const noFee = base({ redemptionId: id('no-fee'), rootCreator: rootCreator.account.address, consumedBasis: 1_000_000n, feeRateBps: 0n, minUserProceeds: 0n });
+    const loss = base({ redemptionId: id('loss'), rootCreator: rootCreator.account.address, consumedBasis: 1_000_000n, feeRateBps: 1000n, minUserProceeds: 0n });
+    for (const [s, amount] of [[notFork, 2_000_000n], [own, 2_000_000n], [noFee, 2_000_000n], [loss, 900_000n]] as const) {
+      const receipt = await run(s, await sign(s), amount);
+      assert.equal(parseEventLogs({ abi: settlement.abi, logs: receipt.logs, eventName: 'RoyaltyPaid' }).length, 0);
+      assert.equal(settlementResultFromLogs(receipt.logs, settlement.address, s.redemptionId)?.royalty, '0');
+    }
+    assert.equal(await usdg.read.balanceOf([creator.account.address]), 200_000n); // the two 10% fees of 1.0 gain, whole
+    assert.equal(await usdg.read.balanceOf([rootCreator.account.address]), 0n);
+  });
+
+  it('fork royalty: a frozen root creator reverts the whole settlement; nothing moves', async () => {
+    const { usdg, settlement, executor, user, creator, rootCreator, sign, base, run } = await setup();
+    await usdg.write.setFrozen([rootCreator.account.address, true]);
+    const executorBefore = await usdg.read.balanceOf([executor.address]);
+    const s = base({ rootCreator: rootCreator.account.address, feeRateBps: 1000n, minUserProceeds: 0n });
+    await assert.rejects(run(s, await sign(s), 2_100_000n), /frozen/);
+    assert.equal(await usdg.read.balanceOf([executor.address]), executorBefore);
+    assert.equal(await usdg.read.balanceOf([user.account.address]), 0n);
+    assert.equal(await usdg.read.balanceOf([creator.account.address]), 0n);
+    assert.equal(await settlement.read.settled([s.redemptionId]), false);
+  });
+
+  it('computeRoyalty matches the backend (computeSettlementRoyalty), and royalty ≤ fee', async () => {
+    const { settlement, creator, rootCreator } = await setup();
+    assert.equal(await settlement.read.FORK_ROYALTY_SHARE_BPS(), 2000n);
+    const c = creator.account.address;
+    const root = rootCreator.account.address;
+    for (const fee of [0n, 1n, 4n, 5n, 9n, 115_000n, 999_999_999n, 2n ** 200n + 7n]) {
+      for (const [cr, rc] of [[c, root], [c, zeroAddress], [c, c]] as const) {
+        const onChain = (await settlement.read.computeRoyalty([fee, cr, rc])) as bigint;
+        assert.equal(onChain, computeSettlementRoyalty(fee, cr, rc === zeroAddress ? null : rc), `fee ${fee}`);
+        assert.ok(onChain <= fee);
+      }
+    }
+  });
+
   it('settleFlat (the Composer form): same result as settle; executor is msg.sender; tampering or another caller recovers a wrong signer', async () => {
     const { usdg, settlement, executor, otherExecutor, user, creator, sign, base, publicClient } = await setup();
     const flat = (s: Settlement, sig: Hex) => {
@@ -203,7 +268,7 @@ describe('RedeemSettlement — settlement primitive with the creator fee on actu
       return encodeFunctionData({
         abi: settlement.abi,
         functionName: 'settleFlat',
-        args: [s.redemptionId, s.user, s.creator, s.contextHash, s.consumedBasis, s.lossCarry, s.feeRateBps, s.minUserProceeds, s.deadline, r, yParityAndS],
+        args: [s.redemptionId, s.user, s.creator, s.rootCreator, s.contextHash, s.consumedBasis, s.lossCarry, s.minUserProceeds, packFeeRateAndDeadline(s.feeRateBps, s.deadline), r, yParityAndS],
       });
     };
     const s = base({ consumedBasis: 1_000_000n, lossCarry: 100_000n, feeRateBps: 1000n, minUserProceeds: 2_000_000n });
@@ -252,6 +317,7 @@ describe('RedeemSettlement — settlement primitive with the creator fee on actu
       redeemIntentId: '6f1c2b3a-0000-4000-8000-000000000001',
       user: user.account.address,
       creator: creator.account.address,
+      rootCreator: null,
       sharesRaw: '100',
       legs: [{ token: '0xdd356aa38f40a7b7076755ac854b6fbb1f0d305b', amountRaw: '20000000000000000' }],
       ledgerHeadSeq: '812',
@@ -265,6 +331,7 @@ describe('RedeemSettlement — settlement primitive with the creator fee on actu
       redemptionId: id('backend-signed'),
       user: user.account.address,
       creator: creator.account.address,
+      rootCreator: zeroAddress,
       executor: executor.address,
       contextHash,
       consumedBasis: 1_000_000n,
@@ -278,7 +345,7 @@ describe('RedeemSettlement — settlement primitive with the creator fee on actu
     const call = encodeFunctionData({
       abi: settlement.abi,
       functionName: 'settleFlat',
-      args: [message.redemptionId, message.user, message.creator, message.contextHash, message.consumedBasis, message.lossCarry, message.feeRateBps, message.minUserProceeds, message.deadline, r, vs],
+      args: [message.redemptionId, message.user, message.creator, message.rootCreator, message.contextHash, message.consumedBasis, message.lossCarry, message.minUserProceeds, packFeeRateAndDeadline(message.feeRateBps, message.deadline), r, vs],
     });
     const hash = await executor.write.pushAndSettleFlat([usdg.address, settlement.address, 1_500_000n, call]);
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
@@ -309,6 +376,7 @@ describe('RedeemSettlement — settlement primitive with the creator fee on actu
       { redemptionId: id('redemption-2') }, // signature reused for another redemption
       { user: otherUser.account.address }, // wrong user
       { creator: otherUser.account.address }, // fee redirected to another address
+      { rootCreator: otherUser.account.address }, // royalty redirected to another address
       { consumedBasis: 1n }, // basis changed
       { lossCarry: 1n }, // loss carry changed
       { feeRateBps: 1n }, // fee rate changed

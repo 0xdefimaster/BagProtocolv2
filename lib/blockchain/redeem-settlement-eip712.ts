@@ -6,17 +6,19 @@ import { computeOnChainBagId } from '../domain/basket-protocol/onchain';
 // settlement context hash — imported by the server-side signer
 // (lib/server/redeem-settlement-attestation.ts) and by tests. Must stay
 // byte-for-byte in sync with contracts/RedeemSettlement.sol's
-// SETTLEMENT_TYPEHASH and EIP712('BagRedeemSettlement', '1').
+// SETTLEMENT_TYPEHASH and EIP712('BagRedeemSettlement', '2').
 // -----------------------------------------------------------------------------
 
 export const REDEEM_SETTLEMENT_EIP712_DOMAIN_NAME = 'BagRedeemSettlement';
-export const REDEEM_SETTLEMENT_EIP712_DOMAIN_VERSION = '1';
+/** '2': the fork royalty deployment (Settlement gained `rootCreator`). A '1' signature never verifies on it. */
+export const REDEEM_SETTLEMENT_EIP712_DOMAIN_VERSION = '2';
 
 export const SETTLEMENT_TYPES = {
   Settlement: [
     { name: 'redemptionId', type: 'bytes32' },
     { name: 'user', type: 'address' },
     { name: 'creator', type: 'address' },
+    { name: 'rootCreator', type: 'address' },
     { name: 'executor', type: 'address' },
     { name: 'contextHash', type: 'bytes32' },
     { name: 'consumedBasis', type: 'uint256' },
@@ -31,6 +33,8 @@ export interface SettlementMessage {
   redemptionId: Hex;
   user: `0x${string}`;
   creator: `0x${string}`;
+  /** A fork's root creator (gets RedeemSettlement.FORK_ROYALTY_SHARE_BPS of the fee); zero address when not a fork. */
+  rootCreator: `0x${string}`;
   executor: `0x${string}`;
   contextHash: Hex;
   consumedBasis: bigint;
@@ -61,7 +65,7 @@ export function toCompactSignature(signature: Hex): { r: Hex; vs: Hex } {
 // amounts are integers, legs are sorted by token address and duplicates are
 // refused. So one logical state has exactly one encoding.
 
-export const SETTLEMENT_CONTEXT_SCHEMA = 'BAG_SETTLEMENT_CONTEXT_V1';
+export const SETTLEMENT_CONTEXT_SCHEMA = 'BAG_SETTLEMENT_CONTEXT_V2';
 
 export interface SettlementContext {
   chainId: number;
@@ -77,6 +81,8 @@ export interface SettlementContext {
   redeemIntentId: string;
   user: string;
   creator: string;
+  /** The root creator of a fork's lineage, or null when the Bag is not a fork. */
+  rootCreator: string | null;
   sharesRaw: string;
   /** What is sold: one entry per input token. */
   legs: { token: string; amountRaw: string }[];
@@ -118,6 +124,7 @@ export function computeSettlementContextHash(ctx: SettlementContext): Hex {
         { type: 'bytes32' }, // redemptionId
         { type: 'address' }, // user
         { type: 'address' }, // creator
+        { type: 'address' }, // root creator (zero when not a fork)
         { type: 'uint256' }, // shares sold
         { type: 'tuple[]', components: [{ type: 'address', name: 'token' }, { type: 'uint256', name: 'amount' }] }, // legs, sorted
         { type: 'uint256' }, // ledger head seq
@@ -137,6 +144,7 @@ export function computeSettlementContextHash(ctx: SettlementContext): Hex {
         computeOnChainBagId(ctx.redeemIntentId),
         getAddress(ctx.user),
         getAddress(ctx.creator),
+        ctx.rootCreator ? getAddress(ctx.rootCreator) : zeroAddress,
         uint(ctx.sharesRaw, 'sharesRaw'),
         legs,
         uint(ctx.ledgerHeadSeq, 'ledgerHeadSeq'),
@@ -147,4 +155,19 @@ export function computeSettlementContextHash(ctx: SettlementContext): Hex {
       ]
     )
   );
+}
+
+/** RedeemSettlement.FORK_ROYALTY_SHARE_BPS: the root creator's share of a fork's fee. */
+export const FORK_ROYALTY_SHARE_BPS = BigInt(2000);
+
+/** RedeemSettlement.computeRoyalty, off-chain: the root creator's share of `fee`. */
+export function computeSettlementRoyalty(fee: bigint, creator: string, rootCreator: string | null): bigint {
+  if (!rootCreator || /^0x0{40}$/i.test(rootCreator) || rootCreator.toLowerCase() === creator.toLowerCase()) return BigInt(0);
+  return (fee * FORK_ROYALTY_SHARE_BPS) / BigInt(10000);
+}
+
+/** settleFlat's packed last word: `deadline << 16 | feeRateBps` (RedeemSettlement.settleFlat). */
+export function packFeeRateAndDeadline(feeRateBps: bigint, deadline: bigint): bigint {
+  if (feeRateBps < BigInt(0) || feeRateBps > BigInt(0xffff)) throw new Error('feeRateBps does not fit 16 bits');
+  return (deadline << BigInt(16)) | feeRateBps;
 }

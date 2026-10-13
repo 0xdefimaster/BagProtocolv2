@@ -29,7 +29,7 @@ describe('RedeemSettlement deployment checks (scripts/deploy-redeem-settlement.t
     assert.deepEqual(failed(checks), []);
     assert.deepEqual(
       checks.map((c) => c.name),
-      ['chain', 'usdg', 'owner', 'attestor', 'MAX_FEE_RATE_BPS', 'EIP-712 name', 'EIP-712 version', 'EIP-712 chainId', 'EIP-712 verifyingContract', 'USDG balance held', 'owner account', 'attestor account']
+      ['chain', 'usdg', 'owner', 'attestor', 'MAX_FEE_RATE_BPS', 'FORK_ROYALTY_SHARE_BPS', 'EIP-712 name', 'EIP-712 version', 'EIP-712 chainId', 'EIP-712 verifyingContract', 'USDG balance held', 'owner account', 'attestor account']
     );
   });
 

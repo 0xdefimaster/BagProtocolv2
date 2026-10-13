@@ -5,7 +5,8 @@ import { getChainPublicClient } from '@/lib/blockchain/rpc/clients';
 // The on-chain record of a settlement: RedeemSettlement's `Settled` event. It is the source of truth for what a
 // fee-paying redemption actually did — what arrived (`received`), the fee the contract computed and paid to the
 // creator, what the user got — not the backend's intent status (docs/LIFI_COMPOSER_FEE_SETTLEMENT_FEASIBILITY.md §9).
-// Must stay in sync with contracts/RedeemSettlement.sol's `event Settled`.
+// Must stay in sync with contracts/RedeemSettlement.sol's `event Settled` and `event RoyaltyPaid` (a fork's root
+// creator's share of the fee, emitted in the same transaction).
 // -----------------------------------------------------------------------------
 
 export const SETTLED_EVENT_ABI = [
@@ -24,6 +25,16 @@ export const SETTLED_EVENT_ABI = [
       { name: 'userProceeds', type: 'uint256', indexed: false },
     ],
   },
+  {
+    type: 'event',
+    name: 'RoyaltyPaid',
+    inputs: [
+      { name: 'redemptionId', type: 'bytes32', indexed: true },
+      { name: 'rootCreator', type: 'address', indexed: true },
+      { name: 'creator', type: 'address', indexed: true },
+      { name: 'royalty', type: 'uint256', indexed: false },
+    ],
+  },
 ] as const;
 
 /** Raw USDG amounts as decimal strings. */
@@ -38,8 +49,13 @@ export interface SettlementResult {
   contextHash: string;
   received: string;
   feeBase: string;
+  /** The whole fee (`Settled.fee`); the creator received fee − royalty. */
   fee: string;
   userProceeds: string;
+  /** A fork's root creator's share of the fee (`RoyaltyPaid`), '0' when none was paid. */
+  royalty: string;
+  /** Who received `royalty`, null when none was paid. */
+  rootCreator: string | null;
 }
 
 /** Decodes the one `Settled` event the settlement contract emitted for `redemptionId` in these logs, or null. */
@@ -54,6 +70,11 @@ export function settlementResultFromLogs(
   );
   if (events.length !== 1) return null;
   const e = events[0];
+  const royalties = parseEventLogs({ abi: SETTLED_EVENT_ABI, logs: mine as never, eventName: 'RoyaltyPaid' }).filter(
+    (r) => r.args.redemptionId.toLowerCase() === redemptionId.toLowerCase()
+  );
+  if (royalties.length > 1) return null;
+  const royalty = royalties[0];
   return {
     txHash: String(e.transactionHash ?? ''),
     blockNumber: String(e.blockNumber ?? ''),
@@ -67,6 +88,8 @@ export function settlementResultFromLogs(
     feeBase: e.args.feeBase.toString(),
     fee: e.args.fee.toString(),
     userProceeds: e.args.userProceeds.toString(),
+    royalty: royalty ? royalty.args.royalty.toString() : '0',
+    rootCreator: royalty ? getAddress(royalty.args.rootCreator) : null,
   };
 }
 

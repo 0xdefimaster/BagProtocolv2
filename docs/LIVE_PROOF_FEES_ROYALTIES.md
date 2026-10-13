@@ -13,7 +13,9 @@ the repository. Verification is read-only: `scripts/verify-money-flows.ts`.
   on realized gain above the investor's basis (high-water mark, loss carry), transfers it in USDG
   **directly to the creator's wallet**, the rest to the investor, and emits `Settled`. No vault in
   between.
-- **Fork royalty** (1.5% of a deposit into a fork, to the root creator): after the purchase, the
+- **Fork royalty, on-chain (RedeemSettlement v2, not deployed yet)**: 20% of a fork's performance fee goes to
+  the root creator in the sale transaction (`RoyaltyPaid`). Test 3 below; `docs/FORK_ROYALTY_ONCHAIN.md`.
+- **Fork royalty, legacy** (1.5% of a deposit into a fork, no longer accrued by new purchases): after the purchase, the
   `settle-creator-rewards` scheduled job calls `CreatorRewardsVault.settleReward` from the settler
   wallet. The vault **pulls the USDG from the settler wallet** and emits `Credited`. The creator then
   withdraws from the profile page (`withdrawAll`), which emits `Withdrawn`.
@@ -48,6 +50,14 @@ the repository. Verification is read-only: `scripts/verify-money-flows.ts`.
    find the `Credited` event for **C**. Copy its transaction hash: **CREDIT_TX**.
    If nothing appears within ~15 minutes, check the settler prerequisites above.
 4. With **C**, open Profile → Creator Rewards → Claim. Copy the transaction hash: **WITHDRAW_TX**.
+
+## Test 3: fork royalty at sale (after RedeemSettlement v2 is deployed)
+
+1. With **F**, fork Bag **A** into Bag **B**, set a performance fee above 0 on **B**, and deploy it.
+2. With **I**, buy a small amount of **B**, wait until the position is in profit after costs, and sell it.
+   Copy the sale transaction hash: **FORK_SALE_TX**.
+3. `npx tsx scripts/verify-money-flows.ts --sale=FORK_SALE_TX --creator=F` must show `ROYALTY_IS_THE_FORK_SHARE`
+   and `ROYALTY_PAID_TO_ROOT_CREATOR_IN_USDG` as PASS (20% of the fee to **C**, the rest to **F**).
 
 ## Verify
 

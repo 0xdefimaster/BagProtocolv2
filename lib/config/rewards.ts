@@ -6,5 +6,10 @@
 // about and audit across the whole product, not per-bag.
 // -----------------------------------------------------------------------------
 
-/** Basis points of a deposit's value routed to a forked bag's ROOT creator, credited via a `creator_reward_settlements` row at deposit time (NOT `portfolios.cash_balance` — migration 0018 moved this off the paper-trading ledger onto the single on-chain-bound settlement path CreatorRewardsVault ultimately pays out). 150 bps = 1.5%. */
-export const FORK_ROYALTY_BPS = 150;
+/**
+ * Fork royalty: the share of a fork's performance fee paid to the ROOT creator of its lineage, on-chain, in the same
+ * transaction as the sale (RedeemSettlement.FORK_ROYALTY_SHARE_BPS, a contract constant; this mirrors it for display).
+ * The investor pays nothing extra: the fork's creator receives the rest of the fee. A fork with a 0% fee pays no
+ * royalty. Replaces the earlier 1.5%-of-deposit credit, which was recorded but never paid out.
+ */
+export const FORK_ROYALTY_FEE_SHARE_BPS = 2000;

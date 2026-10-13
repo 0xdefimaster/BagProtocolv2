@@ -850,7 +850,9 @@ async function verifyComposerRedeemSteps(
       settled !== null &&
       settled.user.toLowerCase() === intent.walletAddress.toLowerCase() &&
       settled.creator.toLowerCase() === plan.creator.toLowerCase() &&
-      settled.contextHash.toLowerCase() === plan.contextHash.toLowerCase();
+      settled.contextHash.toLowerCase() === plan.contextHash.toLowerCase() &&
+      // A royalty may only go to the attested root creator.
+      (settled.rootCreator === null || (!!plan.rootCreator && settled.rootCreator.toLowerCase() === plan.rootCreator.toLowerCase()));
     if (!settled || !matches) return markSwaps({ status: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
     received = BigInt(settled.received);
     await recordRedeemSettlementResult(admin, intent.id, {
@@ -865,6 +867,8 @@ async function verifyComposerRedeemSteps(
         userProceeds: settled.userProceeds,
         creator: settled.creator,
         executor: settled.executor,
+        royalty: settled.royalty,
+        rootCreator: settled.rootCreator,
       },
     });
   }

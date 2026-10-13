@@ -57,7 +57,7 @@ Source: `lib/server/redeem-fee-attestation.ts`, `previewPerformanceFee`
 | Where it is computed | BAG's server, **before** the swap; the amount is fixed in an EIP-712 attestation signed by `feeAttestor` (a server key) |
 | What the contract does | Pulls the legs, swaps them through allowlisted targets into USDG, measures `swapOutput` from its own balance, requires `swapOutput ≥ minUserProceeds + fee`, sends `fee` to `CreatorRewardsVault` for the creator and `swapOutput − fee` to the user — one atomic transaction |
 | Partial execution | Impossible on this path: any failing leg reverts the whole sale |
-| Recipients | Creator: 100% of the fee (claimable from the vault). Protocol: **0**. (Fork royalty is a separate, purchase-time 1.5% and is not touched here.) |
+| Recipients | Creator: 100% of the fee (claimable from the vault). Protocol: **0**. (Superseded for forks: a fork's root creator gets 20% of the fee, paid by RedeemSettlement v2 in the same transaction — `docs/FORK_ROYALTY_ONCHAIN.md`.) |
 | Accounting (A3) | Already computes the *fee base the ledger says is right* — realized gain from verified proceeds above the position's high-water mark (`feeBaseQuote`) — but it is **not charged**: the charged fee is the attested one (D4) |
 
 **The defect.** The fee is fixed from a NAV valuation before the swap. Slippage
@@ -303,7 +303,7 @@ through TypeScript and SQL, and later Solidity).
 |---|---|---|
 | Creator | 100% of the performance fee, via `CreatorRewardsVault` (claim) | Unchanged |
 | Protocol | 0 | Unchanged here. A protocol share is a separate business decision; if taken it is one more split in the same atomic step and must be visible in the preview |
-| Fork parent | Purchase-time fork royalty (1.5%), separate | Unchanged |
+| Fork root creator | Purchase-time fork royalty (1.5%), separate | 20% of the fork's fee, at sale, on-chain (`docs/FORK_ROYALTY_ONCHAIN.md`); no purchase-time royalty |
 
 ## 7. Trust boundaries
 

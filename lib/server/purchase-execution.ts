@@ -17,7 +17,6 @@ import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
 import { claimNewlyVerifiedTxHashes, TX_HASH_RE } from '@/lib/server/intent-tx-claims';
 import { purchaseInputAssetsFor } from '@/lib/server/payment-assets';
 import { valuePayment } from '@/lib/server/payment-value';
-import { FORK_ROYALTY_BPS } from '@/lib/config/rewards';
 import { cancelPurchaseIfFeeSaleOpen, openFeeRedemptionFor } from '@/lib/server/fee-redemption-lock';
 import { getBagAssetHoldings, getBagNavSafe, priceHoldingsIndividually } from '@/lib/server/bag-nav';
 import { EXECUTION_QUOTE_PRICE_SOURCE, executionPricesFromLegs, navAtExecutionPrices } from '@/lib/domain/basket-protocol/shares/execution-valuation';
@@ -1831,17 +1830,8 @@ async function applyAccountingIdempotently(admin: SupabaseClient, intent: Purcha
 
   const holdings = withLegCosts([...swapHoldings, ...keepHoldings], intent.depositAmount);
 
-  // Phase 22, Layer 3 — fork royalty. Resolved fresh here (never trusted
-  // from the client): only paid when THIS bag has a root_bag_id (i.e. it's
-  // a fork), and to the ROOT bag's creator specifically — not this bag's
-  // own creator (a fork's own creatorId is whoever forked it, a different
-  // person in the common case).
-  let rootCreatorId: string | null = null;
-  const bag = await getBagById(admin, intent.bagId);
-  if (bag?.rootBagId) {
-    const rootBag = await getBagById(admin, bag.rootBagId);
-    rootCreatorId = rootBag?.creatorId ?? null;
-  }
+  // Fork royalty is no longer credited at deposit: it is a share of the fork's performance fee, paid on-chain when a
+  // position is sold (RedeemSettlement, lib/config/rewards.ts). Nothing is accrued here.
 
   const { error: rpcError } = await admin.rpc('apply_purchase_execution', {
     p_intent_id: intent.id,
@@ -1854,8 +1844,8 @@ async function applyAccountingIdempotently(admin: SupabaseClient, intent: Purcha
     // see depositAmount's doc comment on PurchaseIntent for why this value
     // (not a sharePriceAtQuote * sharesRaw derivation) is used.
     p_cost_basis_delta: intent.depositAmount,
-    p_fork_royalty_bps: rootCreatorId ? FORK_ROYALTY_BPS : 0,
-    p_root_creator_id: rootCreatorId,
+    p_fork_royalty_bps: 0,
+    p_root_creator_id: null,
   });
   // Same reasoning as reconcilePartialExecution() above: never mark
   // accounting applied (-> COMPLETED) on the strength of an RPC call that

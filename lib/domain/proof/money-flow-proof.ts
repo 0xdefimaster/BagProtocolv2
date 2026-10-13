@@ -1,10 +1,13 @@
 import { parseAbiItem, parseEventLogs, type Hex } from 'viem';
 import { SETTLED_EVENT_ABI } from '@/lib/blockchain/redeem-settlement-event';
+import { computeSettlementRoyalty } from '@/lib/blockchain/redeem-settlement-eip712';
 
 // -----------------------------------------------------------------------------
 // Proof that BAG's money flows ran live, from transaction receipts only:
 //   sale      a fee-paying sale: RedeemSettlement emitted Settled with fee > 0,
-//             and USDG moved settlement → creator (the fee) and → user (the rest)
+//             and USDG moved settlement → creator (the fee) and → user (the rest);
+//             on a fork, RoyaltyPaid and settlement → root creator (20% of the
+//             fee), the creator getting the fee minus it
 //   credit    a fork royalty: CreatorRewardsVault emitted Credited, and USDG
 //             moved settler → vault for the same amount
 //   withdraw  a creator withdrawal: the vault emitted Withdrawn, and USDG moved
@@ -67,6 +70,15 @@ export function proveSale(receipt: ProofReceipt, o: { settlement: string; usdg: 
     fee: e.fee.toString(),
     userProceeds: e.userProceeds.toString(),
   };
+  const royalties = parseEventLogs({ abi: SETTLED_EVENT_ABI, logs: mine as never, eventName: 'RoyaltyPaid' }).filter((r) => same(r.args.redemptionId, e.redemptionId));
+  checks.push({ name: 'AT_MOST_ONE_ROYALTY_EVENT', ok: royalties.length <= 1, detail: `${royalties.length} RoyaltyPaid event(s)` });
+  const r = royalties[0]?.args;
+  const royalty = r ? r.royalty : BigInt(0);
+  if (r) {
+    Object.assign(facts, { rootCreator: r.rootCreator, royalty: royalty.toString() });
+    const expected = computeSettlementRoyalty(e.fee, e.creator, r.rootCreator);
+    checks.push({ name: 'ROYALTY_IS_THE_FORK_SHARE', ok: royalty === expected && royalty > BigInt(0) && same(r.creator, e.creator), detail: `royalty ${royalty}, 20% of fee ${e.fee} is ${expected}` });
+  }
   checks.push({ name: 'POSITIVE_FEE', ok: e.fee > BigInt(0), detail: `fee ${e.fee} raw USDG on a fee base of ${e.feeBase}` });
   checks.push({ name: 'BUYER_IS_NOT_CREATOR', ok: !same(e.user, e.creator), detail: `user ${e.user}, creator ${e.creator}` });
   checks.push({ name: 'AMOUNTS_ADD_UP', ok: e.fee + e.userProceeds === e.received, detail: `${e.fee} + ${e.userProceeds} = ${e.received}` });
@@ -74,8 +86,16 @@ export function proveSale(receipt: ProofReceipt, o: { settlement: string; usdg: 
   const moved = transfers(receipt, o.usdg).filter((t) => same(t.from, o.settlement));
   const toCreator = moved.filter((t) => same(t.to, e.creator)).reduce((s, t) => s + t.value, BigInt(0));
   const toUser = moved.filter((t) => same(t.to, e.user)).reduce((s, t) => s + t.value, BigInt(0));
-  checks.push({ name: 'FEE_PAID_TO_CREATOR_IN_USDG', ok: toCreator === e.fee, detail: `${toCreator} USDG transferred to the creator, event says ${e.fee}` });
-  checks.push({ name: 'PROCEEDS_PAID_TO_USER_IN_USDG', ok: toUser === e.userProceeds, detail: `${toUser} USDG transferred to the user, event says ${e.userProceeds}` });
+  const creatorShare = e.fee - royalty;
+  checks.push({ name: 'FEE_PAID_TO_CREATOR_IN_USDG', ok: toCreator === creatorShare, detail: `${toCreator} USDG transferred to the creator, event says ${creatorShare}` });
+  if (r) {
+    // A root creator who is also the seller receives both transfers.
+    const toRoot = moved.filter((t) => same(t.to, r.rootCreator)).reduce((s, t) => s + t.value, BigInt(0));
+    const wantRoot = same(r.rootCreator, e.user) ? royalty + e.userProceeds : royalty;
+    checks.push({ name: 'ROYALTY_PAID_TO_ROOT_CREATOR_IN_USDG', ok: toRoot === wantRoot, detail: `${toRoot} USDG transferred to the root creator, events say ${wantRoot}` });
+  }
+  const wantUser = r && same(r.rootCreator, e.user) ? e.userProceeds + royalty : e.userProceeds;
+  checks.push({ name: 'PROCEEDS_PAID_TO_USER_IN_USDG', ok: toUser === wantUser, detail: `${toUser} USDG transferred to the user, event says ${wantUser}` });
   return finish('sale', checks, facts);
 }
 

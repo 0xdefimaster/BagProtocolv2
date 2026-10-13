@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { encodeAbiParameters, encodeEventTopics, parseAbiItem, type Hex } from 'viem';
+import { encodeAbiParameters, encodeEventTopics, getAddress, parseAbiItem, type Hex } from 'viem';
 import { SETTLED_EVENT_ABI } from '@/lib/blockchain/redeem-settlement-event';
 import { proveCredit, proveSale, proveWithdraw } from '../money-flow-proof';
 
@@ -27,6 +27,12 @@ const settled = (o: { user?: Hex; creator?: Hex; received?: bigint; fee?: bigint
     [SETTLER, ('0x' + 'cd'.repeat(32)) as Hex, o.received ?? BigInt(1000), BigInt(200), o.fee ?? BigInt(30), o.proceeds ?? BigInt(970)]
   ),
 });
+const ROOT = ('0x' + 'a'.repeat(40)) as Hex;
+const royaltyPaid = (royalty: bigint, rootCreator: Hex = ROOT) => ({
+  address: SETTLEMENT,
+  topics: encodeEventTopics({ abi: SETTLED_EVENT_ABI, eventName: 'RoyaltyPaid', args: { redemptionId: ('0x' + 'ab'.repeat(32)) as Hex, rootCreator, creator: CREATOR } }) as Hex[],
+  data: encodeAbiParameters([{ type: 'uint256' }], [royalty]),
+});
 const failed = (r: ReturnType<typeof proveSale>) => r.checks.filter((c) => !c.ok).map((c) => c.name);
 
 describe('proveSale', () => {
@@ -43,6 +49,21 @@ describe('proveSale', () => {
     expect(failed(proveSale({ ...good(), status: 'reverted' }, { settlement: SETTLEMENT, usdg: USDG }))).toEqual(['TX_SUCCEEDED']);
     expect(failed(proveSale({ status: 'success', logs: [settled({ emitter: OTHER })] }, { settlement: SETTLEMENT, usdg: USDG }))).toEqual(['ONE_SETTLED_EVENT_FROM_SETTLEMENT']);
     expect(failed(proveSale(good(), { settlement: SETTLEMENT, usdg: USDG, expectedCreator: OTHER }))).toEqual(['CREATOR_AS_EXPECTED']);
+  });
+
+  it('a fork sale: 20% of the fee to the root creator (RoyaltyPaid), the rest of it to the creator, all in USDG', () => {
+    // fee 30 → royalty 6, creator 24
+    const fork = (royalty: bigint, toRoot: bigint, toCreator: bigint) => ({
+      status: 'success' as const,
+      logs: [settled(), royaltyPaid(royalty), transfer(SETTLEMENT as Hex, CREATOR, toCreator), transfer(SETTLEMENT as Hex, ROOT, toRoot), transfer(SETTLEMENT as Hex, USER, BigInt(970))],
+    });
+    const r = proveSale(fork(BigInt(6), BigInt(6), BigInt(24)), { settlement: SETTLEMENT, usdg: USDG, expectedCreator: CREATOR });
+    expect(failed(r)).toEqual([]);
+    expect(r.facts).toMatchObject({ fee: '30', royalty: '6', rootCreator: getAddress(ROOT) });
+    expect(failed(proveSale(fork(BigInt(6), BigInt(5), BigInt(24)), { settlement: SETTLEMENT, usdg: USDG }))).toEqual(['ROYALTY_PAID_TO_ROOT_CREATOR_IN_USDG']);
+    expect(failed(proveSale(fork(BigInt(7), BigInt(7), BigInt(23)), { settlement: SETTLEMENT, usdg: USDG }))).toEqual(['ROYALTY_IS_THE_FORK_SHARE']);
+    // Without RoyaltyPaid the creator must have received the whole fee.
+    expect(failed(proveSale({ status: 'success', logs: [settled(), transfer(SETTLEMENT as Hex, CREATOR, BigInt(24)), transfer(SETTLEMENT as Hex, ROOT, BigInt(6)), transfer(SETTLEMENT as Hex, USER, BigInt(970))] }, { settlement: SETTLEMENT, usdg: USDG }))).toEqual(['FEE_PAID_TO_CREATOR_IN_USDG']);
   });
 });
 

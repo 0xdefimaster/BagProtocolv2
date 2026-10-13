@@ -3,6 +3,7 @@ import type { Bindable, ComposeSdkOptions } from '@lifi/composer-sdk';
 import type { ProducedResource } from '@lifi/compose-spec';
 import { ChainId } from '@/types/basket-protocol';
 import { toLiFiChainId } from './lifi-config';
+import { packFeeRateAndDeadline } from '@/lib/blockchain/redeem-settlement-eip712';
 import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 
 // -----------------------------------------------------------------------------
@@ -680,7 +681,7 @@ export async function buildComposerRebalance(request: ComposerRebalanceRequest):
 // -----------------------------------------------------------------------------
 
 export const SETTLE_FLAT_SIGNATURE =
-  'function settleFlat(bytes32 redemptionId,address user,address creator,bytes32 contextHash,uint256 consumedBasis,uint256 lossCarry,uint256 feeRateBps,uint256 minUserProceeds,uint256 deadline,bytes32 r,bytes32 vs) returns (uint256)';
+  'function settleFlat(bytes32 redemptionId,address user,address creator,address rootCreator,bytes32 contextHash,uint256 consumedBasis,uint256 lossCarry,uint256 minUserProceeds,uint256 feeRateAndDeadline,bytes32 r,bytes32 vs) returns (uint256)';
 
 export interface ComposerSettlementRedeemRequest {
   chain: ChainId;
@@ -692,6 +693,8 @@ export interface ComposerSettlementRedeemRequest {
     redemptionId: `0x${string}`;
     user: `0x${string}`;
     creator: `0x${string}`;
+    /** A fork's root creator (gets FORK_ROYALTY_SHARE_BPS of the fee), zero address otherwise. */
+    rootCreator: `0x${string}`;
     contextHash: `0x${string}`;
     consumedBasis: bigint;
     lossCarry: bigint;
@@ -733,12 +736,12 @@ export async function buildComposerSettlementRedeem(request: ComposerSettlementR
     redemptionId: 'bytes32',
     user: 'address',
     creator: 'address',
+    rootCreator: 'address',
     contextHash: 'bytes32',
     consumedBasis: 'uint256',
     lossCarry: 'uint256',
-    feeRateBps: 'uint256',
     minUserProceeds: 'uint256',
-    deadline: 'uint256',
+    feeRateAndDeadline: 'uint256',
     r: 'bytes32',
     vs: 'bytes32',
   };
@@ -762,7 +765,7 @@ export async function buildComposerSettlementRedeem(request: ComposerSettlementR
     merged = builder.core.merge(`merge_${i}`, { bind: { a: merged, b: usdgParts[i] } }).merged;
   }
   builder.core.transfer('push', { bind: { amount: merged, recipient: b.settlementAddress as never }, config: {} });
-  const names = ['redemptionId', 'user', 'creator', 'contextHash', 'consumedBasis', 'lossCarry', 'feeRateBps', 'minUserProceeds', 'deadline', 'r', 'vs'];
+  const names = ['redemptionId', 'user', 'creator', 'rootCreator', 'contextHash', 'consumedBasis', 'lossCarry', 'minUserProceeds', 'feeRateAndDeadline', 'r', 'vs'];
   builder.core.call('settle', {
     bind: Object.fromEntries(names.map((n) => [n, b[n]])) as never,
     config: { target: request.settlementAddress as `0x${string}`, functionSignature: SETTLE_FLAT_SIGNATURE },
@@ -773,12 +776,13 @@ export async function buildComposerSettlementRedeem(request: ComposerSettlementR
     redemptionId: request.settle.redemptionId,
     user: request.settle.user,
     creator: request.settle.creator,
+    rootCreator: request.settle.rootCreator,
     contextHash: request.settle.contextHash,
     consumedBasis: request.settle.consumedBasis.toString(),
     lossCarry: request.settle.lossCarry.toString(),
-    feeRateBps: request.settle.feeRateBps.toString(),
     minUserProceeds: request.settle.minUserProceeds.toString(),
-    deadline: request.settle.deadline.toString(),
+    // settleFlat takes the fee rate and the deadline in one word (deadline << 16 | feeRateBps).
+    feeRateAndDeadline: packFeeRateAndDeadline(request.settle.feeRateBps, request.settle.deadline).toString(),
     r: request.settle.r,
     vs: request.settle.vs,
   };

@@ -10,7 +10,8 @@ import { scriptRpcUrl } from './rpc-url';
 // transaction hashes from the live test; it reads their receipts and checks:
 //
 //   --sale=0x…      a fee-paying sale paid a positive performance fee to the creator
-//   --credit=0x…    a fork royalty was credited to the creator in CreatorRewardsVault
+//                   (on a fork sale, also 20% of it to the root creator: RoyaltyPaid)
+//   --credit=0x…    a reward was credited to the creator in CreatorRewardsVault (legacy)
 //   --withdraw=0x…  the creator withdrew it
 //   --creator=0x…   optional: the creator every event must name
 //

@@ -107,6 +107,8 @@ export interface RedeemSettlementPlan {
   executor: string;
   user: string;
   creator: string;
+  /** A fork's root creator (receives RedeemSettlement.FORK_ROYALTY_SHARE_BPS of the fee); null / absent when not a fork. */
+  rootCreator?: string | null;
   consumedBasisRaw: string;
   lossCarryRaw: string;
   feeRateBps: number;
@@ -131,5 +133,8 @@ export interface RedeemSettlementPlan {
     userProceeds: string;
     creator: string;
     executor: string;
+    /** The root creator's share of `fee` (RoyaltyPaid); absent before the fork royalty deployment. */
+    royalty?: string;
+    rootCreator?: string | null;
   };
 }
