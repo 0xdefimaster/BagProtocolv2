@@ -432,7 +432,9 @@ describe('fetchLiFiStockCandidatesForChain (tokenized stocks on ethereum / base 
       tokens: {
         42161: [
           plain({ address: '0xb01', symbol: 'bNVDA', name: 'Backed NVIDIA Corp' }),
-          plain({ address: '0xb02', symbol: 'NVDAon', name: 'NVIDIA (Ondo Tokenized)' }),
+          plain({ address: '0xb02', symbol: 'NVDAon', name: 'NVIDIA (Ondo Tokenized Stock)' }),
+          plain({ address: '0xb08', symbol: 'NVDLx', name: 'GraniteShares 2x Long NVDA Daily ETF xStock' }),
+          plain({ address: '0xb09', symbol: 'wbNVDA', name: 'Wrapped Backed NVIDIA' }),
           plain({ address: '0xb03', symbol: 'AAPLx', name: 'Apple xStock' }),
           plain({ address: '0xb04', symbol: 'BNVDA', name: 'Backed NVIDIA Corp' }), // symbol off-scheme
           plain({ address: '0xb05', symbol: 'bFAKE', name: 'NVIDIA Backed by nothing' }), // name off-scheme
@@ -447,7 +449,27 @@ describe('fetchLiFiStockCandidatesForChain (tokenized stocks on ethereum / base 
       ['bNVDA', '0xb01', 'backed', 'stock'],
       ['NVDAon', '0xb02', 'ondo', 'stock'],
     ]);
-    expect(r.skipped).toEqual([{ symbol: 'bTSLA', address: '0xb06', name: 'Backed Tesla Inc', reason: 'UNVERIFIED_BY_LIFI' }]);
+    expect(r.skipped).toEqual([
+      { symbol: 'NVDLx', address: '0xb08', name: 'GraniteShares 2x Long NVDA Daily ETF xStock', reason: 'LEVERAGED_PRODUCT' },
+      { symbol: 'bTSLA', address: '0xb06', name: 'Backed Tesla Inc', reason: 'UNVERIFIED_BY_LIFI' },
+    ]);
+  });
+
+  it('issuers keeps only that issuer\'s tokens', async () => {
+    const plain = (o: Record<string, unknown>) => ({ decimals: 18, tags: [], verificationStatus: 'verified', ...o });
+    getTokensMock.mockResolvedValue({
+      tokens: {
+        1: [
+          plain({ address: '0xc01', symbol: 'bNVDA', name: 'Backed NVIDIA Corp' }),
+          plain({ address: '0xc02', symbol: 'NVDAon', name: 'NVIDIA (Ondo Tokenized Stock)' }),
+          plain({ address: '0xc03', symbol: 'NVDAx', name: 'NVIDIA xStock' }),
+          stock({ address: '0xc04', symbol: 'TSLAx', name: 'Tesla xStock' }),
+        ],
+      },
+    });
+    const r = await fetchLiFiStockCandidatesForChain('ethereum', { issuers: ['backed'] });
+    expect(r.candidates.map((c) => c.symbol)).toEqual(['bNVDA']);
+    expect(r.skipped).toEqual([]);
   });
 
   it('--only keeps just the requested symbols (case-insensitive); the rest are NOT_REQUESTED', async () => {

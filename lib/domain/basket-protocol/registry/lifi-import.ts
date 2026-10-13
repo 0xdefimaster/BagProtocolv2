@@ -75,7 +75,8 @@ export type SkippedLiFiTokenReason =
   | 'NOT_PINNED_ADDRESS'
   | 'NAME_MISMATCH'
   | 'LOW_MARKET_CAP'
-  | 'AMBIGUOUS_SYMBOL';
+  | 'AMBIGUOUS_SYMBOL'
+  | 'LEVERAGED_PRODUCT';
 
 export interface SkippedLiFiToken {
   symbol: string;
@@ -313,7 +314,8 @@ export interface LiFiStockCandidate extends RegisterAssetInput {
   signal: LiFiStockSignal;
 }
 
-export type LiFiStockSignal = 'rwa' | 'backed' | 'xstock' | 'ondo';
+export const LIFI_STOCK_SIGNALS = ['rwa', 'backed', 'xstock', 'ondo'] as const;
+export type LiFiStockSignal = (typeof LIFI_STOCK_SIGNALS)[number];
 
 /**
  * Tokenized-stock issuers whose tokens LI.FI lists without its `rwa` tag
@@ -327,6 +329,13 @@ const ISSUER_STOCK_PATTERNS: { signal: Exclude<LiFiStockSignal, 'rwa'>; name: Re
   { signal: 'xstock', name: /\bxStock$/i, symbol: /^[A-Z0-9.]+x$/ },
   { signal: 'ondo', name: /\bOndo Tokenized\b/i, symbol: /^[A-Z0-9.]+on$/ },
 ];
+
+/**
+ * Leveraged or inverse daily products (e.g. "GraniteShares 2x Long NVDA Daily
+ * ETF xStock") decay over time and do not belong in a long-term basket; they
+ * are reported as LEVERAGED_PRODUCT and never become candidates.
+ */
+const LEVERAGED_PRODUCT_NAME = /\b\d+(?:\.\d+)?x\b|\bleveraged\b|\binverse\b|\bshort\b|\bdaily\b/i;
 
 function stockSignal(token: LiFiRawToken): LiFiStockSignal | null {
   if (classifyLiFiToken(token) === 'stock') return 'rwa';
@@ -342,12 +351,13 @@ function stockSignal(token: LiFiRawToken): LiFiStockSignal | null {
  * exception for an unverified or flagged token, no native token, no missing
  * field, and a symbol more than one such token claims is skipped as ambiguous.
  * `only`, when given, keeps just those symbols; every other stock is reported
- * as NOT_REQUESTED. Addresses, decimals and names come from LI.FI's response,
+ * as NOT_REQUESTED. `issuers`, when given, ignores every stock whose signal is
+ * not listed (e.g. `['backed']` for Backed's bTokens only). Addresses, decimals and names come from LI.FI's response,
  * never from this code. Never throws: a fetch failure is returned as `fetchError`.
  */
 export async function fetchLiFiStockCandidatesForChain(
   targetChain: LiFiStockImportChain,
-  options: { only?: string[] } = {}
+  options: { only?: string[]; issuers?: LiFiStockSignal[] } = {}
 ): Promise<{ candidates: LiFiStockCandidate[]; skipped: SkippedLiFiToken[]; fetchError?: string }> {
   let rawTokens: (LiFiRawToken & { priceUSD?: string })[];
   try {
@@ -359,10 +369,12 @@ export async function fetchLiFiStockCandidatesForChain(
   }
 
   const only = options.only && options.only.length > 0 ? new Set(options.only.map((s) => s.toUpperCase())) : null;
+  const issuers = options.issuers && options.issuers.length > 0 ? new Set(options.issuers) : null;
   const skipped: SkippedLiFiToken[] = [];
   const bySymbol = new Map<string, (LiFiRawToken & { priceUSD?: string })[]>();
   for (const token of rawTokens) {
-    if (stockSignal(token) === null) continue;
+    const signal = stockSignal(token);
+    if (signal === null || (issuers && !issuers.has(signal))) continue;
     if (typeof token.decimals !== 'number' || !token.address || !token.symbol) continue; // never fabricate a missing field
     const skip = (reason: SkippedLiFiTokenReason) => skipped.push({ symbol: token.symbol, address: token.address, name: token.name, reason });
     if (token.address.toLowerCase() === NATIVE_TOKEN_ADDRESS) {
@@ -375,6 +387,10 @@ export async function fetchLiFiStockCandidatesForChain(
     }
     if (token.verificationStatus !== 'verified') {
       skip('UNVERIFIED_BY_LIFI');
+      continue;
+    }
+    if (LEVERAGED_PRODUCT_NAME.test(token.name ?? '')) {
+      skip('LEVERAGED_PRODUCT');
       continue;
     }
     if (only && !only.has(token.symbol.toUpperCase())) {

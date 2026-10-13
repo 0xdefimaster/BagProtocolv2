@@ -46,6 +46,9 @@
 // Read-only lookup when a stock does not show up (prints LI.FI's name,
 // verification status and tags for every symbol/name containing the term):
 //   npx tsx scripts/import-lifi-assets.ts --search=NVDA --chain=arbitrum
+// --issuer=backed (or rwa, xstock, ondo; comma-separated) keeps only that
+// issuer's tokens, e.g. Backed's bTokens:
+//   npx tsx scripts/import-lifi-assets.ts --stocks --issuer=backed --chain=arbitrum
 // --apply in stock mode requires --only: the owner names, from the dry run,
 // exactly which stocks become selectable in Create. Nothing else is written,
 // and --deprecate-stale is refused. A symbol two LI.FI-verified stocks claim
@@ -66,8 +69,10 @@ import {
   applyLiFiImportPlan,
   fetchLiFiStockCandidatesForChain,
   fetchLiFiTokenCandidatesForChain,
+  LIFI_STOCK_SIGNALS,
   LiFiImportTargetChain,
   LiFiStockImportChain,
+  LiFiStockSignal,
   planLiFiImportForChain,
   searchLiFiTokens,
 } from '@/lib/domain/basket-protocol/registry/lifi-import';
@@ -90,6 +95,16 @@ function parseOnlyArg(): string[] {
   return arg ? arg.slice('--only='.length).split(',').map((s) => s.trim()).filter(Boolean) : [];
 }
 
+function parseIssuerArg(): LiFiStockSignal[] {
+  const arg = process.argv.find((a) => a.startsWith('--issuer='));
+  if (!arg) return [];
+  const issuers = arg.slice('--issuer='.length).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  for (const i of issuers) {
+    if (!(LIFI_STOCK_SIGNALS as readonly string[]).includes(i)) throw new Error(`Unknown --issuer "${i}". Supported: ${LIFI_STOCK_SIGNALS.join(', ')}.`);
+  }
+  return issuers as LiFiStockSignal[];
+}
+
 async function importStocks(chain: LiFiImportTargetChain, apply: boolean) {
   if (!(STOCK_CHAINS as string[]).includes(chain)) {
     throw new Error(`--stocks supports ${STOCK_CHAINS.join(', ')}; Robinhood Stock Tokens come from import-robinhood-assets.ts.`);
@@ -101,7 +116,9 @@ async function importStocks(chain: LiFiImportTargetChain, apply: boolean) {
   }
 
   console.log(`Fetching LI.FI's tokenized stocks on "${chain}"...`);
-  const { candidates, skipped, fetchError } = await fetchLiFiStockCandidatesForChain(chain as LiFiStockImportChain, { only });
+  const issuers = parseIssuerArg();
+  if (issuers.length > 0) console.log(`Issuers: ${issuers.join(', ')}`);
+  const { candidates, skipped, fetchError } = await fetchLiFiStockCandidatesForChain(chain as LiFiStockImportChain, { only, issuers });
   if (fetchError) {
     console.error(`  Failed to fetch from LI.FI: ${fetchError}`);
     process.exitCode = 1;
