@@ -38,7 +38,9 @@
 // robinhood only crypto tokens (WETH, USDG, ...) are imported; Stock Tokens
 // stay with import-robinhood-assets.ts, which is Robinhood's own source.
 //
-// Tokenized stocks on ethereum / base / arbitrum (LI.FI tags them `rwa`):
+// Tokenized stocks on ethereum / base / arbitrum (LI.FI's `rwa` tag, or a known
+// issuer's naming: Backed "Backed …"/bNVDA, xStocks "… xStock"/NVDAx, Ondo
+// "… (Ondo Tokenized)"/NVDAon; the dry run prints which one matched):
 //   npx tsx scripts/import-lifi-assets.ts --stocks --chain=base                    # dry run: every LI.FI-verified stock
 //   npx tsx scripts/import-lifi-assets.ts --stocks --chain=base --only=TSLAx,NVDAx --apply
 // --apply in stock mode requires --only: the owner names, from the dry run,
@@ -104,7 +106,7 @@ async function importStocks(chain: LiFiImportTargetChain, apply: boolean) {
   console.log(`\nLI.FI-verified stocks${only.length > 0 ? ' (requested)' : ''}: ${candidates.length}`);
   for (const c of candidates) {
     const cap = c.marketCapUSD === null ? 'mcap —' : `mcap $${Math.round(c.marketCapUSD).toLocaleString('en-US')}`;
-    console.log(`  ${c.symbol.padEnd(10)} ${c.address}  dec ${String(c.decimals).padEnd(2)}  ${cap.padEnd(22)} price ${c.priceUSD ?? '—'}  ${c.name}`);
+    console.log(`  ${c.symbol.padEnd(10)} ${c.address}  dec ${String(c.decimals).padEnd(2)}  ${cap.padEnd(22)} price ${c.priceUSD ?? '—'}  [${c.signal}] ${c.name}`);
   }
   const notRequested = skipped.filter((s) => s.reason === 'NOT_REQUESTED').length;
   const rejected = skipped.filter((s) => s.reason !== 'NOT_REQUESTED');

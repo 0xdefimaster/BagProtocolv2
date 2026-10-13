@@ -416,7 +416,7 @@ describe('fetchLiFiStockCandidatesForChain (tokenized stocks on ethereum / base 
       ['NVDAx', '0xbbb', 'stock', 'base'],
       ['TSLAx', '0xaaa', 'stock', 'base'],
     ]);
-    expect(r.candidates.find((c) => c.symbol === 'TSLAx')).toMatchObject({ marketCapUSD: 1234567.8, priceUSD: '412.5', decimals: 18, name: 'Tesla xStock' });
+    expect(r.candidates.find((c) => c.symbol === 'TSLAx')).toMatchObject({ marketCapUSD: 1234567.8, priceUSD: '412.5', decimals: 18, name: 'Tesla xStock', signal: 'rwa' });
     expect(Object.fromEntries(r.skipped.map((s) => [s.address, s.reason]))).toEqual({
       '0xccc': 'UNVERIFIED_BY_LIFI',
       '0xddd': 'FLAGGED_BY_LIFI',
@@ -424,6 +424,30 @@ describe('fetchLiFiStockCandidatesForChain (tokenized stocks on ethereum / base 
       '0xe02': 'AMBIGUOUS_SYMBOL',
       '0x0000000000000000000000000000000000000000': 'NATIVE_TOKEN',
     });
+  });
+
+  it('recognises Backed / xStocks / Ondo tokens LI.FI does not tag rwa, only when both name and symbol follow the issuer scheme', async () => {
+    const plain = (o: Record<string, unknown>) => ({ decimals: 18, tags: [], verificationStatus: 'verified', ...o });
+    getTokensMock.mockResolvedValue({
+      tokens: {
+        42161: [
+          plain({ address: '0xb01', symbol: 'bNVDA', name: 'Backed NVIDIA Corp' }),
+          plain({ address: '0xb02', symbol: 'NVDAon', name: 'NVIDIA (Ondo Tokenized)' }),
+          plain({ address: '0xb03', symbol: 'AAPLx', name: 'Apple xStock' }),
+          plain({ address: '0xb04', symbol: 'BNVDA', name: 'Backed NVIDIA Corp' }), // symbol off-scheme
+          plain({ address: '0xb05', symbol: 'bFAKE', name: 'NVIDIA Backed by nothing' }), // name off-scheme
+          plain({ address: '0xb06', symbol: 'bTSLA', name: 'Backed Tesla Inc', verificationStatus: 'unverified' }),
+          plain({ address: '0xb07', symbol: 'NVITREK', name: 'NVITREK' }),
+        ],
+      },
+    });
+    const r = await fetchLiFiStockCandidatesForChain('arbitrum');
+    expect(r.candidates.map((c) => [c.symbol, c.address, c.signal, c.assetType])).toEqual([
+      ['AAPLx', '0xb03', 'xstock', 'stock'],
+      ['bNVDA', '0xb01', 'backed', 'stock'],
+      ['NVDAon', '0xb02', 'ondo', 'stock'],
+    ]);
+    expect(r.skipped).toEqual([{ symbol: 'bTSLA', address: '0xb06', name: 'Backed Tesla Inc', reason: 'UNVERIFIED_BY_LIFI' }]);
   });
 
   it('--only keeps just the requested symbols (case-insensitive); the rest are NOT_REQUESTED', async () => {
