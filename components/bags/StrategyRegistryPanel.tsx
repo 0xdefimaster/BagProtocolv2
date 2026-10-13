@@ -14,6 +14,9 @@ import { useRegistryBrowserVerification } from '@/hooks/use-registry-browser-ver
 // panel does exactly that in the viewer's browser with the SDK: each registered
 // version gets an independent "verified in your browser" result. The creator
 // can register what is missing from their own wallet; nobody else sees the button.
+// "Weights on-chain": the version's allocations are also published to
+// StrategyCompositions (docs/STRATEGY_COMPOSITIONS_DESIGN.md), so any app or
+// contract can read the assets and weights, not only the hash.
 // -----------------------------------------------------------------------------
 
 interface Status {
@@ -23,8 +26,9 @@ interface Status {
   chain?: string;
   creatorWallet?: string | null;
   registryStrategyId: string | null;
-  versions: { version: number; definitionHash: string; registered: boolean; txHash: string | null }[];
+  versions: { version: number; definitionHash: string; registered: boolean; txHash: string | null; compositionPublished?: boolean }[];
   fork: { parentStrategyId: string; parentVersion: number | null } | null;
+  compositionPending?: boolean;
 }
 
 export function StrategyRegistryPanel({ bagId }: { bagId: string }) {
@@ -78,6 +82,11 @@ export function StrategyRegistryPanel({ bagId }: { bagId: string }) {
                 <span className="inline-flex items-center gap-1 text-emerald-400">
                   <CheckCircle2 size={14} /> Registered
                 </span>
+                {v.compositionPublished && (
+                  <span className="inline-flex items-center gap-1 text-emerald-300 text-xs" title="Assets and weights are readable on-chain (StrategyCompositions)">
+                    <CheckCircle2 size={12} /> Weights on-chain
+                  </span>
+                )}
                 <BrowserBadge check={browserCheck(v.version)} checking={checking} />
               </span>
             ) : (
@@ -102,7 +111,7 @@ export function StrategyRegistryPanel({ bagId }: { bagId: string }) {
           Fork of {status.fork.parentStrategyId.slice(0, 8)}… {status.fork.parentVersion ? `v${status.fork.parentVersion}` : '(parent version not recorded)'}
         </p>
       )}
-      {status.viewerIsCreator && missing.length > 0 && (
+      {status.viewerIsCreator && (missing.length > 0 || status.compositionPending) && (
         <>
           {!isConnected || !walletAddress ? (
             <button onClick={() => connect()} className="btn btn-primary">Connect wallet</button>
@@ -113,7 +122,9 @@ export function StrategyRegistryPanel({ bagId }: { bagId: string }) {
                   <Loader2 size={14} className="spin" /> {phase === 'awaiting_signature' ? `Confirm in your wallet — ${step ?? ''}` : phase === 'confirming' ? 'Verifying on-chain…' : 'Preparing…'}
                 </span>
               ) : (
-                `Register ${missing.length === 1 ? `v${missing[0].version}` : `${missing.length} versions`} on-chain`
+                missing.length > 0
+                  ? `Register ${missing.length === 1 ? `v${missing[0].version}` : `${missing.length} versions`} on-chain`
+                  : `Publish v${registered[registered.length - 1]?.version ?? ''} weights on-chain`
               )}
             </button>
           )}
