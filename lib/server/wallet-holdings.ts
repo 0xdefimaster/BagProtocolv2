@@ -2,15 +2,17 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { erc20Abi, formatUnits, parseUnits, type PublicClient } from 'viem';
 import { CanonicalAsset } from '@/types/basket-protocol';
 import { ComposerFallbackNotice, MAX_ACCEPTABLE_PRICE_IMPACT_BPS, PRICE_IMPACT_ACCEPT_BUFFER_BPS } from '@/types/purchase-intent';
-import { ROBINHOOD_CHAIN_ID, ROBINHOOD_REWARD_TOKEN } from '@/lib/config/robinhood-chain';
+import { BAG_CHAINS, type BagChain } from '@/lib/config/chains';
 import { listAssets } from '@/lib/server/asset-repo';
 import { PriceProvider } from '@/lib/domain/basket-protocol/pricing/provider';
 import { buildComposerSweep, sweepNodeId } from '@/lib/blockchain/lifi-composer-adapter';
 import { DEFAULT_COMPOSER_SLIPPAGE_BPS, parseComposerFallback } from '@/lib/blockchain/lifi-purchase-quote';
 
 // -----------------------------------------------------------------------------
-// The connected wallet's own tokens on Robinhood Chain, and selling any of
-// them to USDG in one transaction (a "dust sweeper").
+// The connected wallet's own tokens on each BAG chain (Robinhood Chain,
+// Ethereum, Arbitrum, Base), and selling any of them on that chain for its
+// stablecoin (BAG_CHAINS[chain].sweepOutputToken: USDG on Robinhood Chain,
+// USDC elsewhere) in one transaction (a "dust sweeper"). One chain per sale.
 //
 // Balances come straight from the chain: `balanceOf` on every VERIFIED
 // registry asset (the same list Create/Invest use), through the app's own
@@ -47,6 +49,7 @@ export interface WalletTokenBalance {
 
 export interface WalletHoldings {
   walletAddress: string;
+  chain: BagChain;
   chainId: number;
   nativeBalance: string;
   tokens: WalletTokenBalance[];
@@ -88,21 +91,23 @@ export async function getWalletHoldings(
   admin: SupabaseClient,
   client: PublicClient,
   priceProvider: PriceProvider,
-  walletAddress: string
+  walletAddress: string,
+  chain: BagChain = 'robinhood'
 ): Promise<WalletHoldings> {
   const owner = walletAddress as `0x${string}`;
-  const assets = (await listAssets(admin, { chain: 'robinhood', status: 'VERIFIED' })).filter((a) => /^0x[0-9a-fA-F]{40}$/.test(a.address));
+  const cfg = BAG_CHAINS[chain];
+  const assets = (await listAssets(admin, { chain, status: 'VERIFIED' })).filter((a) => /^0x[0-9a-fA-F]{40}$/.test(a.address));
   const [balances, native] = await Promise.all([readBalances(client, owner, assets), client.getBalance({ address: owner })]);
 
   const held = assets.map((asset, i) => ({ asset, raw: balances[i] })).filter((h) => h.raw > BigInt(0));
-  const output = ROBINHOOD_REWARD_TOKEN.address.toLowerCase();
+  const output = cfg.sweepOutputToken.address.toLowerCase();
   const tokens = await Promise.all(
     held.map(async ({ asset, raw }): Promise<WalletTokenBalance> => {
       const balance = formatUnits(raw, asset.decimals);
       let priceUsd: string | null = null;
       let usdValue: string | null = null;
       try {
-        priceUsd = (await priceProvider.getPrice({ chain: 'robinhood', address: asset.address })).price;
+        priceUsd = (await priceProvider.getPrice({ chain, address: asset.address })).price;
         usdValue = usdValueOf(raw, asset.decimals, priceUsd);
       } catch {
         priceUsd = null;
@@ -127,14 +132,33 @@ export async function getWalletHoldings(
 
   return {
     walletAddress,
-    chainId: ROBINHOOD_CHAIN_ID,
-    nativeBalance: formatUnits(native, 18),
+    chain,
+    chainId: cfg.chainId,
+    nativeBalance: formatUnits(native, cfg.nativeCurrency.decimals),
     tokens,
-    outputToken: { address: ROBINHOOD_REWARD_TOKEN.address, symbol: ROBINHOOD_REWARD_TOKEN.symbol, decimals: ROBINHOOD_REWARD_TOKEN.decimals },
+    outputToken: { ...cfg.sweepOutputToken },
   };
 }
 
+export type ChainHoldingsResult = WalletHoldings | { chain: BagChain; chainId: number; error: string };
+
+/** Every chain's holdings, read in parallel; a chain that cannot be read reports its error instead of failing the rest. */
+export async function getWalletHoldingsAllChains(
+  admin: SupabaseClient,
+  clientFor: (chain: BagChain) => PublicClient,
+  priceProvider: PriceProvider,
+  walletAddress: string,
+  chains: readonly BagChain[]
+): Promise<ChainHoldingsResult[]> {
+  const settled = await Promise.allSettled(chains.map((chain) => getWalletHoldings(admin, clientFor(chain), priceProvider, walletAddress, chain)));
+  return settled.map((r, i) =>
+    r.status === 'fulfilled' ? r.value : { chain: chains[i], chainId: BAG_CHAINS[chains[i]].chainId, error: r.reason instanceof Error ? r.reason.message : String(r.reason) }
+  );
+}
+
 export interface SweepQuoteRequest {
+  /** The chain the tokens are on and the sale happens on; Robinhood Chain when absent. */
+  chain?: BagChain;
   tokens: { address: string; amountRaw: string }[];
   acceptedPriceImpactBps?: number;
 }
@@ -172,8 +196,10 @@ export async function quoteWalletSweep(
   client: PublicClient,
   walletAddress: string,
   request: SweepQuoteRequest,
-  options: { apiKey: string | undefined; fetchImpl?: typeof fetch }
+  options: { apiKey: string | undefined; fetchImpl?: typeof fetch },
+  chain: BagChain = 'robinhood'
 ): Promise<SweepQuoteResult> {
+  const cfg = BAG_CHAINS[chain];
   if (!options.apiKey) return { ok: false, status: 503, error: 'Selling is not configured on this deployment (LIFI_API_KEY).' };
   if (!Array.isArray(request.tokens) || request.tokens.length === 0) return { ok: false, status: 400, error: 'Pick at least one token to sell.' };
   if (request.tokens.length > MAX_SWEEP_TOKENS) return { ok: false, status: 400, error: `At most ${MAX_SWEEP_TOKENS} tokens per sale.` };
@@ -183,9 +209,9 @@ export async function quoteWalletSweep(
 
   // Only registry tokens, never the output token, each at most what the wallet holds right now.
   const registry = new Map(
-    (await listAssets(admin, { chain: 'robinhood', status: 'VERIFIED' })).map((a) => [a.address.toLowerCase(), a] as const)
+    (await listAssets(admin, { chain, status: 'VERIFIED' })).map((a) => [a.address.toLowerCase(), a] as const)
   );
-  const output = ROBINHOOD_REWARD_TOKEN.address.toLowerCase();
+  const output = cfg.sweepOutputToken.address.toLowerCase();
   const seen = new Set<string>();
   const picked: { asset: CanonicalAsset; amountRaw: string }[] = [];
   for (const t of request.tokens) {
@@ -217,9 +243,9 @@ export async function quoteWalletSweep(
   let compiled;
   try {
     compiled = await buildComposerSweep({
-      chain: 'robinhood',
+      chain,
       inputs: picked.map((p) => ({ address: p.asset.address, amountRaw: p.amountRaw, symbol: p.asset.symbol })),
-      outputTokenAddress: ROBINHOOD_REWARD_TOKEN.address,
+      outputTokenAddress: cfg.sweepOutputToken.address,
       signerAddress: walletAddress,
       slippageBps: DEFAULT_COMPOSER_SLIPPAGE_BPS,
       apiKey: options.apiKey,
@@ -255,11 +281,11 @@ export async function quoteWalletSweep(
       to: compiled.transactionRequest.to,
       data: compiled.transactionRequest.data,
       value: compiled.transactionRequest.value,
-      chainId: compiled.transactionRequest.chainId ?? ROBINHOOD_CHAIN_ID,
+      chainId: compiled.transactionRequest.chainId ?? cfg.chainId,
     },
     approvals: compiled.approvals,
     legs,
-    outputToken: { address: ROBINHOOD_REWARD_TOKEN.address, symbol: ROBINHOOD_REWARD_TOKEN.symbol, decimals: ROBINHOOD_REWARD_TOKEN.decimals },
+    outputToken: { ...cfg.sweepOutputToken },
     expectedOutRaw: sumOrNull(legs.map((l) => l.expectedOutRaw)),
     minOutRaw: sumOrNull(legs.map((l) => l.minOutRaw)),
     priceImpactBps: compiled.priceImpact?.impactBps ?? null,

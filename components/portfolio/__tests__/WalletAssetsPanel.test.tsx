@@ -10,6 +10,7 @@ import { WalletAssetsPanel } from '../WalletAssetsPanel';
 const WALLET = '0x49da000000000000000000000000000000fe46';
 const holdings = {
   walletAddress: WALLET,
+  chain: 'robinhood',
   chainId: 4663,
   nativeBalance: '0.02',
   outputToken: { address: '0xUSDG', symbol: 'USDG', decimals: 6 },
@@ -17,6 +18,24 @@ const holdings = {
     { address: '0xAAPL', symbol: 'AAPL', name: 'Apple', decimals: 18, assetType: 'stock', logoUrl: null, balanceRaw: '500000000000000000', balance: '0.5', priceUsd: '230.5', usdValue: '115.25', sellable: true },
     { address: '0xUSDG', symbol: 'USDG', name: 'Global Dollar', decimals: 6, assetType: 'crypto', logoUrl: null, balanceRaw: '2500000', balance: '2.5', priceUsd: '1', usdValue: '2.5', sellable: false },
     { address: '0xDOGE', symbol: 'DOGE', name: 'Doge', decimals: 8, assetType: 'crypto', logoUrl: null, balanceRaw: '1000000000', balance: '10', priceUsd: null, usdValue: null, sellable: true },
+  ],
+};
+const baseHoldings = {
+  walletAddress: WALLET,
+  chain: 'base',
+  chainId: 8453,
+  nativeBalance: '0.001',
+  outputToken: { address: '0xUSDC', symbol: 'USDC', decimals: 6 },
+  tokens: [
+    { address: '0xWETH', symbol: 'WETH', name: 'Wrapped Ether', decimals: 18, assetType: 'crypto', logoUrl: null, balanceRaw: '1000000000000000', balance: '0.001', priceUsd: '3000', usdValue: '3', sellable: true },
+  ],
+};
+const allChains = {
+  chains: [
+    { chain: 'ethereum', chainId: 1, error: 'rpc down' },
+    { ...baseHoldings, chain: 'arbitrum', chainId: 42161, tokens: [] },
+    baseHoldings,
+    holdings,
   ],
 };
 const quote = {
@@ -38,7 +57,7 @@ const ok = (body: unknown, status = 200) => ({ ok: status < 400, status, json: a
 beforeEach(() => {
   executeWalletSweep.mockReset();
   fetchMock = vi.fn(async (url: string) => {
-    if (url === '/api/wallet/holdings') return ok(holdings);
+    if (url === '/api/wallet/holdings?chain=all') return ok(allChains);
     if (url === '/api/wallet/sweep-quote') return ok(quote);
     throw new Error('unexpected ' + url);
   });
@@ -70,6 +89,7 @@ describe('WalletAssetsPanel', () => {
 
     const quoteCall = fetchMock.mock.calls.find((c) => c[0] === '/api/wallet/sweep-quote')!;
     expect(JSON.parse(String((quoteCall[1] as RequestInit).body))).toEqual({
+      chain: 'robinhood',
       tokens: [
         { address: '0xAAPL', amountRaw: '500000000000000000' },
         { address: '0xDOGE', amountRaw: '1000000000' },
@@ -89,7 +109,7 @@ describe('WalletAssetsPanel', () => {
 
   it('a price-impact refusal asks for consent and re-quotes with the accepted impact', async () => {
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === '/api/wallet/holdings') return ok(holdings);
+      if (url === '/api/wallet/holdings?chain=all') return ok(allChains);
       const body = JSON.parse(String(init?.body));
       if (body.acceptedPriceImpactBps === undefined) {
         return ok({ error: 'impact', composerFallback: { reason: 'PRICE_IMPACT', message: 'Price impact 820 bps exceeds maximum 500 bps', priceImpactBps: 820, maxPriceImpactBps: 500, inputUsd: null, outputUsd: null } }, 422);
@@ -111,5 +131,31 @@ describe('WalletAssetsPanel', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm sale' })).toBeTruthy());
     const last = fetchMock.mock.calls.filter((c) => c[0] === '/api/wallet/sweep-quote').pop()!;
     expect(JSON.parse(String((last[1] as RequestInit).body))).toMatchObject({ tokens: [{ address: '0xAAPL' }], acceptedPriceImpactBps: 820 });
+  });
+
+  it('one tab per network with its total; opens the chain holding the most value; a chain that cannot be read says so', async () => {
+    render(<WalletAssetsPanel walletAddress={WALLET} />);
+    await screen.findByText('Apple');
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.map((t) => t.textContent)).toEqual(['Ethereum—', 'Arbitrum One$0.00', 'Base$3.00', 'Robinhood Chain$117.75']);
+    expect(screen.getByRole('tab', { name: /Robinhood Chain/ }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByText(/All networks \$120.75/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: /Ethereum/ }));
+    expect(screen.getByText(/Could not read your wallet on Ethereum: rpc down/)).toBeTruthy();
+    expect(screen.getByText(/Network fees on Ethereum can be higher/)).toBeTruthy();
+  });
+
+  it('on Base it sells for USDC and sends the chain with the quote request', async () => {
+    render(<WalletAssetsPanel walletAddress={WALLET} />);
+    await screen.findByText('Apple');
+    fireEvent.click(screen.getByRole('tab', { name: /Base/ }));
+    expect(screen.getByText('Wrapped Ether')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Select WETH'));
+    expect(screen.getByRole('button', { name: /Sell selected \(1\).*→ USDC/ })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Sell selected \(1\)/ }));
+    });
+    const quoteCall = fetchMock.mock.calls.find((c) => c[0] === '/api/wallet/sweep-quote')!;
+    expect(JSON.parse(String((quoteCall[1] as RequestInit).body))).toMatchObject({ chain: 'base', tokens: [{ address: '0xWETH' }] });
   });
 });

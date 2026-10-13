@@ -14,20 +14,26 @@ function asset(address: string, symbol: string, decimals: number, assetType: 'st
 }
 const registry = [asset(USDG, 'USDG', 6), asset(AAPL, 'AAPL', 18, 'stock'), asset(DOGE, 'DOGE', 8), asset(NONE, 'NONE', 18)];
 
-vi.mock('@/lib/server/asset-repo', () => ({ listAssets: vi.fn(async () => registry) }));
+const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+const BASE_WETH = '0x00000000000000000000000000000000000000b4';
+const baseRegistry = [{ ...asset(BASE_USDC, 'USDC', 6), chain: 'base' as const }, { ...asset(BASE_WETH, 'WETH', 18), chain: 'base' as const }];
+const listAssets = vi.fn(async (_admin: unknown, filter: { chain: string }) => (filter.chain === 'base' ? baseRegistry : filter.chain === 'robinhood' ? registry : []));
+vi.mock('@/lib/server/asset-repo', () => ({ listAssets: (...a: [unknown, { chain: string }]) => listAssets(...a) }));
 const buildComposerSweep = vi.fn();
 vi.mock('@/lib/blockchain/lifi-composer-adapter', () => ({
   buildComposerSweep: (...args: unknown[]) => buildComposerSweep(...args),
   sweepNodeId: (i: number) => `sweep_${i}`,
 }));
 
-import { getWalletHoldings, quoteWalletSweep, usdValueOf } from '../wallet-holdings';
+import { getWalletHoldings, getWalletHoldingsAllChains, quoteWalletSweep, usdValueOf } from '../wallet-holdings';
 
 const balances: Record<string, bigint> = {
   [USDG.toLowerCase()]: BigInt(2_500_000), // 2.5 USDG
   [AAPL]: BigInt('500000000000000000'), // 0.5 AAPL
   [DOGE]: BigInt(1_000_000_000), // 10 DOGE
   [NONE]: BigInt(0),
+  [BASE_USDC.toLowerCase()]: BigInt(4_000_000), // 4 USDC
+  [BASE_WETH]: BigInt('1000000000000000'), // 0.001 WETH
 };
 
 function fakeClient(opts: { multicall?: boolean } = {}) {
@@ -126,3 +132,31 @@ describe('quoteWalletSweep', () => {
     expect(buildComposerSweep.mock.calls[1][0]).toMatchObject({ maxPriceImpactBps: 920 });
   });
 });
+
+describe('other chains', () => {
+  it('reads the chain\'s own registry and marks its stablecoin (USDC on Base) as the receive token', async () => {
+    const { client } = fakeClient();
+    const h = await getWalletHoldings(admin, client, priceProvider, WALLET, 'base');
+    expect(h).toMatchObject({ chain: 'base', chainId: 8453, outputToken: { address: BASE_USDC, symbol: 'USDC', decimals: 6 } });
+    expect(h.tokens.map((t) => [t.symbol, t.sellable])).toEqual(expect.arrayContaining([['USDC', false], ['WETH', true]]));
+    expect(priceProvider.getPrice).toHaveBeenCalledWith({ chain: 'base', address: BASE_WETH });
+  });
+
+  it('a sale on Base is compiled on Base, into USDC, and only for Base registry tokens', async () => {
+    buildComposerSweep.mockResolvedValue({ transactionRequest: { to: '0xVM', data: '0x', value: '0', chainId: 8453 }, approvals: [], producedResources: {}, priceImpact: null });
+    const r = await quoteWalletSweep(admin, fakeClient().client, WALLET, { tokens: [{ address: BASE_WETH, amountRaw: '1000000000000000' }] }, { apiKey: 'k' }, 'base');
+    expect(r).toMatchObject({ ok: true, transaction: { chainId: 8453 }, outputToken: { symbol: 'USDC' } });
+    expect(buildComposerSweep.mock.calls[0][0]).toMatchObject({ chain: 'base', outputTokenAddress: BASE_USDC });
+    // A Robinhood token is unknown on Base; USDC is what you receive there.
+    expect(await quoteWalletSweep(admin, fakeClient().client, WALLET, { tokens: [{ address: AAPL, amountRaw: '1' }] }, { apiKey: 'k' }, 'base')).toMatchObject({ ok: false, status: 400 });
+    expect(await quoteWalletSweep(admin, fakeClient().client, WALLET, { tokens: [{ address: BASE_USDC, amountRaw: '1' }] }, { apiKey: 'k' }, 'base')).toMatchObject({ ok: false, status: 400 });
+  });
+
+  it('all chains: each read independently; one failing chain reports its error and the others still load', async () => {
+    const good = fakeClient().client;
+    const bad = { ...fakeClient().client, getBalance: vi.fn(async () => { throw new Error('rpc down'); }) } as unknown as PublicClient;
+    const r = await getWalletHoldingsAllChains(admin, (c) => (c === 'ethereum' ? bad : good), priceProvider, WALLET, ['ethereum', 'base', 'robinhood']);
+    expect(r.map((x) => [x.chain, 'error' in x ? x.error : 'ok'])).toEqual([['ethereum', 'rpc down'], ['base', 'ok'], ['robinhood', 'ok']]);
+  });
+});
+
