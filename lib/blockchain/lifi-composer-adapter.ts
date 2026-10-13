@@ -228,7 +228,7 @@ async function compileNamingFailedLegs<T extends { status: string; error?: unkno
   } catch (err) {
     const named = describeFailedComposerLegs(err, nodeIdOf, symbols);
     if (named === null) throw err;
-    throw new Error(`${named} (${err instanceof Error ? err.message : String(err)})`);
+    throw new Error(`${named} (${err instanceof Error ? err.message : String(err)})`, { cause: err });
   }
   if (result.status !== 'success') {
     const named = describeFailedComposerLegs(result.error, nodeIdOf, symbols);
