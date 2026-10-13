@@ -6,7 +6,13 @@ import { BAG_CHAINS, type BagChain } from '@/lib/config/chains';
 import { NATIVE_ASSET_ADDRESS } from '@/lib/domain/basket-protocol/asset-identity';
 import { listAssets } from '@/lib/server/asset-repo';
 import { PriceProvider } from '@/lib/domain/basket-protocol/pricing/provider';
-import { buildComposerSweep, sweepNodeId } from '@/lib/blockchain/lifi-composer-adapter';
+import {
+  buildComposerPurchase,
+  buildComposerSweep,
+  composerLegEnforcedMinOutputRaw,
+  composerLegSimulatedOutputRaw,
+  sweepNodeId,
+} from '@/lib/blockchain/lifi-composer-adapter';
 import { DEFAULT_COMPOSER_SLIPPAGE_BPS, parseComposerFallback } from '@/lib/blockchain/lifi-purchase-quote';
 
 // -----------------------------------------------------------------------------
@@ -310,3 +316,125 @@ export async function quoteWalletSweep(
     priceImpactBps: compiled.priceImpact?.impactBps ?? null,
   };
 }
+
+// -----------------------------------------------------------------------------
+// Buying: one or several registry tokens on one chain, paid with ETH (no
+// approval, one signature) or the chain's stablecoin, in ONE Composer
+// transaction (the same flow a Bag purchase uses). The bought tokens land in
+// the same wallet. Not tied to any Bag and never touches Bag accounting.
+// -----------------------------------------------------------------------------
+
+export interface BuyQuoteRequest {
+  chain?: BagChain;
+  /** NATIVE (ETH, default): no approval. STABLE: the chain's stablecoin, one exact approval. */
+  pay?: SweepReceive;
+  /** Total spend in the pay token's smallest unit. */
+  amountRaw: string;
+  /** What to buy and each one's share of the spend; shares sum to 10000 bps. */
+  buys: { address: string; weightBps: number }[];
+  acceptedPriceImpactBps?: number;
+}
+
+export type BuyQuoteResult =
+  | {
+      ok: true;
+      transaction: { to: string; data: string; value: string; chainId: number };
+      approvals: { token: string; spender: string; amountRaw: string }[];
+      payToken: { address: string; symbol: string; decimals: number; native: boolean };
+      amountRaw: string;
+      legs: { address: string; symbol: string; decimals: number; weightBps: number; expectedOutRaw: string | null; minOutRaw: string | null }[];
+      priceImpactBps: number | null;
+    }
+  | { ok: false; status: number; error: string; composerFallback?: ComposerFallbackNotice };
+
+export async function quoteWalletBuy(
+  admin: SupabaseClient,
+  client: PublicClient,
+  walletAddress: string,
+  request: BuyQuoteRequest,
+  options: { apiKey: string | undefined; fetchImpl?: typeof fetch },
+  chain: BagChain = 'robinhood'
+): Promise<BuyQuoteResult> {
+  const pay: SweepReceive = request.pay ?? 'NATIVE';
+  if (pay !== 'STABLE' && pay !== 'NATIVE') return { ok: false, status: 400, error: 'pay must be NATIVE or STABLE.' };
+  const payToken = sweepOutputFor(chain, pay);
+  if (!options.apiKey) return { ok: false, status: 503, error: 'Buying is not configured on this deployment (LIFI_API_KEY).' };
+  if (typeof request.amountRaw !== 'string' || !/^\d+$/.test(request.amountRaw) || BigInt(request.amountRaw) <= BigInt(0)) {
+    return { ok: false, status: 400, error: 'Enter an amount to spend.' };
+  }
+  if (!Array.isArray(request.buys) || request.buys.length === 0) return { ok: false, status: 400, error: 'Pick at least one token to buy.' };
+  if (request.buys.length > MAX_SWEEP_TOKENS) return { ok: false, status: 400, error: `At most ${MAX_SWEEP_TOKENS} tokens per purchase.` };
+  if (request.acceptedPriceImpactBps !== undefined && !(Number.isInteger(request.acceptedPriceImpactBps) && request.acceptedPriceImpactBps >= 0 && request.acceptedPriceImpactBps <= MAX_ACCEPTABLE_PRICE_IMPACT_BPS)) {
+    return { ok: false, status: 400, error: `Price impact above ${MAX_ACCEPTABLE_PRICE_IMPACT_BPS / 100}% cannot be accepted.` };
+  }
+
+  const registry = new Map((await listAssets(admin, { chain, status: 'VERIFIED' })).map((a) => [a.address.toLowerCase(), a] as const));
+  const seen = new Set<string>();
+  let total = 0;
+  const legs: { asset: CanonicalAsset; weightBps: number }[] = [];
+  for (const b of request.buys) {
+    const address = typeof b?.address === 'string' ? b.address.toLowerCase() : '';
+    const asset = registry.get(address);
+    if (!asset) return { ok: false, status: 400, error: `Unknown token ${String(b?.address)}.` };
+    if (!payToken.native && address === payToken.address.toLowerCase()) return { ok: false, status: 400, error: `${asset.symbol} is what you pay with.` };
+    if (seen.has(address)) return { ok: false, status: 400, error: `${asset.symbol} is listed twice.` };
+    if (!Number.isInteger(b.weightBps) || b.weightBps <= 0) return { ok: false, status: 400, error: `${asset.symbol}: invalid share.` };
+    seen.add(address);
+    total += b.weightBps;
+    legs.push({ asset, weightBps: b.weightBps });
+  }
+  if (total !== 10000) return { ok: false, status: 400, error: 'The shares must add up to 100%.' };
+
+  // The wallet must hold what it spends (for ETH, the network fee comes on top; the wallet's simulation catches a shortfall).
+  const owner = walletAddress as `0x${string}`;
+  const held = payToken.native
+    ? await client.getBalance({ address: owner })
+    : ((await client.readContract({ address: payToken.address as `0x${string}`, abi: erc20Abi, functionName: 'balanceOf', args: [owner] })) as bigint);
+  if (BigInt(request.amountRaw) > held) return { ok: false, status: 400, error: `Not enough ${payToken.symbol} in your wallet.` };
+
+  const maxPriceImpactBps =
+    request.acceptedPriceImpactBps !== undefined ? Math.min(request.acceptedPriceImpactBps + PRICE_IMPACT_ACCEPT_BUFFER_BPS, MAX_ACCEPTABLE_PRICE_IMPACT_BPS) : undefined;
+
+  let compiled;
+  try {
+    compiled = await buildComposerPurchase({
+      chain,
+      inputTokenAddress: payToken.address,
+      inputAmountRaw: request.amountRaw,
+      legs: legs.map((l) => ({ address: l.asset.address, weightBps: l.weightBps, symbol: l.asset.symbol })),
+      signerAddress: walletAddress,
+      slippageBps: DEFAULT_COMPOSER_SLIPPAGE_BPS,
+      apiKey: options.apiKey,
+      fetchImpl: options.fetchImpl,
+      ...(maxPriceImpactBps !== undefined ? { maxPriceImpactBps } : {}),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const notice = parseComposerFallback(message);
+    if (notice.reason === 'PRICE_IMPACT') return { ok: false, status: 422, error: 'The price impact of this purchase is above the limit.', composerFallback: notice };
+    return { ok: false, status: 502, error: `No route to buy these tokens right now: ${message}` };
+  }
+
+  return {
+    ok: true,
+    transaction: {
+      to: compiled.transactionRequest.to,
+      data: compiled.transactionRequest.data,
+      value: compiled.transactionRequest.value,
+      chainId: compiled.transactionRequest.chainId ?? BAG_CHAINS[chain].chainId,
+    },
+    approvals: compiled.approvals,
+    payToken,
+    amountRaw: request.amountRaw,
+    legs: legs.map((l, i) => ({
+      address: l.asset.address,
+      symbol: l.asset.symbol,
+      decimals: l.asset.decimals,
+      weightBps: l.weightBps,
+      expectedOutRaw: composerLegSimulatedOutputRaw(compiled.producedResources, i),
+      minOutRaw: composerLegEnforcedMinOutputRaw(compiled.producedResources, i),
+    })),
+    priceImpactBps: compiled.priceImpact?.impactBps ?? null,
+  };
+}
+
