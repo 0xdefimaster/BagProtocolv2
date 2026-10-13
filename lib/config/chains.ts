@@ -5,6 +5,7 @@ import {
   ROBINHOOD_EXPLORER_URL,
   ROBINHOOD_NATIVE_CURRENCY,
   ROBINHOOD_PUBLIC_RPC_URL,
+  ROBINHOOD_REWARD_TOKEN,
   ROBINHOOD_WETH_ADDRESS,
 } from './robinhood-chain';
 
@@ -51,6 +52,11 @@ export interface BagChainConfig {
    * never a token the purchase touches. Null: native payments are off there.
    */
   wrappedNativeAddress: string | null;
+  /**
+   * The stablecoin a wallet sweep sells into on this chain (Swap page, lib/server/wallet-holdings.ts):
+   * USDG on Robinhood Chain, Circle's native USDC on Ethereum, Arbitrum and Base.
+   */
+  sweepOutputToken: { address: string; symbol: string; decimals: number };
 }
 
 const ROBINHOOD_NATIVE = { name: 'Ether', ...ROBINHOOD_NATIVE_CURRENCY };
@@ -76,6 +82,7 @@ export const BAG_CHAINS: Record<BagChain, BagChainConfig> = {
     viemChain: mainnet,
     // Canonical WETH9 on Ethereum mainnet.
     wrappedNativeAddress: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
+    sweepOutputToken: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', decimals: 6 },
   },
   arbitrum: {
     chain: 'arbitrum',
@@ -88,6 +95,8 @@ export const BAG_CHAINS: Record<BagChain, BagChainConfig> = {
     supportedAssetTypes: ['CRYPTO'],
     viemChain: arbitrum,
     wrappedNativeAddress: null,
+    // Native USDC (not the bridged USDC.e).
+    sweepOutputToken: { address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', symbol: 'USDC', decimals: 6 },
   },
   base: {
     chain: 'base',
@@ -100,6 +109,7 @@ export const BAG_CHAINS: Record<BagChain, BagChainConfig> = {
     supportedAssetTypes: ['CRYPTO'],
     viemChain: base as unknown as Chain,
     wrappedNativeAddress: null,
+    sweepOutputToken: { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', decimals: 6 },
   },
   robinhood: {
     chain: 'robinhood',
@@ -112,6 +122,7 @@ export const BAG_CHAINS: Record<BagChain, BagChainConfig> = {
     supportedAssetTypes: ['CRYPTO', 'STOCK_TOKEN'],
     viemChain: robinhoodViemChain,
     wrappedNativeAddress: ROBINHOOD_WETH_ADDRESS,
+    sweepOutputToken: { address: ROBINHOOD_REWARD_TOKEN.address, symbol: ROBINHOOD_REWARD_TOKEN.symbol, decimals: ROBINHOOD_REWARD_TOKEN.decimals },
   },
 };
 

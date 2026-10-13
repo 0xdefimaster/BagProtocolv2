@@ -84,4 +84,16 @@ describe('buildComposerSweep', () => {
     await buildComposerSweep({ ...base, inputs: twoInputs, maxPriceImpactBps: 800, fetchImpl });
     expect(String((fetchImpl as unknown as { mock: { calls: [unknown, RequestInit][] } }).mock.calls[0][1].body)).toContain('"maxPriceImpactBps":800');
   });
+
+  it('native output: every swap sells into the chain\'s native token, the stablecoin can be an input, and no ETH is sent in', async () => {
+    const fetchImpl = composeFetch();
+    const result = await buildComposerSweep({ ...base, nativeOutput: true, inputs: [...twoInputs, { address: USDG, amountRaw: '3000', symbol: 'USDG' }], fetchImpl });
+    const sent = JSON.parse(String((fetchImpl as unknown as { mock: { calls: [unknown, RequestInit][] } }).mock.calls[0][1].body));
+    const swaps = (sent.flow?.nodes ?? sent.nodes ?? []).filter((n: { id: string }) => n.id.startsWith('sweep_'));
+    expect(swaps).toHaveLength(3);
+    for (const n of swaps) expect(JSON.stringify(n.config.resourceOut)).toMatch(/native/);
+    expect(JSON.stringify(sent).toLowerCase()).not.toContain(`"token":"${USDG.toLowerCase()}","chainid":4663},"slippage"`);
+    expect(result.transactionRequest.value).toBe('0');
+  });
 });
+

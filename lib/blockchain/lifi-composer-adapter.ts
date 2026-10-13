@@ -408,7 +408,10 @@ export interface ComposerSweepInput {
 export interface ComposerSweepRequest {
   chain: ChainId;
   inputs: ComposerSweepInput[];
+  /** ERC-20 every input is sold into; ignored when `nativeOutput` is set. */
   outputTokenAddress: string;
+  /** Sell into the chain's native token (ETH) instead of `outputTokenAddress`. */
+  nativeOutput?: boolean;
   signerAddress: string;
   slippageBps: number;
   maxPriceImpactBps?: number;
@@ -426,11 +429,11 @@ export async function buildComposerSweep(request: ComposerSweepRequest): Promise
   if (!COMPOSER_ELIGIBLE_CHAINS.includes(request.chain) || request.inputs.length === 0) {
     throw new ComposerIneligibleError(`Chain "${request.chain}" with ${request.inputs.length} token(s) cannot be swept through Composer.`);
   }
-  const output = request.outputTokenAddress.toLowerCase();
+  const output = request.nativeOutput ? null : request.outputTokenAddress.toLowerCase();
   const seen = new Set<string>();
   for (const input of request.inputs) {
     const address = input.address.toLowerCase();
-    if (address === output) throw new Error(`${input.symbol} is the output token; it cannot also be sold.`);
+    if (output !== null && address === output) throw new Error(`${input.symbol} is the output token; it cannot also be sold.`);
     if (seen.has(address)) throw new Error(`${input.symbol} is listed twice.`);
     if (!/^\d+$/.test(input.amountRaw) || BigInt(input.amountRaw) <= BigInt(0)) throw new Error(`${input.symbol}: amount must be a positive integer.`);
     seen.add(address);
@@ -453,7 +456,10 @@ export async function buildComposerSweep(request: ComposerSweepRequest): Promise
   request.inputs.forEach((_input, i) => {
     builder.lifi.swap(sweepNodeId(i), {
       bind: { amountIn: builderInputs[`in_${i}`] },
-      config: { resourceOut: { kind: 'erc20', token: request.outputTokenAddress as `0x${string}`, chainId }, slippage },
+      config: {
+        resourceOut: request.nativeOutput ? resources.native(chainId) : { kind: 'erc20', token: request.outputTokenAddress as `0x${string}`, chainId },
+        slippage,
+      },
       guards: [guards.slippage({ port: 'unspentIn', bps: request.slippageBps })],
     });
   });
