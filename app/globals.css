@@ -699,3 +699,9 @@ section.thesis { padding-top: 8px; padding-bottom: 24px; } /* longhands: the sho
 .theme-toggle:hover { color: var(--gold); border-color: var(--gold); }
 /* The gold logo mark is drawn for a dark background; give it contrast on off-white. */
 :root[data-theme='light'] .brand img { filter: brightness(0.62) contrast(1.25) drop-shadow(0 0 1px rgba(28, 25, 19, 0.25)); }
+
+/* Swap page: the three steps above the wallet panel. */
+.swap-steps { list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.swap-steps .swap-step-t { font-family: var(--font-jost), sans-serif; font-weight: 500; font-size: 18px; margin-top: 6px; color: var(--ink); }
+.swap-steps .swap-step-b { font-size: 13px; color: var(--ink-soft); margin-top: 4px; line-height: 1.5; }
+@media (max-width: 720px) { .swap-steps { grid-template-columns: 1fr; } }
