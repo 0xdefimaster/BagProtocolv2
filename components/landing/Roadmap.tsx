@@ -28,6 +28,28 @@ interface Day {
 
 const SHIPPED: Day[] = [
   {
+    date: '2026-10-13',
+    title: 'Multi-buy, multi-sell and on-chain fork royalties',
+    summary: 'Buy or sell many tokens in one transaction on four networks; forks pay their original creator on-chain.',
+    items: [
+      {
+        t: 'Swap: multi-buy and multi-sell',
+        b: 'One payment buys several tokens, or several wallet tokens sell for one, in a single transaction. Paying with ETH needs no approval: one signature. Works best with MetaMask.',
+        prs: [75, 77, 78],
+      },
+      {
+        t: 'Four networks',
+        b: 'Swap reads your wallet on Robinhood Chain, Ethereum, Arbitrum and Base, and sells into USDG, USDC or ETH. ETH payments are accepted on all four.',
+        prs: [76, 77],
+      },
+      {
+        t: 'Fork royalty paid on-chain',
+        b: 'A fork pays its root creator 20% of its performance fee in the same sale transaction, through the new RedeemSettlement on Robinhood Chain. The investor pays nothing extra. Not yet proven with a live fork sale.',
+        prs: [73],
+      },
+    ],
+  },
+  {
     date: '2026-10-12',
     title: 'One-click rebalance and accounting you can trust',
     summary: 'Positions can be brought back to their strategy in one signature; returns now follow prices only.',
@@ -196,8 +218,13 @@ const SHIPPED: Day[] = [
 const NEXT = [
   {
     tag: 'IN PROGRESS',
-    t: 'Fork royalty paid on-chain',
-    b: 'A fork pays its root creator 20% of its performance fee in the sale transaction. The new RedeemSettlement is deployed on Robinhood Chain; it is switched on next, then proven with a live fork sale.',
+    t: 'Bags on Ethereum, Arbitrum and Base',
+    b: 'BagFactory is being deployed on the three networks so strategies can be created there too; performance fees stay on Robinhood Chain until settlement works elsewhere.',
+  },
+  {
+    tag: 'COMING NEXT',
+    t: 'Fork royalty, proven live',
+    b: 'Run a gain-bearing sale of a fork with a fee and verify that 20% reaches the root creator and the rest the fork creator, in one transaction.',
   },
   {
     tag: 'IN PROGRESS',
