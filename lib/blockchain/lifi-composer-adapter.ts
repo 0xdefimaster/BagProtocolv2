@@ -194,6 +194,50 @@ function buildLegNodeId(index: number): string {
 }
 
 /**
+ * Composer reports a `preparation_error` with the ops that failed
+ * (`failedOps`, on the thrown error or on `result.error`). This names the
+ * legs behind them, e.g. "GRT: no quote; STG: no quote", so the user sees
+ * which token to remove. Returns null when no failed op maps to a leg.
+ */
+export function describeFailedComposerLegs(
+  source: unknown,
+  nodeIdOf: (index: number) => string,
+  symbols: readonly string[]
+): string | null {
+  const failedOps = (source as { failedOps?: unknown } | null)?.failedOps;
+  if (!Array.isArray(failedOps)) return null;
+  const parts: string[] = [];
+  for (const op of failedOps as { callId?: unknown; path?: unknown; message?: unknown }[]) {
+    const where = `${typeof op.callId === 'string' ? op.callId : ''} ${typeof op.path === 'string' ? op.path : ''}`;
+    const index = symbols.findIndex((_, i) => new RegExp(`\\b${nodeIdOf(i)}\\b`).test(where));
+    if (index === -1) continue;
+    parts.push(typeof op.message === 'string' && op.message ? `${symbols[index]}: ${op.message}` : symbols[index]);
+  }
+  return parts.length > 0 ? parts.join('; ') : null;
+}
+
+/** `builder.compile`, with a failed op named by its token (see `describeFailedComposerLegs`). */
+async function compileNamingFailedLegs<T extends { status: string; error?: unknown }>(
+  compile: () => Promise<T>,
+  nodeIdOf: (index: number) => string,
+  symbols: readonly string[]
+): Promise<T> {
+  let result: T;
+  try {
+    result = await compile();
+  } catch (err) {
+    const named = describeFailedComposerLegs(err, nodeIdOf, symbols);
+    if (named === null) throw err;
+    throw new Error(`${named} (${err instanceof Error ? err.message : String(err)})`);
+  }
+  if (result.status !== 'success') {
+    const named = describeFailedComposerLegs(result.error, nodeIdOf, symbols);
+    if (named !== null) throw new Error(`${named} (${(result.error as { message?: string } | undefined)?.message ?? 'preparation failed'})`);
+  }
+  return result;
+}
+
+/**
  * The minimum output LI.FI's swap for leg `legIndex` enforces ON CHAIN, as
  * reported by the SAME compile() response — `producedResources` entry
  * `swap_<i>.amountOut`, field `simulated.amountOutMin`. `null` when the
@@ -320,18 +364,23 @@ export async function buildComposerPurchase(request: ComposerPurchaseRequest): P
     guards: [guards.slippage({ port: 'unspentIn', bps: request.slippageBps })],
   });
 
-  const result = await builder.compile({
-    signer: request.signerAddress as `0x${string}`,
-    inputs: {
-      amountIn: materialisers.directDeposit({ amount: BigInt(request.inputAmountRaw) }),
-    },
-    sweepTo: { $ref: 'context.sender' },
-    // Avoids an unnecessary approval step (and its own signature) when the
-    // signer already approved this exact spend previously — see
-    // ComposeRunInput's own doc comment on this flag.
-    checkOnChainAllowances: true,
-    ...(request.maxPriceImpactBps !== undefined ? { maxPriceImpactBps: request.maxPriceImpactBps } : {}),
-  });
+  const result = await compileNamingFailedLegs(
+    () =>
+      builder.compile({
+        signer: request.signerAddress as `0x${string}`,
+        inputs: {
+          amountIn: materialisers.directDeposit({ amount: BigInt(request.inputAmountRaw) }),
+        },
+        sweepTo: { $ref: 'context.sender' },
+        // Avoids an unnecessary approval step (and its own signature) when the
+        // signer already approved this exact spend previously — see
+        // ComposeRunInput's own doc comment on this flag.
+        checkOnChainAllowances: true,
+        ...(request.maxPriceImpactBps !== undefined ? { maxPriceImpactBps: request.maxPriceImpactBps } : {}),
+      }),
+    buildLegNodeId,
+    request.legs.map((l) => l.symbol)
+  );
 
   if (result.status !== 'success') {
     throw new Error(`Composer flow compilation failed: ${result.error.kind} — ${result.error.message}`);
@@ -468,13 +517,18 @@ export async function buildComposerSweep(request: ComposerSweepRequest): Promise
   request.inputs.forEach((input, i) => {
     runInputs[`in_${i}`] = materialisers.directDeposit({ amount: BigInt(input.amountRaw) });
   });
-  const result = await builder.compile({
-    signer: request.signerAddress as `0x${string}`,
-    inputs: runInputs as never,
-    sweepTo: { $ref: 'context.sender' },
-    checkOnChainAllowances: true,
-    ...(request.maxPriceImpactBps !== undefined ? { maxPriceImpactBps: request.maxPriceImpactBps } : {}),
-  });
+  const result = await compileNamingFailedLegs(
+    () =>
+      builder.compile({
+        signer: request.signerAddress as `0x${string}`,
+        inputs: runInputs as never,
+        sweepTo: { $ref: 'context.sender' },
+        checkOnChainAllowances: true,
+        ...(request.maxPriceImpactBps !== undefined ? { maxPriceImpactBps: request.maxPriceImpactBps } : {}),
+      }),
+    sweepNodeId,
+    request.inputs.map((i) => i.symbol)
+  );
 
   if (result.status !== 'success') {
     throw new Error(`Composer flow compilation failed: ${result.error.kind} — ${result.error.message}`);

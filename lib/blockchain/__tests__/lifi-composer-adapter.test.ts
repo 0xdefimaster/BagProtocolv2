@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildComposerPurchase,
+  describeFailedComposerLegs,
   computeCascadeSplitBps,
   ComposerIneligibleError,
   composerLegEnforcedMinOutputRaw,
@@ -266,6 +267,40 @@ describe('buildComposerPurchase', () => {
         legs: [{ address: '0xTargetA', weightBps: 10000, symbol: 'A' }],
       })
     ).rejects.toThrow(/insufficient liquidity/);
+  });
+});
+
+describe('describeFailedComposerLegs', () => {
+  const id = (i: number) => `swap_${i}`;
+  it('names the legs behind failedOps, with the server message; swap_1 never matches swap_10', () => {
+    const symbols = Array.from({ length: 11 }, (_, i) => `T${i}`);
+    const err = { failedOps: [{ callId: 'swap_10', message: 'No available quotes' }, { path: 'nodes.swap_1', message: '' }] };
+    expect(describeFailedComposerLegs(err, id, symbols)).toBe('T10: No available quotes; T1');
+  });
+  it('null when there are no failedOps or none maps to a leg', () => {
+    expect(describeFailedComposerLegs(new Error('x'), id, ['A'])).toBeNull();
+    expect(describeFailedComposerLegs({ failedOps: [{ callId: 'split_0' }] }, id, ['A'])).toBeNull();
+  });
+  it('buildComposerPurchase names the failing token when the compile reports a preparation_error', async () => {
+    const fetchImpl = mockComposeFetch({
+      // A preparation_error is a 422; the SDK throws a ComposeError carrying failedOps.
+      status: 422,
+      body: {
+        error: { kind: 'preparation_error', message: '1 of 2 prepared op(s) failed', failedOps: [{ callId: 'swap_1', op: 'lifi.swap', kind: 'resolution_rejected', message: 'No available quotes' }], succeededOps: ['swap_0'] },
+      },
+    });
+    await expect(
+      buildComposerPurchase({
+        chain: 'ethereum',
+        inputTokenAddress: '0xInputToken',
+        inputAmountRaw: '1000000',
+        signerAddress: '0xSigner',
+        slippageBps: 100,
+        apiKey: 'test-key',
+        fetchImpl,
+        legs: [{ address: '0xTargetA', weightBps: 5000, symbol: 'AAA' }, { address: '0xTargetB', weightBps: 5000, symbol: 'GRT' }],
+      })
+    ).rejects.toThrow(/^GRT: No available quotes \(1 of 2 prepared op\(s\) failed\)/);
   });
 });
 
