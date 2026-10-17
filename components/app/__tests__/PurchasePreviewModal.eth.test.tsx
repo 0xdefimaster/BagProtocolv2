@@ -27,7 +27,7 @@ vi.mock('@/hooks/use-purchase-options', () => ({
 }));
 
 const { ROBINHOOD_REWARD_TOKEN } = await import('@/lib/config/robinhood-chain');
-const { PurchasePreviewModal } = await import('../PurchasePreviewModal');
+const { PurchasePreviewModal, purchaseSignatureLabel } = await import('../PurchasePreviewModal');
 
 const USDG = { id: 'usdg', chain: 'robinhood', address: ROBINHOOD_REWARD_TOKEN.address, symbol: 'USDG', decimals: 6, name: 'USDG' };
 const ETH = { id: 'native:robinhood', chain: 'robinhood', address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', decimals: 18, name: 'Ether' };
@@ -87,5 +87,20 @@ describe('PurchasePreviewModal — native ETH', () => {
     expect(screen.getByText('0.03 ETH')).toBeInTheDocument();
     expect(screen.getByText('0.02 ETH')).toBeInTheDocument();
     expect(posted.some((b) => b.inputAssetId === 'native:robinhood' && b.amount === '0.05')).toBe(true);
+  });
+});
+
+describe('purchaseSignatureLabel', () => {
+  const steps = [{ targetSymbol: 'MSFT' }, { targetSymbol: 'NVDA' }, { targetSymbol: 'TSLA' }];
+
+  it('a single-transaction (Composer) purchase names every asset and never counts "(1/3)"', () => {
+    const label = purchaseSignatureLabel(steps, 0, true);
+    expect(label).toBe('Confirm the purchase of MSFT, NVDA, TSLA in your wallet (one transaction for all assets)');
+    expect(label).not.toMatch(/\(\d+\/\d+\)/);
+    expect(purchaseSignatureLabel([{ targetSymbol: 'MSFT' }], 0, true)).toBe('Confirm the purchase of MSFT in your wallet');
+  });
+
+  it('the per-asset path (one transaction per swap) keeps counting', () => {
+    expect(purchaseSignatureLabel(steps, 1, false)).toBe('Confirm swap to NVDA in your wallet (2/3)');
   });
 });

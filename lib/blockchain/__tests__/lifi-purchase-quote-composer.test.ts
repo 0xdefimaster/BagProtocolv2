@@ -155,6 +155,22 @@ describe('Composer refusal -> failed intent with the reason, never one route per
     expect(composerFallbackFrom(wrapped)).toMatchObject({ reason: 'UNAVAILABLE', kind: 'preparation_error', message: 'GRT: No available quotes (1 of 2 prepared op(s) failed)' });
   });
 
+  it('a version mismatch (sdk_outdated / server_outdated) says so plainly and alerts the operator', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const sdk = composerFallbackFrom(
+      await composeError('sdk_outdated', 'SDK 0.5.0 is older than the minimum 0.6.0', { sdkOutdated: { sdkVersion: '0.5.0', serverVersion: '0.7.0', minimumSdkVersion: '0.6.0' } })
+    );
+    expect(sdk).toMatchObject({ reason: 'UNAVAILABLE', kind: 'sdk_outdated' });
+    expect(sdk.message).toMatch(/Composer SDK is older than the API now supports\. Nothing was sent\./);
+    expect(sdk.message).toContain('SDK 0.5.0 is older than the minimum 0.6.0');
+    const server = composerFallbackFrom(
+      await composeError('server_outdated', 'server 0.5.0 is older than SDK 0.6.0', { serverOutdated: { sdkVersion: '0.6.0', serverVersion: '0.5.0' } })
+    );
+    expect(server.message).toMatch(/Composer API is older than this app's SDK/);
+    expect(errorLog).toHaveBeenCalledTimes(2);
+    errorLog.mockRestore();
+  });
+
   it('passes an accepted price-impact limit to Composer', async () => {
     await buildPurchaseIntentSteps([step('SWAP', WETH, '600000')], '0xwallet', 6, { ...opts, maxPriceImpactBps: 651 });
     expect(buildComposerPurchaseMock).toHaveBeenCalledWith(expect.objectContaining({ maxPriceImpactBps: 651 }));

@@ -445,7 +445,7 @@ export async function buildComposerPurchase(request: ComposerPurchaseRequest): P
 // -----------------------------------------------------------------------------
 // Wallet sweep ("dust sweeper"): several tokens the wallet holds → ONE output
 // token (the chain's settlement stablecoin), in ONE Composer transaction. Same
-// guards as a purchase: per-swap slippage guard, Composer's price-impact
+// guards as a purchase: per-swap minimum output (config.slippage → amountOutMin), Composer's price-impact
 // limit, approvals only for the tokens being sold and never above the amount
 // sold. Not tied to any Bag — this is the user's own wallet.
 // -----------------------------------------------------------------------------
@@ -602,7 +602,7 @@ async function buildComposerSweepOnce(request: ComposerSweepRequest): Promise<Co
 //   one sell  → split straight across the buys          (one swap per buy)
 //   one buy   → every sell swaps straight into it        (one swap per sell)
 //   otherwise → sells → hub stablecoin → merged → split across the buys
-// Same guards as purchase and sweep: per-swap slippage guard, Composer's
+// Same guards as purchase and sweep: per-swap minimum output (config.slippage → amountOutMin), Composer's
 // price-impact limit, approvals only for tokens sold and never above the
 // amount sold, no native ETH. Signs and sends nothing.
 // -----------------------------------------------------------------------------
