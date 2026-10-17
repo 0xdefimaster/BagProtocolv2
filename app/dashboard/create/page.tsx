@@ -19,6 +19,7 @@ import { AssetIcon } from '@/components/create/AssetIcon';
 import { DeployBagPanel } from '@/components/bags/DeployBagPanel';
 import { PurchasePreviewModal } from '@/components/app/PurchasePreviewModal';
 import { isNativePaymentChain } from '@/lib/payments/native-payment';
+import { LaunchBuyBalance } from '@/components/create/LaunchBuyBalance';
 
 const INVEST_PRESETS = ['0', '10', '100', '500', '1000'];
 const ETH_INVEST_PRESETS = ['0', '0.01', '0.05', '0.1', '0.5'];
@@ -78,7 +79,7 @@ export default function CreatePage() {
   const router = useRouter();
   const { addActivity } = useActivity();
   const { addNotification } = useNotifications();
-  const { signIn, connect, isConnected, isSigningIn, authError } = useWallet();
+  const { signIn, connect, isConnected, isSigningIn, authError, walletAddress } = useWallet();
   const [bagName, setBagName] = useState('');
   const [description, setDescription] = useState('');
   const [thesis, setThesis] = useState('');
@@ -533,6 +534,13 @@ export default function CreatePage() {
                     onChange={(e) => setInvestmentAmount(e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))}
                   />
                 </div>
+                <LaunchBuyBalance
+                  chain={selectedNetworkId}
+                  native={nativeLaunch}
+                  walletAddress={isConnected ? walletAddress : null}
+                  amount={investmentAmount}
+                  onMax={setInvestmentAmount}
+                />
                 <div className="invest-presets">
                   {(nativeLaunch ? ETH_INVEST_PRESETS : INVEST_PRESETS).map((amt) => (
                     <button
