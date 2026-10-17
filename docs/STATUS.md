@@ -22,9 +22,9 @@ verifiers bind to the target's own events and the wallet as sender instead.
 | Item | Status |
 |---|---|
 | Composer SDK 0.6 against the live Composer API | **Live**: a multi-asset purchase compiled (read-only probe, `scripts/probe-swap-buy.ts`) |
-| `BagFactory` v2 (creation fee) `0x7ce5a81df434755f38cb5f67ad49a8bb3c8e6f72` | **Live**: user-signed `createBag` confirmed from a smart account. A creation that succeeded but was never confirmed is found on-chain and confirmed by "Try again" (no second signature or fee) |
+| `BagFactory` v2 (creation fee, `FACTORY_ADDRESS_ROBINHOOD`) | **Live**: user-signed `createBag` confirmed from a smart account. A creation that succeeded but was never confirmed is found on-chain and confirmed by "Try again" (no second signature or fee) |
 | Purchase: ETH → three stocks in one Composer transaction, smart account | **Live**: verified and booked |
-| `StrategyRegistry` `0x907cc27d644c8ea1c24b8320ad09ecf2819209a8` | **Live**: a v1 registration sent from a smart account verified and recorded |
+| `StrategyRegistry` (`STRATEGY_REGISTRY_ADDRESS_ROBINHOOD`) | **Live**: a v1 registration sent from a smart account verified and recorded |
 | Bag sale in one Composer transaction, smart account | Wallet asked for one confirmation; booking **not yet observed live** |
 | Per-asset sale whose SUBMITTED reports were lost | Recovered from the chain when the sale is closed (PR #94); **not verified live** |
 | Fee-paying sale (`RedeemSettlement`, fee > 0) | **Not run live** |
