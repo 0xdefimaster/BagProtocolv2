@@ -12,7 +12,7 @@ import { computeLegsHash } from '../../lib/blockchain/redeem-fee-router-eip712';
 // RedeemFeeRouter contract — not an assumed/hand-typed event shape. This
 // is the closest this sandbox can get to testing the server's on-chain
 // verification logic without live RPC access to a real deployment (see
-// docs/FINAL_PRODUCTION_AUDIT.md): a genuine Hardhat-EVM transaction
+// docs/archive/FINAL_PRODUCTION_AUDIT.md): a genuine Hardhat-EVM transaction
 // receipt, decoded with the exact same viem `decodeEventLog` call and ABI
 // literal the server module uses.
 // -----------------------------------------------------------------------------

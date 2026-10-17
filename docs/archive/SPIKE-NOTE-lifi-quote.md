@@ -1,6 +1,6 @@
 # Spike note: LI.FI on Robinhood Chain (4663) — quote and real-chain E2E
 
-> **Status: SPIKE** — a time-boxed feasibility experiment; its code is not the product path. Current state: [docs/STATUS.md](docs/STATUS.md).
+> **Status: SPIKE** — a time-boxed feasibility experiment; its code is not the product path. Current state: [docs/STATUS.md](../STATUS.md).
 
 ## Scripts
 

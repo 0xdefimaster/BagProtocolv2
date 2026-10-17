@@ -16,7 +16,7 @@ import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identi
 // `getQuote()` per target asset, and hooks/use-purchase-execution.ts
 // deliberately executes them ONE AT A TIME — N target assets means N wallet
 // signatures. That is a real, previously-documented limitation (see
-// docs/PHASE_19X_REPORT.md, V13_DURUM_RAPORU.md section K). Composer bundles
+// docs/archive/PHASE_19X_REPORT.md, V13_DURUM_RAPORU.md section K). Composer bundles
 // multiple on-chain actions into ONE transaction, so a same-chain multi-asset
 // Bag purchase can become ONE signature instead of N. This module is that
 // alternate path — NOT a replacement for lifi-purchase-quote.ts, which

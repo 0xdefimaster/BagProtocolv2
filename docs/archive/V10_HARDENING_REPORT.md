@@ -1,6 +1,6 @@
 # BAG Protocol — V10 Production Hardening Sprint Report
 
-> **Status: HISTORICAL** — a point-in-time report, superseded since. For the current state see [docs/STATUS.md](STATUS.md).
+> **Status: HISTORICAL** — a point-in-time report, superseded since. For the current state see [docs/STATUS.md](../STATUS.md).
 
 Method followed as instructed: repository audit first (architecture map,
 call graph, invariants, prioritized bugs) → minimal patches → tests → this
@@ -94,7 +94,7 @@ CREATOR CLAIM      app/dashboard/profile/page.tsx → hooks/useCreatorRewards.ts
 ## 1. ARCHITECTURE DECISION
 
 No architecture change from the prior pass's conclusion
-(`docs/FINAL_PRODUCTION_AUDIT.md`): Robinhood Chain (4663) is the single
+(`docs/archive/FINAL_PRODUCTION_AUDIT.md`): Robinhood Chain (4663) is the single
 production settlement chain; USDG is the single reward token;
 `CreatorRewardsVault` is the sole on-chain source of truth for claimable
 creator balances. This sprint's decision, per the brief's own explicit

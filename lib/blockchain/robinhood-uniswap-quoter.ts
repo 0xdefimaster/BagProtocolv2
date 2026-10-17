@@ -18,7 +18,7 @@ import type { UniswapQuoter } from '@/lib/execution/legbuilders/robinhood-uniswa
 // SANDBOX NOTE: this file has NOT been exercised against a live RPC
 // endpoint in this session — this container's network egress allowlist
 // does not include any Robinhood Chain RPC host (see
-// docs/PHASE_19X_REPORT.md's own `curl` 403 finding against
+// docs/archive/PHASE_19X_REPORT.md's own `curl` 403 finding against
 // rpc.mainnet.chain.robinhood.com, same restriction applies here). The
 // code path is written to the real QuoterV2 ABI and is unit-testable with
 // an injected/mocked `PublicClient` (see

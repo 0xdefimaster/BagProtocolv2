@@ -2,7 +2,7 @@
 
 Everything in `contracts/spike/` and `contracts/test/spike/` was written,
 compiled, and test-executed in this environment — see
-`docs/PHASE_19X_REPORT.md`. What could **not** be done here is broadcasting
+`docs/archive/PHASE_19X_REPORT.md`. What could **not** be done here is broadcasting
 to the actual Robinhood Chain Testnet (chain id `46630`): this sandbox's
 network egress is limited to package registries (npm, PyPI, GitHub) and
 cannot reach `rpc.testnet.chain.robinhood.com` or any other RPC endpoint.

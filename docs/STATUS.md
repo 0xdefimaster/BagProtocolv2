@@ -1,7 +1,7 @@
 # Status — what is current, what is live, what each document is
 
 One place that says which parts of this repository describe the system as it
-is today. Last updated 2026-10-05. When a document and this page disagree,
+is today. Last updated 2026-10-17. When a document and this page disagree,
 this page and the code win.
 
 Labels:
@@ -12,6 +12,23 @@ Labels:
 - **NOT IMPLEMENTED** — a design or decision; no code (or no production code).
 - **SPIKE** — a time-boxed feasibility experiment; its code is not the product path.
 - **HISTORICAL** — a point-in-time report; accurate when written, superseded since.
+
+## 0. Latest live checks (Robinhood Chain, 2026-10-17)
+
+Run with a real wallet, a MetaMask account upgraded to a smart account (EIP-7702). Such an account sends even a single
+transaction through MetaMask's DelegationManager (`redeemDelegations`), so `tx.to` is not the target contract; the
+verifiers bind to the target's own events and the wallet as sender instead.
+
+| Item | Status |
+|---|---|
+| Composer SDK 0.6 against the live Composer API | **Live**: a multi-asset purchase compiled (read-only probe, `scripts/probe-swap-buy.ts`) |
+| `BagFactory` v2 (creation fee) `0x7ce5a81df434755f38cb5f67ad49a8bb3c8e6f72` | **Live**: user-signed `createBag` confirmed from a smart account. A creation that succeeded but was never confirmed is found on-chain and confirmed by "Try again" (no second signature or fee) |
+| Purchase: ETH → three stocks in one Composer transaction, smart account | **Live**: verified and booked |
+| `StrategyRegistry` `0x907cc27d644c8ea1c24b8320ad09ecf2819209a8` | **Live**: a v1 registration sent from a smart account verified and recorded |
+| Bag sale in one Composer transaction, smart account | Wallet asked for one confirmation; booking **not yet observed live** |
+| Per-asset sale whose SUBMITTED reports were lost | Recovered from the chain when the sale is closed (PR #94); **not verified live** |
+| Fee-paying sale (`RedeemSettlement`, fee > 0) | **Not run live** |
+| `core.partition` for exact leg weights | Waiting for Composer SDK ≥ 0.7 on npm `latest` (#88) |
 
 ## 1. Live on Robinhood Chain (V2 test site, 2026-10-05)
 
@@ -30,7 +47,7 @@ project and Netlify site from the V1 demo.
 | `BagExecutionRouter` (BAG Router) | **Not deployed.** See §3 before enabling. |
 | `RedeemFeeRouter` / fee-taking redemptions | Not exercised live (the live Bag has no fee). |
 | `RedeemSettlement` (fee settlement, §10 of the Composer settlement doc) | **Live**: `0x934a3f266e68DfbFF8eD4F02AA393a36048170a0`. First real sale (AMKR + SPY → USDG, tx `0x7550ac9d…9d3d`) settled through it and reconciled chain ↔ `Settled` ↔ ledger (`docs/REDEEM_SETTLEMENT_DEPLOYMENT.md` §5a). Fee was 0 (no gain); a fee > 0 sale not yet run live. |
-| `StrategyRegistry` | **Not deployed**; registration and third-party verification proven only on a local EVM. |
+| `StrategyRegistry` | Deployed since; see §0. (On 2026-10-05: registration and third-party verification proven only on a local EVM.) |
 | Price authority (Robinhood `/rhj/prices` × multiplier, Chainlink cross-check, LI.FI crypto prices) | Prices were served live (Bag TVL shown); the authority's guard checks have **not** been verified against live data (`docs/ROBINHOOD_PRICE_AUTHORITY.md`). |
 
 ## 1a. Open questions from the 2026-10-05 project report — resolved or not
@@ -87,7 +104,7 @@ prove behavior against a local chain, never against Robinhood Chain.
 | Document | Label | Note |
 |---|---|---|
 | `README.md` | CURRENT | Entry point |
-| `DEMO_READINESS.md` | CURRENT | Evidence levels: verified in code / live / not production-ready |
+| `docs/archive/DEMO_READINESS.md` | HISTORICAL | Evidence levels as of 2026-10-05; §0 and §1 of this page are current |
 | `docs/STATUS.md` | CURRENT | This page |
 | `docs/ACCOUNTING_V2_DESIGN.md` | CURRENT | A1–A4 implemented (0048–0051) |
 | `docs/BAG_JSON_V1_DESIGN.md` | CURRENT | bag.json v1, `definitionHash` |
@@ -106,11 +123,12 @@ prove behavior against a local chain, never against Robinhood Chain.
 | `docs/CREATOR_REWARDS_SETTLEMENT.md` | CURRENT | Rewards ledger → `CreatorRewardsVault` |
 | `docs/SECURITY_HARDENING_DEPLOY.md` | CURRENT | Operator steps for the hardening changes |
 | `docs/VSCODE_LOCAL_SETUP.md` | CURRENT | Local setup (Turkish) |
-| `docs/INVENTORY_*.md`, `docs/CHANGES_SUMMARY.md`, `docs/COWBOY_COLLECTION.md` | CURRENT (side feature) | Inventory / Forge cosmetics; not part of the protocol |
+| `docs/archive/INVENTORY_*.md`, `docs/archive/CHANGES_SUMMARY.md`, `docs/archive/COWBOY_COLLECTION.md` | HISTORICAL | Inventory / Forge cosmetics, removed from the app |
 | `docs/BAGVAULT_DESIGN.md` | NOT IMPLEMENTED | Design only; no `BagVault.sol` |
 | `docs/DECISIONS_PRODUCTION_BACKLOG.md` | NOT IMPLEMENTED | Decided, not built (ADR-1..3) |
-| `SPIKE-NOTE-lifi-quote.md` | SPIKE | LI.FI feasibility on Robinhood Chain |
-| `docs/PHASE_14_REPORT.md`, `docs/PHASE_19X_REPORT.md` | HISTORICAL | Phase reports (19.X was a spike) |
-| `docs/V10_HARDENING_REPORT.md`, `docs/V11_HARDENING_REPORT.md` | HISTORICAL | Hardening sprint reports |
-| `docs/FINAL_PRODUCTION_AUDIT.md` | HISTORICAL | Partly superseded by V11 (noted inside) |
+| `docs/archive/SPIKE-NOTE-lifi-quote.md` | SPIKE | LI.FI feasibility on Robinhood Chain |
+| `docs/archive/durum-raporu-v2.md` | HISTORICAL | Project report of 2026-10-05 (Turkish) |
+| `docs/archive/PHASE_14_REPORT.md`, `docs/archive/PHASE_19X_REPORT.md` | HISTORICAL | Phase reports (19.X was a spike) |
+| `docs/archive/V10_HARDENING_REPORT.md`, `docs/archive/V11_HARDENING_REPORT.md` | HISTORICAL | Hardening sprint reports |
+| `docs/archive/FINAL_PRODUCTION_AUDIT.md` | HISTORICAL | Partly superseded by V11 (noted inside) |
 | `durum-raporu-v2.md` | HISTORICAL | Creator rewards / redemption status (Turkish) |

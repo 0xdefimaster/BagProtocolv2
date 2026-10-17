@@ -40,7 +40,7 @@ import { getLiFiClient, toLiFiChainId, UnsupportedChainError } from './lifi-conf
 // user's wallet. This is a deliberate, documented limitation: LI.FI's
 // balance/allowance-aware route choices (e.g. Permit2 usage) may differ
 // slightly for a real wallet with an existing approval; the quoted
-// price/route itself is not wallet-specific. See PHASE_14_REPORT.md,
+// price/route itself is not wallet-specific. See docs/archive/PHASE_14_REPORT.md,
 // section "fromAddress", for the follow-up this implies once an execution
 // phase actually connects a wallet.
 // -----------------------------------------------------------------------------

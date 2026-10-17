@@ -159,7 +159,7 @@ Covered above (§2, §6). Additionally: an unmined transaction answers
 ## 9. Test results
 
 Current numbers and the exact commands run are in
-[`DEMO_READINESS.md`](../DEMO_READINESS.md) ("Verified" section). All suites
+[`DEMO_READINESS.md`](archive/DEMO_READINESS.md) ("Verified" section). All suites
 (unit, real-Postgres/local-EVM integration, Hardhat contracts), `tsc`, lint
 and `next build` pass on Node 24. The receipt check is a bounded, per-call
 poller (`lib/blockchain/evm/receipt-confirmation.ts`), so concurrent confirms
@@ -210,7 +210,7 @@ risk.
 
 **Why no DB/runtime fix now:** at this stage nothing is deployed to a
 real chain yet (no `BagFactory`, no real Bag history, no
-`BagExecutionRouter` in production — see docs/FINAL_PRODUCTION_AUDIT.md
+`BagExecutionRouter` in production — see docs/archive/FINAL_PRODUCTION_AUDIT.md
 §E). Adding a `bag_deployments`-vs-`FACTORY_ADDRESS_<CHAIN>` cross-check
 now would be solving for a rotation that has never happened, against a
 factory that doesn't exist yet — real complexity for a hypothetical.
@@ -249,7 +249,7 @@ per-chain model.
 - Migrations 0024–0036 have not been applied to any real Supabase
   project (0033 fee lock, 0034 accounting reconciliation, 0035 on-chain
   versioning, 0036 accounting guards among them) — apply them in order, then re-run the privilege/RLS checks
-  (`docs/FINAL_PRODUCTION_AUDIT.md`'s addendum, section D) directly
+  (`docs/archive/FINAL_PRODUCTION_AUDIT.md`'s addendum, section D) directly
   against that project rather than trusting the local emulation alone.
 
 ## Versioning a deployed MUTABLE Bag (on-chain path)
