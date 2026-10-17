@@ -107,7 +107,9 @@ export function createEvmBagVersionAdapter(config: EvmChainConfig, client?: Publ
         if (name === 'TransactionNotFoundError') throw new BagVersionPendingError(`No transaction found for ${txHash} yet.`);
         throw err;
       }
-      if (!tx.to || !same(tx.to, config.factoryAddress)) fail(`Transaction ${txHash} was sent to ${tx.to ?? '(contract creation)'}, not the BagFactory.`);
+      // `tx.to` may be a smart-account router rather than the factory (see adapter.ts); the factory-emitted
+      // BagVersionRecorded below, with this Bag's id and creator, is what binds the update.
+      if (!tx.to) fail(`Transaction ${txHash} is a contract creation, not a call that reaches the BagFactory.`);
       if (!same(tx.from, p.expectedCreator)) fail(`Transaction ${txHash} was sent from ${tx.from}, not the Bag's creator wallet ${p.expectedCreator}.`);
 
       const confirmation = await waitForConfirmedReceipt(c, { hash: txHash, confirmations: config.confirmations, timeoutMs: config.receiptTimeoutMs });

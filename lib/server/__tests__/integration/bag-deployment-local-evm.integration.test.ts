@@ -168,14 +168,14 @@ describe('real BagFactory + user-signed createBag on a local EVM', () => {
     await noState(s.bag.id);
   });
 
-  it('WRONG FACTORY: createBag sent to a look-alike BagFactory (real contract, wrong address) is rejected', async () => {
+  it('WRONG FACTORY: createBag sent to a look-alike BagFactory (real contract, wrong address) is rejected — the configured factory emitted nothing', async () => {
     const s = await scenario();
     const lookalike = await viem.deployContract('BagFactory', [s.user.account.address, s.user.account.address, BigInt(0), BigInt(0)]);
     const prepared = await prepareBagDeployment(db.client, s.session, s.bag.id, s.deps);
     if (!prepared.ok) throw new Error('prepare failed');
     const txHash = await s.user.sendTransaction({ to: lookalike.address, data: prepared.transaction.data }); // succeeds ON-CHAIN, just on the wrong contract
     const r = await confirmBagDeployment(db.client, s.session, s.bag.id, txHash, s.deps);
-    expect(r).toMatchObject({ ok: false, error: 'VERIFICATION_FAILED', message: expect.stringMatching(/not the expected BagFactory/) });
+    expect(r).toMatchObject({ ok: false, error: 'VERIFICATION_FAILED', message: expect.stringMatching(/no BagCreated event from the factory/) });
     await noState(s.bag.id);
   });
 

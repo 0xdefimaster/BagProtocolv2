@@ -93,6 +93,22 @@ export function batchContainsCall(batchInput: string, call: { to: string; data: 
   return abi || packed;
 }
 
+/** `DelegationManager.redeemDelegations(bytes[],bytes32[],bytes[])` — how a MetaMask smart account (EIP-7702) sends its calls. */
+export const REDEEM_DELEGATIONS_SELECTOR = '0xcef6d209';
+
+/**
+ * A wallet-routed batch that carries the exact Composer call: either the wallet calling itself (EIP-5792 over
+ * an EIP-7702 account) or the wallet calling a DelegationManager's `redeemDelegations` (MetaMask smart account),
+ * whose execution calldata embeds the same ERC-7579 encodings `batchContainsCall` already reads. The caller
+ * still requires `tx.from` to be the wallet, so only the wallet's own transaction can match.
+ */
+export function isWalletRoutedBatch(tx: { to?: string | null; input?: unknown }, wallet: string, call: { to: string; data: string; value: string }): boolean {
+  if (typeof tx.input !== 'string') return false;
+  const selfCall = typeof tx.to === 'string' && tx.to.toLowerCase() === wallet.toLowerCase();
+  const delegationRedeem = tx.input.toLowerCase().startsWith(REDEEM_DELEGATIONS_SELECTOR);
+  return (selfCall || delegationRedeem) && batchContainsCall(tx.input, call);
+}
+
 /**
  * Reads a Composer transaction's receipt directly (no LI.FI status API
  * involved) and reports what the recipient actually received, per token.
@@ -125,10 +141,11 @@ export async function trackComposerTransaction(input: TrackComposerTransactionIn
   const same = (a: string | null | undefined, b: string) => typeof a === 'string' && a.toLowerCase() === b.toLowerCase();
   const mismatches: string[] = [];
   if (!same(tx.from, input.recipient)) mismatches.push('from');
-  // A wallet batch (EIP-5792 over an EIP-7702 account, e.g. MetaMask) sends ONE transaction from the wallet to
-  // itself; its delegated code then runs the approvals and the Composer call. Accepted only when the wallet is
-  // both sender and target and the exact Composer call (target, value, calldata) is one of the batched calls.
-  const walletBatch = same(tx.to, input.recipient) && typeof tx.input === 'string' && batchContainsCall(tx.input, input.expectedTransaction);
+  // A wallet batch (EIP-5792 over an EIP-7702 account, e.g. MetaMask) sends ONE transaction from the wallet, either
+  // to itself or through a DelegationManager; the account's code then runs the approvals and the Composer call.
+  // Accepted only when the wallet is the sender and the exact Composer call (target, value, calldata) is one of
+  // the batched calls.
+  const walletBatch = isWalletRoutedBatch(tx, input.recipient, input.expectedTransaction);
   if (!walletBatch) {
     if (!same(tx.to, input.expectedTransaction.to)) mismatches.push('to');
     if (!same(tx.input, input.expectedTransaction.data)) mismatches.push('calldata');

@@ -160,6 +160,14 @@ describe('verifyBagCreation — happy path', () => {
   });
 });
 
+describe('verifyBagCreation — smart-account wallets', () => {
+  it('accepts a transaction routed through another contract (e.g. an EIP-7702 DelegationManager) when the factory emitted the right BagCreated', async () => {
+    const result = await (await verify({ tx: { to: OTHER_CONTRACT, from: SIGNER } })).promise;
+    expect(result.contractAddress).toBe(BAG.toLowerCase());
+    expect(result.creatorAddress).toBe(SIGNER.toLowerCase());
+  });
+});
+
 describe('verifyBagCreation — PENDING is not failure', () => {
   it('unknown transaction hash → BagCreationPendingError', async () => {
     await expect((await verify({ tx: named('TransactionNotFoundError') })).promise).rejects.toBeInstanceOf(BagCreationPendingError);
@@ -201,7 +209,8 @@ describe('verifyBagCreation — definitive rejections (BagCreationVerificationEr
   };
 
   it('malformed tx hash', () => rejects({}, /not a valid transaction hash/, { txHash: '0x1234' }));
-  it('wrong factory: transaction sent to a DIFFERENT contract', () => rejects({ tx: { to: OTHER_CONTRACT, from: SIGNER } }, /not the expected BagFactory/));
+  it('routed through another contract (smart account) but the factory emitted no BagCreated → rejected', () =>
+    rejects({ tx: { to: OTHER_CONTRACT, from: SIGNER }, receipt: { status: 'success', logs: [] } }, /no BagCreated event/));
   it('contract-creation transaction (no `to`)', () => rejects({ tx: { to: null, from: SIGNER } }, /contract creation/));
   it('wrong sender: transaction sent from a DIFFERENT wallet than the session wallet', () => rejects({ tx: { to: FACTORY, from: OTHER_WALLET } }, /not the authenticated wallet/));
   it('wrong sender is refused even BEFORE waiting for a receipt', async () => {

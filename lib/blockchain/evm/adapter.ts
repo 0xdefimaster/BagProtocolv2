@@ -116,10 +116,12 @@ export function createEvmBagDeploymentAdapter(config: EvmChainConfig, client?: P
       }
       if (!tx) throw new BagCreationPendingError(`No transaction found for ${txHash} yet.`);
 
-      // 3 & 4. Definitive even while still pending — refuse a wrong target/sender immediately.
-      if (!tx.to || !same(tx.to, params.expectedFactoryAddress)) {
-        fail(`Transaction ${txHash} was sent to ${tx.to ?? '(contract creation)'}, not the expected BagFactory ${params.expectedFactoryAddress}.`);
-      }
+      // 3 & 4. Definitive even while still pending — refuse a contract creation / wrong sender immediately.
+      // `tx.to` is NOT required to be the factory: a smart-account wallet (e.g. MetaMask's EIP-7702 account,
+      // which routes through its DelegationManager) sends the person's call via another contract. What binds
+      // the deployment is checked below from the receipt: exactly one BagCreated emitted BY the configured
+      // factory whose `creator` (the factory's msg.sender) is this session wallet, plus the on-chain reads.
+      if (!tx.to) fail(`Transaction ${txHash} is a contract creation, not a call that reaches the BagFactory ${params.expectedFactoryAddress}.`);
       if (!same(tx.from, params.expectedCreator)) {
         fail(
           `Transaction ${txHash} was sent from ${tx.from}, not the authenticated wallet ${params.expectedCreator}. ` +
