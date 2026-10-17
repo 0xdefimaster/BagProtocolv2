@@ -36,6 +36,8 @@ vi.mock('@/lib/server/redeem-intent-repo', async () => {
     listUnmatchedComposerRedeems: (...a: unknown[]) => listUnmatchedMock(...a),
   };
 });
+// Outflow classification (0057) has its own real-Postgres tests; here there is no outflow to classify.
+vi.mock('@/lib/server/outflow-classification', () => ({ recoveryGate: async () => 'OK', classifyOutflowsForSale: async () => BigInt(0) }));
 vi.mock('@/lib/server/bag-repo', () => ({
   getBagById: async () => ({ id: 'bag_1', creatorId: 'creator_1', performanceFeeBpsLocked: null }),
   getCurrentBagVersion: async () => ({ recipe: { performanceFeeBps: 0 } }),

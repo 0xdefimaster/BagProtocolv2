@@ -47,7 +47,8 @@ vi.mock('@/lib/blockchain/composer-tx-search', () => ({
   findTokenSaleTransactionFromWallet: (...a: unknown[]) => tokenSaleSearchMock(...a),
 }));
 vi.mock('@/lib/blockchain/lifi-status', () => ({ trackStepStatus: (...a: unknown[]) => trackStepMock(...a) }));
-vi.mock('@/lib/server/ledger-repo', () => ({ hasExternalOutflowSince: async () => outflowBooked }));
+// An outflow recorded before 0057 cannot be classified: such a recovered sale is closed unbooked.
+vi.mock('@/lib/server/outflow-classification', () => ({ recoveryGate: async () => (outflowBooked ? 'LEGACY_OUTFLOW' : 'OK'), classifyOutflowsForSale: async () => BigInt(0) }));
 vi.mock('@/lib/blockchain/composer-status', () => ({ trackComposerTransaction: (...a: unknown[]) => trackComposerMock(...a) }));
 vi.mock('@/lib/server/intent-tx-claims', () => ({
   TX_HASH_RE: /^0x[0-9a-fA-F]{64}$/,
@@ -210,7 +211,7 @@ describe('cancelOpenRedeemIntent — the owner closes a sale that blocks a new o
     expect(transitions).toEqual([{ from: 'READY', to: 'CANCELLED' }]);
   });
 
-  it('a free Composer sale found on-chain after reconciliation already booked its outflow is closed, not booked again', async () => {
+  it('a free Composer sale found on-chain behind an outflow recorded before 0057 is closed, not booked again', async () => {
     active = { id: 'old', status: 'AWAITING_SIGNATURE', steps: [swap()] as never, composerTransaction, expiresAt: future, createdAt: past, walletAddress: '0x1' };
     searchMock.mockResolvedValueOnce({ kind: 'FOUND', txHash: '0x' + 'd'.repeat(64) });
     outflowBooked = true;
@@ -274,7 +275,7 @@ describe('cancelOpenRedeemIntent — the owner closes a sale that blocks a new o
       expect(out).toMatchObject({ ok: true, value: { result: 'REFUSED' } }); // still confirming: closes on its own once verified
     });
 
-    it('a found swap whose tokens wallet reconciliation already took off the position is closed, never booked twice', async () => {
+    it('a found swap behind an outflow recorded before 0057 (no window to classify it) is closed, never booked twice', async () => {
       active = openSale();
       tokenSaleSearchMock.mockResolvedValueOnce({ kind: 'FOUND', txHash: HASH }).mockResolvedValueOnce({ kind: 'NOT_FOUND' });
       outflowBooked = true;

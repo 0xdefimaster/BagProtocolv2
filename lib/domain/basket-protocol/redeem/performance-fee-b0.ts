@@ -28,7 +28,7 @@ export interface SoldQuantity {
 
 export type B0FeeBasisResult =
   | { ok: true; consumedBasisQuote: bigint; lossCarryQuote: bigint }
-  | { ok: false; reason: 'BASIS_UNKNOWN' | 'SOLD_EXCEEDS_BOOKS' | 'REALIZED_PNL_UNKNOWN' };
+  | { ok: false; reason: 'BASIS_UNKNOWN' | 'BASIS_APPROXIMATE' | 'SOLD_EXCEEDS_BOOKS' | 'REALIZED_PNL_UNKNOWN' };
 
 const ZERO = BigInt(0);
 const key = (chain: string, address: string) => `${chain}:${address.toLowerCase()}`;
@@ -48,6 +48,7 @@ export function feeBasisFromPositionPnl(pnl: PositionPnl, sold: SoldQuantity[]):
     const a = held.get(key(s.chain, s.address));
     if (!a || BigInt(a.quantityRaw) < qty) return { ok: false, reason: 'SOLD_EXCEEDS_BOOKS' };
     if (a.costBasisQuote === null) return { ok: false, reason: 'BASIS_UNKNOWN' };
+    if (a.costBasisApproximate) return { ok: false, reason: 'BASIS_APPROXIMATE' };
     // Same integer rule as position-pnl.ts `remove()` (mulDiv: truncates toward zero).
     basis += (parseDec(a.costBasisQuote) * qty) / BigInt(a.quantityRaw);
   }

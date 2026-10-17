@@ -36,7 +36,7 @@ import { buildPurchaseIntentSteps } from '@/lib/blockchain/lifi-purchase-quote';
 import { trackStepStatus } from '@/lib/blockchain/lifi-status';
 import { trackComposerTransaction } from '@/lib/blockchain/composer-status';
 import { findComposerTransactionFromWallet, findTokenSaleTransactionFromWallet } from '@/lib/blockchain/composer-tx-search';
-import { hasExternalOutflowSince } from '@/lib/server/ledger-repo';
+import { classifyOutflowsForSale, recoveryGate, type SoldLeg } from '@/lib/server/outflow-classification';
 import { isBagChain } from '@/lib/config/chains';
 import { DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
 import { feeRedemptionPath } from '@/lib/server/fee-redemption-path';
@@ -360,8 +360,11 @@ async function releaseAbandonedRedeemIntent(admin: SupabaseClient, intent: Redee
     });
     if (search.kind === 'UNKNOWN') return 'KEPT';
     if (search.kind === 'FOUND') {
-      // Already taken off the position as a wallet outflow: release it rather than count the sale twice.
-      if (await hasExternalOutflowSince(admin, intent.userId, intent.bagId, intent.createdAt)) {
+      // A sale already taken off the position as an outflow is classified when it is booked (outflow-classification.ts),
+      // except against an outflow recorded before 0057: release it then, as before, rather than count it twice.
+      const gate = await recoveryGate(admin, intent.id);
+      if (gate === 'LEGACY_OUTFLOW') {
+        console.warn(`[redeem] recovered sale ${intent.id} overlaps an outflow recorded before 0057; released without booking, review it`);
         const released = await updateRedeemIntentStatus(admin, { id: intent.id, from: intent.status, to: 'EXPIRED', failureCode: 'ROUTE_EXPIRED' });
         return released !== null ? 'RELEASED' : 'KEPT';
       }
@@ -442,8 +445,12 @@ export async function cancelOpenRedeemIntent(admin: SupabaseClient, session: Ses
       return { ok: true, value: { result: 'REFUSED', status: intent.status, reason: `The chain could not confirm that this sale was never sent (${search.reason}). Try again in a minute.` } };
     }
     if (search.kind === 'FOUND') {
-      // Already taken off the position as a wallet outflow: booking the sale too would count it twice.
-      if (await hasExternalOutflowSince(admin, intent.userId, intent.bagId, intent.createdAt)) return close('CANCELLED');
+      // Taken off the position as an outflow already: classified when booked, except against a pre-0057 outflow.
+      const gate = await recoveryGate(admin, intent.id);
+      if (gate === 'LEGACY_OUTFLOW') {
+        console.warn(`[redeem] recovered sale ${intent.id} overlaps an outflow recorded before 0057; closed without booking, review it`);
+        return close('CANCELLED');
+      }
       const steps = intent.steps.map((s) =>
         s.action === 'SWAP' && s.status !== 'COMPLETED' && s.status !== 'FAILED' ? { ...s, status: 'SUBMITTED' as const, txHash: s.txHash ?? search.txHash } : s
       );
@@ -475,9 +482,13 @@ export async function cancelOpenRedeemIntent(admin: SupabaseClient, session: Ses
     if (search.kind === 'FOUND') found.set(swap.stepIndex, search.txHash);
   }
   if (found.size === 0) return close('CANCELLED');
-  // Wallet reconciliation may already have taken these tokens off the position as an outflow; booking the sale too
-  // would count it twice (and a later purchase would then look smaller than it is). Close it; nothing is lost.
-  if (await hasExternalOutflowSince(admin, intent.userId, intent.bagId, intent.createdAt)) return close('CANCELLED');
+  // Wallet reconciliation may already have taken these tokens off the position as an outflow. Since 0057 that outflow is
+  // classified when the sale is booked; one recorded before 0057 cannot be, so the sale is closed unbooked, as before.
+  const gate = await recoveryGate(admin, intent.id);
+  if (gate === 'LEGACY_OUTFLOW') {
+    console.warn(`[redeem] recovered sale ${intent.id} overlaps an outflow recorded before 0057; closed without booking, review it`);
+    return close('CANCELLED');
+  }
   // Recovered: the found swaps go to verification; a swap with no transaction was never sent and ends as declined.
   const steps = intent.steps.map((s) => {
     if (s.action !== 'SWAP' || s.status === 'COMPLETED' || s.status === 'FAILED') return s;
@@ -976,6 +987,10 @@ async function applyRedeemAccountingIdempotently(admin: SupabaseClient, intent: 
       proceedsRaw: s.action === 'KEEP' ? BigInt(s.inputAmountRaw) : s.outputAmountRaw && /^\d+$/.test(s.outputAmountRaw) ? BigInt(s.outputAmountRaw) : null,
     }));
 
+  // An outflow that already took these tokens off the position is given back first (0057), so the sale below is booked
+  // in full, proceeds included, and its tokens leave the books once.
+  await classifyOutflowsForSale(admin, getChainPublicClient('robinhood'), intent, soldLegsForClassification(intent));
+
   // The sale ran on-chain and verified; only what the ledger still tracks for this strategy is debited (an earlier
   // sale booked late can have shrunk it since the quote). Unreadable ledger: debit as quoted, and the accounting
   // function's own underflow guards decide.
@@ -1017,6 +1032,20 @@ async function applyRedeemAccountingIdempotently(admin: SupabaseClient, intent: 
   if (rpcError) throw new Error(`apply_redeem_execution failed: ${rpcError.message}`);
 
   await markRedeemAccountingApplied(admin, intent.id);
+}
+
+/** The verified sold legs with their transaction, one per asset (quantities of one asset summed). */
+function soldLegsForClassification(intent: RedeemIntent): SoldLeg[] {
+  const byAsset = new Map<string, SoldLeg>();
+  for (const s of intent.steps) {
+    if (s.action !== 'SWAP' || s.status !== 'COMPLETED' || !s.txHash) continue;
+    const k = ledgerKey(s.inputAsset.chain, s.inputAsset.address);
+    const prev = byAsset.get(k);
+    byAsset.set(k, prev
+      ? { ...prev, quantityRaw: prev.quantityRaw + BigInt(s.inputAmountRaw) }
+      : { chain: s.inputAsset.chain, address: s.inputAsset.address, quantityRaw: BigInt(s.inputAmountRaw), txHash: s.txHash });
+  }
+  return [...byAsset.values()];
 }
 
 /** What the ledger tracks for this user and strategy now: remaining shares and, per asset, the smaller of the user's and the Bag's holding. Null when it cannot be read. */

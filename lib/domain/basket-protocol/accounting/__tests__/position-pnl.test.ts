@@ -12,7 +12,7 @@ describe('computePositionPnl — average cost', () => {
   it('10 @ $100 + 10 @ $120 → average $110; selling 5 for $600 realizes $50', () => {
     const r = computePositionPnl([buy([A, '10', '1000']), buy([A, '10', '1200']), sell([A, '5', '600'])]);
     expect(r.exits[0]).toMatchObject({ proceedsQuote: '600', costOfSoldQuote: '550', realizedPnlQuote: '50', feeBaseQuote: '50' });
-    expect(r.assets).toEqual([{ ...A, quantityRaw: '15', costBasisQuote: '1650' }]);
+    expect(r.assets).toEqual([{ ...A, quantityRaw: '15', costBasisQuote: '1650', costBasisApproximate: false }]);
     expect(r.costBasisQuote).toBe('1650');
     expect(r.realizedPnlQuote).toBe('50');
   });
@@ -100,7 +100,7 @@ describe('computePositionPnl — external outflows and unknowns', () => {
       buy([A, '5', '50']),
     ]);
     expect(r.exits[0].costOfSoldQuote).toBeNull();
-    expect(r.assets).toEqual([{ ...A, quantityRaw: '5', costBasisQuote: '50' }]);
+    expect(r.assets).toEqual([{ ...A, quantityRaw: '5', costBasisQuote: '50', costBasisApproximate: false }]);
   });
 
   it('selling more than the books hold yields unknown cost (the books were wrong, not the user)', () => {
@@ -128,9 +128,9 @@ describe('computePositionPnl — rebalance (R3)', () => {
     expect(r.exits).toEqual([]);
     expect(r.realizedPnlQuote).toBe('0');
     expect(r.assets).toEqual([
-      { ...A, quantityRaw: '5', costBasisQuote: '500' },
-      { ...B, quantityRaw: '30', costBasisQuote: '300' },
-      { ...C, quantityRaw: '8', costBasisQuote: '200' },
+      { ...A, quantityRaw: '5', costBasisQuote: '500', costBasisApproximate: false },
+      { ...B, quantityRaw: '30', costBasisQuote: '300', costBasisApproximate: false },
+      { ...C, quantityRaw: '8', costBasisQuote: '200', costBasisApproximate: false },
     ]);
     expect(r.costBasisQuote).toBe('1000'); // conserved
   });
@@ -148,7 +148,7 @@ describe('computePositionPnl — rebalance (R3)', () => {
 
   it('selling something the books do not hold makes the bought basis unknown, never estimated', () => {
     const r = computePositionPnl([rebalance([[A, '1']], [[B, '1', 10000]])]);
-    expect(r.assets).toEqual([{ ...B, quantityRaw: '1', costBasisQuote: null }]);
+    expect(r.assets).toEqual([{ ...B, quantityRaw: '1', costBasisQuote: null, costBasisApproximate: false }]);
     expect(r.costBasisQuote).toBeNull();
   });
 });
