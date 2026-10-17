@@ -51,24 +51,6 @@ export async function listLedgerEventsForUser(
   };
 }
 
-/**
- * True when wallet reconciliation already booked an EXTERNAL_OUTFLOW for this user and Bag since `since`: the tokens
- * that left the wallet are already off the position, so recovering an unreported sale of the same period and booking
- * it as well would take them off twice.
- */
-export async function hasExternalOutflowSince(admin: SupabaseClient, userId: string, bagId: string, since: string): Promise<boolean> {
-  const { data, error } = await admin
-    .from('ledger_events')
-    .select('seq')
-    .eq('user_id', userId)
-    .eq('bag_id', bagId)
-    .eq('kind', 'EXTERNAL_OUTFLOW')
-    .gte('created_at', since)
-    .limit(1);
-  if (error) throw new Error(error.message);
-  return (data ?? []).length > 0;
-}
-
 export interface LedgerMismatch {
   scope: 'HOLDING' | 'SHARES' | 'COST_BASIS';
   userId: string;

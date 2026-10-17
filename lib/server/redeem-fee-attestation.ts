@@ -127,7 +127,7 @@ export class PositionBusyError extends Error {
 
 /** B0: the books cannot give the basis or realized P&L this fee needs; never guessed, nothing is signed. */
 export class FeeBasisUnavailableError extends Error {
-  constructor(public readonly reason: 'BASIS_UNKNOWN' | 'SOLD_EXCEEDS_BOOKS' | 'REALIZED_PNL_UNKNOWN') {
+  constructor(public readonly reason: 'BASIS_UNKNOWN' | 'BASIS_APPROXIMATE' | 'SOLD_EXCEEDS_BOOKS' | 'REALIZED_PNL_UNKNOWN') {
     super(`The performance fee for this sale cannot be computed from your records (${reason}). Nothing was signed.`);
     this.name = 'FeeBasisUnavailableError';
   }
