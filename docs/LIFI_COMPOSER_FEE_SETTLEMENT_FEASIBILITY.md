@@ -17,6 +17,14 @@ Updated after review: who `msg.sender` is at the settlement contract, and how
 the tokens get there, are **not assumed** anywhere below. They are the first
 thing P1 measures (§6).
 
+> **Update 2026-10-17 (SDK 0.6, after LI.FI's review, issues #84–#90):** BAG now
+> runs `@lifi/composer-sdk`/`@lifi/compose-spec` 0.6. `producedResources` is
+> replaced by `outputs` (`amount.estimate` / `amount.minimum`); the
+> `guards.slippage({ port: 'unspentIn' })` shown below protected nothing and is
+> removed (per-swap protection is `config.slippage` → the swap's `amountOutMin`,
+> plus the whole-flow `maxPriceImpactBps`); refusals are classified by the
+> SDK's typed `ComposeError.kind`. The study below is kept as written.
+
 ## 0. Question and answer
 
 > Can Composer deliver the LI.FI swap output, in the same atomic transaction, to

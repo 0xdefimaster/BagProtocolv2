@@ -1,6 +1,6 @@
-import { createComposeSdk, guards, materialisers, resources } from '@lifi/composer-sdk';
-import type { Bindable, ComposeSdkOptions } from '@lifi/composer-sdk';
-import type { ProducedResource } from '@lifi/compose-spec';
+import { createComposeSdk, isComposeError, isComposePreparationError, materialisers, resources } from '@lifi/composer-sdk';
+import type { Bindable, ComposeError } from '@lifi/composer-sdk';
+import type { ComposeCompileResult, Output, Outputs } from '@lifi/compose-spec';
 import { ChainId } from '@/types/basket-protocol';
 import { toLiFiChainId } from './lifi-config';
 import { packFeeRateAndDeadline } from '@/lib/blockchain/redeem-settlement-eip712';
@@ -173,8 +173,10 @@ export interface ComposerPurchaseResult {
    * these first, or the Composer transaction reverts.
    */
   approvals: ComposerApproval[];
-  /** Per-leg simulated output, keyed by this module's own `swap_<index>` node ids — see buildLegNodeId(). Re-exports the SDK's own `ProducedResource` type as-is rather than a hand-narrowed shape, so a field this module doesn't use today doesn't silently get dropped for a future caller that needs it. */
-  producedResources: Record<string, ProducedResource>;
+  /** The compile response's `outputs`, keyed by output port (`swap_<i>.amountOut`, `sweep_<i>.amountOut`, …). Read amounts with `composerPortAmounts()`. */
+  outputs: Outputs;
+  /** Sweep only: inputs dropped because Composer found no route for them (see `buildComposerSweep`). Absent when nothing was skipped. */
+  skipped?: ComposerSkippedInput[];
   /**
    * `transactionRequest.gasLimit` — a gas UNIT estimate (e.g. `"210000"`),
    * NOT a USD amount. `null` when the compile response genuinely didn't
@@ -193,11 +195,46 @@ function buildLegNodeId(index: number): string {
   return `swap_${index}`;
 }
 
+export interface ComposerSkippedInput {
+  index: number;
+  address: string;
+  symbol: string;
+  /** Composer's own message for the failed op. */
+  reason: string;
+}
+
+/** Deadline on every Composer HTTP request (enforced by aborting the request itself). */
+export const COMPOSER_COMPILE_TIMEOUT_MS = 15_000;
+
+/**
+ * One Compose SDK per call, with the deadline on the request itself: the
+ * fetch is aborted after `COMPOSER_COMPILE_TIMEOUT_MS`, so a stuck compile
+ * neither keeps running in the background nor needs a `Promise.race`.
+ */
+function composerSdk(request: { apiKey: string; baseUrl?: string; fetchImpl?: typeof fetch }) {
+  const base = request.fetchImpl ?? fetch;
+  return createComposeSdk({
+    baseUrl: request.baseUrl ?? 'https://composer.li.quest',
+    apiKey: request.apiKey,
+    fetch: (url, init) => {
+      const deadline = AbortSignal.timeout(COMPOSER_COMPILE_TIMEOUT_MS);
+      return base(url, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline });
+    },
+  });
+}
+
+/** The `ComposeError` behind `err`: the error itself, or the cause of a wrapped one (see `compileStrict`). */
+export function composeErrorOf(err: unknown): ComposeError | null {
+  if (isComposeError(err)) return err;
+  const cause = (err as { cause?: unknown } | null)?.cause;
+  return isComposeError(cause) ? cause : null;
+}
+
 /**
  * Composer reports a `preparation_error` with the ops that failed
- * (`failedOps`, on the thrown error or on `result.error`). This names the
- * legs behind them, e.g. "GRT: no quote; STG: no quote", so the user sees
- * which token to remove. Returns null when no failed op maps to a leg.
+ * (`failedOps`). This names the legs behind them, e.g.
+ * "GRT: no quote; STG: no quote", so the user sees which token to remove.
+ * Returns null when no failed op maps to a leg.
  */
 export function describeFailedComposerLegs(
   source: unknown,
@@ -216,83 +253,67 @@ export function describeFailedComposerLegs(
   return parts.length > 0 ? parts.join('; ') : null;
 }
 
-/** `builder.compile`, with a failed op named by its token (see `describeFailedComposerLegs`). */
-async function compileNamingFailedLegs<T extends { status: string; error?: unknown }>(
-  compile: () => Promise<T>,
+/**
+ * `builder.compile` under the default `simulationPolicy: 'strict'`: a refusal
+ * is THROWN as a `ComposeError` (never returned), so callers only ever see a
+ * success result. A `preparation_error` is rethrown with the failing legs
+ * named, keeping the original `ComposeError` as its `cause` (read it with
+ * `composeErrorOf`). A `'partial'` result only exists under
+ * `'allow-revert'`, which no flow here requests; it is refused outright.
+ */
+async function compileStrict(
+  compile: () => Promise<ComposeCompileResult>,
   nodeIdOf: (index: number) => string,
   symbols: readonly string[]
-): Promise<T> {
-  let result: T;
+): Promise<Extract<ComposeCompileResult, { status: 'success' }>> {
+  let result: ComposeCompileResult;
   try {
     result = await compile();
   } catch (err) {
-    const named = describeFailedComposerLegs(err, nodeIdOf, symbols);
+    const named = isComposePreparationError(err) ? describeFailedComposerLegs(err, nodeIdOf, symbols) : null;
     if (named === null) throw err;
-    throw new Error(`${named} (${err instanceof Error ? err.message : String(err)})`, { cause: err });
+    throw new Error(`${named} (${(err as Error).message})`, { cause: err });
   }
-  if (result.status !== 'success') {
-    const named = describeFailedComposerLegs(result.error, nodeIdOf, symbols);
-    if (named !== null) throw new Error(`${named} (${(result.error as { message?: string } | undefined)?.message ?? 'preparation failed'})`);
-  }
+  if (result.status !== 'success') throw new Error(`Composer returned a partial result (${result.error.kind}) under strict simulation.`);
+  if (!result.transactionRequest) throw new Error('Composer flow reported success but returned no transactionRequest.');
   return result;
+}
+
+/** Expected and minimum amounts of one output port, as raw decimal strings. `min` is null when Composer enforces no floor on that port (never defaulted to 0). */
+export function composerPortAmounts(outputs: Outputs, port: string): { expected: string | null; min: string | null; token: string | null } {
+  const out: Output | undefined = outputs[port];
+  return {
+    expected: out?.amount.estimate ? out.amount.estimate.value.toString() : null,
+    min: out?.amount.minimum ? out.amount.minimum.value.toString() : null,
+    token: out && out.resource.kind === 'erc20' ? out.resource.token : null,
+  };
 }
 
 /**
  * The minimum output LI.FI's swap for leg `legIndex` enforces ON CHAIN, as
- * reported by the SAME compile() response — `producedResources` entry
- * `swap_<i>.amountOut`, field `simulated.amountOutMin`. `null` when the
- * response does not carry it (never fabricated or derived).
+ * reported by the SAME compile() response — `outputs['swap_<i>.amountOut']
+ * .amount.minimum` (from `config.slippage`, which becomes the swap's
+ * `amountOutMin`). `null` when the response does not carry it (never
+ * fabricated or derived).
  *
  * What it is — and is not:
  * - It is a PROVIDER-level floor at the SWAP BOUNDARY: the swap reverts
  *   (and with it the whole Composer transaction) if that leg's swap yields
  *   less. Verified against the live API (scripts/spike/composer-min-output-probe.ts):
- *   the value appears verbatim in the transaction calldata, and Composer
- *   rejects an extra output guard on `amountOut` because that port
- *   "provides its own minimum".
+ *   the value appears verbatim in the transaction calldata.
  * - It is NOT the amount guaranteed to land in the buyer's wallet: the
  *   proxy sweeps outputs to the buyer afterwards, and a transfer-fee token
  *   or any later step can reduce it. So it is never BAG's own minimum
  *   (`PurchaseIntentStepRecord.minOutputRaw`) and never a verification
  *   criterion — see `providerEnforcedMinOutputRaw`.
- *
- * Read from `producedResources`, deliberately NOT by decoding the calldata:
- * the calldata is LI.FI's own encoding of its Diamond/Composer program, not
- * a stable interface this app controls; the compile response is the
- * documented source for the same number.
- *
- * Keyed by OUTPUT PORT (`swap_0.amountOut`), which is how the live API keys
- * `producedResources` — not by node id (`swap_0`).
  */
-export function composerLegEnforcedMinOutputRaw(
-  producedResources: Record<string, ProducedResource>,
-  legIndex: number
-): string | null {
-  const min = composerLegProducedResource(producedResources, legIndex)?.simulated?.amountOutMin;
-  return min !== undefined && min !== null ? String(min) : null;
+export function composerLegEnforcedMinOutputRaw(outputs: Outputs, legIndex: number): string | null {
+  return composerPortAmounts(outputs, `${buildLegNodeId(legIndex)}.amountOut`).min;
 }
 
-/**
- * Leg `legIndex`'s produced resource from a compile response. The live API
- * keys `producedResources` by OUTPUT PORT (`swap_0.amountOut`), not by node
- * id (`swap_0`) — reading the node id returned nothing, so every Composer
- * leg's simulated output used to be recorded as null. Single place both the
- * compiler-path provider and the legacy path read a leg's entry.
- */
-export function composerLegProducedResource(
-  producedResources: Record<string, ProducedResource>,
-  legIndex: number
-): ProducedResource | undefined {
-  return producedResources[`${buildLegNodeId(legIndex)}.amountOut`];
-}
-
-/** Leg `legIndex`'s SIMULATED (expected, not guaranteed) output as a raw string, or null when the response carries none. */
-export function composerLegSimulatedOutputRaw(
-  producedResources: Record<string, ProducedResource>,
-  legIndex: number
-): string | null {
-  const out = composerLegProducedResource(producedResources, legIndex)?.simulated?.amountOut;
-  return out !== undefined && out !== null ? String(out) : null;
+/** Leg `legIndex`'s expected (simulated or quoted, not guaranteed) output as a raw string, or null when the response carries none. */
+export function composerLegSimulatedOutputRaw(outputs: Outputs, legIndex: number): string | null {
+  return composerPortAmounts(outputs, `${buildLegNodeId(legIndex)}.amountOut`).expected;
 }
 
 /**
@@ -313,14 +334,7 @@ export async function buildComposerPurchase(request: ComposerPurchaseRequest): P
   }
 
   const chainId = toLiFiChainId(request.chain);
-  const sdkOptions: ComposeSdkOptions = {
-    baseUrl: request.baseUrl ?? 'https://composer.li.quest',
-    apiKey: request.apiKey,
-  };
-  if (request.fetchImpl !== undefined) {
-    (sdkOptions as { fetch?: typeof fetch }).fetch = request.fetchImpl;
-  }
-  const sdk = createComposeSdk(sdkOptions);
+  const sdk = composerSdk(request);
 
   const builder = sdk.flow(chainId, {
     name: `bag-purchase-${request.legs.length}-legs`,
@@ -347,7 +361,6 @@ export async function buildComposerPurchase(request: ComposerPurchaseRequest): P
         resourceOut: { kind: 'erc20', token: leg.address as `0x${string}`, chainId },
         slippage,
       },
-      guards: [guards.slippage({ port: 'unspentIn', bps: request.slippageBps })],
     });
     currentResource = b;
   }
@@ -361,10 +374,9 @@ export async function buildComposerPurchase(request: ComposerPurchaseRequest): P
       resourceOut: { kind: 'erc20', token: lastLeg.address as `0x${string}`, chainId },
       slippage,
     },
-    guards: [guards.slippage({ port: 'unspentIn', bps: request.slippageBps })],
   });
 
-  const result = await compileNamingFailedLegs(
+  const result = await compileStrict(
     () =>
       builder.compile({
         signer: request.signerAddress as `0x${string}`,
@@ -382,22 +394,13 @@ export async function buildComposerPurchase(request: ComposerPurchaseRequest): P
     request.legs.map((l) => l.symbol)
   );
 
-  if (result.status !== 'success') {
-    throw new Error(`Composer flow compilation failed: ${result.error.kind} — ${result.error.message}`);
-  }
-  if (!result.transactionRequest) {
-    // Not expected given `status === 'success'`, but this module never
-    // hands a wallet layer a possibly-missing `to`/`data` without checking
-    // — see the "never fabricate a transaction" principle applied
-    // everywhere else in this codebase's blockchain adapters.
-    throw new Error('Composer flow reported success but returned no transactionRequest.');
-  }
+  const tx = result.transactionRequest!;
 
   // Only ever approve the purchase's own input token, never more than the
   // purchase spends; any other request means something unexpected is being
   // asked of the wallet, so refuse (the caller falls back to sequential).
   const approvals: ComposerApproval[] = (result.approvals ?? []).map((a) => ({ token: a.token, spender: a.spender, amountRaw: a.amount }));
-  const value = result.transactionRequest.value ?? '0';
+  const value = tx.value ?? '0';
   const valueWei = BigInt(value); // decimal or 0x-hex; anything else throws (and the purchase does not go ahead)
   if (nativeInput) {
     // A native payment needs no approval at all, and the transaction must
@@ -423,17 +426,17 @@ export async function buildComposerPurchase(request: ComposerPurchaseRequest): P
   return {
     approvals,
     transactionRequest: {
-      to: result.transactionRequest.to,
-      data: result.transactionRequest.data,
+      to: tx.to,
+      data: tx.data,
       value: valueWei.toString(),
       chainId,
     },
     userProxy: result.userProxy,
-    producedResources: result.producedResources,
+    outputs: result.outputs,
     // Straight passthrough of what THIS `compile()` call already returned —
     // no second Composer call, no invented conversion. See this function's
     // own doc and `ComposerPurchaseResult`'s field comments above.
-    gasLimitRaw: result.transactionRequest.gasLimit ?? null,
+    gasLimitRaw: tx.gasLimit ?? null,
     priceImpact: result.priceImpact ?? null,
     fees: (result.fees ?? []).map((f) => ({ token: f.token, recipient: f.recipient, bps: f.bps, amount: f.amount })),
   };
@@ -467,6 +470,12 @@ export interface ComposerSweepRequest {
   apiKey: string;
   baseUrl?: string;
   fetchImpl?: typeof fetch;
+  /**
+   * Wallet sales only: drop inputs Composer has no route for and sell the rest
+   * (see `buildComposerSweep`). Never for a Bag redemption or a fee settlement,
+   * where what is sold must match what is booked and attested.
+   */
+  skipUnroutable?: boolean;
 }
 
 /** Node id of the swap selling input `index` — `sweep_<i>`; its output port is `sweep_<i>.amountOut`. */
@@ -474,7 +483,34 @@ export function sweepNodeId(index: number): string {
   return `sweep_${index}`;
 }
 
-export async function buildComposerSweep(request: ComposerSweepRequest): Promise<ComposerPurchaseResult> {
+/**
+ * Sells every input in one Composer transaction. With `skipUnroutable`, when
+ * Composer refuses with a `preparation_error` because some tokens have no
+ * route, those inputs are
+ * dropped and the rest is compiled ONCE more; the result lists them in
+ * `skipped`. Legs that failed with `resolution_error` (an upstream outage, not
+ * a dead route) are kept, and if nothing would change or nothing would be
+ * left, the original error is thrown. Output indexes (`sweep_<i>`) in the
+ * result refer to the REMAINING inputs, in their original order.
+ */
+export async function buildComposerSweep(request: ComposerSweepRequest): Promise<ComposerPurchaseResult & { kept: ComposerSweepInput[] }> {
+  try {
+    return { ...(await buildComposerSweepOnce(request)), kept: request.inputs };
+  } catch (err) {
+    const composeErr = composeErrorOf(err);
+    if (!request.skipUnroutable || !composeErr || !isComposePreparationError(composeErr)) throw err;
+    const deadOps = composeErr.failedOps.filter((op) => op.kind !== 'resolution_error');
+    const dead = new Map(deadOps.map((op) => [op.callId, op.message] as const));
+    const kept = request.inputs.filter((_, i) => !dead.has(sweepNodeId(i)));
+    if (kept.length === 0 || kept.length === request.inputs.length) throw err;
+    const skipped: ComposerSkippedInput[] = request.inputs
+      .map((input, index) => ({ index, address: input.address, symbol: input.symbol, reason: dead.get(sweepNodeId(index)) ?? '' }))
+      .filter((x) => dead.has(sweepNodeId(x.index)));
+    return { ...(await buildComposerSweepOnce({ ...request, inputs: kept })), kept, skipped };
+  }
+}
+
+async function buildComposerSweepOnce(request: ComposerSweepRequest): Promise<ComposerPurchaseResult> {
   if (!COMPOSER_ELIGIBLE_CHAINS.includes(request.chain) || request.inputs.length === 0) {
     throw new ComposerIneligibleError(`Chain "${request.chain}" with ${request.inputs.length} token(s) cannot be swept through Composer.`);
   }
@@ -489,11 +525,7 @@ export async function buildComposerSweep(request: ComposerSweepRequest): Promise
   }
 
   const chainId = toLiFiChainId(request.chain);
-  const sdkOptions: ComposeSdkOptions = { baseUrl: request.baseUrl ?? 'https://composer.li.quest', apiKey: request.apiKey };
-  if (request.fetchImpl !== undefined) {
-    (sdkOptions as { fetch?: typeof fetch }).fetch = request.fetchImpl;
-  }
-  const sdk = createComposeSdk(sdkOptions);
+  const sdk = composerSdk(request);
 
   const inputSchema: Record<string, ReturnType<typeof resources.erc20>> = {};
   request.inputs.forEach((input, i) => {
@@ -509,7 +541,6 @@ export async function buildComposerSweep(request: ComposerSweepRequest): Promise
         resourceOut: request.nativeOutput ? resources.native(chainId) : { kind: 'erc20', token: request.outputTokenAddress as `0x${string}`, chainId },
         slippage,
       },
-      guards: [guards.slippage({ port: 'unspentIn', bps: request.slippageBps })],
     });
   });
 
@@ -517,7 +548,7 @@ export async function buildComposerSweep(request: ComposerSweepRequest): Promise
   request.inputs.forEach((input, i) => {
     runInputs[`in_${i}`] = materialisers.directDeposit({ amount: BigInt(input.amountRaw) });
   });
-  const result = await compileNamingFailedLegs(
+  const result = await compileStrict(
     () =>
       builder.compile({
         signer: request.signerAddress as `0x${string}`,
@@ -530,15 +561,10 @@ export async function buildComposerSweep(request: ComposerSweepRequest): Promise
     request.inputs.map((i) => i.symbol)
   );
 
-  if (result.status !== 'success') {
-    throw new Error(`Composer flow compilation failed: ${result.error.kind} — ${result.error.message}`);
-  }
-  if (!result.transactionRequest) {
-    throw new Error('Composer flow reported success but returned no transactionRequest.');
-  }
+  const tx = result.transactionRequest!;
 
   // Only ERC-20s are sold: the transaction must not also take native ETH.
-  if (BigInt(result.transactionRequest.value ?? '0') !== BigInt(0)) {
+  if (BigInt(tx.value ?? '0') !== BigInt(0)) {
     throw new Error('Composer returned a sweep transaction that also spends native ETH.');
   }
 
@@ -556,14 +582,14 @@ export async function buildComposerSweep(request: ComposerSweepRequest): Promise
   return {
     approvals,
     transactionRequest: {
-      to: result.transactionRequest.to,
-      data: result.transactionRequest.data,
-      value: result.transactionRequest.value ?? '0',
+      to: tx.to,
+      data: tx.data,
+      value: tx.value ?? '0',
       chainId,
     },
     userProxy: result.userProxy,
-    producedResources: result.producedResources,
-    gasLimitRaw: result.transactionRequest.gasLimit ?? null,
+    outputs: result.outputs,
+    gasLimitRaw: tx.gasLimit ?? null,
     priceImpact: result.priceImpact ?? null,
     fees: (result.fees ?? []).map((f) => ({ token: f.token, recipient: f.recipient, bps: f.bps, amount: f.amount })),
   };
@@ -645,11 +671,7 @@ export async function buildComposerRebalance(request: ComposerRebalanceRequest):
   }
 
   const chainId = toLiFiChainId(request.chain);
-  const sdkOptions: ComposeSdkOptions = { baseUrl: request.baseUrl ?? 'https://composer.li.quest', apiKey: request.apiKey };
-  if (request.fetchImpl !== undefined) {
-    (sdkOptions as { fetch?: typeof fetch }).fetch = request.fetchImpl;
-  }
-  const sdk = createComposeSdk(sdkOptions);
+  const sdk = composerSdk(request);
 
   const inputSchema: Record<string, ReturnType<typeof resources.erc20>> = {};
   request.sells.forEach((s, i) => {
@@ -663,7 +685,6 @@ export async function buildComposerRebalance(request: ComposerRebalanceRequest):
     builder.lifi.swap(id, {
       bind: { amountIn: source },
       config: { resourceOut: { kind: 'erc20', token: token as `0x${string}`, chainId }, slippage },
-      guards: [guards.slippage({ port: 'unspentIn', bps: request.slippageBps })],
     });
   // Cascade split of `source` across the buys (same arithmetic as the purchase flow).
   const splitAcrossBuys = (source: Bindable<'resource'>) => {
@@ -693,21 +714,21 @@ export async function buildComposerRebalance(request: ComposerRebalanceRequest):
   request.sells.forEach((s, i) => {
     runInputs[`in_${i}`] = materialisers.directDeposit({ amount: BigInt(s.amountRaw) });
   });
-  const result = await builder.compile({
-    signer: request.signerAddress as `0x${string}`,
-    inputs: runInputs as never,
-    sweepTo: { $ref: 'context.sender' },
-    checkOnChainAllowances: true,
-    ...(request.maxPriceImpactBps !== undefined ? { maxPriceImpactBps: request.maxPriceImpactBps } : {}),
-  });
+  const result = await compileStrict(
+    () =>
+      builder.compile({
+        signer: request.signerAddress as `0x${string}`,
+        inputs: runInputs as never,
+        sweepTo: { $ref: 'context.sender' },
+        checkOnChainAllowances: true,
+        ...(request.maxPriceImpactBps !== undefined ? { maxPriceImpactBps: request.maxPriceImpactBps } : {}),
+      }),
+    rebalanceSellNodeId,
+    request.sells.map((x) => x.symbol)
+  );
 
-  if (result.status !== 'success') {
-    throw new Error(`Composer flow compilation failed: ${result.error.kind} — ${result.error.message}`);
-  }
-  if (!result.transactionRequest) {
-    throw new Error('Composer flow reported success but returned no transactionRequest.');
-  }
-  if (BigInt(result.transactionRequest.value ?? '0') !== BigInt(0)) {
+  const tx = result.transactionRequest!;
+  if (BigInt(tx.value ?? '0') !== BigInt(0)) {
     throw new Error('Composer returned a rebalance transaction that also spends native ETH.');
   }
   const amountByToken = new Map(request.sells.map((s) => [s.address.toLowerCase(), BigInt(s.amountRaw)]));
@@ -723,10 +744,10 @@ export async function buildComposerRebalance(request: ComposerRebalanceRequest):
   return {
     shape,
     approvals,
-    transactionRequest: { to: result.transactionRequest.to, data: result.transactionRequest.data, value: result.transactionRequest.value ?? '0', chainId },
+    transactionRequest: { to: tx.to, data: tx.data, value: tx.value ?? '0', chainId },
     userProxy: result.userProxy,
-    producedResources: result.producedResources,
-    gasLimitRaw: result.transactionRequest.gasLimit ?? null,
+    outputs: result.outputs,
+    gasLimitRaw: tx.gasLimit ?? null,
     priceImpact: result.priceImpact ?? null,
     fees: (result.fees ?? []).map((f) => ({ token: f.token, recipient: f.recipient, bps: f.bps, amount: f.amount })),
   };
@@ -785,11 +806,7 @@ export async function buildComposerSettlementRedeem(request: ComposerSettlementR
   }
 
   const chainId = toLiFiChainId(request.chain);
-  const sdkOptions: ComposeSdkOptions = { baseUrl: request.baseUrl ?? 'https://composer.li.quest', apiKey: request.apiKey };
-  if (request.fetchImpl !== undefined) {
-    (sdkOptions as { fetch?: typeof fetch }).fetch = request.fetchImpl;
-  }
-  const sdk = createComposeSdk(sdkOptions);
+  const sdk = composerSdk(request);
 
   const inputSchema: Record<string, unknown> = {
     settlementAddress: 'address',
@@ -817,7 +834,6 @@ export async function buildComposerSettlementRedeem(request: ComposerSettlementR
     return builder.lifi.swap(sweepNodeId(i), {
       bind: { amountIn: b[`in_${i}`] },
       config: { resourceOut: { kind: 'erc20', token: request.outputTokenAddress as `0x${string}`, chainId }, slippage },
-      guards: [guards.slippage({ port: 'unspentIn', bps: request.slippageBps })],
     }).amountOut;
   });
   let merged = usdgParts[0];
@@ -849,20 +865,20 @@ export async function buildComposerSettlementRedeem(request: ComposerSettlementR
   request.inputs.forEach((input, i) => {
     runInputs[`in_${i}`] = materialisers.directDeposit({ amount: BigInt(input.amountRaw) });
   });
-  const result = await builder.compile({
-    signer: request.signerAddress as `0x${string}`,
-    inputs: runInputs as never,
-    sweepTo: { $ref: 'context.sender' },
-    checkOnChainAllowances: true,
-  } as never);
+  const result = await compileStrict(
+    () =>
+      builder.compile({
+        signer: request.signerAddress as `0x${string}`,
+        inputs: runInputs as never,
+        sweepTo: { $ref: 'context.sender' },
+        checkOnChainAllowances: true,
+      } as never),
+    sweepNodeId,
+    request.inputs.map((x) => x.symbol)
+  );
 
-  if (result.status !== 'success') {
-    throw new Error(`Composer flow compilation failed: ${result.error.kind} — ${result.error.message}`);
-  }
-  if (!result.transactionRequest) {
-    throw new Error('Composer flow reported success but returned no transactionRequest.');
-  }
-  if (BigInt(result.transactionRequest.value ?? '0') !== BigInt(0)) {
+  const tx = result.transactionRequest!;
+  if (BigInt(tx.value ?? '0') !== BigInt(0)) {
     throw new Error('Composer returned a settlement transaction that also spends native ETH.');
   }
   const amountByToken = new Map(request.inputs.map((input) => [input.address.toLowerCase(), BigInt(input.amountRaw)]));
@@ -876,10 +892,10 @@ export async function buildComposerSettlementRedeem(request: ComposerSettlementR
   }
   return {
     approvals,
-    transactionRequest: { to: result.transactionRequest.to, data: result.transactionRequest.data, value: result.transactionRequest.value ?? '0', chainId },
+    transactionRequest: { to: tx.to, data: tx.data, value: tx.value ?? '0', chainId },
     userProxy: result.userProxy,
-    producedResources: result.producedResources,
-    gasLimitRaw: result.transactionRequest.gasLimit ?? null,
+    outputs: result.outputs,
+    gasLimitRaw: tx.gasLimit ?? null,
     priceImpact: result.priceImpact ?? null,
     fees: (result.fees ?? []).map((f) => ({ token: f.token, recipient: f.recipient, bps: f.bps, amount: f.amount })),
   };

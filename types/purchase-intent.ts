@@ -313,6 +313,8 @@ export interface ComposerFallbackNotice {
   /** USD values Composer reported for the whole purchase (decimal strings, no "$"). */
   inputUsd: string | null;
   outputUsd: string | null;
+  /** Composer's typed error kind (e.g. `preparation_error`, `simulation_revert`, `sdk_outdated`), when it threw one. */
+  kind?: string | null;
 }
 
 /** Hard ceiling on a price impact a buyer may accept for the single-transaction route (15%). Above it the purchase is refused outright. */

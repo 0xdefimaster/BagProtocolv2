@@ -172,6 +172,23 @@ describe('SwapCard — Multi-sell', () => {
     expect(screen.getByText(/1 exact-amount approval \+ the swap — one confirmation in MetaMask/)).toBeTruthy();
   });
 
+  it('a token with no route is named as not sold before the user signs', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/assets?chain=')) return ok({ assets });
+      if (url === '/api/wallet/holdings?chain=all') return ok(holdings);
+      if (url === '/api/wallet/sweep-quote')
+        return ok({ ...sellQuote, skipped: [{ address: NVDA, symbol: 'NVDA', reason: 'No available quotes' }] });
+      throw new Error('unexpected ' + url);
+    });
+    render(<SwapCard walletAddress={WALLET} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Multi-sell' }));
+    await pick('AAPL', 'NVDA');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Sell 2 tokens for USDG' }));
+    });
+    expect((await screen.findByRole('status')).textContent).toMatch(/Not sold \(no route right now, stays in your wallet\): NVDA/);
+  });
+
   it('receiving ETH makes the stablecoin itself sellable; a chain that cannot be read offers nothing to sell', async () => {
     render(<SwapCard walletAddress={WALLET} />);
     fireEvent.click(screen.getByRole('tab', { name: 'Multi-sell' }));

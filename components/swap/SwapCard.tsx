@@ -51,6 +51,8 @@ interface SellQuote extends PlanBase {
   legs: { address: string; symbol: string; amountRaw: string; decimals: number; expectedOutRaw: string | null; minOutRaw: string | null }[];
   expectedOutRaw: string | null;
   minOutRaw: string | null;
+  /** Tokens left out because no route was found for them; they stay in the wallet. */
+  skipped?: { address: string; symbol: string; reason: string }[];
 }
 type Quote = { mode: 'buy'; q: BuyQuote } | { mode: 'sell'; q: SellQuote };
 
@@ -385,6 +387,11 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
 
         {(phase.kind === 'quoted' || phase.kind === 'executing') && (
           <div className="swap-details">
+            {phase.quote.mode === 'sell' && (phase.quote.q.skipped?.length ?? 0) > 0 && (
+              <div role="status" className="swap-skipped">
+                Not sold (no route right now, stays in your wallet): {phase.quote.q.skipped!.map((x) => x.symbol).join(', ')}
+              </div>
+            )}
             {phase.quote.mode === 'sell' && phase.quote.q.minOutRaw && (
               <div>
                 Minimum (enforced on-chain): {formatRawAmount(phase.quote.q.minOutRaw, phase.quote.q.outputToken.decimals, { maxFractionDigits: 6 })} {phase.quote.q.outputToken.symbol}

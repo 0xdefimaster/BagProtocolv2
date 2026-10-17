@@ -36,7 +36,7 @@
   },
   "peerDependencies": {
     "viem": "^2.0.0",
-    "@lifi/composer-sdk": "^0.5.0"
+    "@lifi/composer-sdk": "^0.6.0"
   },
   "peerDependenciesMeta": {
     "@lifi/composer-sdk": {

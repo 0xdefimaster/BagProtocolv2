@@ -21,13 +21,20 @@ const listAssets = vi.fn(async (_admin: unknown, filter: { chain: string }) => (
 vi.mock('@/lib/server/asset-repo', () => ({ listAssets: (...a: [unknown, { chain: string }]) => listAssets(...a) }));
 const buildComposerSweep = vi.fn();
 const buildComposerPurchase = vi.fn();
-vi.mock('@/lib/blockchain/lifi-composer-adapter', () => ({
-  buildComposerSweep: (...args: unknown[]) => buildComposerSweep(...args),
-  buildComposerPurchase: (...args: unknown[]) => buildComposerPurchase(...args),
-  sweepNodeId: (i: number) => `sweep_${i}`,
-  composerLegSimulatedOutputRaw: (pr: Record<string, { simulated?: { amountOut?: unknown } }>, i: number) => (pr[`swap_${i}.amountOut`]?.simulated?.amountOut ?? null)?.toString() ?? null,
-  composerLegEnforcedMinOutputRaw: (pr: Record<string, { simulated?: { amountOutMin?: unknown } }>, i: number) => (pr[`swap_${i}.amountOut`]?.simulated?.amountOutMin ?? null)?.toString() ?? null,
-}));
+vi.mock('@/lib/blockchain/lifi-composer-adapter', async (orig) => {
+  const actual = await orig<typeof import('@/lib/blockchain/lifi-composer-adapter')>();
+  return {
+    buildComposerSweep: (...args: unknown[]) => buildComposerSweep(...args),
+    buildComposerPurchase: (...args: unknown[]) => buildComposerPurchase(...args),
+    // The real readers and error classifier: the tests feed them 0.6-shaped `outputs` and typed errors.
+    sweepNodeId: actual.sweepNodeId,
+    composerPortAmounts: actual.composerPortAmounts,
+    composerLegSimulatedOutputRaw: actual.composerLegSimulatedOutputRaw,
+    composerLegEnforcedMinOutputRaw: actual.composerLegEnforcedMinOutputRaw,
+    composeErrorOf: actual.composeErrorOf,
+  };
+});
+const { composeError, out } = await import('@/lib/blockchain/__tests__/composer-fixtures');
 
 import { getWalletHoldings, getWalletHoldingsAllChains, quoteWalletBuy, quoteWalletSweep, usdValueOf } from '../wallet-holdings';
 
@@ -113,10 +120,11 @@ describe('quoteWalletSweep', () => {
     buildComposerSweep.mockResolvedValue({
       transactionRequest: { to: '0xVM', data: '0xabc', value: '0', chainId: 4663 },
       approvals: [{ token: AAPL, spender: '0xVM', amountRaw: '500000000000000000' }],
-      producedResources: {
-        'sweep_0.amountOut': { simulated: { amountOut: BigInt(115_000_000), amountOutMin: BigInt(113_850_000) } },
-        'sweep_1.amountOut': { simulated: { amountOut: BigInt(1_200_000), amountOutMin: BigInt(1_188_000) } },
+      outputs: {
+        'sweep_0.amountOut': out(115_000_000, 113_850_000),
+        'sweep_1.amountOut': out(1_200_000, 1_188_000),
       },
+      kept: [{ address: AAPL }, { address: DOGE }],
       priceImpact: { impactBps: 42 },
     });
     const r = await sell([{ address: AAPL, amountRaw: '500000000000000000' }, { address: DOGE, amountRaw: '1000000000' }]);
@@ -125,15 +133,31 @@ describe('quoteWalletSweep', () => {
   });
 
   it('reports a price-impact refusal so the user can accept it, with the accepted limit passed on the retry', async () => {
-    buildComposerSweep.mockRejectedValueOnce(
-      new Error('Composer flow compilation failed: simulation — Price impact 820 bps exceeds maximum 500 bps (input: $10.00, output: $9.18)')
-    );
+    buildComposerSweep.mockRejectedValueOnce(await composeError('price_impact_exceeded', 'Price impact 820 bps exceeds maximum 500 bps (input: $10.00, output: $9.18)'));
     const refused = await sell([{ address: DOGE, amountRaw: '1000000000' }]);
     expect(refused).toMatchObject({ ok: false, status: 422, composerFallback: { reason: 'PRICE_IMPACT', priceImpactBps: 820 } });
 
-    buildComposerSweep.mockResolvedValueOnce({ transactionRequest: { to: '0xVM', data: '0x', value: '0', chainId: 4663 }, approvals: [], producedResources: {}, priceImpact: null });
+    buildComposerSweep.mockResolvedValueOnce({ transactionRequest: { to: '0xVM', data: '0x', value: '0', chainId: 4663 }, approvals: [], outputs: {}, kept: [], priceImpact: null });
     await sell([{ address: DOGE, amountRaw: '1000000000' }], { acceptedPriceImpactBps: 820 });
     expect(buildComposerSweep.mock.calls[1][0]).toMatchObject({ maxPriceImpactBps: 920 });
+  });
+});
+
+describe('Multi-sell: a token with no route', () => {
+  const sell = (tokens: { address: string; amountRaw: string }[]) => quoteWalletSweep(admin, fakeClient().client, WALLET, { tokens }, { apiKey: 'k' });
+  it('asks Composer to skip unroutable tokens and reports what was left out; legs and totals cover only what is sold', async () => {
+    buildComposerSweep.mockResolvedValue({
+      transactionRequest: { to: '0xVM', data: '0xabc', value: '0', chainId: 4663 },
+      approvals: [],
+      outputs: { 'sweep_0.amountOut': out(1_200_000, 1_188_000) },
+      kept: [{ address: DOGE }],
+      skipped: [{ index: 0, address: AAPL, symbol: 'AAPL', reason: 'No available quotes' }],
+      priceImpact: null,
+    });
+    const r = await sell([{ address: AAPL, amountRaw: '500000000000000000' }, { address: DOGE, amountRaw: '1000000000' }]);
+    expect(buildComposerSweep.mock.calls[0][0]).toMatchObject({ skipUnroutable: true });
+    expect(r).toMatchObject({ ok: true, expectedOutRaw: '1200000', minOutRaw: '1188000', skipped: [{ address: AAPL, symbol: 'AAPL', reason: 'No available quotes' }] });
+    expect((r as { legs: { symbol: string }[] }).legs.map((l) => l.symbol)).toEqual(['DOGE']);
   });
 });
 
@@ -147,7 +171,7 @@ describe('other chains', () => {
   });
 
   it('a sale on Base is compiled on Base, into USDC, and only for Base registry tokens', async () => {
-    buildComposerSweep.mockResolvedValue({ transactionRequest: { to: '0xVM', data: '0x', value: '0', chainId: 8453 }, approvals: [], producedResources: {}, priceImpact: null });
+    buildComposerSweep.mockResolvedValue({ transactionRequest: { to: '0xVM', data: '0x', value: '0', chainId: 8453 }, approvals: [], outputs: {}, kept: [], priceImpact: null });
     const r = await quoteWalletSweep(admin, fakeClient().client, WALLET, { tokens: [{ address: BASE_WETH, amountRaw: '1000000000000000' }] }, { apiKey: 'k' }, 'base');
     expect(r).toMatchObject({ ok: true, transaction: { chainId: 8453 }, outputToken: { symbol: 'USDC' } });
     expect(buildComposerSweep.mock.calls[0][0]).toMatchObject({ chain: 'base', outputTokenAddress: BASE_USDC });
@@ -166,14 +190,14 @@ describe('other chains', () => {
 
 describe('receive native ETH', () => {
   it('sells into ETH: compiled with nativeOutput, the stablecoin is allowed as an input, ETH reported as what you receive', async () => {
-    buildComposerSweep.mockResolvedValue({ transactionRequest: { to: '0xVM', data: '0x', value: '0', chainId: 4663 }, approvals: [], producedResources: {}, priceImpact: null });
+    buildComposerSweep.mockResolvedValue({ transactionRequest: { to: '0xVM', data: '0x', value: '0', chainId: 4663 }, approvals: [], outputs: {}, kept: [], priceImpact: null });
     const r = await quoteWalletSweep(admin, fakeClient().client, WALLET, { receive: 'NATIVE', tokens: [{ address: USDG, amountRaw: '2500000' }, { address: AAPL, amountRaw: '1' }] }, { apiKey: 'k' });
     expect(r).toMatchObject({ ok: true, outputToken: { address: '0x0000000000000000000000000000000000000000', symbol: 'ETH', decimals: 18, native: true } });
     expect(buildComposerSweep.mock.calls[0][0]).toMatchObject({ nativeOutput: true });
   });
 
   it('the default stays the stablecoin, and an unknown receive value is refused', async () => {
-    buildComposerSweep.mockResolvedValue({ transactionRequest: { to: '0xVM', data: '0x', value: '0', chainId: 4663 }, approvals: [], producedResources: {}, priceImpact: null });
+    buildComposerSweep.mockResolvedValue({ transactionRequest: { to: '0xVM', data: '0x', value: '0', chainId: 4663 }, approvals: [], outputs: {}, kept: [], priceImpact: null });
     const r = await quoteWalletSweep(admin, fakeClient().client, WALLET, { tokens: [{ address: AAPL, amountRaw: '1' }] }, { apiKey: 'k' });
     expect(r).toMatchObject({ ok: true, outputToken: { symbol: 'USDG', native: false } });
     expect(buildComposerSweep.mock.calls[0][0].nativeOutput).toBeUndefined();
@@ -186,9 +210,9 @@ describe('quoteWalletBuy', () => {
   const compiled = (value: string, approvals: unknown[] = []) => ({
     transactionRequest: { to: '0xVM', data: '0xabc', value, chainId: 4663 },
     approvals,
-    producedResources: {
-      'swap_0.amountOut': { simulated: { amountOut: BigInt(40), amountOutMin: BigInt(39) } },
-      'swap_1.amountOut': { simulated: { amountOut: BigInt(7), amountOutMin: BigInt(6) } },
+    outputs: {
+      'swap_0.amountOut': out(40, 39),
+      'swap_1.amountOut': out(7, 6),
     },
     priceImpact: { impactBps: 12 },
   });
@@ -260,7 +284,7 @@ describe('quoteWalletBuy', () => {
   });
 
   it('a price-impact refusal is reported so the buyer can accept it', async () => {
-    buildComposerPurchase.mockRejectedValueOnce(new Error('Composer flow compilation failed: simulation — Price impact 820 bps exceeds maximum 500 bps (input: $10.00, output: $9.18)'));
+    buildComposerPurchase.mockRejectedValueOnce(await composeError('price_impact_exceeded', 'Price impact 820 bps exceeds maximum 500 bps (input: $10.00, output: $9.18)'));
     expect(await buy({ amountRaw: '1000', buys: [{ address: AAPL, weightBps: 10000 }] })).toMatchObject({ ok: false, status: 422, composerFallback: { priceImpactBps: 820 } });
   });
 });

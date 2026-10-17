@@ -28,6 +28,8 @@ export const BAG_EXECUTION_ERROR_CODES = [
   'INVALID_EXECUTION_GRAPH',
   /** Caller asked for a capability (e.g. `atomic: true` / forced `SINGLE_TX`) no eligible provider can satisfy. */
   'UNSATISFIABLE_CONSTRAINTS',
+  /** The single-transaction provider refused on price impact: the buyer must see it and may accept it. Never falls through to another provider. `details.composerFallback` carries the notice. */
+  'PRICE_IMPACT_REFUSED',
 ] as const;
 
 export type BagExecutionErrorCode = (typeof BAG_EXECUTION_ERROR_CODES)[number];

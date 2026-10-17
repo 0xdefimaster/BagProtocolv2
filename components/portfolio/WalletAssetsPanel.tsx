@@ -26,6 +26,8 @@ interface SweepQuote {
   expectedOutRaw: string | null;
   minOutRaw: string | null;
   priceImpactBps: number | null;
+  /** Tokens left out because no route was found for them; they stay in the wallet. */
+  skipped?: { address: string; symbol: string; reason: string }[];
 }
 
 type Phase =
@@ -357,6 +359,11 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
                 </tbody>
               </table>
               <div style={{ fontSize: 13, display: 'grid', gap: 4 }}>
+                {(phase.quote.skipped?.length ?? 0) > 0 && (
+                  <div role="status" style={{ color: 'var(--warning, #b7791f)' }}>
+                    Not sold (no route right now, stays in your wallet): {phase.quote.skipped!.map((x) => x.symbol).join(', ')}
+                  </div>
+                )}
                 <div>You receive ≈ <b>{fmtOut(phase.quote.expectedOutRaw)}</b></div>
                 <div style={{ color: 'var(--ink-soft)' }}>Minimum (enforced on-chain per swap): {fmtOut(phase.quote.minOutRaw)}</div>
                 {phase.quote.priceImpactBps !== null && (

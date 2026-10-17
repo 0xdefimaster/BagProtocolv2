@@ -10,7 +10,7 @@ import { getAssetsByIdentities } from '@/lib/server/asset-repo';
 import { getPriceProvider } from '@/lib/server/price-provider';
 import { ROBINHOOD_CHAIN_ID, ROBINHOOD_REWARD_TOKEN, DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
 import { DEFAULT_COMPOSER_SLIPPAGE_BPS } from '@/lib/blockchain/lifi-purchase-quote';
-import { buildComposerSettlementRedeem, buildComposerSweep, composerLegEnforcedMinOutputRaw, sweepNodeId } from '@/lib/blockchain/lifi-composer-adapter';
+import { buildComposerSettlementRedeem, buildComposerSweep, composerPortAmounts, sweepNodeId } from '@/lib/blockchain/lifi-composer-adapter';
 import { getRobinhoodPublicClient } from '@/lib/blockchain/robinhood-public-client';
 import {
   SETTLEMENT_TYPES,
@@ -305,8 +305,8 @@ export async function quoteSettlement(admin: SupabaseClient, userId: string, int
   );
   let grossMinimum = BigInt(0);
   for (const [i, leg] of swapLegs.entries()) {
-    const sim = quote.producedResources[`${sweepNodeId(i)}.amountOut`]?.simulated;
-    const out = sim?.amountOut !== undefined ? BigInt(String(sim.amountOut)) : null;
+    const expected = composerPortAmounts(quote.outputs, `${sweepNodeId(i)}.amountOut`).expected;
+    const out = expected !== null ? BigInt(expected) : null;
     const decimals = decimalsByKey.get(assetIdentityKey({ chain: leg.chain, address: leg.token }));
     if (decimals === undefined) throw new PriceUnavailableForSaleError(leg.token, 'asset not in the registry');
     let priceUsd: string;
@@ -320,8 +320,12 @@ export async function quoteSettlement(admin: SupabaseClient, userId: string, int
     const selection = selectRedeemLegQuote(out === null ? [] : [{ feeTier: 0, amountOut: out }], reference, FEE_REDEEM_MAX_PRICE_DEVIATION_BPS);
     if (!selection.ok && selection.reason === 'NO_QUOTE') throw new PriceUnavailableForSaleError(leg.token, 'no Composer quote for this leg');
     if (!selection.ok) throw new ExecutionPriceTooLowError(leg.token, selection.deviationBps, FEE_REDEEM_MAX_PRICE_DEVIATION_BPS);
-    const enforcedMin = composerLegEnforcedMinOutputRaw(quote.producedResources, i);
-    grossMinimum += enforcedMin !== null ? BigInt(enforcedMin) : (selection.quoteRaw * BigInt(10000 - DEFAULT_COMPOSER_SLIPPAGE_BPS)) / BigInt(10000);
+    // The floor Composer enforces on chain for this leg. Without one there is no
+    // guaranteed minimum to sign the user's floor against, so the sale is refused
+    // rather than assuming quote × (1 − slippage).
+    const enforcedMin = composerPortAmounts(quote.outputs, `${sweepNodeId(i)}.amountOut`).min;
+    if (enforcedMin === null) throw new PriceUnavailableForSaleError(leg.token, 'Composer reported no enforced minimum for this leg');
+    grossMinimum += BigInt(enforcedMin);
   }
   for (const l of state.legs) if (l.token.toLowerCase() === usdg) grossMinimum += l.amountRaw;
 

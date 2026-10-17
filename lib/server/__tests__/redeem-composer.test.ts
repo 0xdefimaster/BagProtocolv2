@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ExecutionStep } from '@/types/basket-protocol';
+import { composeResponse, wireOut } from '@/lib/blockchain/__tests__/composer-fixtures';
 import { buildRedeemComposer, splitReceivedAcrossLegs } from '../redeem-composer';
 
 // HTTP-boundary mocking, as in lifi-composer-sweep.test.ts: the real Composer SDK builds the flow.
@@ -30,9 +31,9 @@ const keep: ExecutionStep = {
 function composeFetch(data: Record<string, unknown> = {}, ok = true) {
   const body = {
     data: {
-      producedResources: {
-        'sweep_0.amountOut': { kind: 'erc20', chainId: 4663, token: USDG, availability: 'now', owner: WALLET, simulated: { amountOut: '6000000', amountOutMin: '5940000' } },
-        'sweep_1.amountOut': { kind: 'erc20', chainId: 4663, token: USDG, availability: 'now', owner: WALLET, simulated: { amountOut: '4000000', amountOutMin: '3960000' } },
+      outputs: {
+        'sweep_0.amountOut': wireOut('6000000', '5940000', USDG),
+        'sweep_1.amountOut': wireOut('4000000', '3960000', USDG),
       },
       transactionRequest: { to: SPENDER, chainId: 4663, data: '0xdeadbeef', value: '0' },
       approvals: [
@@ -43,7 +44,7 @@ function composeFetch(data: Record<string, unknown> = {}, ok = true) {
       ...data,
     },
   };
-  return vi.fn(async () => ({ ok, status: ok ? 200 : 500, json: async () => body, text: async () => JSON.stringify(body) })) as unknown as typeof fetch;
+  return vi.fn(async () => composeResponse(body, ok ? 200 : 500)) as unknown as typeof fetch;
 }
 
 const request = (steps: ExecutionStep[], fetchImpl: typeof fetch) => ({

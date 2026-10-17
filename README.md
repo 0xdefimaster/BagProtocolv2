@@ -89,7 +89,7 @@ provider is used for its own data:
 
 - **Node.js 24 or newer** (`package.json` `engines.node: ">=24"`, `.nvmrc`).
   This is not a preference: the production dependency
-  `@lifi/composer-sdk@0.5.0` and its `@lifi/compose-spec@0.5.0` declare
+  `@lifi/composer-sdk@0.6` and its `@lifi/compose-spec@0.6` declare
   `engines.node: ">=24"`. Under Node 22, `npm install` prints `EBADENGINE`
   warnings for them — treat that as an unsupported runtime, not a green
   build. CI (`.github/workflows/ci.yml`) and the production runtime (Vercel

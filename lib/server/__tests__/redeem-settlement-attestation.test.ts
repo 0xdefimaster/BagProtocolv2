@@ -114,9 +114,8 @@ vi.mock('@/lib/blockchain/lifi-composer-adapter', async (orig) => ({
     userProxy: PROXY,
     approvals: [],
     transactionRequest: { to: PROXY, data: '0x', value: '0' },
-    producedResources: Object.fromEntries(
-      req.inputs.map((_x, i) => [`sweep_${i}.amountOut`, { simulated: { amountOut: legOutputs[i].amountOut, amountOutMin: legOutputs[i].amountOutMin } }])
-    ),
+    outputs: Object.fromEntries(req.inputs.map((_x, i) => [`sweep_${i}.amountOut`, out(legOutputs[i].amountOut, legOutputs[i].amountOutMin)])),
+    kept: req.inputs,
   }),
   buildComposerSettlementRedeem: async (req: Record<string, unknown>) => {
     callOrder.push('signedAndBuilt');
@@ -125,12 +124,13 @@ vi.mock('@/lib/blockchain/lifi-composer-adapter', async (orig) => ({
       userProxy: finalProxy,
       approvals: [{ token: AMKR, spender: finalProxy, amountRaw: '20000000000000000' }],
       transactionRequest: { to: finalProxy, data: `0xdeadbeef${SETTLEMENT.slice(2)}`, value: '0', chainId: 4663 },
-      producedResources: {},
+      outputs: {},
     };
   },
 }));
 
 const svc = await import('../redeem-settlement-attestation');
+const { out } = await import('@/lib/blockchain/__tests__/composer-fixtures');
 const { ExecutionPriceTooLowError } = await import('../redeem-fee-attestation');
 const { quoteSettlement, attestSettlement } = svc;
 
