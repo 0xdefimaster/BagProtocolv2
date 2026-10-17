@@ -92,14 +92,18 @@ describe('createRedeemIntentForUser — one-transaction sale', () => {
     expect(composerMock).toHaveBeenCalled();
   });
 
-  it('RedeemFeeRouter configured, or no LI.FI key: per-asset quotes as before', async () => {
+  it('a configured RedeemFeeRouter does not stop a free sale from being one transaction (it only settles fees)', async () => {
     vi.stubEnv('REDEEM_FEE_ROUTER_ADDRESS', '0x00000000000000000000000000000000000000ff');
     await create();
-    vi.stubEnv('REDEEM_FEE_ROUTER_ADDRESS', '');
+    expect(composerMock).toHaveBeenCalledTimes(1);
+    expect(sequentialMock).not.toHaveBeenCalled();
+  });
+
+  it('no LI.FI key: per-asset quotes as before', async () => {
     vi.stubEnv('LIFI_API_KEY', '');
     await create();
     expect(composerMock).not.toHaveBeenCalled();
-    expect(sequentialMock).toHaveBeenCalledTimes(2);
+    expect(sequentialMock).toHaveBeenCalledTimes(1);
   });
 
   it('Composer unavailable: per-asset quotes', async () => {

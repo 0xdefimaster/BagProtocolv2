@@ -105,7 +105,7 @@ describe('useRedeemExecution: declined fee-paying sale', () => {
     expect(result.current.state.error).toMatch(/still waiting for your signature/);
   });
 
-  it('an older open sale that cannot be re-signed is named, and closing it retries the sale the user asked for', async () => {
+  it('an abandoned earlier sale is closed for the user (chain-checked by the server) and the sale they asked for goes ahead', async () => {
     const { useRedeemExecution } = await import('../use-redeem-execution');
     let blocked = true;
     api([
@@ -125,13 +125,8 @@ describe('useRedeemExecution: declined fee-paying sale', () => {
     await act(async () => {
       await result.current.start('bag_1', 2500, 'usdg', WALLET);
     });
-    expect(result.current.state.blocking).toMatchObject({ intentId: 'old_1', status: 'AWAITING_SIGNATURE' });
-    expect(result.current.state.error).toMatch(/earlier sale of this Bag.*still open \(AWAITING_SIGNATURE\)/);
-
-    await act(async () => {
-      await result.current.closeBlockingAndRetry();
-    });
     await waitFor(() => expect(result.current.state.phase).toBe('completed'));
+    expect(calls.filter((c) => c.url.endsWith('/redeem-intent/old_1/cancel'))).toHaveLength(1);
     const created = calls.filter((c) => c.url.endsWith('/bags/bag_1/redeem-intent')).map((c) => JSON.parse(String(c.init?.body)));
     expect(created).toEqual([
       { fractionBps: 2500, outputAssetId: 'usdg' },

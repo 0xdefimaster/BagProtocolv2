@@ -64,7 +64,9 @@ export async function buildRedeemComposer(request: RedeemComposerRequest): Promi
       apiKey: request.apiKey,
       fetchImpl: request.fetchImpl,
     });
-  } catch {
+  } catch (err) {
+    // Falls back to one transaction per asset; say why, or nobody can tell a dead route from a misconfiguration.
+    console.warn(`[redeem] one-transaction sale unavailable, falling back to per-asset swaps: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 
