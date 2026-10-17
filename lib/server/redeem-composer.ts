@@ -9,7 +9,7 @@ import { ROBINHOOD_CHAIN_ID } from '@/lib/config/robinhood-chain';
 // One-transaction redemption: every SWAP leg of a redemption (each sells one of
 // the depositor's own holdings into the chosen output token) compiled as ONE
 // LI.FI Composer transaction, the same flow the wallet sweep uses
-// (buildComposerSweep: per-swap slippage guard, Composer's price-impact limit,
+// (buildComposerSweep: per-swap minimum output from config.slippage, Composer's price-impact limit,
 // approvals only for the tokens being sold and never above the amount sold,
 // no native ETH spent, output swept back to the signer).
 //

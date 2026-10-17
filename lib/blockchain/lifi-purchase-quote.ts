@@ -1,4 +1,5 @@
 import { getQuote } from '@lifi/sdk';
+import { isComposeSdkOutdatedError, isComposeServerOutdatedError } from '@lifi/composer-sdk';
 import { ChainId, ExecutionStep } from '@/types/basket-protocol';
 import { ComposerFallbackNotice, PurchaseIntentStepRecord } from '@/types/purchase-intent';
 import { getLiFiClient, toLiFiChainId } from './lifi-config';
@@ -162,11 +163,21 @@ export interface BuildPurchaseIntentStepsResult {
  * figures Composer printed.
  */
 export function composerFallbackFrom(err: unknown): ComposerFallbackNotice {
-  const message = err instanceof Error ? err.message : String(err);
-  const kind = composeErrorOf(err)?.kind ?? null;
-  const impact = kind === 'price_impact_exceeded' ? message.match(/price impact\s+(\d+)\s*bps\s+exceeds\s+maximum\s+(\d+)\s*bps/i) : null;
-  const input = impact ? message.match(/input:\s*\$([\d.]+)/i) : null;
-  const output = impact ? message.match(/output:\s*\$([\d.]+)/i) : null;
+  const raw = err instanceof Error ? err.message : String(err);
+  const composeErr = composeErrorOf(err);
+  const kind = composeErr?.kind ?? null;
+  // A version mismatch is ours to fix, not the buyer's: say so plainly and flag it for the operator.
+  const outdated = composeErr && isComposeSdkOutdatedError(composeErr) ? 'sdk' : composeErr && isComposeServerOutdatedError(composeErr) ? 'server' : null;
+  if (outdated) console.error(`[composer] ${outdated === 'sdk' ? 'SDK is older than the API supports' : 'API is older than this SDK'} — upgrade @lifi/composer-sdk / compose-spec: ${raw}`);
+  const message =
+    outdated === 'sdk'
+      ? `One-transaction routing is temporarily unavailable: this app's LI.FI Composer SDK is older than the API now supports. Nothing was sent. (${raw})`
+      : outdated === 'server'
+        ? `One-transaction routing is temporarily unavailable: the LI.FI Composer API is older than this app's SDK. Nothing was sent. (${raw})`
+        : raw;
+  const impact = kind === 'price_impact_exceeded' ? raw.match(/price impact\s+(\d+)\s*bps\s+exceeds\s+maximum\s+(\d+)\s*bps/i) : null;
+  const input = impact ? raw.match(/input:\s*\$([\d.]+)/i) : null;
+  const output = impact ? raw.match(/output:\s*\$([\d.]+)/i) : null;
   return {
     reason: impact ? 'PRICE_IMPACT' : 'UNAVAILABLE',
     message,
