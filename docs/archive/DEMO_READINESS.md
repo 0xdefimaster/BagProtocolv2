@@ -6,7 +6,7 @@ local Hardhat EVM and a real PostgreSQL. It does not mean deployed, and it
 does not mean audited by a third party.
 
 Index of every document by status (CURRENT / LEGACY / SPIKE / NOT IMPLEMENTED /
-HISTORICAL): **[docs/STATUS.md](docs/STATUS.md)**.
+HISTORICAL): **[docs/STATUS.md](../STATUS.md)**.
 
 > ## ⚠️ DO NOT PUT REAL PRIVATE KEYS IN THE REPOSITORY
 > Keys (`DEPLOYER_PRIVATE_KEY`, `BAG_ROUTER_PLAN_SIGNER_KEY`, the settlement

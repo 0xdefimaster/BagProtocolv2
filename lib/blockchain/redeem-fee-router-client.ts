@@ -20,7 +20,7 @@ import type { FeeAttestation, AttestedRedeemLeg } from '@/lib/server/redeem-fee-
 // pulls them via transferFrom too), then (2) exactly ONE `redeem()` call
 // covering every leg atomically. This is more signatures than the brief's
 // "one user confirmation" ideal for a wallet that's never approved these
-// tokens before — see docs/V11_HARDENING_REPORT.md's honest accounting of
+// tokens before — see docs/archive/V11_HARDENING_REPORT.md's honest accounting of
 // this; Permit2 (confirmed deployed on Robinhood Chain — see
 // lib/config/robinhood-chain.ts) could collapse this to one signature in a
 // follow-up, not attempted this pass to avoid scope creep into a second
