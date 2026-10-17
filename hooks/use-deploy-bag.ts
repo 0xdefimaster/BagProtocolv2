@@ -90,7 +90,11 @@ export function useDeployBag(bagId: string) {
             continue;
           }
         }
-        // A definitive failure (or we've stopped retrying a still-pending tx): stop, but keep the
+        // 422 = the server definitively refused THIS transaction (wrong factory, wrong sender, reverted):
+        // it can never confirm, so forget it — otherwise every reopen of the panel would resume the same
+        // dead hash and the person could never start a fresh deployment.
+        if (status === 422) localStorage.removeItem(pendingTxKey(bagId));
+        // Any other failure (or we've stopped retrying a still-pending tx): stop, but keep the
         // pending hash around — `retry()` picks the SAME transaction back up rather than re-signing.
         setState({
           phase: 'failed',

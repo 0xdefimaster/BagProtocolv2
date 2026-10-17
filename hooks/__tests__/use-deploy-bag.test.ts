@@ -148,5 +148,38 @@ describe('useDeployBag — definitive failures write nothing further', () => {
 
     expect(result.current.state).toMatchObject({ phase: 'failed', error: expect.stringMatching(/wrong sender/) });
     expect(fetchMock).toHaveBeenCalledTimes(2); // no further retries after a definitive failure
+    expect(localStorage.getItem(`bag-deploy-pending-tx:${BAG_ID}`)).toBeNull(); // a refused tx is never resumed
+  });
+
+  it('a stale hash refused on resume (e.g. sent to an old BagFactory) is forgotten, so a fresh deploy is possible', async () => {
+    localStorage.setItem(`bag-deploy-pending-tx:${BAG_ID}`, TX);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(422, { error: 'Transaction is not a valid deployment for this bag: sent to 0xold, not the expected BagFactory 0xnew', code: 'VERIFICATION_FAILED' })
+    );
+    const { result } = renderHook(() => useDeployBag(BAG_ID));
+
+    await act(async () => {
+      await result.current.resumePending();
+    });
+
+    expect(result.current.state).toMatchObject({ phase: 'failed', error: expect.stringMatching(/expected BagFactory/) });
+    expect(localStorage.getItem(`bag-deploy-pending-tx:${BAG_ID}`)).toBeNull();
+    let resumedAgain = true;
+    await act(async () => {
+      resumedAgain = await result.current.resumePending();
+    });
+    expect(resumedAgain).toBe(false); // the next open goes back to a normal prepare + sign
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('a non-definitive failure (server or RPC error) keeps the hash so retry() can pick it back up', async () => {
+    localStorage.setItem(`bag-deploy-pending-tx:${BAG_ID}`, TX);
+    fetchMock.mockResolvedValueOnce(jsonResponse(500, { error: 'RPC down' }));
+    const { result } = renderHook(() => useDeployBag(BAG_ID));
+    await act(async () => {
+      await result.current.resumePending();
+    });
+    expect(result.current.state).toMatchObject({ phase: 'failed' });
+    expect(localStorage.getItem(`bag-deploy-pending-tx:${BAG_ID}`)).toBe(TX);
   });
 });
