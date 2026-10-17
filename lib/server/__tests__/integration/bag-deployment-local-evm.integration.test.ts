@@ -154,10 +154,13 @@ describe('real BagFactory + user-signed createBag on a local EVM', () => {
     expect(await deploymentRows(db, s.bag.id)).toHaveLength(1);
   });
 
-  it('after a successful (but unconfirmed) transaction, prepare refuses to offer one that would only revert', async () => {
+  it('after a successful (but unconfirmed) transaction, prepare refuses to offer one that would only revert — and hands back the found tx, which confirms', async () => {
     const s = await scenario();
-    await s.prepareAndSend();
-    expect(await prepareBagDeployment(db.client, s.session, s.bag.id, s.deps)).toEqual({ ok: false, error: 'ALREADY_CREATED_ON_CHAIN' });
+    const txHash = await s.prepareAndSend();
+    const prepared = await prepareBagDeployment(db.client, s.session, s.bag.id, s.deps);
+    expect(prepared).toEqual({ ok: false, error: 'ALREADY_CREATED_ON_CHAIN', txHash: txHash.toLowerCase() });
+    // The recovered hash goes through the same full verification as any other.
+    expect(await confirmBagDeployment(db.client, s.session, s.bag.id, (prepared as { txHash: string }).txHash, s.deps)).toMatchObject({ ok: true });
   });
 
   it('WRONG SENDER: another wallet sends the identical createBag — confirm as the session wallet is rejected; nothing is written', async () => {
@@ -310,7 +313,7 @@ describe('real BagFactory + user-signed createBag on a local EVM', () => {
 
   it('the adapter exposes no signing/sending capability — the server cannot create a Bag itself', async () => {
     const s = await scenario();
-    expect(Object.keys(s.adapter).sort()).toEqual(['factoryAddress', 'hasBagOnChain', 'isLive', 'name', 'prepareBagCreation', 'verifyBagCreation']);
+    expect(Object.keys(s.adapter).sort()).toEqual(['factoryAddress', 'findBagCreationTx', 'hasBagOnChain', 'isLive', 'name', 'prepareBagCreation', 'verifyBagCreation']);
   });
 });
 

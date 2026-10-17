@@ -54,6 +54,8 @@ interface PrepareResponse {
   wallet: string;
   error?: string;
   code?: string;
+  /** Set with code ALREADY_CREATED_ON_CHAIN when the server found the earlier creation transaction. */
+  txHash?: string;
 }
 interface ConfirmResponse {
   deployment?: { txHash: string; contractAddress: string; onChainBagId: string };
@@ -123,6 +125,13 @@ export function useDeployBag(bagId: string) {
       setState({ ...INITIAL_STATE, phase: 'preparing' });
 
       const { status, json: prepared } = await postJson<PrepareResponse>(`/api/bags/${bagId}/deploy/prepare`);
+      // An earlier creation succeeded on-chain but was never confirmed, and the server found its transaction:
+      // confirm that one (no new signature, no second fee). Confirm re-verifies it fully server-side.
+      if (status === 409 && prepared.code === 'ALREADY_CREATED_ON_CHAIN' && typeof prepared.txHash === 'string') {
+        localStorage.setItem(pendingTxKey(bagId), prepared.txHash);
+        await confirmLoop(prepared.txHash);
+        return;
+      }
       if (status !== 200) {
         setState({ ...INITIAL_STATE, phase: 'failed', error: prepared.error ?? 'Could not prepare the deployment.' });
         return;

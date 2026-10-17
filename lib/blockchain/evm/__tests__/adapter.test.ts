@@ -3,7 +3,7 @@ import { encodeAbiParameters, encodeEventTopics, encodeFunctionData, keccak256, 
 import { bagFactoryAbi } from '../factory-abi';
 import { deriveOnChainBagId } from '@/lib/domain/basket-protocol/onchain';
 import { BagCreationPendingError, BagCreationVerificationError } from '../../adapter';
-import { createEvmBagDeploymentAdapter } from '../adapter';
+import { CREATION_SEARCH_CHUNK_BLOCKS, CREATION_SEARCH_MAX_BLOCKS, createEvmBagDeploymentAdapter } from '../adapter';
 import type { EvmChainConfig } from '../config';
 
 // -----------------------------------------------------------------------------
@@ -116,7 +116,7 @@ describe('EvmBagDeploymentAdapter.prepareBagCreation / hasBagOnChain', () => {
 
   it('exposes no signing or sending capability at all', () => {
     const adapter = createEvmBagDeploymentAdapter(CONFIG, makeClient().client);
-    expect(Object.keys(adapter).sort()).toEqual(['factoryAddress', 'hasBagOnChain', 'isLive', 'name', 'prepareBagCreation', 'verifyBagCreation']);
+    expect(Object.keys(adapter).sort()).toEqual(['factoryAddress', 'findBagCreationTx', 'hasBagOnChain', 'isLive', 'name', 'prepareBagCreation', 'verifyBagCreation']);
   });
 
   it('hasBagOnChain reads factory.bagOf(creator-bound id): false for the zero address, true otherwise', async () => {
@@ -127,6 +127,42 @@ describe('EvmBagDeploymentAdapter.prepareBagCreation / hasBagOnChain', () => {
     const exists = createEvmBagDeploymentAdapter(CONFIG, client);
     expect(await exists.hasBagOnChain(SIGNER, OFF_CHAIN_REF)).toBe(true);
     expect(readContract).toHaveBeenCalledWith(expect.objectContaining({ functionName: 'bagOf', args: [deriveOnChainBagId(SIGNER, OFF_CHAIN_REF)] }));
+  });
+});
+
+describe('findBagCreationTx — recovering an unconfirmed creation', () => {
+  type GetLogsArgs = { address: Hex; args: { bagId: Hex; creator: Hex; offChainRef: Hex }; fromBlock: bigint; toBlock: bigint };
+  const searchClient = (getLogs: (a: GetLogsArgs) => Promise<{ transactionHash: Hex | null }[]>, head = BigInt(1_000_000)) =>
+    ({ getBlockNumber: vi.fn(async () => head), getLogs: vi.fn(getLogs) }) as unknown as PublicClient & { getLogs: ReturnType<typeof vi.fn> };
+
+  it('filters by the factory and all three indexed args, newest window first, and returns the lowercased hash', async () => {
+    const hash = `0x${'AB'.repeat(32)}` as Hex;
+    const client = searchClient(async (a) => (a.fromBlock <= BigInt(850_000) && BigInt(850_000) <= a.toBlock ? [{ transactionHash: hash }] : []));
+    const found = await createEvmBagDeploymentAdapter(CONFIG, client).findBagCreationTx!(SIGNER, OFF_CHAIN_REF);
+    expect(found).toBe(hash.toLowerCase());
+    const first = client.getLogs.mock.calls[0][0] as GetLogsArgs;
+    expect(first.address).toBe(FACTORY);
+    expect(first.args).toEqual({ bagId: deriveOnChainBagId(SIGNER, OFF_CHAIN_REF), creator: SIGNER, offChainRef: OFF_CHAIN_REF });
+    expect(first.toBlock).toBe(BigInt(1_000_000));
+    expect(first.fromBlock).toBe(BigInt(1_000_000) - CREATION_SEARCH_CHUNK_BLOCKS + BigInt(1));
+    expect(client.getLogs).toHaveBeenCalledTimes(2); // stopped at the window that held it
+  });
+
+  it('a provider block-range cap shrinks the window and retries the same range', async () => {
+    const hash = `0x${'cd'.repeat(32)}` as Hex;
+    const client = searchClient(async (a) => {
+      if (a.toBlock - a.fromBlock + BigInt(1) > BigInt(10_000)) throw new Error('block range too large');
+      return a.toBlock === BigInt(1_000_000) ? [{ transactionHash: hash }] : [];
+    });
+    expect(await createEvmBagDeploymentAdapter(CONFIG, client).findBagCreationTx!(SIGNER, OFF_CHAIN_REF)).toBe(hash);
+  });
+
+  it('not found within the bounded window → null, never searching past it', async () => {
+    const client = searchClient(async () => [], BigInt(5_000_000));
+    expect(await createEvmBagDeploymentAdapter(CONFIG, client).findBagCreationTx!(SIGNER, OFF_CHAIN_REF)).toBeNull();
+    const calls = client.getLogs.mock.calls.map((c) => c[0] as GetLogsArgs);
+    expect(calls.at(-1)!.fromBlock).toBe(BigInt(5_000_000) - CREATION_SEARCH_MAX_BLOCKS);
+    expect(calls.every((c) => c.fromBlock >= BigInt(5_000_000) - CREATION_SEARCH_MAX_BLOCKS)).toBe(true);
   });
 });
 

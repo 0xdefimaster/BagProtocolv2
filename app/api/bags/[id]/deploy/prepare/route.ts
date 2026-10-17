@@ -75,9 +75,11 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     case 'ALREADY_CREATED_ON_CHAIN':
       return NextResponse.json(
         {
-          error:
-            'A Bag for this wallet already exists on-chain but was never confirmed. Confirm it with the hash of the original transaction instead of sending a new one.',
+          error: result.txHash
+            ? 'A Bag for this wallet already exists on-chain but was never confirmed. Its transaction was found; confirming it now.'
+            : 'A Bag for this wallet already exists on-chain but was never confirmed, and its transaction could not be found automatically. Confirm it with the hash of the original transaction instead of sending a new one.',
           code: result.error,
+          ...(result.txHash ? { txHash: result.txHash } : {}),
         },
         { status: 409 }
       );

@@ -618,7 +618,9 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, preferNati
           {loadingAssets ? (
             <span style={{ fontSize: 12.5, color: 'var(--ink-soft, #B4AEA2)' }}>Loading…</span>
           ) : assetsError ? (
-            <span style={{ fontSize: 12.5, color: '#E27D60' }}>Assets unavailable</span>
+            <span style={{ fontSize: 12.5, color: '#E27D60' }} title={assetsError}>
+              {/not live/i.test(assetsError) ? 'Not live yet — deploy it first' : 'Assets unavailable'}
+            </span>
           ) : inputAssets && inputAssets.length > 0 ? (
             <select
               value={selectedAssetId ?? ''}
