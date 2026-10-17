@@ -35,4 +35,11 @@ describe('describeWalletError', () => {
     expect(describeWalletError(cyclic).message).toBe('Unknown wallet error.');
     expect(describeWalletError('plain string').message).toBe('plain string');
   });
+
+  it('a locked MetaMask (KeyringController, -32603) says to unlock the wallet, and is not a rejection', () => {
+    const d = describeWalletError({ code: -32603, message: 'KeyringController - The operation cannot be completed while the controller is locked.' });
+    expect(d).toEqual({ message: 'Your wallet is locked. Open MetaMask, unlock it with your password, then try again.', code: -32603, rejected: false });
+    expect(describeWalletError({ code: -32603, message: 'Internal error', data: { message: 'KeyringController - controller is locked' } }).message).toMatch(/wallet is locked/);
+  });
 });
+

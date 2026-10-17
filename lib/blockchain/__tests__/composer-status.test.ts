@@ -131,6 +131,37 @@ describe('trackComposerTransaction: wallet batches', () => {
     expect(await trackComposerTransaction(batchInput)).toMatchObject({ kind: 'FAILED', failureCode: 'TRANSACTION_REVERTED' });
   });
 
+  // MetaMask smart account: the wallet calls DelegationManager.redeemDelegations, whose execution calldata is
+  // ERC-7579 single (target ‖ value ‖ data) or batch (abi.encode(Execution[])) for the wallet's own account.
+  const DELEGATION_MANAGER = '0xdb9b1e94b5b69df7e401ddbede43491141047db3';
+  const REDEEM_ABI = parseAbi(['function redeemDelegations(bytes[] permissionContexts, bytes32[] modes, bytes[] executionCallDatas)']);
+  const redeem = (mode: Hex, execution: Hex) =>
+    encodeFunctionData({ abi: REDEEM_ABI, functionName: 'redeemDelegations', args: [['0x'], [mode], [execution]] });
+  const executionBatch = (c: Call[]) =>
+    encodeAbiParameters([{ type: 'tuple[]', components: [{ type: 'address' }, { type: 'uint256' }, { type: 'bytes' }] }], [c.map((x) => [x.target, x.value, x.data] as const)]);
+  const executionSingle = (c: Call) => concat([c.target, pad(toHex(c.value), { size: 32 }), c.data]);
+
+  for (const [label, encoded] of [
+    ['batch mode', redeem(pad('0x01', { dir: 'right', size: 32 }), executionBatch(calls()))],
+    ['single mode', redeem(pad('0x00', { size: 32 }), executionSingle(calls()[1]))],
+  ] as const) {
+    it(`accepts the wallet's redeemDelegations transaction (MetaMask smart account) carrying the exact Composer call: ${label}`, async () => {
+      getTransactionMock.mockResolvedValue({ from: WALLET, to: DELEGATION_MANAGER, input: encoded, value: BigInt(0) });
+      expect(await trackComposerTransaction(batchInput)).toMatchObject({ kind: 'DONE', receivedAmountsByAddress: { [TOKEN]: '500' } });
+    });
+  }
+
+  it('rejects a redeemDelegations transaction sent by ANOTHER wallet', async () => {
+    getTransactionMock.mockResolvedValue({ from: '0x9999999999999999999999999999999999999999', to: DELEGATION_MANAGER, input: redeem(pad('0x01', { dir: 'right', size: 32 }), executionBatch(calls())), value: BigInt(0) });
+    expect(await trackComposerTransaction(batchInput)).toMatchObject({ kind: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
+  });
+
+  it('rejects a redeemDelegations transaction whose batch lacks the exact Composer call', async () => {
+    const tampered = redeem(pad('0x01', { dir: 'right', size: 32 }), executionBatch(calls({ value: BigInt(1) })));
+    getTransactionMock.mockResolvedValue({ from: WALLET, to: DELEGATION_MANAGER, input: tampered, value: BigInt(0) });
+    expect(await trackComposerTransaction(batchInput)).toMatchObject({ kind: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
+  });
+
   it('batchContainsCall refuses empty calldata and misaligned matches', () => {
     expect(batchContainsCall(erc7579Batch(calls()), { to: COMPOSER, data: '0x', value: '0' })).toBe(false);
     // The calldata shifted by one nibble inside another blob is not a call.

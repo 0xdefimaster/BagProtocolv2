@@ -7,6 +7,8 @@ import {
   composerLegSimulatedOutputRaw,
   isComposerEligible,
 } from '@/lib/blockchain/lifi-composer-adapter';
+import { composerFallbackFrom } from '@/lib/blockchain/lifi-purchase-quote';
+import { BagExecutionError } from '../errors';
 import { toLiFiChainId } from '@/lib/blockchain/lifi-config';
 import { BagExecutionGraph, BagExecutionIntent, CompiledExecution, ExpectedOutput } from '../types';
 import { BagExecutionProvider, ProviderCapabilities } from './types';
@@ -46,6 +48,8 @@ export interface LiFiComposerProviderConfig {
   apiKey: string;
   baseUrl?: string;
   fetchImpl?: typeof fetch;
+  /** Composer's whole-flow price-impact limit; set only after the buyer accepted a reported impact (same rule as the legacy path). */
+  maxPriceImpactBps?: number;
 }
 
 export class LiFiComposerProvider implements BagExecutionProvider {
@@ -75,19 +79,32 @@ export class LiFiComposerProvider implements BagExecutionProvider {
   async compile(_intent: BagExecutionIntent, graph: BagExecutionGraph): Promise<CompiledExecution> {
     const legs = toComposerLegs(graph);
     const inputAsset = graph.legs[0].sourceAsset;
+    // One Composer flow takes one slippage value; a graph whose legs differ is refused, never flattened to legs[0].
     const uniformSlippageBps = graph.legs[0].slippageBps;
+    if (graph.legs.some((leg) => leg.slippageBps !== uniformSlippageBps)) {
+      throw new Error('The legs use different slippage limits; one Composer transaction applies a single limit.');
+    }
 
-    const result = await buildComposerPurchase({
-      chain: graph.chainId,
-      inputTokenAddress: inputAsset.address,
-      inputAmountRaw: graph.inputAmountRaw,
-      legs,
-      signerAddress: graph.wallet,
-      slippageBps: uniformSlippageBps,
-      apiKey: this.config.apiKey,
-      baseUrl: this.config.baseUrl,
-      fetchImpl: this.config.fetchImpl,
-    });
+    let result;
+    try {
+      // The request deadline is inside buildComposerPurchase (COMPOSER_COMPILE_TIMEOUT_MS).
+      result = await buildComposerPurchase({
+        chain: graph.chainId,
+        inputTokenAddress: inputAsset.address,
+        inputAmountRaw: graph.inputAmountRaw,
+        legs,
+        signerAddress: graph.wallet,
+        slippageBps: uniformSlippageBps,
+        apiKey: this.config.apiKey,
+        baseUrl: this.config.baseUrl,
+        fetchImpl: this.config.fetchImpl,
+        ...(this.config.maxPriceImpactBps !== undefined ? { maxPriceImpactBps: this.config.maxPriceImpactBps } : {}),
+      });
+    } catch (err) {
+      const notice = composerFallbackFrom(err);
+      if (notice.reason === 'PRICE_IMPACT') throw new BagExecutionError('PRICE_IMPACT_REFUSED', notice.message, { composerFallback: notice });
+      throw err;
+    }
 
     const expectedOutputs: ExpectedOutput[] = [];
     // Keyed by leg id — see providers/types.ts and this provider's own
@@ -101,7 +118,7 @@ export class LiFiComposerProvider implements BagExecutionProvider {
     // `PurchaseIntentStepRecord` exists.
     const legQuotes: Record<string, { outputAmountRaw: string | null; outputDecimals: number | null; route: string | null; lifiStep: unknown | null }> = {};
     graph.legs.forEach((leg, index) => {
-      const outputAmountRaw = composerLegSimulatedOutputRaw(result.producedResources, index);
+      const outputAmountRaw = composerLegSimulatedOutputRaw(result.outputs, index);
       // `quotedOutputRaw` is the simulated (expected) output. The leg's swap
       // itself IS protected on chain — LI.FI's swap reverts below
       // `amountOutMin` — but that floor is the PROVIDER's, at the swap
@@ -114,7 +131,7 @@ export class LiFiComposerProvider implements BagExecutionProvider {
         quotedOutputRaw: outputAmountRaw,
         quotedOutputBasis: 'SIMULATION',
         minimumGuaranteedOutputRaw: null,
-        providerEnforcedMinOutputRaw: composerLegEnforcedMinOutputRaw(result.producedResources, index),
+        providerEnforcedMinOutputRaw: composerLegEnforcedMinOutputRaw(result.outputs, index),
       });
       legQuotes[leg.id] = { outputAmountRaw, outputDecimals: null, route: null, lifiStep: null };
     });

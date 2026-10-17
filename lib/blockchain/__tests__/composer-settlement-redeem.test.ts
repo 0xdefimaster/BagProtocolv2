@@ -55,7 +55,7 @@ const request = (fetchImpl: typeof fetch) => ({
 const success = (approvals: unknown[] = []) => ({
   status: 'success',
   userProxy: PROXY,
-  producedResources: {},
+  outputs: {},
   approvals,
   transactionRequest: { to: PROXY, data: '0x1234', value: '0' },
 });

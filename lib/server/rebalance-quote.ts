@@ -1,8 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { PublicClient } from 'viem';
 import { ROBINHOOD_REWARD_TOKEN } from '@/lib/config/robinhood-chain';
-import { buildComposerRebalance, rebalanceBuyNodeId, rebalanceSellNodeId, type RebalanceShape } from '@/lib/blockchain/lifi-composer-adapter';
-import { DEFAULT_COMPOSER_SLIPPAGE_BPS, parseComposerFallback } from '@/lib/blockchain/lifi-purchase-quote';
+import { buildComposerRebalance, composerPortAmounts, rebalanceBuyNodeId, rebalanceSellNodeId, type RebalanceShape } from '@/lib/blockchain/lifi-composer-adapter';
+import { DEFAULT_COMPOSER_SLIPPAGE_BPS, composerFallbackFrom } from '@/lib/blockchain/lifi-purchase-quote';
 import type { ComposerFallbackNotice } from '@/types/purchase-intent';
 import { COMPOSER_DEFAULT_MAX_PRICE_IMPACT_BPS } from '@/lib/server/strategy-policy';
 import { loadRebalancePreview } from '@/lib/server/rebalance-preview';
@@ -152,13 +152,12 @@ export async function planRebalance(
       fetchImpl: options.fetchImpl,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const notice = parseComposerFallback(message);
+    const notice = composerFallbackFrom(err);
     if (notice.reason === 'PRICE_IMPACT') return { ok: false, status: 422, error: 'The price impact of this rebalance is above the limit.', composerFallback: notice };
-    return { ok: false, status: 502, error: `No route for this rebalance right now: ${message}` };
+    return { ok: false, status: 502, error: `No route for this rebalance right now: ${notice.message}` };
   }
 
-  const produced = (node: string) => compiled.producedResources[`${node}.amountOut`];
+  const produced = (node: string) => composerPortAmounts(compiled.outputs, `${node}.amountOut`);
   const buyLegs: RebalanceQuoteLeg[] = buys.map((b, j) => {
     // One buy: each sell swaps straight into it, so its output is the sum over the sell nodes.
     const nodes = compiled.shape === 'ONE_BUY' ? sells.map((_s, i) => rebalanceSellNodeId(i)) : [rebalanceBuyNodeId(j)];
@@ -168,8 +167,8 @@ export async function planRebalance(
       decimals: b.order.decimals,
       amountRaw: null,
       weightBps: b.weightBps,
-      expectedOutRaw: sumOrNull(nodes.map((n) => str(produced(n)?.simulated?.amountOut))),
-      minOutRaw: sumOrNull(nodes.map((n) => str(produced(n)?.simulated?.amountOutMin))),
+      expectedOutRaw: sumOrNull(nodes.map((n) => produced(n).expected)),
+      minOutRaw: sumOrNull(nodes.map((n) => produced(n).min)),
     };
   });
   const sellLegs = sells.map((o) => ({ address: o.asset.address, symbol: label(o.asset.address), decimals: o.decimals, amountRaw: o.quantityRaw, weightBps: null, expectedOutRaw: null, minOutRaw: null }));

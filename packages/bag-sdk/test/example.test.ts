@@ -28,9 +28,9 @@ const ZERO32 = `0x${'0'.repeat(64)}`;
 function composerFetch() {
   const wire = JSON.stringify({
     data: {
-      producedResources: {
-        'swap_0.amountOut': { kind: 'erc20', chainId: 4663, token: A, availability: 'now', owner: SIGNER, simulated: { amountOut: '400', amountOutMin: '396' } },
-        'swap_1.amountOut': { kind: 'erc20', chainId: 4663, token: B, availability: 'now', owner: SIGNER, simulated: { amountOut: '600', amountOutMin: '594' } },
+      outputs: {
+        'swap_0.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: A, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '400' }, minimum: { basis: 'op', value: '396' } } },
+        'swap_1.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: B, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '600' }, minimum: { basis: 'op', value: '594' } } },
       },
       transactionRequest: { to: '0x' + '7'.repeat(40), chainId: 4663, data: '0xdeadbeef', value: '0' },
       userProxy: '0x' + '8'.repeat(40),
@@ -39,7 +39,7 @@ function composerFetch() {
       fees: [],
     },
   });
-  return vi.fn(async () => ({ ok: true, status: 200, json: async () => JSON.parse(wire), text: async () => wire })) as unknown as typeof fetch;
+  return vi.fn(async () => ({ ok: true, status: 200, headers: new Headers(), json: async () => JSON.parse(wire), text: async () => wire })) as unknown as typeof fetch;
 }
 
 /** The caller's RPC: token decimals, balance, allowance, the registry, and eth_call. */

@@ -317,3 +317,22 @@ describe('validateBasketRecipe — strategy type', () => {
     expect(getErrors(result).map((i) => i.code)).toContain(VALIDATION_CODES.INVALID_STRATEGY_TYPE);
   });
 });
+
+describe('performance fee — only where it can be settled (Robinhood Chain)', () => {
+  const codes = (r: BasketRecipe) => getErrors(validateBasketRecipe(r)).map((i) => i.code);
+  const onRobinhood = (fee: number) =>
+    baseRecipe({ chain: 'robinhood', performanceFeeBps: fee, assets: baseRecipe().assets.map((a) => ({ ...a, chain: 'robinhood' as const })) });
+
+  it('a fee on Ethereum, Base or Arbitrum is refused; 0% is fine there', () => {
+    for (const chain of ['ethereum', 'base', 'arbitrum'] as const) {
+      const assets = baseRecipe().assets.map((a) => ({ ...a, chain }));
+      expect(codes(baseRecipe({ chain, assets, performanceFeeBps: 1000 }))).toContain(VALIDATION_CODES.PERFORMANCE_FEE_UNSUPPORTED_CHAIN);
+      expect(codes(baseRecipe({ chain, assets, performanceFeeBps: 0 }))).not.toContain(VALIDATION_CODES.PERFORMANCE_FEE_UNSUPPORTED_CHAIN);
+    }
+  });
+
+  it('a fee on Robinhood Chain is allowed up to the cap', () => {
+    expect(codes(onRobinhood(1000))).not.toContain(VALIDATION_CODES.PERFORMANCE_FEE_UNSUPPORTED_CHAIN);
+    expect(codes(onRobinhood(1000))).not.toContain(VALIDATION_CODES.INVALID_PERFORMANCE_FEE);
+  });
+});

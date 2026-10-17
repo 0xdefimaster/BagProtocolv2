@@ -313,6 +313,17 @@ export const DEFAULT_STRATEGY_TYPE: StrategyType = 'STATIC_BASKET';
 /** Cap enforced by validateEconomics() (validation/validators.ts) — no recipe may charge more than 30%. */
 export const MAX_PERFORMANCE_FEE_BPS = 3000;
 
+/**
+ * Chains where a performance fee can actually be settled: RedeemSettlement (the only fee path) is deployed and wired
+ * for Robinhood Chain only (lib/server/redeem-settlement-attestation.ts). A Bag elsewhere must charge 0%, or its
+ * investors could not sell through BAG. Add a chain here only once settlement works there.
+ */
+export const PERFORMANCE_FEE_CHAINS: readonly ChainId[] = ['robinhood'];
+
+export function performanceFeeAllowedOn(chain: string): boolean {
+  return (PERFORMANCE_FEE_CHAINS as readonly string[]).includes(chain);
+}
+
 // ----------------------------- Unroutable-asset policy --------------------------
 //
 // What a purchase does when some of a Bag's assets have no swap route right

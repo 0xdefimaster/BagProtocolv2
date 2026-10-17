@@ -10,7 +10,7 @@ import { useNotifications } from '@/lib/notifications-store';
 import { useWallet } from '@/lib/wallet-context';
 import { NETWORKS } from '@/lib/constants';
 import { Bag } from '@/types';
-import { MAX_PERFORMANCE_FEE_BPS, MAX_UNROUTABLE_WEIGHT_BPS, UNROUTABLE_POLICIES, type UnroutablePolicy } from '@/types/basket-protocol';
+import { MAX_PERFORMANCE_FEE_BPS, MAX_UNROUTABLE_WEIGHT_BPS, performanceFeeAllowedOn, UNROUTABLE_POLICIES, type UnroutablePolicy } from '@/types/basket-protocol';
 import { ArrowRight, Save, Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -125,6 +125,10 @@ export default function CreatePage() {
   // 0 = no fee, which is a fully valid choice, not a placeholder — the
   // creator opts INTO a fee, never has one silently applied.
   const [performanceFeeBps, setPerformanceFeeBps] = useState(0);
+  // A fee can only be settled on Robinhood Chain for now (types/basket-protocol.ts PERFORMANCE_FEE_CHAINS).
+  useEffect(() => {
+    if (!performanceFeeAllowedOn(selectedNetworkId)) setPerformanceFeeBps(0);
+  }, [selectedNetworkId]);
   // Bag rules chosen by the creator. Rebalancing is not automated yet, so the
   // default is honest ("Manual"); slippage and minimum are enforced on purchase.
   const [rebalanceChoice, setRebalanceChoice] = useState<'Manual' | 'Weekly' | 'Monthly' | 'Drift'>('Manual');
@@ -333,7 +337,7 @@ export default function CreatePage() {
           rebalanceFrequency: rebalanceChoice,
           slippageBps,
           unroutablePolicy,
-          performanceFeeBps,
+          performanceFeeBps: performanceFeeAllowedOn(selectedNetworkId) ? performanceFeeBps : 0,
         }),
       });
 
@@ -549,9 +553,15 @@ export default function CreatePage() {
                   and never if their position is at a loss. 0% is a fully valid choice. You can change it in a
                   later version until the first outside investor buys in; from then on it is locked for good.
                 </div>
+                {!performanceFeeAllowedOn(selectedNetworkId) && (
+                  <div className="nm" style={{ marginBottom: 12, color: 'var(--gold)' }}>
+                    Performance fees are available on Robinhood Chain only for now; Bags on this network charge 0%.
+                  </div>
+                )}
                 <div className="alloc-slider-row">
                   <input
                     type="range"
+                    disabled={!performanceFeeAllowedOn(selectedNetworkId)}
                     min={0}
                     max={MAX_PERFORMANCE_FEE_BPS / 100}
                     step={0.5}
@@ -561,6 +571,7 @@ export default function CreatePage() {
                   />
                   <input
                     type="number"
+                    disabled={!performanceFeeAllowedOn(selectedNetworkId)}
                     min={0}
                     max={MAX_PERFORMANCE_FEE_BPS / 100}
                     step={0.5}

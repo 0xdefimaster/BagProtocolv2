@@ -7,6 +7,7 @@ vi.mock('@/lib/blockchain/lifi-composer-adapter', async (importOriginal) => {
   return { ...actual, buildComposerPurchase: (...a: unknown[]) => buildComposerPurchaseMock(...a) };
 });
 
+import { composeError, out } from '@/lib/blockchain/__tests__/composer-fixtures';
 const { LiFiComposerProvider } = await import('../lifi-composer-provider');
 
 const USDG = { chain: 'robinhood' as const, address: '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168' };
@@ -33,10 +34,10 @@ describe('LiFiComposerProvider — providerEnforcedMinOutputRaw', () => {
       approvals: [],
       transactionRequest: { to: '0xdiamond', data: '0xdead', value: '0', chainId: 4663 },
       userProxy: '0xproxy',
-      producedResources: {
-        'swap_0.amountOut': { simulated: { amountOut: BigInt(1000), amountOutMin: BigInt(990) } },
-        'swap_1.amountOut': { simulated: { amountOut: BigInt(2000), amountOutMin: BigInt(1980) } },
-        'swap_2.amountOut': { simulated: { amountOut: BigInt(3000), amountOutMin: BigInt(2970) } },
+      outputs: {
+        'swap_0.amountOut': out(1000, 990),
+        'swap_1.amountOut': out(2000, 1980),
+        'swap_2.amountOut': out(3000, 2970),
       },
       gasLimitRaw: null,
       priceImpact: null,
@@ -73,7 +74,7 @@ describe('LiFiComposerProvider — native ETH input', () => {
       approvals: [],
       transactionRequest: { to: '0xvm', data: '0xdead', value: '1000000', chainId: 4663 },
       userProxy: '0xproxy',
-      producedResources: {},
+      outputs: {},
       gasLimitRaw: null,
       priceImpact: null,
       fees: [],
@@ -82,5 +83,33 @@ describe('LiFiComposerProvider — native ETH input', () => {
     expect(buildComposerPurchaseMock).toHaveBeenLastCalledWith(expect.objectContaining({ inputTokenAddress: ETH.address, inputAmountRaw: '1000000' }));
     expect(compiled.mode).toBe('SINGLE_TX');
     expect(compiled.transactions).toEqual([expect.objectContaining({ value: '1000000' })]);
+  });
+});
+
+describe('LiFiComposerProvider — consent, slippage and refusals (same rules as the legacy path)', () => {
+  const ok = { approvals: [], transactionRequest: { to: '0xvm', data: '0x', value: '0', chainId: 4663 }, userProxy: '0xproxy', outputs: {}, gasLimitRaw: null, priceImpact: null, fees: [] };
+
+  it('passes the buyer-accepted price-impact limit to Composer', async () => {
+    buildComposerPurchaseMock.mockResolvedValueOnce(ok);
+    await new LiFiComposerProvider({ apiKey: 'k', maxPriceImpactBps: 920 }).compile({} as BagExecutionIntent, graph());
+    expect(buildComposerPurchaseMock).toHaveBeenLastCalledWith(expect.objectContaining({ maxPriceImpactBps: 920 }));
+  });
+
+  it('refuses a graph whose legs use different slippage limits instead of applying legs[0] to all', async () => {
+    const g = graph();
+    const mixed = { ...g, legs: g.legs.map((l, i) => ({ ...l, slippageBps: i === 0 ? 100 : 300 })) } as BagExecutionGraph;
+    buildComposerPurchaseMock.mockClear();
+    await expect(new LiFiComposerProvider({ apiKey: 'k' }).compile({} as BagExecutionIntent, mixed)).rejects.toThrow(/different slippage/);
+    expect(buildComposerPurchaseMock).not.toHaveBeenCalled();
+  });
+
+  it('a whole-flow price-impact refusal becomes PRICE_IMPACT_REFUSED carrying the notice; other errors pass through', async () => {
+    buildComposerPurchaseMock.mockRejectedValueOnce(await composeError('price_impact_exceeded', 'Price impact 820 bps exceeds maximum 500 bps (input: $10.00, output: $9.18)'));
+    await expect(new LiFiComposerProvider({ apiKey: 'k' }).compile({} as BagExecutionIntent, graph())).rejects.toMatchObject({
+      code: 'PRICE_IMPACT_REFUSED',
+      details: { composerFallback: { reason: 'PRICE_IMPACT', priceImpactBps: 820, maxPriceImpactBps: 500 } },
+    });
+    buildComposerPurchaseMock.mockRejectedValueOnce(await composeError('simulation_revert', 'execution reverted'));
+    await expect(new LiFiComposerProvider({ apiKey: 'k' }).compile({} as BagExecutionIntent, graph())).rejects.toThrow('execution reverted');
   });
 });

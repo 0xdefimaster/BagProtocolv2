@@ -135,6 +135,15 @@ export interface BagDeploymentAdapter {
   hasBagOnChain(creator: `0x${string}`, offChainRef: `0x${string}`): Promise<boolean>;
 
   /**
+   * Read-only, best effort: the hash of the transaction in which the factory emitted
+   * BagCreated for (`creator`, `offChainRef`), searched over a bounded recent block window.
+   * `null` when it is not found in that window. Lets a Bag whose creation succeeded but was
+   * never confirmed be recovered without the person digging up the hash; the hash still goes
+   * through `verifyBagCreation` like any other.
+   */
+  findBagCreationTx?(creator: `0x${string}`, offChainRef: `0x${string}`): Promise<`0x${string}` | null>;
+
+  /**
    * Re-reads `txHash` from the chain and verifies every invariant. Throws
    * `BagCreationPendingError` when it cannot be verified YET, and
    * `BagCreationVerificationError` when it is definitively not a valid

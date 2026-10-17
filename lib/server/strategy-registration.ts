@@ -234,7 +234,10 @@ export async function confirmStrategyRegistration(
     if (name === 'TransactionNotFoundError') return { ok: false, error: 'PENDING', message: `No transaction found for ${hash} yet.` };
     return { ok: false, error: 'CHAIN_ERROR', message: err instanceof Error ? err.message : String(err) };
   }
-  if (!tx.to || !same(tx.to, ctx.registry)) return fail(`Transaction was sent to ${tx.to ?? '(contract creation)'}, not the StrategyRegistry ${ctx.registry}.`);
+  // `tx.to` may be a smart-account router (MetaMask's EIP-7702 account sends through its DelegationManager)
+  // rather than the registry itself; what binds the registration is checked below from the receipt: events
+  // emitted BY the configured registry, for this Bag's creator-bound strategy id, in the creator's own transaction.
+  if (!tx.to) return fail(`Transaction is a contract creation, not a call that reaches the StrategyRegistry ${ctx.registry}.`);
   if (!same(tx.from, ctx.wallet)) return fail(`Transaction was sent from ${tx.from}, not the creator's wallet ${ctx.wallet}.`);
 
   let confirmation;

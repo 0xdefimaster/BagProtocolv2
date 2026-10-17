@@ -101,6 +101,15 @@ describe('POST /deploy/prepare', () => {
   });
 });
 
+describe('POST /deploy/prepare — recovery', () => {
+  it('ALREADY_CREATED_ON_CHAIN passes the found creation tx hash through to the client', async () => {
+    prepareMock.mockResolvedValue({ ok: false, error: 'ALREADY_CREATED_ON_CHAIN', txHash: TX });
+    const res = await PREPARE(post({}), params);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: 'ALREADY_CREATED_ON_CHAIN', txHash: TX });
+  });
+});
+
 describe('POST /deploy/confirm', () => {
   it('401 when not signed in — nothing is called', async () => {
     unauthenticated();

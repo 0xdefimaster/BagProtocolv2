@@ -35,8 +35,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Node 24: the production dependency @lifi/composer-sdk@0.5.0 (and its
-  # @lifi/compose-spec@0.5.0) declares `engines.node: ">=24"` — verified in
+  # Node 24: the production dependency @lifi/composer-sdk@0.6 (and its
+  # @lifi/compose-spec@0.6) declares `engines.node: ">=24"` — verified in
   # package-lock.json. package.json `engines` and .nvmrc pin the same major
   # so local dev, CI and the production runtime (Vercel reads `engines.node`)
   # all run the version the dependency tree actually supports.

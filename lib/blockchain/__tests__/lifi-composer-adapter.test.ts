@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildComposerPurchase,
+  describeFailedComposerLegs,
   computeCascadeSplitBps,
   ComposerIneligibleError,
   composerLegEnforcedMinOutputRaw,
   composerLegSimulatedOutputRaw,
   isComposerEligible,
 } from '../lifi-composer-adapter';
+import { composeResponse, out, wireOut } from './composer-fixtures';
 
 // -----------------------------------------------------------------------------
 // Mocks fetch at the HTTP boundary (fetchImpl injection), not the SDK
@@ -14,8 +16,8 @@ import {
 // request serialization code, only faking the network response. The mock
 // response shape below is copied from node_modules/@lifi/composer-sdk/dist
 // /client.js's own parsing code (parseCompileSuccessBody: `{ data: {...} }`
-// envelope; producedResources[*].simulated.amountOut must be a numeric
-// STRING on the wire, the client converts it to bigint) — not guessed.
+// envelope; outputs[*].amount.{estimate,minimum}.value is a decimal STRING
+// on the wire, the client converts it to bigint) — not guessed.
 // -----------------------------------------------------------------------------
 
 function mockComposeFetch(overrides: Partial<{ status: number; body: unknown }> = {}) {
@@ -24,20 +26,15 @@ function mockComposeFetch(overrides: Partial<{ status: number; body: unknown }> 
     overrides.body ??
     {
       data: {
-        producedResources: {
-          swap_0: { kind: 'erc20', chainId: 1, token: '0xTargetA', availability: 'now', owner: '0xSigner', simulated: { amountOut: '600000' } },
-          swap_1: { kind: 'erc20', chainId: 1, token: '0xTargetB', availability: 'now', owner: '0xSigner', simulated: { amountOut: '400000' } },
+        outputs: {
+          'swap_0.amountOut': wireOut('600000', null, '0xTargetA', 1),
+          'swap_1.amountOut': wireOut('400000', null, '0xTargetB', 1),
         },
         transactionRequest: { to: '0xComposerVM', chainId: 1, data: '0xdeadbeef', value: '0' },
         userProxy: '0xUserProxy',
       },
     };
-  return vi.fn(async () => ({
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-    text: async () => JSON.stringify(body),
-  })) as unknown as typeof fetch;
+  return vi.fn(async () => composeResponse(body, status)) as unknown as typeof fetch;
 }
 
 describe('isComposerEligible', () => {
@@ -126,7 +123,7 @@ describe('buildComposerPurchase', () => {
     expect(JSON.stringify((byDefault.mock.calls as unknown as [unknown, RequestInit][])[0][1].body)).not.toContain('maxPriceImpactBps');
   });
 
-  it('compiles a multi-leg flow and returns transactionRequest + userProxy + producedResources', async () => {
+  it('compiles a multi-leg flow and returns transactionRequest + userProxy + outputs', async () => {
     const fetchImpl = mockComposeFetch();
     const result = await buildComposerPurchase({
       ...baseRequest,
@@ -144,8 +141,8 @@ describe('buildComposerPurchase', () => {
       chainId: 1,
     });
     expect(result.userProxy).toBe('0xUserProxy');
-    expect(result.producedResources.swap_0.simulated?.amountOut).toBe(BigInt(600000));
-    expect(result.producedResources.swap_1.simulated?.amountOut).toBe(BigInt(400000));
+    expect(composerLegSimulatedOutputRaw(result.outputs, 0)).toBe('600000');
+    expect(composerLegSimulatedOutputRaw(result.outputs, 1)).toBe('400000');
 
     // Exactly one POST to /compose — one signature's worth of work, not N.
     const composeCalls = (fetchImpl as ReturnType<typeof vi.fn>).mock.calls.filter((call: unknown[]) =>
@@ -158,8 +155,8 @@ describe('buildComposerPurchase', () => {
     const fetchImpl = mockComposeFetch({
       body: {
         data: {
-          producedResources: {
-            swap_0: { kind: 'erc20', chainId: 1, token: '0xTargetA', availability: 'now', owner: '0xSigner', simulated: { amountOut: '600000' } },
+          outputs: {
+            'swap_0.amountOut': wireOut('600000', null, '0xTargetA', 1),
           },
           transactionRequest: { to: '0xComposerVM', chainId: 1, data: '0xdeadbeef', value: '0', gasLimit: '210000' },
           userProxy: '0xUserProxy',
@@ -185,8 +182,8 @@ describe('buildComposerPurchase', () => {
       mockComposeFetch({
         body: {
           data: {
-            producedResources: {
-              swap_0: { kind: 'erc20', chainId: 1, token: '0xTargetA', availability: 'now', owner: '0xSigner', simulated: { amountOut: '600000' } },
+            outputs: {
+              'swap_0.amountOut': wireOut('600000', null, '0xTargetA', 1),
             },
             transactionRequest: { to: '0xComposerVM', chainId: 1, data: '0xdeadbeef', value: '0' },
             userProxy: '0xUserProxy',
@@ -246,12 +243,12 @@ describe('buildComposerPurchase', () => {
     expect((init.headers as Record<string, string>)['x-lifi-api-key']).toBe('test-key');
   });
 
-  it('throws with the server-reported reason on a partial/reverted compile result, rather than returning a half-built transaction', async () => {
+  it('refuses a partial (reverted) compile result, rather than returning a half-built transaction', async () => {
     const fetchImpl = mockComposeFetch({
       status: 206,
       body: {
         data: {
-          producedResources: {},
+          outputs: {},
           transactionRequest: { to: '0xComposerVM', chainId: 1, data: '0x', value: '0' },
           userProxy: '0xUserProxy',
         },
@@ -265,18 +262,52 @@ describe('buildComposerPurchase', () => {
         fetchImpl,
         legs: [{ address: '0xTargetA', weightBps: 10000, symbol: 'A' }],
       })
-    ).rejects.toThrow(/insufficient liquidity/);
+    ).rejects.toThrow(/partial result \(SIMULATION_REVERTED\)/);
+  });
+});
+
+describe('describeFailedComposerLegs', () => {
+  const id = (i: number) => `swap_${i}`;
+  it('names the legs behind failedOps, with the server message; swap_1 never matches swap_10', () => {
+    const symbols = Array.from({ length: 11 }, (_, i) => `T${i}`);
+    const err = { failedOps: [{ callId: 'swap_10', message: 'No available quotes' }, { path: 'nodes.swap_1', message: '' }] };
+    expect(describeFailedComposerLegs(err, id, symbols)).toBe('T10: No available quotes; T1');
+  });
+  it('null when there are no failedOps or none maps to a leg', () => {
+    expect(describeFailedComposerLegs(new Error('x'), id, ['A'])).toBeNull();
+    expect(describeFailedComposerLegs({ failedOps: [{ callId: 'split_0' }] }, id, ['A'])).toBeNull();
+  });
+  it('buildComposerPurchase names the failing token when the compile reports a preparation_error', async () => {
+    const fetchImpl = mockComposeFetch({
+      // A preparation_error is a 422; the SDK throws a ComposeError carrying failedOps.
+      status: 422,
+      body: {
+        error: { kind: 'preparation_error', message: '1 of 2 prepared op(s) failed', failedOps: [{ callId: 'swap_1', op: 'lifi.swap', kind: 'resolution_rejected', message: 'No available quotes' }], succeededOps: ['swap_0'] },
+      },
+    });
+    await expect(
+      buildComposerPurchase({
+        chain: 'ethereum',
+        inputTokenAddress: '0xInputToken',
+        inputAmountRaw: '1000000',
+        signerAddress: '0xSigner',
+        slippageBps: 100,
+        apiKey: 'test-key',
+        fetchImpl,
+        legs: [{ address: '0xTargetA', weightBps: 5000, symbol: 'AAA' }, { address: '0xTargetB', weightBps: 5000, symbol: 'GRT' }],
+      })
+    ).rejects.toThrow(/^GRT: No available quotes \(1 of 2 prepared op\(s\) failed\)/);
   });
 });
 
 describe('composerLegEnforcedMinOutputRaw', () => {
   // Shape of the live compile response (scripts/spike/composer-min-output-probe.ts
-  // run on Robinhood Chain): keyed by output port, bigint amounts.
+  // run on Robinhood Chain): keyed by output port; 0.6 `outputs` shape, bigint amounts.
   const live = {
-    'swap_0.amountOut': { kind: 'erc20', token: '0xcashcat', chainId: 4663, availability: 'now', owner: '0xwallet', simulated: { amountOut: BigInt('1976415459627212722'), amountOutMin: BigInt('1956937756416111525') } },
-    'swap_1.amountOut': { kind: 'erc20', token: '0xhii', chainId: 4663, availability: 'now', owner: '0xwallet', simulated: { amountOut: BigInt('1234444823130025'), amountOutMin: BigInt('1222279288915906') } },
-    'swap_2.amountOut': { kind: 'erc20', token: '0xklac', chainId: 4663, availability: 'now', owner: '0xwallet', simulated: { amountOut: BigInt('1742455756559971'), amountOutMin: BigInt('1725283741476082') } },
-  } as unknown as Parameters<typeof composerLegEnforcedMinOutputRaw>[0];
+    'swap_0.amountOut': out('1976415459627212722', '1956937756416111525', '0xcashcat'),
+    'swap_1.amountOut': out('1234444823130025', '1222279288915906', '0xhii'),
+    'swap_2.amountOut': out('1742455756559971', '1725283741476082', '0xklac'),
+  };
 
   it('reads each leg\'s own amountOutMin from its swap_<i>.amountOut entry', () => {
     expect([0, 1, 2].map((i) => composerLegEnforcedMinOutputRaw(live, i))).toEqual([
@@ -288,7 +319,7 @@ describe('composerLegEnforcedMinOutputRaw', () => {
 
   it('returns null (never a guess) when the leg or its amountOutMin is missing', () => {
     expect(composerLegEnforcedMinOutputRaw(live, 3)).toBeNull();
-    const noMin = { 'swap_0.amountOut': { simulated: { amountOut: BigInt(5) } } } as unknown as Parameters<typeof composerLegEnforcedMinOutputRaw>[0];
+    const noMin = { 'swap_0.amountOut': out(5) };
     expect(composerLegEnforcedMinOutputRaw(noMin, 0)).toBeNull();
   });
 
@@ -298,7 +329,7 @@ describe('composerLegEnforcedMinOutputRaw', () => {
   });
 
   it('does not read a node-keyed entry (swap_0) — the live API keys by output port', () => {
-    const nodeKeyed = { swap_0: { simulated: { amountOut: BigInt(5), amountOutMin: BigInt(4) } } } as unknown as Parameters<typeof composerLegEnforcedMinOutputRaw>[0];
+    const nodeKeyed = { swap_0: out(5, 4) };
     expect(composerLegEnforcedMinOutputRaw(nodeKeyed, 0)).toBeNull();
   });
 });
@@ -322,7 +353,7 @@ describe('buildComposerPurchase — native ETH input (one transaction, ETH as ms
     mockComposeFetch({
       body: {
         data: {
-          producedResources: {},
+          outputs: {},
           transactionRequest: { to: '0xComposerVM', chainId: 1, data: '0xdeadbeef', value },
           userProxy: '0xUserProxy',
           approvals,
@@ -359,5 +390,34 @@ describe('buildComposerPurchase — native ETH input (one transaction, ETH as ms
     await expect(
       buildComposerPurchase({ ...ethRequest, inputTokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', inputAmountRaw: '1000000', fetchImpl: withTx('5') })
     ).rejects.toThrow(/also spends native ETH/);
+  });
+});
+
+describe('buildComposerPurchase — request hygiene (LI.FI review #84, #90)', () => {
+  const req = { chain: 'ethereum' as const, inputTokenAddress: '0xInputToken', inputAmountRaw: '1000000', signerAddress: '0xSigner', slippageBps: 100, apiKey: 'k', legs: [{ address: '0xTargetA', weightBps: 6000, symbol: 'A' }, { address: '0xTargetB', weightBps: 4000, symbol: 'B' }] };
+
+  it('sends no `unspentIn` guard: per-swap protection is config.slippage (→ amountOutMin)', async () => {
+    const fetchImpl = mockComposeFetch();
+    await buildComposerPurchase({ ...req, fetchImpl });
+    const sent = String(((fetchImpl as unknown as { mock: { calls: [unknown, RequestInit][] } }).mock.calls[0][1]).body);
+    expect(sent).not.toContain('unspentIn');
+    expect(sent).toContain('"slippage":0.01');
+  });
+
+  it('puts the deadline on the request itself (an AbortSignal), not a Promise.race', async () => {
+    const fetchImpl = mockComposeFetch();
+    await buildComposerPurchase({ ...req, fetchImpl });
+    const init = (fetchImpl as unknown as { mock: { calls: [unknown, RequestInit][] } }).mock.calls[0][1];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('the deadline is COMPOSER_COMPILE_TIMEOUT_MS (15 s) on every request', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    try {
+      await buildComposerPurchase({ ...req, fetchImpl: mockComposeFetch() });
+      expect(timeout).toHaveBeenCalledWith(15_000);
+    } finally {
+      timeout.mockRestore();
+    }
   });
 });

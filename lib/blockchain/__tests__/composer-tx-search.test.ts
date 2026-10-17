@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { encodeFunctionData, parseAbi } from 'viem';
+import { encodeAbiParameters, encodeFunctionData, pad, parseAbi } from 'viem';
 import { COMPOSER_SEARCH_CHUNK_BLOCKS, findComposerTransactionFromWallet } from '../composer-tx-search';
 
 const WALLET = '0x1111111111111111111111111111111111111111';
@@ -78,6 +78,24 @@ describe('findComposerTransactionFromWallet', () => {
       txs: {
         [h(6)]: { from: WALLET, to: WALLET, input: batch('0xcafebabe'), value: BigInt(0) },
         [h(7)]: { from: WALLET, to: WALLET, input: batch('0xdeadbeef'), value: BigInt(0) },
+      },
+    });
+    expect(await run(client)).toEqual({ kind: 'FOUND', txHash: h(7) });
+  });
+
+  it('finds the wallet\'s redeemDelegations transaction (MetaMask smart account) carrying the exact built call; another wallet\'s does not count', async () => {
+    const redeem = (data: `0x${string}`) =>
+      encodeFunctionData({
+        abi: parseAbi(['function redeemDelegations(bytes[] permissionContexts, bytes32[] modes, bytes[] executionCallDatas)']),
+        functionName: 'redeemDelegations',
+        args: [['0x'], [pad('0x01', { dir: 'right', size: 32 })], [encodeAbiParameters([{ type: 'tuple[]', components: [{ type: 'address' }, { type: 'uint256' }, { type: 'bytes' }] }], [[[VM, BigInt(0), data]]])]],
+      });
+    const DELEGATION_MANAGER = '0xdb9b1e94b5b69df7e401ddbede43491141047db3';
+    const { client } = fakeClient({
+      logs: [{ block: BigInt(20_100), hash: h(6) }, { block: BigInt(20_200), hash: h(7) }],
+      txs: {
+        [h(6)]: { from: '0x9999999999999999999999999999999999999999', to: DELEGATION_MANAGER, input: redeem('0xdeadbeef'), value: BigInt(0) },
+        [h(7)]: { from: WALLET, to: DELEGATION_MANAGER, input: redeem('0xdeadbeef'), value: BigInt(0) },
       },
     });
     expect(await run(client)).toEqual({ kind: 'FOUND', txHash: h(7) });

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearCompileCache } from '../compile-cache';
 import { compileBagExecution } from '../compiler';
+import { BagExecutionError } from '../errors';
 import { BagExecutionGraph, BagExecutionIntent, CompiledExecution } from '../types';
 import { BagExecutionProvider, ProviderCapabilities } from '../providers/types';
 
@@ -198,5 +199,17 @@ describe('compileBagExecution', () => {
     await expect(compileBagExecution(makeIntent(), badGraph, [provider])).rejects.toMatchObject({
       code: 'INVALID_EXECUTION_GRAPH',
     });
+  });
+});
+
+describe('compileBagExecution — price-impact refusal', () => {
+  beforeEach(() => clearCompileCache());
+  it('never falls through to another provider: the buyer sees the impact and may accept it', async () => {
+    const refusal = new BagExecutionError('PRICE_IMPACT_REFUSED', 'Price impact 820 bps exceeds maximum 500 bps', { composerFallback: { reason: 'PRICE_IMPACT' } });
+    const sequential = makeProvider({ id: 'lifi-sequential' });
+    let sequentialCalled = false;
+    const watched = { ...sequential, compile: async (...a: Parameters<BagExecutionProvider['compile']>) => { sequentialCalled = true; return sequential.compile(...a); } };
+    await expect(compileBagExecution(makeIntent(), makeGraph(), [makeProvider({ id: 'lifi-composer', compileError: refusal }), watched])).rejects.toMatchObject({ code: 'PRICE_IMPACT_REFUSED' });
+    expect(sequentialCalled).toBe(false);
   });
 });

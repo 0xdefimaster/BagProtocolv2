@@ -11,9 +11,10 @@ import {
   buildComposerSweep,
   composerLegEnforcedMinOutputRaw,
   composerLegSimulatedOutputRaw,
+  composerPortAmounts,
   sweepNodeId,
 } from '@/lib/blockchain/lifi-composer-adapter';
-import { DEFAULT_COMPOSER_SLIPPAGE_BPS, parseComposerFallback } from '@/lib/blockchain/lifi-purchase-quote';
+import { DEFAULT_COMPOSER_SLIPPAGE_BPS, composerFallbackFrom } from '@/lib/blockchain/lifi-purchase-quote';
 
 // -----------------------------------------------------------------------------
 // The connected wallet's own tokens on each BAG chain (Robinhood Chain,
@@ -203,6 +204,8 @@ export type SweepQuoteResult =
       expectedOutRaw: string | null;
       minOutRaw: string | null;
       priceImpactBps: number | null;
+      /** Tokens left out because Composer found no route for them; the sale covers the rest. */
+      skipped: { address: string; symbol: string; reason: string }[];
     }
   | { ok: false; status: number; error: string; composerFallback?: ComposerFallbackNotice };
 
@@ -276,27 +279,28 @@ export async function quoteWalletSweep(
       apiKey: options.apiKey,
       fetchImpl: options.fetchImpl,
       ...(maxPriceImpactBps !== undefined ? { maxPriceImpactBps } : {}),
+      skipUnroutable: true,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const notice = parseComposerFallback(message);
+    const notice = composerFallbackFrom(err);
     if (notice.reason === 'PRICE_IMPACT') {
       return { ok: false, status: 422, error: 'The price impact of this sale is above the limit.', composerFallback: notice };
     }
-    return { ok: false, status: 502, error: `No route to sell these tokens right now: ${message}` };
+    return { ok: false, status: 502, error: `No route to sell these tokens right now: ${notice.message}` };
   }
 
-  const legs: SweepQuoteLeg[] = picked.map((p, i) => {
-    const produced = compiled.producedResources[`${sweepNodeId(i)}.amountOut`];
-    const out = produced?.simulated?.amountOut;
-    const min = produced?.simulated?.amountOutMin;
+  // Output ports index the tokens actually sold (`compiled.kept`, original order).
+  const keptAddresses = new Set(compiled.kept.map((k) => k.address.toLowerCase()));
+  const sold = picked.filter((p) => keptAddresses.has(p.asset.address.toLowerCase()));
+  const legs: SweepQuoteLeg[] = sold.map((p, i) => {
+    const { expected, min } = composerPortAmounts(compiled.outputs, `${sweepNodeId(i)}.amountOut`);
     return {
       address: p.asset.address,
       symbol: p.asset.symbol,
       amountRaw: p.amountRaw,
       decimals: p.asset.decimals,
-      expectedOutRaw: out !== undefined && out !== null ? String(out) : null,
-      minOutRaw: min !== undefined && min !== null ? String(min) : null,
+      expectedOutRaw: expected,
+      minOutRaw: min,
     };
   });
 
@@ -314,6 +318,7 @@ export async function quoteWalletSweep(
     expectedOutRaw: sumOrNull(legs.map((l) => l.expectedOutRaw)),
     minOutRaw: sumOrNull(legs.map((l) => l.minOutRaw)),
     priceImpactBps: compiled.priceImpact?.impactBps ?? null,
+    skipped: (compiled.skipped ?? []).map((x) => ({ address: x.address, symbol: x.symbol, reason: x.reason })),
   };
 }
 
@@ -384,6 +389,10 @@ export async function quoteWalletBuy(
     legs.push({ asset, weightBps: b.weightBps });
   }
   if (total !== 10000) return { ok: false, status: 400, error: 'The shares must add up to 100%.' };
+  const noRoute = legs.filter((l) => l.asset.routeStatus === 'NO_ROUTE').map((l) => l.asset.symbol);
+  if (noRoute.length > 0) {
+    return { ok: false, status: 400, error: `No swap route on ${BAG_CHAINS[chain].name} for ${noRoute.join(', ')} right now. Remove ${noRoute.length > 1 ? 'them' : 'it'} and try again.` };
+  }
 
   // The wallet must hold what it spends (for ETH, the network fee comes on top; the wallet's simulation catches a shortfall).
   const owner = walletAddress as `0x${string}`;
@@ -409,10 +418,9 @@ export async function quoteWalletBuy(
       ...(maxPriceImpactBps !== undefined ? { maxPriceImpactBps } : {}),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const notice = parseComposerFallback(message);
+    const notice = composerFallbackFrom(err);
     if (notice.reason === 'PRICE_IMPACT') return { ok: false, status: 422, error: 'The price impact of this purchase is above the limit.', composerFallback: notice };
-    return { ok: false, status: 502, error: `No route to buy these tokens right now: ${message}` };
+    return { ok: false, status: 502, error: `No route to buy these tokens right now: ${notice.message}` };
   }
 
   return {
@@ -431,8 +439,8 @@ export async function quoteWalletBuy(
       symbol: l.asset.symbol,
       decimals: l.asset.decimals,
       weightBps: l.weightBps,
-      expectedOutRaw: composerLegSimulatedOutputRaw(compiled.producedResources, i),
-      minOutRaw: composerLegEnforcedMinOutputRaw(compiled.producedResources, i),
+      expectedOutRaw: composerLegSimulatedOutputRaw(compiled.outputs, i),
+      minOutRaw: composerLegEnforcedMinOutputRaw(compiled.outputs, i),
     })),
     priceImpactBps: compiled.priceImpact?.impactBps ?? null,
   };
