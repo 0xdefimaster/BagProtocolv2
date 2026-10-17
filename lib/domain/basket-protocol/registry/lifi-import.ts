@@ -75,7 +75,8 @@ export type SkippedLiFiTokenReason =
   | 'NOT_PINNED_ADDRESS'
   | 'NAME_MISMATCH'
   | 'LOW_MARKET_CAP'
-  | 'AMBIGUOUS_SYMBOL';
+  | 'AMBIGUOUS_SYMBOL'
+  | 'LEVERAGED_PRODUCT';
 
 export interface SkippedLiFiToken {
   symbol: string;
@@ -309,20 +310,54 @@ export interface LiFiStockCandidate extends RegisterAssetInput {
   /** LI.FI's market cap and USD price, printed for the owner's review; never written to the registry. */
   marketCapUSD: number | null;
   priceUSD: string | null;
+  /** Why this token counts as a stock: LI.FI's `rwa` tag, or a known issuer's naming. Printed only. */
+  signal: LiFiStockSignal;
+}
+
+export const LIFI_STOCK_SIGNALS = ['rwa', 'backed', 'xstock', 'ondo'] as const;
+export type LiFiStockSignal = (typeof LIFI_STOCK_SIGNALS)[number];
+
+/**
+ * Tokenized-stock issuers whose tokens LI.FI lists without its `rwa` tag
+ * (Jumper shows Backed's bNVDA on Arbitrum, Ondo's NVDAon on Ethereum).
+ * Both the name and the symbol must follow the issuer's own scheme; the
+ * token must still be LI.FI-verified, unambiguous, and named by the owner
+ * in `--only` before anything is written.
+ */
+const ISSUER_STOCK_PATTERNS: { signal: Exclude<LiFiStockSignal, 'rwa'>; name: RegExp; symbol: RegExp }[] = [
+  { signal: 'backed', name: /^Backed\s/i, symbol: /^b[A-Z0-9.]+$/ },
+  { signal: 'xstock', name: /\bxStock$/i, symbol: /^[A-Z0-9.]+x$/ },
+  { signal: 'ondo', name: /\bOndo Tokenized\b/i, symbol: /^[A-Z0-9.]+on$/ },
+];
+
+/**
+ * Leveraged or inverse daily products (e.g. "GraniteShares 2x Long NVDA Daily
+ * ETF xStock") decay over time and do not belong in a long-term basket; they
+ * are reported as LEVERAGED_PRODUCT and never become candidates.
+ */
+const LEVERAGED_PRODUCT_NAME = /\b\d+(?:\.\d+)?x\b|\bleveraged\b|\binverse\b|\bshort\b|\bdaily\b/i;
+
+function stockSignal(token: LiFiRawToken): LiFiStockSignal | null {
+  if (classifyLiFiToken(token) === 'stock') return 'rwa';
+  const name = token.name ?? '';
+  const symbol = token.symbol ?? '';
+  return ISSUER_STOCK_PATTERNS.find((p) => p.name.test(name) && p.symbol.test(symbol))?.signal ?? null;
 }
 
 /**
  * Tokenized stocks LI.FI lists on an EVM network, for the owner to review: every
- * token LI.FI tags `rwa` (its tokenized-equity signal) and marks VERIFIED. No
+ * token LI.FI tags `rwa` (its tokenized-equity signal), or that follows a known
+ * issuer's naming (`ISSUER_STOCK_PATTERNS`), and that LI.FI marks VERIFIED. No
  * exception for an unverified or flagged token, no native token, no missing
  * field, and a symbol more than one such token claims is skipped as ambiguous.
  * `only`, when given, keeps just those symbols; every other stock is reported
- * as NOT_REQUESTED. Addresses, decimals and names come from LI.FI's response,
+ * as NOT_REQUESTED. `issuers`, when given, ignores every stock whose signal is
+ * not listed (e.g. `['backed']` for Backed's bTokens only). Addresses, decimals and names come from LI.FI's response,
  * never from this code. Never throws: a fetch failure is returned as `fetchError`.
  */
 export async function fetchLiFiStockCandidatesForChain(
   targetChain: LiFiStockImportChain,
-  options: { only?: string[] } = {}
+  options: { only?: string[]; issuers?: LiFiStockSignal[] } = {}
 ): Promise<{ candidates: LiFiStockCandidate[]; skipped: SkippedLiFiToken[]; fetchError?: string }> {
   let rawTokens: (LiFiRawToken & { priceUSD?: string })[];
   try {
@@ -334,10 +369,12 @@ export async function fetchLiFiStockCandidatesForChain(
   }
 
   const only = options.only && options.only.length > 0 ? new Set(options.only.map((s) => s.toUpperCase())) : null;
+  const issuers = options.issuers && options.issuers.length > 0 ? new Set(options.issuers) : null;
   const skipped: SkippedLiFiToken[] = [];
   const bySymbol = new Map<string, (LiFiRawToken & { priceUSD?: string })[]>();
   for (const token of rawTokens) {
-    if (classifyLiFiToken(token) !== 'stock') continue;
+    const signal = stockSignal(token);
+    if (signal === null || (issuers && !issuers.has(signal))) continue;
     if (typeof token.decimals !== 'number' || !token.address || !token.symbol) continue; // never fabricate a missing field
     const skip = (reason: SkippedLiFiTokenReason) => skipped.push({ symbol: token.symbol, address: token.address, name: token.name, reason });
     if (token.address.toLowerCase() === NATIVE_TOKEN_ADDRESS) {
@@ -350,6 +387,10 @@ export async function fetchLiFiStockCandidatesForChain(
     }
     if (token.verificationStatus !== 'verified') {
       skip('UNVERIFIED_BY_LIFI');
+      continue;
+    }
+    if (LEVERAGED_PRODUCT_NAME.test(token.name ?? '')) {
+      skip('LEVERAGED_PRODUCT');
       continue;
     }
     if (only && !only.has(token.symbol.toUpperCase())) {
@@ -377,10 +418,39 @@ export async function fetchLiFiStockCandidatesForChain(
       logoUrl: sanitizeLogoUrl(t.logoURI),
       marketCapUSD: typeof t.marketCapUSD === 'number' ? t.marketCapUSD : null,
       priceUSD: typeof t.priceUSD === 'string' ? t.priceUSD : null,
+      signal: stockSignal(t) ?? 'rwa',
     });
   }
   candidates.sort((a, b) => a.symbol.localeCompare(b.symbol));
   return { candidates, skipped };
+}
+
+/**
+ * Read-only lookup for the owner: every token in LI.FI's list for `targetChain`
+ * whose symbol or name contains `term` (case-insensitive), with LI.FI's own
+ * verification status and tags, so a stock LI.FI lists under an unexpected
+ * name can be found before any import rule is written for it. Never writes;
+ * never throws (a fetch failure is returned as `fetchError`).
+ */
+export async function searchLiFiTokens(
+  targetChain: LiFiImportTargetChain,
+  term: string
+): Promise<{ matches: Pick<LiFiRawToken, 'address' | 'symbol' | 'name' | 'decimals' | 'tags' | 'verificationStatus'>[]; fetchError?: string }> {
+  const needle = term.trim().toLowerCase();
+  if (!needle) return { matches: [] };
+  let rawTokens: LiFiRawToken[];
+  try {
+    const numericChainId = toLiFiChainId(targetChain);
+    const response = await getTokens(getLiFiClient(), { chains: [numericChainId], extended: true });
+    rawTokens = (response.tokens[numericChainId] ?? []) as unknown as LiFiRawToken[];
+  } catch (err) {
+    return { matches: [], fetchError: err instanceof Error ? err.message : String(err) };
+  }
+  const matches = rawTokens
+    .filter((t) => (t.symbol ?? '').toLowerCase().includes(needle) || (t.name ?? '').toLowerCase().includes(needle))
+    .map((t) => ({ address: t.address, symbol: t.symbol, name: t.name, decimals: t.decimals, tags: t.tags, verificationStatus: t.verificationStatus }))
+    .sort((a, b) => (a.symbol ?? '').localeCompare(b.symbol ?? ''));
+  return { matches };
 }
 
 export interface LiFiImportPlan {

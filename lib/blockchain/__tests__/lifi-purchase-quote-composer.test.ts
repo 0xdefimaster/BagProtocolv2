@@ -18,13 +18,15 @@ vi.mock('../lifi-composer-adapter', async (importOriginal) => {
     buildComposerPurchase: (...a: unknown[]) => buildComposerPurchaseMock(...a),
     isComposerEligible: () => true,
     ComposerIneligibleError: class extends Error {},
-    // The real reader: the test feeds it a live-shaped producedResources map.
+    // The real readers: the test feeds them a live-shaped `outputs` map.
     composerLegEnforcedMinOutputRaw: actual.composerLegEnforcedMinOutputRaw,
     composerLegSimulatedOutputRaw: actual.composerLegSimulatedOutputRaw,
+    composeErrorOf: actual.composeErrorOf,
   };
 });
 
-const { buildPurchaseIntentSteps, parseComposerFallback } = await import('../lifi-purchase-quote');
+const { buildPurchaseIntentSteps, composerFallbackFrom } = await import('../lifi-purchase-quote');
+const { composeError, out } = await import('./composer-fixtures');
 
 const USDC = { chain: 'ethereum', address: '0xusdc' } as const;
 const WETH = { chain: 'ethereum', address: '0xweth' } as const;
@@ -48,7 +50,7 @@ const composerResult = {
   transactionRequest: { to: '0xcomposer', data: '0xdead', value: '0', chainId: 1 },
   userProxy: '0xproxy',
   // Live API shape: keyed by output port (`swap_0.amountOut`).
-  producedResources: { 'swap_0.amountOut': { simulated: { amountOut: BigInt(5) * BigInt(10) ** BigInt(17) } } },
+  outputs: { 'swap_0.amountOut': out(BigInt(5) * BigInt(10) ** BigInt(17)) },
 };
 
 beforeEach(() => {
@@ -87,7 +89,7 @@ describe('buildPurchaseIntentSteps — Composer path decimals', () => {
     buildComposerPurchaseMock.mockResolvedValue({
       ...composerResult,
       // Live API shape: keyed by output port.
-      producedResources: { 'swap_0.amountOut': { simulated: { amountOut: BigInt(500), amountOutMin: BigInt(495) } } },
+      outputs: { 'swap_0.amountOut': out(500, 495) },
     });
     const result = await buildPurchaseIntentSteps([step('KEEP', USDC, '400000'), step('SWAP', WETH, '600000')], '0xwallet', 6, {
       apiKey: 'k',
@@ -104,7 +106,7 @@ describe('Composer refusal -> failed intent with the reason, never one route per
   const opts = { apiKey: 'k', slippageBps: 100, resolveOutputDecimals: () => 18 };
 
   it('does not quote per-asset routes; returns the price-impact refusal as a failure', async () => {
-    buildComposerPurchaseMock.mockRejectedValue(new Error('Price impact 551 bps exceeds maximum 500 bps (input: $0.9991, output: $0.9440)'));
+    buildComposerPurchaseMock.mockRejectedValue(await composeError('price_impact_exceeded', 'Price impact 551 bps exceeds maximum 500 bps (input: $0.9991, output: $0.9440)'));
     const result = await buildPurchaseIntentSteps([step('SWAP', WETH, '600000')], '0xwallet', 6, opts);
 
     expect(getQuoteMock).not.toHaveBeenCalled();
@@ -118,6 +120,7 @@ describe('Composer refusal -> failed intent with the reason, never one route per
       maxPriceImpactBps: 500,
       inputUsd: '0.9991',
       outputUsd: '0.9440',
+      kind: 'price_impact_exceeded',
     });
   });
 
@@ -128,14 +131,28 @@ describe('Composer refusal -> failed intent with the reason, never one route per
   });
 
   it('any other Composer failure is reported as UNAVAILABLE with no invented figures', () => {
-    expect(parseComposerFallback('network down')).toEqual({
+    expect(composerFallbackFrom(new Error('network down'))).toEqual({
       reason: 'UNAVAILABLE',
       message: 'network down',
       priceImpactBps: null,
       maxPriceImpactBps: null,
       inputUsd: null,
       outputUsd: null,
+      kind: null,
     });
+  });
+
+  it('classifies by the typed kind, not the message: only a whole-flow price_impact_exceeded is retryable', async () => {
+    // The same words without the typed kind are not a price-impact refusal.
+    expect(composerFallbackFrom(new Error('Price impact 551 bps exceeds maximum 500 bps')).reason).toBe('UNAVAILABLE');
+    // One swap's route filter: raising the limit does not help.
+    expect(composerFallbackFrom(await composeError('price_impact_exceeded', 'Price impact too high for swap_0')).reason).toBe('UNAVAILABLE');
+    const revert = composerFallbackFrom(await composeError('simulation_revert', 'execution reverted: Insufficient output'));
+    expect(revert).toMatchObject({ reason: 'UNAVAILABLE', kind: 'simulation_revert' });
+    expect(composerFallbackFrom(await composeError('sdk_outdated', 'upgrade the SDK')).kind).toBe('sdk_outdated');
+    // A wrapped error (failing legs named) keeps the original kind via `cause`.
+    const wrapped = new Error('GRT: No available quotes (1 of 2 prepared op(s) failed)', { cause: await composeError('preparation_error', '1 of 2 prepared op(s) failed') });
+    expect(composerFallbackFrom(wrapped)).toMatchObject({ reason: 'UNAVAILABLE', kind: 'preparation_error', message: 'GRT: No available quotes (1 of 2 prepared op(s) failed)' });
   });
 
   it('passes an accepted price-impact limit to Composer', async () => {
@@ -178,7 +195,7 @@ describe('buildPurchaseIntentSteps — native ETH when Composer refuses', () => 
   });
 
   it('a price-impact refusal still goes back to the buyer (no silent per-asset purchase)', async () => {
-    buildComposerPurchaseMock.mockRejectedValue(new Error('price impact 900 bps exceeds maximum 500 bps'));
+    buildComposerPurchaseMock.mockRejectedValue(await composeError('price_impact_exceeded', 'price impact 900 bps exceeds maximum 500 bps'));
     const result = await buildPurchaseIntentSteps([ethStep()], '0xwallet', 18, opts);
     expect(result.allSwapsQuoted).toBe(false);
     expect(result.composerFallback?.reason).toBe('PRICE_IMPACT');

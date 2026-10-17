@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildComposerRebalance, ComposerIneligibleError, rebalanceShape } from '../lifi-composer-adapter';
+import { composeResponse } from './composer-fixtures';
 
 // Same HTTP-boundary mocking as lifi-composer-sweep.test.ts: the real @lifi/composer-sdk builds and serializes the
 // flow, only Composer's response is fake.
@@ -13,8 +14,8 @@ const SIGNER = '0x49da000000000000000000000000000000fe46';
 const SPENDER = '0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae';
 
 function composeFetch(data: Record<string, unknown> = {}) {
-  const body = { data: { producedResources: {}, transactionRequest: { to: SPENDER, chainId: 4663, data: '0xdeadbeef', value: '0' }, userProxy: '0xUserProxy', ...data } };
-  return vi.fn(async () => ({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) })) as unknown as typeof fetch;
+  const body = { data: { outputs: {}, transactionRequest: { to: SPENDER, chainId: 4663, data: '0xdeadbeef', value: '0' }, userProxy: '0xUserProxy', ...data } };
+  return vi.fn(async () => composeResponse(body)) as unknown as typeof fetch;
 }
 const sentBody = (f: typeof fetch) => String((f as unknown as { mock: { calls: [unknown, RequestInit][] } }).mock.calls[0][1].body);
 const base = { chain: 'robinhood' as const, hubTokenAddress: USDG, signerAddress: SIGNER, slippageBps: 100, apiKey: 'k' };

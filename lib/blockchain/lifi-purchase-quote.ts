@@ -5,7 +5,7 @@ import { getLiFiClient, toLiFiChainId } from './lifi-config';
 import { getLiFiTokenData } from './lifi-token-data';
 import { mapLiFiError } from './lifi-execution-adapter';
 import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
-import { buildComposerPurchase, composerLegEnforcedMinOutputRaw, composerLegSimulatedOutputRaw, ComposerIneligibleError, ComposerPurchaseLeg, isComposerEligible } from './lifi-composer-adapter';
+import { buildComposerPurchase, composeErrorOf, composerLegEnforcedMinOutputRaw, composerLegSimulatedOutputRaw, ComposerIneligibleError, ComposerPurchaseLeg, isComposerEligible } from './lifi-composer-adapter';
 
 // -----------------------------------------------------------------------------
 // Phase 17 — spec Aşama 1/4: "fromAddress placeholder tamamen kaldırılacak.
@@ -119,7 +119,7 @@ export async function quoteRealSwapStep(
 export const DEFAULT_COMPOSER_SLIPPAGE_BPS = 100;
 
 /** Upper bound on one Composer compile before falling back to sequential quotes. */
-export const COMPOSER_COMPILE_TIMEOUT_MS = 15_000;
+export { COMPOSER_COMPILE_TIMEOUT_MS } from './lifi-composer-adapter';
 
 export interface ComposerTransactionSummary {
   to: string;
@@ -153,14 +153,20 @@ export interface BuildPurchaseIntentStepsResult {
 }
 
 /**
- * Reads LI.FI Composer's refusal message into a notice. Only the figures
- * Composer itself printed are used, e.g.
- * "Price impact 551 bps exceeds maximum 500 bps (input: $0.9991, output: $0.9440)".
+ * Turns a Composer refusal into a notice, branching on the SDK's typed error
+ * (`ComposeError.kind`), never on the message alone. Only a whole-flow
+ * price-impact refusal ("Price impact N bps exceeds maximum M bps") is
+ * PRICE_IMPACT: the buyer may accept it and retry with a higher limit. A
+ * single swap's route filter ("Price impact too high for …") is not, since
+ * raising the limit does not help. The message is parsed only for the
+ * figures Composer printed.
  */
-export function parseComposerFallback(message: string): ComposerFallbackNotice {
-  const impact = message.match(/price impact\s+(\d+)\s*bps\s+exceeds\s+maximum\s+(\d+)\s*bps/i);
-  const input = message.match(/input:\s*\$([\d.]+)/i);
-  const output = message.match(/output:\s*\$([\d.]+)/i);
+export function composerFallbackFrom(err: unknown): ComposerFallbackNotice {
+  const message = err instanceof Error ? err.message : String(err);
+  const kind = composeErrorOf(err)?.kind ?? null;
+  const impact = kind === 'price_impact_exceeded' ? message.match(/price impact\s+(\d+)\s*bps\s+exceeds\s+maximum\s+(\d+)\s*bps/i) : null;
+  const input = impact ? message.match(/input:\s*\$([\d.]+)/i) : null;
+  const output = impact ? message.match(/output:\s*\$([\d.]+)/i) : null;
   return {
     reason: impact ? 'PRICE_IMPACT' : 'UNAVAILABLE',
     message,
@@ -168,6 +174,7 @@ export function parseComposerFallback(message: string): ComposerFallbackNotice {
     maxPriceImpactBps: impact ? Number(impact[2]) : null,
     inputUsd: input ? input[1] : null,
     outputUsd: output ? output[1] : null,
+    kind,
   };
 }
 
@@ -260,29 +267,24 @@ async function tryBuildComposerSteps(
 
   let composerResult;
   try {
-    // Capped so a stuck Composer compile fails with a reason the buyer can
-    // retry, instead of keeping them waiting for the wallet prompt.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    composerResult = await Promise.race([
-      buildComposerPurchase({
-        chain: chain as ChainId,
-        inputTokenAddress: inputAsset.address,
-        inputAmountRaw: totalInputRaw.toString(),
-        legs,
-        signerAddress: walletAddress,
-        slippageBps: options.slippageBps,
-        apiKey: options.apiKey,
-        ...(options.maxPriceImpactBps !== undefined ? { maxPriceImpactBps: options.maxPriceImpactBps } : {}),
-      }),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`Composer compile took longer than ${COMPOSER_COMPILE_TIMEOUT_MS}ms`)), COMPOSER_COMPILE_TIMEOUT_MS);
-      }),
-    ]).finally(() => clearTimeout(timer));
+    // The deadline is on the request itself (COMPOSER_COMPILE_TIMEOUT_MS in
+    // lifi-composer-adapter.ts): a stuck compile is aborted and fails with a
+    // reason the buyer can retry.
+    composerResult = await buildComposerPurchase({
+      chain: chain as ChainId,
+      inputTokenAddress: inputAsset.address,
+      inputAmountRaw: totalInputRaw.toString(),
+      legs,
+      signerAddress: walletAddress,
+      slippageBps: options.slippageBps,
+      apiKey: options.apiKey,
+      ...(options.maxPriceImpactBps !== undefined ? { maxPriceImpactBps: options.maxPriceImpactBps } : {}),
+    });
   } catch (err) {
     if (err instanceof ComposerIneligibleError) return null;
     const message = err instanceof Error ? err.message : String(err);
     console.warn(`[composer] single-transaction route refused: ${message}`);
-    const notice = parseComposerFallback(message);
+    const notice = composerFallbackFrom(err);
     // A native-ETH payment has a proven per-asset path (each swap sends its
     // ETH as the transaction value, no approval), and Composer's native-input
     // support is the newer of the two: anything but a price-impact refusal
@@ -320,7 +322,7 @@ async function tryBuildComposerSteps(
     }
 
     const legIndex = swapSteps.indexOf(step);
-    const simulatedOut = composerLegSimulatedOutputRaw(composerResult.producedResources, legIndex);
+    const simulatedOut = composerLegSimulatedOutputRaw(composerResult.outputs, legIndex);
 
     return {
       stepIndex,
@@ -343,7 +345,7 @@ async function tryBuildComposerSteps(
       // provider's (see composerLegEnforcedMinOutputRaw) and is recorded
       // separately, never used for verification.
       minOutputRaw: null,
-      providerEnforcedMinOutputRaw: composerLegEnforcedMinOutputRaw(composerResult.producedResources, legIndex),
+      providerEnforcedMinOutputRaw: composerLegEnforcedMinOutputRaw(composerResult.outputs, legIndex),
       route: null,
       // No per-step LI.FI route — see this type's own doc comment on why
       // `lifiStep` is null whenever `composerTransaction` is set.

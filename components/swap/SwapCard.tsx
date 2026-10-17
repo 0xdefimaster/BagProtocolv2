@@ -32,6 +32,8 @@ interface RegistryAsset {
   name: string;
   decimals: number;
   logoUrl?: string | null;
+  /** From the registry's liquidity pass; NO_ROUTE tokens are not offered for buying. */
+  routeStatus?: 'ROUTABLE' | 'NO_ROUTE';
 }
 
 interface PlanBase {
@@ -49,6 +51,8 @@ interface SellQuote extends PlanBase {
   legs: { address: string; symbol: string; amountRaw: string; decimals: number; expectedOutRaw: string | null; minOutRaw: string | null }[];
   expectedOutRaw: string | null;
   minOutRaw: string | null;
+  /** Tokens left out because no route was found for them; they stay in the wallet. */
+  skipped?: { address: string; symbol: string; reason: string }[];
 }
 type Quote = { mode: 'buy'; q: BuyQuote } | { mode: 'sell'; q: SellQuote };
 
@@ -140,7 +144,10 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
   // What can go in each list: buy = registry tokens (not the stablecoin when paying with it); sell = held tokens
   // (not the stablecoin when receiving it).
   const buyable = useMemo(
-    () => (assets ?? []).filter((a) => /^0x[0-9a-fA-F]{40}$/.test(a.address) && !(money === 'STABLE' && a.address.toLowerCase() === stable)),
+    () =>
+      (assets ?? []).filter(
+        (a) => /^0x[0-9a-fA-F]{40}$/.test(a.address) && a.routeStatus !== 'NO_ROUTE' && !(money === 'STABLE' && a.address.toLowerCase() === stable)
+      ),
     [assets, money, stable]
   );
   const sellable = useMemo(() => walletTokens.filter((t) => t.sellable || money === 'NATIVE'), [walletTokens, money]);
@@ -380,6 +387,11 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
 
         {(phase.kind === 'quoted' || phase.kind === 'executing') && (
           <div className="swap-details">
+            {phase.quote.mode === 'sell' && (phase.quote.q.skipped?.length ?? 0) > 0 && (
+              <div role="status" className="swap-skipped">
+                Not sold (no route right now, stays in your wallet): {phase.quote.q.skipped!.map((x) => x.symbol).join(', ')}
+              </div>
+            )}
             {phase.quote.mode === 'sell' && phase.quote.q.minOutRaw && (
               <div>
                 Minimum (enforced on-chain): {formatRawAmount(phase.quote.q.minOutRaw, phase.quote.q.outputToken.decimals, { maxFractionDigits: 6 })} {phase.quote.q.outputToken.symbol}

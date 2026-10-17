@@ -583,7 +583,9 @@ async function buildBagExecutionIntentAndProviders(
   outcome: PurchasePreviewResult,
   bagId: string,
   /** Same registry Set `prepareBagPurchaseContext()` already computed — passed in and reused rather than re-fetched, so this helper costs no extra DB round-trip. */
-  outputIdentityKeys: Set<string>
+  outputIdentityKeys: Set<string>,
+  /** The buyer's accepted price impact, already capped; same value the legacy path passes to Composer. */
+  maxPriceImpactBps?: number
 ): Promise<{ graph: ReturnType<typeof buildBagExecutionGraph>; bagIntent: BagExecutionIntent; providers: BagExecutionProvider[] }> {
   const graph = buildBagExecutionGraph(outcome.executionPlan, {
     wallet: session.walletAddress,
@@ -612,7 +614,9 @@ async function buildBagExecutionIntentAndProviders(
       : null;
 
   const providers = buildDefaultProviders({
-    ...(process.env.LIFI_API_KEY ? { lifiComposer: { apiKey: process.env.LIFI_API_KEY } } : {}),
+    ...(process.env.LIFI_API_KEY
+      ? { lifiComposer: { apiKey: process.env.LIFI_API_KEY, ...(maxPriceImpactBps !== undefined ? { maxPriceImpactBps } : {}) } }
+      : {}),
     bagRouter: buildBagRouterProviderConfig(canonicalIdentityKeys, onChainBagId ? { bagId: bag.id, onChainBagId } : null),
   });
 
@@ -700,6 +704,11 @@ export async function createPurchaseIntentForUser(
   // mode to report, and the UI must not invent one on its behalf.
   let executionMode: ExecutionMode | null = null;
 
+  const acceptedMaxPriceImpactBps =
+    params.acceptedPriceImpactBps !== undefined
+      ? Math.min(params.acceptedPriceImpactBps + PRICE_IMPACT_ACCEPT_BUFFER_BPS, MAX_ACCEPTABLE_PRICE_IMPACT_BPS)
+      : undefined;
+
   if (isBagExecutionCompilerEnabled()) {
     const { graph, bagIntent: baseBagIntent, providers } = await buildBagExecutionIntentAndProviders(
       admin,
@@ -709,7 +718,8 @@ export async function createPurchaseIntentForUser(
       identity,
       outcome,
       bagId,
-      outputIdentityKeys
+      outputIdentityKeys,
+      acceptedMaxPriceImpactBps
     );
     const bagIntent: BagExecutionIntent = {
       ...baseBagIntent,
@@ -746,8 +756,14 @@ export async function createPurchaseIntentForUser(
       if (!(err instanceof BagExecutionError)) throw err;
       steps = buildAllFailedSteps(outcome.executionPlan.steps, inputAsset.decimals);
       allSwapsQuoted = false;
-      firstFailure = { failureCode: 'PROVIDER_ERROR', message: err.message };
       composerTransaction = null;
+      firstFailure = null;
+      if (err.code === 'PRICE_IMPACT_REFUSED') {
+        // Same outcome as the legacy path: the buyer sees the impact and may accept it.
+        composerFallback = (err.details?.composerFallback as ComposerFallbackNotice | undefined) ?? null;
+      } else {
+        firstFailure = { failureCode: 'PROVIDER_ERROR', message: err.message };
+      }
     }
   } else {
     // Phase 22 — attempts a single-signature LI.FI Composer transaction
@@ -761,9 +777,7 @@ export async function createPurchaseIntentForUser(
           apiKey: process.env.LIFI_API_KEY,
           slippageBps: bagSlippageBps(version),
           resolveOutputDecimals: buildOutputAssetDecimalsResolver(version, identity, inputAsset),
-          ...(params.acceptedPriceImpactBps !== undefined
-            ? { maxPriceImpactBps: Math.min(params.acceptedPriceImpactBps + PRICE_IMPACT_ACCEPT_BUFFER_BPS, MAX_ACCEPTABLE_PRICE_IMPACT_BPS) }
-            : {}),
+          ...(acceptedMaxPriceImpactBps !== undefined ? { maxPriceImpactBps: acceptedMaxPriceImpactBps } : {}),
         }
       : undefined;
     const legacy = await buildPurchaseIntentSteps(

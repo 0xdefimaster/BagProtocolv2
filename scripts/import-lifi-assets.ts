@@ -38,9 +38,17 @@
 // robinhood only crypto tokens (WETH, USDG, ...) are imported; Stock Tokens
 // stay with import-robinhood-assets.ts, which is Robinhood's own source.
 //
-// Tokenized stocks on ethereum / base / arbitrum (LI.FI tags them `rwa`):
+// Tokenized stocks on ethereum / base / arbitrum (LI.FI's `rwa` tag, or a known
+// issuer's naming: Backed "Backed …"/bNVDA, xStocks "… xStock"/NVDAx, Ondo
+// "… (Ondo Tokenized)"/NVDAon; the dry run prints which one matched):
 //   npx tsx scripts/import-lifi-assets.ts --stocks --chain=base                    # dry run: every LI.FI-verified stock
 //   npx tsx scripts/import-lifi-assets.ts --stocks --chain=base --only=TSLAx,NVDAx --apply
+// Read-only lookup when a stock does not show up (prints LI.FI's name,
+// verification status and tags for every symbol/name containing the term):
+//   npx tsx scripts/import-lifi-assets.ts --search=NVDA --chain=arbitrum
+// --issuer=backed (or rwa, xstock, ondo; comma-separated) keeps only that
+// issuer's tokens, e.g. Backed's bTokens:
+//   npx tsx scripts/import-lifi-assets.ts --stocks --issuer=backed --chain=arbitrum
 // --apply in stock mode requires --only: the owner names, from the dry run,
 // exactly which stocks become selectable in Create. Nothing else is written,
 // and --deprecate-stale is refused. A symbol two LI.FI-verified stocks claim
@@ -61,9 +69,12 @@ import {
   applyLiFiImportPlan,
   fetchLiFiStockCandidatesForChain,
   fetchLiFiTokenCandidatesForChain,
+  LIFI_STOCK_SIGNALS,
   LiFiImportTargetChain,
   LiFiStockImportChain,
+  LiFiStockSignal,
   planLiFiImportForChain,
+  searchLiFiTokens,
 } from '@/lib/domain/basket-protocol/registry/lifi-import';
 
 const SUPPORTED_CHAINS: LiFiImportTargetChain[] = ['ethereum', 'base', 'arbitrum', 'robinhood'];
@@ -84,6 +95,16 @@ function parseOnlyArg(): string[] {
   return arg ? arg.slice('--only='.length).split(',').map((s) => s.trim()).filter(Boolean) : [];
 }
 
+function parseIssuerArg(): LiFiStockSignal[] {
+  const arg = process.argv.find((a) => a.startsWith('--issuer='));
+  if (!arg) return [];
+  const issuers = arg.slice('--issuer='.length).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  for (const i of issuers) {
+    if (!(LIFI_STOCK_SIGNALS as readonly string[]).includes(i)) throw new Error(`Unknown --issuer "${i}". Supported: ${LIFI_STOCK_SIGNALS.join(', ')}.`);
+  }
+  return issuers as LiFiStockSignal[];
+}
+
 async function importStocks(chain: LiFiImportTargetChain, apply: boolean) {
   if (!(STOCK_CHAINS as string[]).includes(chain)) {
     throw new Error(`--stocks supports ${STOCK_CHAINS.join(', ')}; Robinhood Stock Tokens come from import-robinhood-assets.ts.`);
@@ -95,7 +116,9 @@ async function importStocks(chain: LiFiImportTargetChain, apply: boolean) {
   }
 
   console.log(`Fetching LI.FI's tokenized stocks on "${chain}"...`);
-  const { candidates, skipped, fetchError } = await fetchLiFiStockCandidatesForChain(chain as LiFiStockImportChain, { only });
+  const issuers = parseIssuerArg();
+  if (issuers.length > 0) console.log(`Issuers: ${issuers.join(', ')}`);
+  const { candidates, skipped, fetchError } = await fetchLiFiStockCandidatesForChain(chain as LiFiStockImportChain, { only, issuers });
   if (fetchError) {
     console.error(`  Failed to fetch from LI.FI: ${fetchError}`);
     process.exitCode = 1;
@@ -104,7 +127,7 @@ async function importStocks(chain: LiFiImportTargetChain, apply: boolean) {
   console.log(`\nLI.FI-verified stocks${only.length > 0 ? ' (requested)' : ''}: ${candidates.length}`);
   for (const c of candidates) {
     const cap = c.marketCapUSD === null ? 'mcap —' : `mcap $${Math.round(c.marketCapUSD).toLocaleString('en-US')}`;
-    console.log(`  ${c.symbol.padEnd(10)} ${c.address}  dec ${String(c.decimals).padEnd(2)}  ${cap.padEnd(22)} price ${c.priceUSD ?? '—'}  ${c.name}`);
+    console.log(`  ${c.symbol.padEnd(10)} ${c.address}  dec ${String(c.decimals).padEnd(2)}  ${cap.padEnd(22)} price ${c.priceUSD ?? '—'}  [${c.signal}] ${c.name}`);
   }
   const notRequested = skipped.filter((s) => s.reason === 'NOT_REQUESTED').length;
   const rejected = skipped.filter((s) => s.reason !== 'NOT_REQUESTED');
@@ -139,10 +162,28 @@ async function importStocks(chain: LiFiImportTargetChain, apply: boolean) {
   }
 }
 
+async function searchTokens(chain: LiFiImportTargetChain, term: string) {
+  if (process.argv.includes('--apply')) throw new Error('--search is read-only; it cannot be combined with --apply.');
+  console.log(`Searching LI.FI's token list on "${chain}" for "${term}"...`);
+  const { matches, fetchError } = await searchLiFiTokens(chain, term);
+  if (fetchError) {
+    console.error(`  Failed to fetch from LI.FI: ${fetchError}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`\nMatches: ${matches.length}`);
+  for (const t of matches) {
+    console.log(`  ${String(t.symbol).padEnd(12)} ${t.address}  ${String(t.verificationStatus ?? '—').padEnd(10)} tags [${(t.tags ?? []).join(',')}]  ${t.name}`);
+  }
+  console.log('\nRead-only — nothing was written.');
+}
+
 async function main() {
   const apply = process.argv.includes('--apply');
   const deprecateStale = process.argv.includes('--deprecate-stale');
   const chain = parseChainArg();
+  const searchArg = process.argv.find((a) => a.startsWith('--search='));
+  if (searchArg) return searchTokens(chain, searchArg.slice('--search='.length));
   if (process.argv.includes('--stocks')) return importStocks(chain, apply);
 
   console.log(`Fetching LI.FI's known token list for chain "${chain}"...`);

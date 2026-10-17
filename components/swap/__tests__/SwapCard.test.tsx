@@ -135,6 +135,21 @@ describe('SwapCard — Multi-buy', () => {
   });
 });
 
+describe('SwapCard — tokens without a route', () => {
+  it('a token the liquidity pass marked NO_ROUTE is not offered for buying', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/assets?chain=')) return ok({ assets: assets.map((a) => (a.symbol === 'NVDA' ? { ...a, routeStatus: 'NO_ROUTE' } : a)) });
+      if (url === '/api/wallet/holdings?chain=all') return ok(holdings);
+      throw new Error('unexpected ' + url);
+    });
+    render(<SwapCard walletAddress={WALLET} />);
+    fireEvent.click(screen.getAllByRole('button', { name: /Add token/ })[0]);
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByRole('button', { name: 'Add AAPL' })).toBeTruthy();
+    expect(within(dialog).queryByRole('button', { name: 'Add NVDA' })).toBeNull();
+  });
+});
+
 describe('SwapCard — Multi-sell', () => {
   it('several wallet tokens → USDG: whole balances sent, total shown, one approval noted with MetaMask batching', async () => {
     render(<SwapCard walletAddress={WALLET} />);
@@ -155,6 +170,23 @@ describe('SwapCard — Multi-sell', () => {
     });
     expect(await screen.findByText('115')).toBeTruthy();
     expect(screen.getByText(/1 exact-amount approval \+ the swap — one confirmation in MetaMask/)).toBeTruthy();
+  });
+
+  it('a token with no route is named as not sold before the user signs', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/assets?chain=')) return ok({ assets });
+      if (url === '/api/wallet/holdings?chain=all') return ok(holdings);
+      if (url === '/api/wallet/sweep-quote')
+        return ok({ ...sellQuote, skipped: [{ address: NVDA, symbol: 'NVDA', reason: 'No available quotes' }] });
+      throw new Error('unexpected ' + url);
+    });
+    render(<SwapCard walletAddress={WALLET} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Multi-sell' }));
+    await pick('AAPL', 'NVDA');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Sell 2 tokens for USDG' }));
+    });
+    expect((await screen.findByRole('status')).textContent).toMatch(/Not sold \(no route right now, stays in your wallet\): NVDA/);
   });
 
   it('receiving ETH makes the stablecoin itself sellable; a chain that cannot be read offers nothing to sell', async () => {

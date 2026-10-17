@@ -194,12 +194,12 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
   // A fresh copy per response: the SDK client converts amounts in place while parsing.
   function composeFetch(data: Record<string, unknown>) {
     const wire = JSON.stringify({ data });
-    return vi.fn(async () => ({ ok: true, status: 200, json: async () => JSON.parse(wire), text: async () => wire })) as unknown as typeof fetch;
+    return vi.fn(async () => ({ ok: true, status: 200, headers: new Headers(), json: async () => JSON.parse(wire), text: async () => wire })) as unknown as typeof fetch;
   }
   const compileData = {
-    producedResources: {
-      'swap_0.amountOut': { kind: 'erc20', chainId: 4663, token: A, availability: 'now', owner: SIGNER, simulated: { amountOut: '4000', amountOutMin: '3960' } },
-      'swap_1.amountOut': { kind: 'erc20', chainId: 4663, token: B, availability: 'now', owner: SIGNER, simulated: { amountOut: '6000', amountOutMin: '5940' } },
+    outputs: {
+      'swap_0.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: A, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '4000' }, minimum: { basis: 'op', value: '3960' } } },
+      'swap_1.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: B, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '6000' }, minimum: { basis: 'op', value: '5940' } } },
     },
     transactionRequest: { to: ROUTER, chainId: 4663, data: '0xdeadbeef', value: '0', gasLimit: '500000' },
     userProxy: '0x' + '8'.repeat(40),
@@ -338,9 +338,9 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
   it('the LI.FI adapter declares the native resource, sweeps outputs to the signer, and returns the exact value', async () => {
     const wire = JSON.stringify({
       data: {
-        producedResources: {
-          'swap_0.amountOut': { kind: 'erc20', chainId: 4663, token: A, availability: 'now', owner: SIGNER, simulated: { amountOut: '4000', amountOutMin: '3960' } },
-          'swap_1.amountOut': { kind: 'erc20', chainId: 4663, token: B, availability: 'now', owner: SIGNER, simulated: { amountOut: '6000', amountOutMin: '5940' } },
+        outputs: {
+          'swap_0.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: A, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '4000' }, minimum: { basis: 'op', value: '3960' } } },
+          'swap_1.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: B, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '6000' }, minimum: { basis: 'op', value: '5940' } } },
         },
         transactionRequest: { to: ROUTER, chainId: 4663, data: '0xdeadbeef', value: '1000000000000000' },
         userProxy: '0x' + '8'.repeat(40),
@@ -348,7 +348,7 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
         fees: [],
       },
     });
-    const fetchImpl = vi.fn(async () => ({ ok: true, status: 200, json: async () => JSON.parse(wire), text: async () => wire })) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(async () => ({ ok: true, status: 200, headers: new Headers(), json: async () => JSON.parse(wire), text: async () => wire })) as unknown as typeof fetch;
     const compiled = await compileBag(doc(), ethReq(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST });
     expect(compiled.transaction.value).toBe(BigInt('1000000000000000'));
     const calls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls as [string, RequestInit][];

@@ -1,5 +1,5 @@
-import { createComposeSdk, guards, materialisers, resources } from '@lifi/composer-sdk';
-import type { Bindable, ComposeSdkOptions } from '@lifi/composer-sdk';
+import { createComposeSdk, materialisers, resources } from '@lifi/composer-sdk';
+import type { Bindable } from '@lifi/composer-sdk';
 import type { ComposerCompileRequest, ComposerCompileResult, ComposerProvider } from '../execution';
 
 // -----------------------------------------------------------------------------
@@ -7,7 +7,8 @@ import type { ComposerCompileRequest, ComposerCompileResult, ComposerProvider } 
 // dependency). Builds the same flow BAG's own single-transaction purchase
 // uses (lib/blockchain/lifi-composer-adapter.ts):
 //   - a cascade of `core.split` by the plan's bps,
-//   - one `lifi.swap` per leg with the plan's slippage and an unspent-input guard,
+//   - one `lifi.swap` per leg with the plan's slippage (Composer turns it into
+//     that swap's on-chain `amountOutMin`),
 //   - outputs swept to the signer,
 // then compiles it with Composer's documented API.
 //
@@ -15,7 +16,9 @@ import type { ComposerCompileRequest, ComposerCompileResult, ComposerProvider } 
 // rejects unauthenticated requests) and is never stored or logged by the SDK;
 // `baseUrl` is required too (the SDK owns no endpoint; BAG itself uses the
 // production Composer API documented in LI.FI's quickstart).
-// Compile only: nothing is signed or sent.
+// Compile only: nothing is signed or sent. A refusal is thrown as the Compose
+// SDK's own typed `ComposeError` (`kind`, `failedOps`, …), unchanged, so a
+// consumer can branch on it with `isComposeError` / `isComposePreparationError`.
 // -----------------------------------------------------------------------------
 
 export interface LifiComposerOptions {
@@ -24,6 +27,8 @@ export interface LifiComposerOptions {
   /** Composer API base URL (e.g. LI.FI's production Composer API from its docs). */
   baseUrl: string;
   fetch?: typeof fetch;
+  /** Deadline on each Composer request, enforced by aborting it. Default 15000 ms. */
+  timeoutMs?: number;
 }
 
 const legNode = (i: number) => `swap_${i}`;
@@ -34,9 +39,16 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
   return {
     name: 'lifi-composer',
     async compile(req: ComposerCompileRequest): Promise<ComposerCompileResult> {
-      const sdkOptions: ComposeSdkOptions = { baseUrl: options.baseUrl, apiKey: options.apiKey };
-      if (options.fetch) (sdkOptions as { fetch?: typeof fetch }).fetch = options.fetch;
-      const sdk = createComposeSdk(sdkOptions);
+      const base = options.fetch ?? fetch;
+      const timeoutMs = options.timeoutMs ?? 15_000;
+      const sdk = createComposeSdk({
+        baseUrl: options.baseUrl,
+        apiKey: options.apiKey,
+        fetch: (url, init) => {
+          const deadline = AbortSignal.timeout(timeoutMs);
+          return base(url, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline });
+        },
+      });
       const chainId = req.chainId;
 
       const builder = sdk.flow(chainId, {
@@ -49,7 +61,6 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
         builder.lifi.swap(legNode(i), {
           bind: { amountIn },
           config: { resourceOut: { kind: 'erc20', token: req.legs[i].token as `0x${string}`, chainId }, slippage: req.slippageBps / 10000 },
-          guards: [guards.slippage({ port: 'unspentIn', bps: req.slippageBps })],
         });
 
       let remaining: Bindable<'resource'> = builder.inputs.amountIn;
@@ -67,11 +78,11 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
         checkOnChainAllowances: true,
         maxPriceImpactBps: req.maxPriceImpactBps,
       });
-      if (result.status !== 'success') throw new Error(`LI.FI Composer could not compile the purchase: ${result.error.kind} — ${result.error.message}`);
+      // Under the default 'strict' simulation a refusal is thrown, never returned; 'partial' needs 'allow-revert'.
+      if (result.status !== 'success') throw new Error(`LI.FI Composer returned a partial result (${result.error.kind}) under strict simulation.`);
       if (!result.transactionRequest) throw new Error('LI.FI Composer reported success without a transaction.');
 
-      const produced = result.producedResources as Record<string, { token?: string; simulated?: { amountOut?: unknown; amountOutMin?: unknown } } | undefined>;
-      const str = (v: unknown) => (v === undefined || v === null ? null : String(v));
+      const outputs = result.outputs;
       return {
         transaction: {
           to: result.transactionRequest.to,
@@ -82,9 +93,13 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
         executor: result.userProxy ?? null,
         approvals: (result.approvals ?? []).map((a) => ({ token: a.token, spender: a.spender, amountRaw: String(a.amount) })),
         legs: req.legs.map((_, i) => {
-          // Composer keys produced resources by output port (`swap_<i>.amountOut`).
-          const r = produced[`${legNode(i)}.amountOut`];
-          return { token: r?.token ?? null, expectedOutRaw: str(r?.simulated?.amountOut), minOutRaw: str(r?.simulated?.amountOutMin) };
+          // Composer keys outputs by output port (`swap_<i>.amountOut`). A missing minimum means no floor is enforced (never 0).
+          const o = outputs[`${legNode(i)}.amountOut`];
+          return {
+            token: o && o.resource.kind === 'erc20' ? o.resource.token : null,
+            expectedOutRaw: o?.amount.estimate ? o.amount.estimate.value.toString() : null,
+            minOutRaw: o?.amount.minimum ? o.amount.minimum.value.toString() : null,
+          };
         }),
         priceImpactBps: result.priceImpact?.impactBps ?? null,
         gasLimit: result.transactionRequest.gasLimit ?? null,
