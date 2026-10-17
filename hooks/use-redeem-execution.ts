@@ -242,6 +242,7 @@ export function useRedeemExecution() {
   }, []);
 
   const lastStartRef = useRef<{ bagId: string; fractionBps: number; outputAssetId: string; walletAddress: string } | null>(null);
+  const startRef = useRef<((bagId: string, fractionBps: number, outputAssetId: string, walletAddress: string, autoCloseBlocker?: boolean) => Promise<void>) | null>(null);
 
   const executeOneStep = useCallback(async (intentId: string, step: RedeemIntentStepRecord, walletAddress: string): Promise<void> => {
     if (step.action !== 'SWAP' || !step.lifiStep) return;
@@ -409,7 +410,7 @@ export function useRedeemExecution() {
     `You declined the signature. This sale stays valid until ${new Date(sale.deadline * 1000).toLocaleTimeString()}: sign it again now, or start a different one after that.`;
 
   const start = useCallback(
-    async (bagId: string, fractionBps: number, outputAssetId: string, walletAddress: string): Promise<void> => {
+    async (bagId: string, fractionBps: number, outputAssetId: string, walletAddress: string, autoCloseBlocker = true): Promise<void> => {
       reset();
       lastStartRef.current = { bagId, fractionBps, outputAssetId, walletAddress };
       setState((s) => ({ ...s, phase: 'creating' }));
@@ -459,8 +460,17 @@ export function useRedeemExecution() {
         if (prepared.composerTransaction) {
           await executeComposerSale(prepared.id, prepared.composerTransaction, swapSteps, walletAddress, deadline);
         } else {
-          for (const step of swapSteps) {
-            await executeOneStep(prepared.id, step, walletAddress);
+          for (const [i, step] of swapSteps.entries()) {
+            try {
+              await executeOneStep(prepared.id, step, walletAddress);
+            } catch (stepErr) {
+              // Declined in the wallet: the remaining steps will never be signed either, so close them now instead of
+              // leaving the sale open (it would block the next sale of this position until it expires).
+              if (describeWalletError(stepErr).rejected) {
+                await reportStepsInOrder(prepared.id, swapSteps.slice(i + 1), { type: 'REJECTED' });
+              }
+              throw stepErr;
+            }
           }
         }
       } catch (err) {
@@ -476,6 +486,19 @@ export function useRedeemExecution() {
             if (pending) {
               offerResume(pending, `A signed sale of this position is still waiting for your signature until ${new Date(pending.deadline * 1000).toLocaleTimeString()}. Sign it now, or start a different one after that.`);
               return;
+            }
+            if (blocker && err.intentId && autoCloseBlocker) {
+              // An abandoned earlier sale (e.g. a declined signature) blocks this one. Close it for the user, once:
+              // the server first checks on-chain that it was never sent, and books it instead if it was.
+              const closed = await postJson<{ result: 'CLOSED' | 'BOOKED' | 'ALREADY_FINAL' | 'REFUSED' }>(`/api/redeem-intent/${err.intentId}/cancel`).catch(() => null);
+              if (closed?.result === 'CLOSED' || closed?.result === 'ALREADY_FINAL') {
+                await startRef.current?.(bagId, fractionBps, outputAssetId, walletAddress, false);
+                return;
+              }
+              if (closed?.result === 'BOOKED') {
+                fail('Your earlier sale of this Bag did go through on-chain and is now recorded. Check your position before selling again.');
+                return;
+              }
             }
             if (blocker && err.intentId) {
               // Any other open sale: say which one, and let the user close it (the server checks the chain first).
@@ -512,6 +535,8 @@ export function useRedeemExecution() {
     },
     [executeOneStep, executeComposerSale, runRouterFlow, runVerifyLoop, offerResume, fail, reset]
   );
+
+  startRef.current = start;
 
   /** Signs the pending sale in `state.resumable` again: the same transaction, before its deadline. */
   const resume = useCallback(async (): Promise<void> => {
