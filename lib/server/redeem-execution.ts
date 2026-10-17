@@ -36,6 +36,7 @@ import { buildPurchaseIntentSteps } from '@/lib/blockchain/lifi-purchase-quote';
 import { trackStepStatus } from '@/lib/blockchain/lifi-status';
 import { trackComposerTransaction } from '@/lib/blockchain/composer-status';
 import { findComposerTransactionFromWallet, findTokenSaleTransactionFromWallet } from '@/lib/blockchain/composer-tx-search';
+import { hasExternalOutflowSince } from '@/lib/server/ledger-repo';
 import { isBagChain } from '@/lib/config/chains';
 import { DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
 import { feeRedemptionPath } from '@/lib/server/fee-redemption-path';
@@ -359,6 +360,11 @@ async function releaseAbandonedRedeemIntent(admin: SupabaseClient, intent: Redee
     });
     if (search.kind === 'UNKNOWN') return 'KEPT';
     if (search.kind === 'FOUND') {
+      // Already taken off the position as a wallet outflow: release it rather than count the sale twice.
+      if (await hasExternalOutflowSince(admin, intent.userId, intent.bagId, intent.createdAt)) {
+        const released = await updateRedeemIntentStatus(admin, { id: intent.id, from: intent.status, to: 'EXPIRED', failureCode: 'ROUTE_EXPIRED' });
+        return released !== null ? 'RELEASED' : 'KEPT';
+      }
       const steps = intent.steps.map((s) =>
         s.action === 'SWAP' && s.status !== 'COMPLETED' && s.status !== 'FAILED' ? { ...s, status: 'SUBMITTED' as const, txHash: s.txHash ?? search.txHash } : s
       );
@@ -436,6 +442,8 @@ export async function cancelOpenRedeemIntent(admin: SupabaseClient, session: Ses
       return { ok: true, value: { result: 'REFUSED', status: intent.status, reason: `The chain could not confirm that this sale was never sent (${search.reason}). Try again in a minute.` } };
     }
     if (search.kind === 'FOUND') {
+      // Already taken off the position as a wallet outflow: booking the sale too would count it twice.
+      if (await hasExternalOutflowSince(admin, intent.userId, intent.bagId, intent.createdAt)) return close('CANCELLED');
       const steps = intent.steps.map((s) =>
         s.action === 'SWAP' && s.status !== 'COMPLETED' && s.status !== 'FAILED' ? { ...s, status: 'SUBMITTED' as const, txHash: s.txHash ?? search.txHash } : s
       );
@@ -467,6 +475,9 @@ export async function cancelOpenRedeemIntent(admin: SupabaseClient, session: Ses
     if (search.kind === 'FOUND') found.set(swap.stepIndex, search.txHash);
   }
   if (found.size === 0) return close('CANCELLED');
+  // Wallet reconciliation may already have taken these tokens off the position as an outflow; booking the sale too
+  // would count it twice (and a later purchase would then look smaller than it is). Close it; nothing is lost.
+  if (await hasExternalOutflowSince(admin, intent.userId, intent.bagId, intent.createdAt)) return close('CANCELLED');
   // Recovered: the found swaps go to verification; a swap with no transaction was never sent and ends as declined.
   const steps = intent.steps.map((s) => {
     if (s.action !== 'SWAP' || s.status === 'COMPLETED' || s.status === 'FAILED') return s;

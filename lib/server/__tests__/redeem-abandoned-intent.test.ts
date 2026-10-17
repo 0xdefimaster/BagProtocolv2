@@ -13,6 +13,7 @@ const searchMock = vi.fn();
 const tokenSaleSearchMock = vi.fn();
 const trackComposerMock = vi.fn();
 const trackStepMock = vi.fn();
+let outflowBooked = false;
 
 vi.mock('@/lib/server/rebalance-execution', () => ({ hasOpenRebalance: async () => null }));
 vi.mock('@/lib/server/redeem-intent-repo', async () => {
@@ -46,6 +47,7 @@ vi.mock('@/lib/blockchain/composer-tx-search', () => ({
   findTokenSaleTransactionFromWallet: (...a: unknown[]) => tokenSaleSearchMock(...a),
 }));
 vi.mock('@/lib/blockchain/lifi-status', () => ({ trackStepStatus: (...a: unknown[]) => trackStepMock(...a) }));
+vi.mock('@/lib/server/ledger-repo', () => ({ hasExternalOutflowSince: async () => outflowBooked }));
 vi.mock('@/lib/blockchain/composer-status', () => ({ trackComposerTransaction: (...a: unknown[]) => trackComposerMock(...a) }));
 vi.mock('@/lib/server/intent-tx-claims', () => ({
   TX_HASH_RE: /^0x[0-9a-fA-F]{64}$/,
@@ -72,6 +74,7 @@ beforeEach(() => {
   tokenSaleSearchMock.mockReset();
   trackComposerMock.mockReset();
   trackStepMock.mockReset();
+  outflowBooked = false;
 });
 
 describe('createRedeemIntentForUser — an abandoned sale does not lock the position forever', () => {
@@ -207,6 +210,14 @@ describe('cancelOpenRedeemIntent — the owner closes a sale that blocks a new o
     expect(transitions).toEqual([{ from: 'READY', to: 'CANCELLED' }]);
   });
 
+  it('a free Composer sale found on-chain after reconciliation already booked its outflow is closed, not booked again', async () => {
+    active = { id: 'old', status: 'AWAITING_SIGNATURE', steps: [swap()] as never, composerTransaction, expiresAt: future, createdAt: past, walletAddress: '0x1' };
+    searchMock.mockResolvedValueOnce({ kind: 'FOUND', txHash: '0x' + 'd'.repeat(64) });
+    outflowBooked = true;
+    expect(await cancel()).toEqual({ ok: true, value: { result: 'CLOSED', status: 'CANCELLED' } });
+    expect(trackComposerMock).not.toHaveBeenCalled();
+  });
+
   it('a free Composer sale the chain shows was never sent is cancelled; one the chain cannot answer for is refused with the reason', async () => {
     active = { id: 'old', status: 'AWAITING_SIGNATURE', steps: [swap()] as never, composerTransaction, expiresAt: future, createdAt: past, walletAddress: '0x1' };
     searchMock.mockResolvedValueOnce({ kind: 'NOT_FOUND' });
@@ -261,6 +272,15 @@ describe('cancelOpenRedeemIntent — the owner closes a sale that blocks a new o
       expect(trackStepMock).toHaveBeenCalledWith(expect.objectContaining({ txHash: HASH, expectedInputAmountRaw: '100' }));
       expect(transitions.some((t) => t.to === 'CANCELLED')).toBe(false);
       expect(out).toMatchObject({ ok: true, value: { result: 'REFUSED' } }); // still confirming: closes on its own once verified
+    });
+
+    it('a found swap whose tokens wallet reconciliation already took off the position is closed, never booked twice', async () => {
+      active = openSale();
+      tokenSaleSearchMock.mockResolvedValueOnce({ kind: 'FOUND', txHash: HASH }).mockResolvedValueOnce({ kind: 'NOT_FOUND' });
+      outflowBooked = true;
+      expect(await cancel()).toEqual({ ok: true, value: { result: 'CLOSED', status: 'CANCELLED' } });
+      expect(transitions).toEqual([{ from: 'AWAITING_SIGNATURE', to: 'CANCELLED' }]);
+      expect(trackStepMock).not.toHaveBeenCalled();
     });
 
     it('the chain cannot answer: refused with the reason, nothing changed', async () => {
