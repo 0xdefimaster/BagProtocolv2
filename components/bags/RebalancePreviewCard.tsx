@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Scale, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import { formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
 import type { PositionRebalancePreview } from '@/lib/domain/basket-protocol/rebalance/position-rebalance';
@@ -75,7 +75,22 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
   return json as T;
 }
 
-export function RebalancePreviewCard({ bagId, refreshKey, onRebalanced }: { bagId: string; refreshKey?: string | number; onRebalanced?: () => void }) {
+export function RebalancePreviewCard({
+  bagId,
+  refreshKey,
+  onRebalanced,
+  autoRunVersion,
+}: {
+  bagId: string;
+  refreshKey?: string | number;
+  onRebalanced?: () => void;
+  /**
+   * Set right after the creator saved this version: once the preview targets it and a rebalance is needed, the
+   * rebalance starts by itself (plan → the wallet asks for the signature). Once per version; a price impact above
+   * the limit still stops and asks.
+   */
+  autoRunVersion?: number;
+}) {
   const { authUser } = useWallet();
   const [data, setData] = useState<Response | null>(null);
   const [phase, setPhase] = useState<RunPhase>('idle');
@@ -177,6 +192,17 @@ export function RebalancePreviewCard({ bagId, refreshKey, onRebalanced }: { bagI
       setWalletStep(null);
     }
   };
+
+  const autoRanRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (autoRunVersion === undefined || autoRanRef.current === autoRunVersion) return;
+    if (!data || data.preview.status !== 'OK' || data.preview.targetVersion < autoRunVersion) return;
+    if (!data.preview.requiresRebalance || phase !== 'idle') return;
+    autoRanRef.current = autoRunVersion;
+    void runRebalance();
+    // Runs once per saved version, when the preview for it has loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRunVersion, data, phase]);
 
   const acceptImpact = () => {
     if (impactOffer === null) return;

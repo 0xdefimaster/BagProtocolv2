@@ -144,7 +144,8 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
   }, []);
   // After the creator saves a new version, the page scrolls to their own position and its rebalance card,
   // which refetches against the new version (refreshAfterTrade bumps its refreshKey).
-  const [savedVersion, setSavedVersion] = useState(false);
+  // The version just saved by the creator (true when its number is unknown): the rebalance card starts on it.
+  const [savedVersion, setSavedVersion] = useState<number | boolean>(false);
   // "Edit strategy" is a header button; the editor opens under the header.
   const [editOpen, setEditOpen] = useState(false);
   const editRef = useRef<HTMLDivElement>(null);
@@ -152,10 +153,13 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
     if (editOpen) editRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [editOpen]);
   const positionRef = useRef<HTMLDivElement>(null);
-  const onVersionSaved = useCallback(() => {
-    refreshAfterTrade();
-    setSavedVersion(true);
-  }, [refreshAfterTrade]);
+  const onVersionSaved = useCallback(
+    (newVersion?: number) => {
+      refreshAfterTrade();
+      setSavedVersion(newVersion ?? true);
+    },
+    [refreshAfterTrade]
+  );
   useEffect(() => {
     if (savedVersion) positionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [savedVersion]);
@@ -406,14 +410,19 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
           {savedVersion && (
             <div role="status" data-testid="version-saved-rebalance" className="rounded-xl border p-4 text-sm" style={{ borderColor: 'var(--gold, #D9B98B)', background: 'rgba(217,185,139,0.08)' }}>
               <p className="text-white/80">
-                New version saved on chain. If you hold this Bag, the card below now shows the trades to follow it. Review and sign
-                to rebalance; nothing is sent without your signature.
+                New version saved on chain. If you hold this Bag and it now differs from the new weights, your rebalance starts below:
+                your wallet asks you to confirm it. Nothing is sent without your signature.
               </p>
             </div>
           )}
           {/* Real position (bag_investor_positions + live NAV); refetched when the TVL changes after a purchase or redemption. */}
           <MyBagPosition bagId={bag.id} refreshKey={`${bag.tvl}:${tradeRefresh}`} />
-          {bag.status === 'ACTIVE' && <RebalancePreviewCard bagId={bag.id} refreshKey={tradeRefresh} onRebalanced={refreshAfterTrade} />}
+          {bag.status === 'ACTIVE' && <RebalancePreviewCard
+              bagId={bag.id}
+              refreshKey={tradeRefresh}
+              onRebalanced={refreshAfterTrade}
+              autoRunVersion={typeof savedVersion === 'number' ? savedVersion : undefined}
+            />}
         </div>
 
         {/* Tabs */}

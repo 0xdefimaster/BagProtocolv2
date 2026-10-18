@@ -13,6 +13,9 @@ import { useActivity } from '@/lib/activity-store';
  * user is taken to it. There is deliberately no local "saved on this
  * device" copy: it never reached Explore or Portfolio and could not be
  * invested in, so a failure is shown instead.
+ *
+ * The new Bag's page opens with `?deploy=1` (and `&buy=` for a launch buy): deploying, registering and buying
+ * follow in one flow (DeployBagPanel), each step still confirmed in the forker's wallet.
  */
 export function useForkBag() {
   const router = useRouter();
@@ -23,7 +26,10 @@ export function useForkBag() {
 
   const fork = useCallback(
     /** `choices`: the forker's own name and assets/weights (CompositionEditor); without them the source is copied. */
-    async (bag: { id: string; name: string }, choices: { name?: string; composition?: { address: string; weightBps: number }[] } = {}) => {
+    async (
+      bag: { id: string; name: string },
+      choices: { name?: string; composition?: { address: string; weightBps: number }[]; launchBuy?: string } = {}
+    ) => {
       if (isForking) return;
       setIsForking(true);
       setForkError(null);
@@ -57,7 +63,9 @@ export function useForkBag() {
         }
 
         addActivity(`Forked ${bag.name}`);
-        router.push(`/dashboard/bag/${body.bag.id}`);
+        const buy = choices.launchBuy?.trim();
+        const launch = buy && /^\d+(\.\d+)?$/.test(buy) && Number(buy) > 0 ? `&buy=${encodeURIComponent(buy)}` : '';
+        router.push(`/dashboard/bag/${body.bag.id}?deploy=1${launch}`);
       } catch {
         setForkError('Could not fork: network error. Try again.');
       } finally {
