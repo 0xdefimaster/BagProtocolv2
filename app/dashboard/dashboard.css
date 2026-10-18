@@ -716,3 +716,32 @@ header .brand { flex-shrink: 0; white-space: nowrap; }
 @media (max-width: 640px) {
   .app-search { display: none; }
 }
+
+/* =====================================================
+   Bag page
+   ===================================================== */
+.bag-hero-icon {
+  width: 56px; height: 56px; flex: none; border-radius: 14px; display: flex; align-items: center; justify-content: center;
+  background: var(--gold-tint); border: 1px solid var(--line); color: var(--gold); font-size: 22px; font-weight: 700;
+}
+.bag-version-badge {
+  font-family: var(--font-mono), monospace; font-size: 13px; color: var(--gold);
+  border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px;
+}
+.bag-draft-badge { font-size: 12px; color: var(--bronze); border: 1px solid var(--bronze); border-radius: 999px; padding: 3px 10px; }
+.bag-tag { font-size: 12px; color: var(--ink-soft); border: 1px solid var(--line-soft); border-radius: 999px; padding: 3px 10px; text-transform: capitalize; }
+.bag-page-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1px;
+  background: var(--line-soft); border: 1px solid var(--line-soft); border-radius: 14px; overflow: hidden;
+}
+.bag-page-stat { background: var(--surface); padding: 14px 16px; }
+.bag-page-stat .k { font-size: 12px; color: var(--mute); text-transform: uppercase; letter-spacing: 0.06em; }
+.bag-page-stat .v { font-size: 20px; font-weight: 700; margin-top: 4px; color: var(--ink); }
+.bag-donut { width: 150px; height: 150px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.bag-donut-hole {
+  width: 96px; height: 96px; border-radius: 50%; background: var(--surface);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.bag-swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.weight-slider { accent-color: var(--gold); height: 24px; cursor: pointer; }
+.weight-slider:disabled { cursor: default; opacity: 0.5; }

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import { fetchRegistryAssetsForChain } from '@/lib/registry-assets-client';
 import { AssetSelector } from '@/components/create/AssetSelector';
-import { bpsToPercent, equalWeightsBps, percentToBps } from '@/lib/weight-input';
+import { bpsToPercent, equalWeightsBps, normalizeToTotal, percentToBps, setWeightKeepingTotal } from '@/lib/weight-input';
 import type { Asset } from '@/lib/create-assets-data';
 import type { Bag } from '@/types';
 
@@ -104,7 +104,21 @@ export function CompositionEditor({
     if (!asset?.address || rows.some((r) => r.address.toLowerCase() === asset.address!.toLowerCase())) return;
     onChange([...rows, { address: asset.address, symbol: asset.symbol, percent: '0' }]);
   };
-  const removeAsset = (address: string) => onChange(rows.filter((r) => r.address.toLowerCase() !== address.toLowerCase()));
+  // Sliders keep the total at exactly 100%: the other weights absorb the change in proportion.
+  const slide = (i: number, bps: number) => {
+    const next = setWeightKeepingTotal(parsed.map((b) => b ?? 0), i, bps);
+    onChange(rows.map((r, j) => ({ ...r, percent: bpsToPercent(next[j]) })));
+  };
+  // Removing an asset from a complete (100%) Bag scales the rest back up to 100%.
+  const removeAsset = (address: string) => {
+    const kept = rows.filter((r) => r.address.toLowerCase() !== address.toLowerCase());
+    if (summary.complete && kept.length > 0) {
+      const next = normalizeToTotal(kept.map((r) => percentToBps(r.percent) ?? 0));
+      onChange(kept.map((r, j) => ({ ...r, percent: bpsToPercent(next[j]) })));
+    } else {
+      onChange(kept);
+    }
+  };
   const equalize = () => onChange(equalWeightsBps(rows.length).map((bps, i) => ({ ...rows[i], percent: bpsToPercent(bps) })));
 
   return (
@@ -112,7 +126,19 @@ export function CompositionEditor({
       <div className="space-y-2">
         {rows.map((r, i) => (
           <div key={r.address} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ flex: 1, color: 'var(--ink)', fontWeight: 600 }}>{r.symbol}</span>
+            <span style={{ width: 72, flex: 'none', color: 'var(--ink)', fontWeight: 600 }}>{r.symbol}</span>
+            <input
+              type="range"
+              min={0}
+              max={10_000}
+              step={100}
+              aria-label={`${r.symbol} weight slider`}
+              value={parsed[i] ?? 0}
+              disabled={disabled || rows.length <= 1}
+              onChange={(e) => slide(i, Number(e.target.value))}
+              className="weight-slider"
+              style={{ flex: 1, minWidth: 80 }}
+            />
             <input
               type="text"
               inputMode="decimal"
