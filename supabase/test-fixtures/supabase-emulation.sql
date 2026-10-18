@@ -10,10 +10,12 @@
 -- `revoke ... from public` alone does not lock an RPC down; see migration 0026).
 -- Never applied to a real project.
 
+-- Roles are cluster-wide, so test files setting up databases in parallel can race between the existence check
+-- and the create: the loser's duplicate is ignored (duplicate_object, or unique_violation on pg_authid).
 do $$ begin
-  if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon nologin; end if;
-  if not exists (select 1 from pg_roles where rolname = 'authenticated') then create role authenticated nologin; end if;
-  if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role nologin bypassrls; end if;
+  begin create role anon nologin; exception when duplicate_object or unique_violation then null; end;
+  begin create role authenticated nologin; exception when duplicate_object or unique_violation then null; end;
+  begin create role service_role nologin bypassrls; exception when duplicate_object or unique_violation then null; end;
 end $$;
 
 create schema if not exists auth;
