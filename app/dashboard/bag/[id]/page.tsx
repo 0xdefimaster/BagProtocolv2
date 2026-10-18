@@ -6,10 +6,9 @@ import { useUserBags } from '@/lib/user-bags-store';
 import { usePortfolio } from '@/lib/portfolio-store';
 import { useActivity } from '@/lib/activity-store';
 import { useBag } from '@/hooks/useBag';
-import { useForkBag } from '@/hooks/useForkBag';
 import { bagReturns, formatCompact, formatUsdCompact, formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
 import { Bag } from '@/types';
-import { use, useCallback, useState } from 'react';
+import { use, useCallback, useEffect, useState } from 'react';
 import {
   TrendingUp,
   ArrowDownLeft,
@@ -35,8 +34,11 @@ import { MyBagPosition } from '@/components/bags/MyBagPosition';
 import { DeployBagPanel } from '@/components/bags/DeployBagPanel';
 import { StrategyRegistryPanel } from '@/components/bags/StrategyRegistryPanel';
 import { RebalancePreviewCard } from '@/components/bags/RebalancePreviewCard';
+import { EditStrategyPanel } from '@/components/bags/EditStrategyPanel';
+import { ForkPanel } from '@/components/bags/ForkPanel';
 import { StockQuote } from '@/components/bags/StockQuote';
 import { useStockQuotes } from '@/hooks/useStockQuotes';
+import { bagDisplayName } from '@/lib/bag-display-name';
 
 function unroutableLabel(policy: string | undefined): { title: string; detail: string } {
   if (policy === 'HOLD_INPUT') {
@@ -134,7 +136,11 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
   const [showInvest, setShowInvest] = useState(false);
   const [investInitialAmount, setInvestInitialAmount] = useState<string | undefined>(undefined);
   const [showRedeem, setShowRedeem] = useState(false);
-  const { fork, isForking, forkError } = useForkBag();
+  // Fork opens the same editor as Edit strategy (ForkPanel); `?fork=1` (from a Bag card) opens it on arrival.
+  const [showFork, setShowFork] = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('fork') === '1') setShowFork(true);
+  }, []);
   const isFollowing = bag ? following.includes(bag.id) : false;
   const isOwnBag = useIsSelf(bag?.creator.address);
   const isRobinhood = bag?.chains.includes('robinhood') ?? false;
@@ -203,9 +209,7 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
     addActivity(nowFollowing ? `Started following ${bag.name}` : `Unfollowed ${bag.name}`);
   };
 
-  const handleFork = () => {
-    void fork(bag);
-  };
+  const handleFork = () => setShowFork(true);
 
   return (
     <>
@@ -243,7 +247,10 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
 
           {bag.status === 'ACTIVE' && (
             <div className="mb-8 space-y-6">
-              <StrategyRegistryPanel bagId={bag.id} />
+              {/* The server checks creator, wallet, MUTABLE and deployment again; this only hides the button from others. */}
+              {isOwnBag && bag.mutability === 'MUTABLE' && <EditStrategyPanel bag={bag} onSaved={refreshAfterTrade} />}
+              {/* Remounted per version, so a newly saved version is offered for registration right away. */}
+              <StrategyRegistryPanel key={bag.version ?? 0} bagId={bag.id} />
               <RebalancePreviewCard bagId={bag.id} refreshKey={tradeRefresh} onRebalanced={refreshAfterTrade} />
             </div>
           )}
@@ -253,7 +260,7 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
             <div className="md:col-span-2 space-y-6">
               <div>
                 <h1 className="text-4xl md:text-5xl font-bold text-white mb-2">
-                  {bag.name}
+                  {bagDisplayName(bag)}
                 </h1>
                 <p className="text-lg text-white/60">{bag.description}</p>
                 <RiskSummary composition={bag.composition} />
@@ -350,11 +357,11 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
             </button>
             <button
               onClick={handleFork}
-              disabled={isForking}
+              data-testid="fork-open"
               className="flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 text-white font-semibold border border-white/20 transition-all hover:bg-white/20"
             >
               <GitFork className="w-5 h-5" />
-              {isForking ? 'Forking…' : 'Fork Bag'}
+              Fork Bag
             </button>
             {!isOwnBag && (
               <button
@@ -377,10 +384,10 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
               {linkCopied ? 'Link Copied!' : 'Share'}
             </button>
           </div>
-          {forkError && (
-            <p role="alert" className="mt-3 text-sm text-amber-300">
-              {forkError}
-            </p>
+          {showFork && (
+            <div className="mt-6">
+              <ForkPanel bag={bag} onClose={() => setShowFork(false)} />
+            </div>
           )}
         </div>
       </div>

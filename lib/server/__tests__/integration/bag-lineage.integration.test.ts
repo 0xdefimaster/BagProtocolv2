@@ -25,7 +25,7 @@ const lineage = async (db: TestDatabase, id: string) =>
 const rawInsert = (db: TestDatabase, creatorId: string, parent: string | null, root: string | null) =>
   db.admin.query(
     `insert into bags (id, slug, name, symbol, creator_id, chain, mutability, parent_bag_id, root_bag_id)
-     values (gen_random_uuid(), $1, 'n', 'S', $2, 'robinhood', 'MUTABLE', $3, $4)`,
+     values (gen_random_uuid(), $1, $1, 'S', $2, 'robinhood', 'MUTABLE', $3, $4)`,
     [`raw-${Date.now()}-${n++}`, creatorId, parent, root]
   );
 
@@ -57,7 +57,7 @@ describe.each(['fresh', 'upgrade'] as const)('fork lineage integrity (%s)', (mod
     expect(bad).toMatchObject({ ok: false, error: 'DB_ERROR' });
     expect(JSON.stringify(bad)).toMatch(/BAG_LINEAGE_INVALID/);
     await expect(
-      db.admin.query(`insert into bags (id, slug, name, symbol, description, creator_id, chain, mutability, status, parent_bag_version) values (gen_random_uuid(), $1, 'x', 'X', '', $2, 'robinhood', 'MUTABLE', 'DRAFT', 1)`, [`pvn-${n++}`, u])
+      db.admin.query(`insert into bags (id, slug, name, symbol, description, creator_id, chain, mutability, status, parent_bag_version) values (gen_random_uuid(), $1, $1, 'X', '', $2, 'robinhood', 'MUTABLE', 'DRAFT', 1)`, [`pvn-${n++}`, u])
     ).rejects.toThrow(/BAG_LINEAGE_INVALID/);
     const fork = await createForkBag(db.client, { slug: `pvi-${n++}`, creatorId: u, mutability: 'MUTABLE', recipe: validRecipeInput(), reason: 'fork' }, a, 1);
     if (!fork.ok) throw new Error('fork');

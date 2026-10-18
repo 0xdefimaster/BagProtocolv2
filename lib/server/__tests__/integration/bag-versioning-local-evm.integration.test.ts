@@ -7,8 +7,10 @@ import type { EvmChainConfig } from '@/lib/blockchain/evm/config';
 import { bagFactoryAbi } from '@/lib/blockchain/evm/factory-abi';
 import { computeOnChainBagId, computeOnChainCompositionHash } from '@/lib/domain/basket-protocol/onchain';
 import { confirmBagDeployment, prepareBagDeployment } from '@/lib/server/deploy-bag';
-import { confirmBagVersionUpdate, prepareBagVersionUpdate, versionMetadataURI } from '@/lib/server/bag-versioning';
+import { confirmBagVersionUpdate, prepareBagVersionUpdate, versionMetadataURI, type VersionChange } from '@/lib/server/bag-versioning';
 import { createBag, createBagVersion } from '@/lib/server/bag-repo';
+import { buildEditedRecipe } from '@/lib/server/strategy-edit';
+import type { CanonicalAsset } from '@/types/basket-protocol';
 import { TestDatabase, createTestDatabase, validRecipeInput } from './pg-harness';
 import { newWallet, purchase } from './economics-harness';
 
@@ -46,13 +48,19 @@ function configFor(factoryAddress: Hex, over: Partial<EvmChainConfig> = {}): Evm
   };
 }
 
-/** Swapped weights → a different composition (and composition hash) than validRecipeInput(). */
-function otherRecipe(feeBps?: number) {
-  const r = validRecipeInput(feeBps === undefined ? {} : { performanceFeeBps: feeBps });
+/** Swapped weights → a different composition (and composition hash) than validRecipeInput(). A whole recipe, for off-chain paths. */
+function otherFullRecipe() {
+  const r = validRecipeInput();
   const assets = r.assets.map((a) => ({ ...a }));
   [assets[0].weightBps, assets[1].weightBps] = [assets[1].weightBps, assets[0].weightBps];
   return { ...r, assets };
 }
+/** A version update changes only the assets (everything else comes from the current version). */
+function otherRecipe(): VersionChange {
+  return { assets: otherFullRecipe().assets };
+}
+const baseChange = (): VersionChange => ({ assets: validRecipeInput().assets });
+const evenChange = (): VersionChange => ({ assets: validRecipeInput().assets.map((a) => ({ ...a, weightBps: 5000 })) });
 
 let cursor = 0;
 async function deployedBag(opts: { mutability?: 'MUTABLE' | 'IMMUTABLE' } = {}) {
@@ -129,9 +137,9 @@ describe('creator version update — happy path', () => {
     const s = await deployedBag();
     const a = await s.prepareAndSend(otherRecipe());
     expect((await s.confirm(a.txHash, otherRecipe())).ok).toBe(true);
-    const b = await s.prepareAndSend(validRecipeInput());
+    const b = await s.prepareAndSend(baseChange());
     expect(b.prepared).toMatchObject({ expectedCurrentOnChainVersion: 2, newOnChainVersion: 3, newDbVersion: 3 });
-    expect((await s.confirm(b.txHash, validRecipeInput())).ok).toBe(true);
+    expect((await s.confirm(b.txHash, baseChange())).ok).toBe(true);
     expect(await dbState(s.bag.id)).toMatchObject({ currentVersion: 3, onChainVersion: 3 });
     expect(await s.bagContract.read.version()).toBe(BigInt(3));
     expect(await s.bagContract.read.compositionHash()).toBe(computeOnChainCompositionHash(validRecipeInput().assets));
@@ -167,13 +175,13 @@ describe('who may update', () => {
     expect(await prepareBagVersionUpdate(db.client, s.session, s.bag.id, otherRecipe(), s.deps)).toEqual({ ok: false, error: 'IMMUTABLE_BAG' });
     const f = await viem.getContractAt('BagFactory', s.factory.address, { client: { wallet: s.user } });
     await expect(f.write.recordBagVersion([computeOnChainBagId(s.bag.id), BigInt(1), computeOnChainCompositionHash(otherRecipe().assets), 'x'])).rejects.toThrow(/ImmutableBag/);
-    await expect(db.service.query(`select create_bag_version($1, 'h', $2::jsonb, $3, 'x')`, [s.bag.id, JSON.stringify(otherRecipe()), s.userId])).rejects.toThrow(/IMMUTABLE_BAG/);
+    await expect(db.service.query(`select create_bag_version($1, 'h', $2::jsonb, $3, 'x')`, [s.bag.id, JSON.stringify(otherFullRecipe()), s.userId])).rejects.toThrow(/IMMUTABLE_BAG/);
     expect(await s.bagContract.read.version()).toBe(BigInt(1));
   });
 
   it('a DEPLOYED Bag can no longer be versioned off-chain only (the database would move ahead of the chain)', async () => {
     const s = await deployedBag();
-    expect(await createBagVersion(db.client, { bagId: s.bag.id, createdBy: s.userId, reason: 'x', recipe: otherRecipe() })).toEqual({ ok: false, error: 'DEPLOYED_BAG_REQUIRES_ONCHAIN_VERSION' });
+    expect(await createBagVersion(db.client, { bagId: s.bag.id, createdBy: s.userId, reason: 'x', recipe: otherFullRecipe() })).toEqual({ ok: false, error: 'DEPLOYED_BAG_REQUIRES_ONCHAIN_VERSION' });
   });
 });
 
@@ -234,7 +242,7 @@ describe('concurrency', () => {
   it('two updates prepared on the SAME version: the second reverts StaleVersion on-chain and can never be recorded', async () => {
     const s = await deployedBag();
     const p1 = await prepareBagVersionUpdate(db.client, s.session, s.bag.id, otherRecipe(), s.deps);
-    const p2 = await prepareBagVersionUpdate(db.client, s.session, s.bag.id, otherRecipe(500), s.deps);
+    const p2 = await prepareBagVersionUpdate(db.client, s.session, s.bag.id, evenChange(), s.deps);
     if (!p1.ok || !p2.ok) throw new Error('prepare');
     expect(p1.expectedCurrentOnChainVersion).toBe(p2.expectedCurrentOnChainVersion);
     await rpc('evm_setAutomine', [false]);
@@ -247,7 +255,7 @@ describe('concurrency', () => {
       await rpc('evm_setAutomine', [true]);
     }
     expect((await publicClient.getTransactionReceipt({ hash: tx2 })).status).toBe('reverted');
-    const [r1, r2] = await Promise.all([s.confirm(tx1, otherRecipe()), s.confirm(tx2, otherRecipe(500))]);
+    const [r1, r2] = await Promise.all([s.confirm(tx1, otherRecipe()), s.confirm(tx2, evenChange())]);
     expect(r1.ok).toBe(true);
     expect(r2).toMatchObject({ ok: false, error: 'VERIFICATION_FAILED' });
     expect(await dbState(s.bag.id)).toMatchObject({ currentVersion: 2, onChainVersion: 2, versions: 2 });
@@ -260,7 +268,7 @@ describe('concurrency', () => {
     const r = (
       await db.service.query(
         `select record_onchain_bag_version($1, $2, $3, $4, $5, 1, 2, 'h', $6, 'u', $7::jsonb, $8, 'replay') as r`,
-        [s.bag.id, s.userId, s.deployment.factoryAddress, s.deployment.contractAddress, s.deployment.onChainBagId, `0x${'11'.repeat(32)}`, JSON.stringify(otherRecipe()), `0x${'22'.repeat(32)}`]
+        [s.bag.id, s.userId, s.deployment.factoryAddress, s.deployment.contractAddress, s.deployment.onChainBagId, `0x${'11'.repeat(32)}`, JSON.stringify(otherFullRecipe()), `0x${'22'.repeat(32)}`]
       )
     ).rows[0].r;
     expect(r).toMatchObject({ outcome: 'STALE_VERSION', onChainVersion: 2 });
@@ -268,23 +276,86 @@ describe('concurrency', () => {
 });
 
 describe('interaction with the performance-fee lock', () => {
-  it('prepare refuses a fee change once the fee is locked', async () => {
+  // The fee is not part of the on-chain composition hash, so a version update can no longer change it (only assets
+  // and weights): it is always the current version's. See VersionChange in lib/server/bag-versioning.ts.
+  it('a fee change (or any other non-asset field) through a version update is refused, locked or not', async () => {
     const s = await deployedBag();
+    expect(await prepareBagVersionUpdate(db.client, s.session, s.bag.id, { ...otherRecipe(), performanceFeeBps: 2500 }, s.deps)).toEqual({ ok: false, error: 'IMMUTABLE_FIELD', fields: ['performanceFeeBps'] });
     const investor = await newWallet(db);
     await purchase(db, { ...investor, bagId: s.bag.id, sharesRaw: '1000', costBasis: '1' });
-    expect(await prepareBagVersionUpdate(db.client, s.session, s.bag.id, otherRecipe(2500), s.deps)).toMatchObject({ ok: false, error: 'PERFORMANCE_FEE_LOCKED' });
+    expect(await prepareBagVersionUpdate(db.client, s.session, s.bag.id, { ...otherRecipe(), performanceFeeBps: 2500 }, s.deps)).toMatchObject({ ok: false, error: 'IMMUTABLE_FIELD' });
   });
 
-  it('RACE: the fee locks between prepare and confirm — the mined version is still recorded (chain and DB stay in sync) with the LOCKED fee, flagged', async () => {
+  it('the fee locking between prepare and confirm changes nothing: the version keeps the current fee, no override', async () => {
     const s = await deployedBag();
-    const lockedAt = validRecipeInput().performanceFeeBps ?? 0;
-    const { txHash } = await s.prepareAndSend(otherRecipe(lockedAt + 500));
+    const currentFee = validRecipeInput().performanceFeeBps ?? 0;
+    const { txHash } = await s.prepareAndSend(otherRecipe());
     const investor = await newWallet(db);
-    await purchase(db, { ...investor, bagId: s.bag.id, sharesRaw: '1000', costBasis: '1' }); // locks at lockedAt
-    const r = await s.confirm(txHash, otherRecipe(lockedAt + 500));
+    await purchase(db, { ...investor, bagId: s.bag.id, sharesRaw: '1000', costBasis: '1' });
+    const r = await s.confirm(txHash, otherRecipe());
     if (!r.ok) throw new Error(JSON.stringify(r));
-    expect(r.feeLockedOverride).toBe(true);
-    expect(r.version?.recipe.performanceFeeBps).toBe(lockedAt);
+    expect(r.feeLockedOverride).toBe(false);
+    expect(r.version?.recipe.performanceFeeBps ?? 0).toBe(currentFee);
     expect(await dbState(s.bag.id)).toMatchObject({ currentVersion: 2, onChainVersion: 2 });
+  });
+});
+
+describe('Edit strategy (composition body)', () => {
+  // The shim has no PostgREST .or(); read the registry rows directly.
+  const lookupAssets = async (_admin: unknown, ids: { chain: string; address: string }[]) =>
+    (
+      await db.admin.query(`select * from assets where (chain, address) in (select * from unnest($1::text[], $2::text[]))`, [ids.map((i) => i.chain), ids.map((i) => i.address.toLowerCase())])
+    ).rows.map((r) => ({ chain: r.chain, address: r.address, symbol: r.symbol, decimals: r.decimals, name: r.name, status: r.status, assetType: r.asset_type }) as unknown as CanonicalAsset);
+
+  it('only assets and weights change; name, rules and fee carry over; the Bag reads as v2', async () => {
+    const s = await deployedBag();
+    const current = (await db.admin.query('select recipe from bag_versions where id = (select current_version_id from bags where id = $1)', [s.bag.id])).rows[0].recipe;
+    const newcomer = '0x44444444444444444444444444444444444444cc';
+    await db.admin.query(`insert into assets (chain, address, symbol, decimals, name, status, asset_type) values ('robinhood', $1, 'SOLX', 18, 'Sol X', 'VERIFIED', 'crypto') on conflict do nothing`, [newcomer]);
+    const edit = [
+      { address: current.assets[0].address, weightBps: 5000 },
+      { address: newcomer.toUpperCase().replace('0X', '0x'), weightBps: 5000 },
+    ];
+
+    const built = await buildEditedRecipe(db.client, s.bag.id, edit, { lookupAssets });
+    if (!built.ok) throw new Error(JSON.stringify(built));
+    const { txHash } = await s.prepareAndSend(built.recipe);
+    // confirm rebuilds the recipe from the same body (as the route does) and must land on the same hash.
+    const rebuilt = await buildEditedRecipe(db.client, s.bag.id, edit, { lookupAssets });
+    if (!rebuilt.ok) throw new Error(JSON.stringify(rebuilt));
+    const r = await s.confirm(txHash, rebuilt.recipe);
+    if (!r.ok) throw new Error(JSON.stringify(r));
+
+    const after = (await db.admin.query('select b.name, b.current_version, v.recipe from bags b join bag_versions v on v.id = b.current_version_id where b.id = $1', [s.bag.id])).rows[0];
+    expect(after.current_version).toBe(2);
+    expect(after.name).toBe(s.bag.name);
+    expect(after.recipe.name).toBe(current.name);
+    expect(after.recipe.rebalanceRule).toEqual(current.rebalanceRule);
+    expect(after.recipe.performanceFeeBps ?? 0).toBe(current.performanceFeeBps ?? 0);
+    expect(after.recipe.assets.map((a: { symbol: string; weightBps: number }) => [a.symbol, a.weightBps])).toEqual([
+      [current.assets[0].symbol, 5000],
+      ['SOLX', 5000],
+    ]);
+    expect(await s.bagContract.read.compositionHash()).toBe(computeOnChainCompositionHash(after.recipe.assets));
+  });
+
+  it('refuses an asset that is not VERIFIED on the Bag chain, a duplicate, and an unchanged composition', async () => {
+    const s = await deployedBag();
+    const current = (await db.admin.query('select recipe from bag_versions where id = (select current_version_id from bags where id = $1)', [s.bag.id])).rows[0].recipe;
+    const unknown = await buildEditedRecipe(db.client, s.bag.id, [{ address: '0x55555555555555555555555555555555555555dd', weightBps: 10_000 }], { lookupAssets });
+    expect(unknown).toMatchObject({ ok: false, error: 'VALIDATION_FAILED', issues: [{ code: 'UNVERIFIED_ASSET' }] });
+    const dup = await buildEditedRecipe(
+      db.client,
+      s.bag.id,
+      [
+        { address: current.assets[0].address, weightBps: 5000 },
+        { address: current.assets[0].address.toUpperCase().replace('0X', '0x'), weightBps: 5000 },
+      ],
+      { lookupAssets }
+    );
+    expect(dup).toMatchObject({ ok: false, error: 'VALIDATION_FAILED', issues: [{ code: 'DUPLICATE_ASSET' }] });
+    const same = await buildEditedRecipe(db.client, s.bag.id, current.assets.map((a: { address: string; weightBps: number }) => ({ address: a.address, weightBps: a.weightBps })), { lookupAssets });
+    if (!same.ok) throw new Error(JSON.stringify(same));
+    expect(await prepareBagVersionUpdate(db.client, s.session, s.bag.id, same.recipe, s.deps)).toMatchObject({ ok: false, error: 'NO_CHANGE' });
   });
 });

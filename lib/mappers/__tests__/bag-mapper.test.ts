@@ -189,8 +189,8 @@ describe('mapBagRecordToApiResponse — registry asset types and logos', () => {
     const bag = mapBagRecordToApiResponse(bagRecord(), bagVersionRecord(), { assetsByKey });
 
     expect(bag.composition).toEqual([
-      { symbol: 'BTC', weight: 60, assetType: 'crypto', logoUrl: 'https://logos.example/wbtc.png' },
-      { symbol: 'ETH', weight: 40 },
+      { symbol: 'BTC', weight: 60, weightBps: 6000, address: '0x1111111111111111111111111111111111111111', assetType: 'crypto', logoUrl: 'https://logos.example/wbtc.png' },
+      { symbol: 'ETH', weight: 40, weightBps: 4000, address: '0x2222222222222222222222222222222222222222' },
     ]);
   });
 });
@@ -204,8 +204,8 @@ describe('mapBagRecordToApiResponse — settlement stablecoin', () => {
     ];
     const bag = mapBagRecordToApiResponse(bagRecord(), version);
     expect(bag.composition).toEqual([
-      { symbol: 'USDG', weight: 50, stable: true },
-      { symbol: 'USDG', weight: 50 },
+      { symbol: 'USDG', weight: 50, weightBps: 5000, address: '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168', stable: true },
+      { symbol: 'USDG', weight: 50, weightBps: 5000, address: '0x3333333333333333333333333333333333333333' },
     ]);
   });
 });

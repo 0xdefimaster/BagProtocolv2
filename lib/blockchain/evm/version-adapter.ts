@@ -59,17 +59,36 @@ export interface VerifiedRecordVersion {
   newVersion: number;
 }
 
+export interface LocatedVersion {
+  txHash: Hex;
+  compositionHash: Hex;
+  metadataURI: string;
+}
+
 export interface BagVersionAdapter {
   factoryAddress: Hex;
   chainId: number;
   /** `Bag.version()` read from the chain — the authority for the next update's `expectedCurrentVersion`. */
   readBagVersion(bagAddress: Hex): Promise<number>;
+  /** The chain head: stored with a proposal at prepare, since its transaction cannot be mined earlier. */
+  readBlockNumber(): Promise<bigint>;
+  /**
+   * The transaction that made `bagAddress` reach `version`, located by its `CompositionUpdated` log (`version` is an
+   * indexed topic, and a Bag reaches each version exactly once), searched from `fromBlock` to the head. Only a locator:
+   * the caller must still verify that transaction's receipt (verifyRecordVersion). Null when no such log exists.
+   */
+  findVersionTransaction(bagAddress: Hex, version: number, fromBlock: bigint): Promise<LocatedVersion | null>;
   prepareRecordVersion(params: PrepareRecordVersionParams): { to: Hex; data: Hex; chainId: number };
   verifyRecordVersion(params: VerifyRecordVersionParams): Promise<VerifiedRecordVersion>;
 }
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
+/** Log search window when an RPC refuses one query over the whole range. */
+export const LOG_SEARCH_CHUNK = BigInt(50_000);
+/** Beyond this many windows the search gives up (the caller reports it; it never guesses). */
+export const LOG_SEARCH_MAX_CHUNKS = 200;
+const compositionUpdatedEvent = bagAbi.find((x) => x.type === 'event' && x.name === 'CompositionUpdated') as Extract<(typeof bagAbi)[number], { type: 'event'; name: 'CompositionUpdated' }>;
 
 export function createEvmBagVersionAdapter(config: EvmChainConfig, client?: PublicClient): BagVersionAdapter {
   const rpc = () => client ?? createEvmPublicClient(config);
@@ -80,6 +99,41 @@ export function createEvmBagVersionAdapter(config: EvmChainConfig, client?: Publ
 
     async readBagVersion(bagAddress) {
       return Number(await rpc().readContract({ address: bagAddress, abi: bagAbi, functionName: 'version' }));
+    },
+
+    async readBlockNumber() {
+      return rpc().getBlockNumber();
+    },
+
+    async findVersionTransaction(bagAddress, version, fromBlock) {
+      const c = rpc();
+      const head = await c.getBlockNumber();
+      if (fromBlock > head) return null;
+      const query = (from: bigint, to: bigint) =>
+        c.getLogs({ address: bagAddress, event: compositionUpdatedEvent, args: { version: BigInt(version) }, fromBlock: from, toBlock: to, strict: true });
+      type Found = { transactionHash: Hex | null; removed?: boolean; args: { compositionHash?: Hex; metadataURI?: string } };
+      const pick = (logs: Found[]): LocatedVersion | null => {
+        const live = logs.filter((l) => !l.removed && l.transactionHash);
+        if (live.length > 1) throw new BagVersionVerificationError(`Bag ${bagAddress} reports version ${version} ${live.length} times.`);
+        if (live.length === 0) return null;
+        const { compositionHash, metadataURI } = live[0].args;
+        if (!compositionHash || typeof metadataURI !== 'string') throw new BagVersionVerificationError(`Undecodable CompositionUpdated log for version ${version}.`);
+        return { txHash: live[0].transactionHash as Hex, compositionHash, metadataURI };
+      };
+      try {
+        return pick((await query(fromBlock, head)) as Found[]);
+      } catch (err) {
+        if (err instanceof BagVersionVerificationError) throw err;
+        // Many RPCs cap the block range of one query: search in windows instead.
+      }
+      let chunks = 0;
+      for (let from = fromBlock; from <= head; from += LOG_SEARCH_CHUNK) {
+        if (++chunks > LOG_SEARCH_MAX_CHUNKS) throw new Error(`Searched ${LOG_SEARCH_MAX_CHUNKS} log windows from block ${fromBlock} without reaching the head.`);
+        const to = from + LOG_SEARCH_CHUNK - BigInt(1) < head ? from + LOG_SEARCH_CHUNK - BigInt(1) : head;
+        const found = pick((await query(from, to)) as Found[]);
+        if (found) return found;
+      }
+      return null;
     },
 
     prepareRecordVersion(p) {
