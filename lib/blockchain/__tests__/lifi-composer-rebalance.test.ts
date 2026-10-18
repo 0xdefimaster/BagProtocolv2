@@ -23,35 +23,53 @@ const sell = (address: string, amountRaw = '1000') => ({ address, amountRaw, sym
 const buy = (address: string, weightBps: number) => ({ address, weightBps, symbol: address.slice(-2) });
 
 describe('buildComposerRebalance', () => {
-  it('picks the shortest shape', () => {
-    expect(rebalanceShape(1, 3)).toBe('ONE_SELL');
-    expect(rebalanceShape(3, 1)).toBe('ONE_BUY');
+  it('routes through the hub stablecoin except a single 1-to-1 swap, or when the hub itself is traded', () => {
     expect(rebalanceShape(1, 1)).toBe('ONE_SELL');
+    expect(rebalanceShape(1, 3)).toBe('HUB');
+    expect(rebalanceShape(3, 1)).toBe('HUB');
     expect(rebalanceShape(2, 2)).toBe('HUB');
+    expect(rebalanceShape(1, 3, true)).toBe('ONE_SELL');
+    expect(rebalanceShape(3, 1, true)).toBe('ONE_BUY');
   });
 
-  it('one sell: splits it straight across the buys, no hub swap', async () => {
+  it('one sell, one buy: a single direct swap, no hub', async () => {
     const f = composeFetch();
-    const r = await buildComposerRebalance({ ...base, sells: [sell(A)], buys: [buy(B, 6000), buy(C, 4000)], fetchImpl: f });
+    const r = await buildComposerRebalance({ ...base, sells: [sell(A)], buys: [buy(B, 10000)], fetchImpl: f });
     const body = sentBody(f);
     expect(r.shape).toBe('ONE_SELL');
-    expect(body).toContain('rb_split_0');
     expect(body).toContain('rb_buy_0');
-    expect(body).toContain('rb_buy_1');
     expect(body).not.toContain('rb_sell_');
     expect(body.toLowerCase()).not.toContain(USDG.toLowerCase());
     expect(r.transactionRequest).toMatchObject({ to: SPENDER, value: '0', chainId: 4663 });
   });
 
-  it('one buy: every sell swaps straight into it', async () => {
+  it('A, B, C sold for D: each sells into USDG, merged, then ONE USDG→D swap', async () => {
     const f = composeFetch();
-    const r = await buildComposerRebalance({ ...base, sells: [sell(A), sell(B)], buys: [buy(C, 10000)], fetchImpl: f });
+    const r = await buildComposerRebalance({ ...base, sells: [sell(A), sell(B), sell(C)], buys: [buy(D, 10000)], fetchImpl: f });
     const body = sentBody(f);
-    expect(r.shape).toBe('ONE_BUY');
-    expect(body).toContain('rb_sell_0');
-    expect(body).toContain('rb_sell_1');
+    expect(r.shape).toBe('HUB');
+    for (const id of ['rb_sell_0', 'rb_sell_1', 'rb_sell_2', 'rb_merge_1', 'rb_merge_2', 'rb_buy_0']) expect(body).toContain(id);
+    expect(body).not.toContain('rb_split_');
+    expect(body).not.toContain('rb_buy_1');
+    expect(body.toLowerCase()).toContain(USDG.toLowerCase());
+  });
+
+  it('one sell into several buys: sold once into USDG, then the USDG is split across the buys', async () => {
+    const f = composeFetch();
+    const r = await buildComposerRebalance({ ...base, sells: [sell(A)], buys: [buy(B, 6000), buy(C, 4000)], fetchImpl: f });
+    const body = sentBody(f);
+    expect(r.shape).toBe('HUB');
+    for (const id of ['rb_sell_0', 'rb_split_0', 'rb_buy_0', 'rb_buy_1']) expect(body).toContain(id);
     expect(body).not.toContain('rb_merge_');
-    expect(body.toLowerCase()).not.toContain(USDG.toLowerCase());
+  });
+
+  it('when USDG itself is sold or bought, the direct shapes are kept (no USDG→USDG swap)', async () => {
+    const f = composeFetch();
+    const r = await buildComposerRebalance({ ...base, sells: [sell(A), sell(USDG)], buys: [buy(C, 10000)], fetchImpl: f });
+    expect(r.shape).toBe('ONE_BUY');
+    const g = composeFetch();
+    const s = await buildComposerRebalance({ ...base, sells: [sell(A)], buys: [buy(USDG, 5000), buy(C, 5000)], fetchImpl: g });
+    expect(s.shape).toBe('ONE_SELL');
   });
 
   it('many to many: sells into the hub, merges, splits across the buys', async () => {

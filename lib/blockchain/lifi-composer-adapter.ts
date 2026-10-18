@@ -598,10 +598,11 @@ async function buildComposerSweepOnce(request: ComposerSweepRequest): Promise<Co
 // -----------------------------------------------------------------------------
 // Rebalance of one investor's position (R2): the overweight tokens the wallet
 // holds → the underweight ones, in ONE Composer transaction, into the same
-// wallet. The shortest shape that covers the trade:
-//   one sell  → split straight across the buys          (one swap per buy)
-//   one buy   → every sell swaps straight into it        (one swap per sell)
-//   otherwise → sells → hub stablecoin → merged → split across the buys
+// wallet. Shapes:
+//   one sell, one buy → one direct swap (LI.FI picks the route)
+//   otherwise         → every sell → hub stablecoin (USDG) → merged → split across the buys, so each buy is ONE
+//                       swap from the stablecoin its pools are quoted in, instead of one token-to-token swap per sell
+//   hub itself sold or bought → the direct shapes (one sell: split across the buys; one buy: each sell into it)
 // Same guards as purchase and sweep: per-swap minimum output (config.slippage → amountOutMin), Composer's
 // price-impact limit, approvals only for tokens sold and never above the
 // amount sold, no native ETH. Signs and sends nothing.
@@ -640,7 +641,9 @@ export type RebalanceShape = 'ONE_SELL' | 'ONE_BUY' | 'HUB';
 export const rebalanceSellNodeId = (i: number) => `rb_sell_${i}`;
 export const rebalanceBuyNodeId = (j: number) => `rb_buy_${j}`;
 
-export function rebalanceShape(sells: number, buys: number): RebalanceShape {
+export function rebalanceShape(sells: number, buys: number, hubTraded = false): RebalanceShape {
+  if (sells === 1 && buys === 1) return 'ONE_SELL';
+  if (!hubTraded) return 'HUB';
   return sells === 1 ? 'ONE_SELL' : buys === 1 ? 'ONE_BUY' : 'HUB';
 }
 
@@ -665,9 +668,10 @@ export async function buildComposerRebalance(request: ComposerRebalanceRequest):
     bought.add(a);
   }
   if (request.buys.reduce((sum, b) => sum + b.weightBps, 0) !== 10000) throw new Error('Buy weights must sum to exactly 10000 bps.');
-  if (sold.has(hub) || bought.has(hub)) {
+  const hubTraded = sold.has(hub) || bought.has(hub);
+  if (hubTraded) {
     // The hub never appears as a basket trade here: a stablecoin holding would need its own no-swap leg.
-    if (rebalanceShape(request.sells.length, request.buys.length) === 'HUB') throw new Error('The hub stablecoin cannot itself be sold or bought in a many-to-many rebalance.');
+    if (rebalanceShape(request.sells.length, request.buys.length, true) === 'HUB') throw new Error('The hub stablecoin cannot itself be sold or bought in a many-to-many rebalance.');
   }
 
   const chainId = toLiFiChainId(request.chain);
@@ -677,7 +681,7 @@ export async function buildComposerRebalance(request: ComposerRebalanceRequest):
   request.sells.forEach((s, i) => {
     inputSchema[`in_${i}`] = resources.erc20(s.address as `0x${string}`, chainId);
   });
-  const shape = rebalanceShape(request.sells.length, request.buys.length);
+  const shape = rebalanceShape(request.sells.length, request.buys.length, hubTraded);
   const builder = sdk.flow(chainId, { name: `bag-rebalance-${request.sells.length}-to-${request.buys.length}`, inputs: inputSchema });
   const builderInputs = builder.inputs as Record<string, Bindable<'resource'>>;
   const slippage = request.slippageBps / 10000;
