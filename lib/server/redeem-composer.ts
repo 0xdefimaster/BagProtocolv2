@@ -4,6 +4,7 @@ import { buildComposerSweep, composerPortAmounts, sweepNodeId } from '@/lib/bloc
 import type { Outputs } from '@lifi/compose-spec';
 import { DEFAULT_COMPOSER_SLIPPAGE_BPS } from '@/lib/blockchain/lifi-purchase-quote';
 import { ROBINHOOD_CHAIN_ID } from '@/lib/config/robinhood-chain';
+import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 
 // -----------------------------------------------------------------------------
 // One-transaction redemption: every SWAP leg of a redemption (each sells one of
@@ -59,6 +60,8 @@ export async function buildRedeemComposer(request: RedeemComposerRequest): Promi
       chain,
       inputs: swaps.map((s) => ({ address: s.route.inputAsset.address, amountRaw: s.route.inputAmountRaw, symbol: s.targetSymbol || s.route.inputAsset.address })),
       outputTokenAddress: request.outputAsset.address,
+      // A sale into native ETH: every swap sells into the chain's native token (resources.native), still no ETH spent.
+      nativeOutput: isNativeAssetIdentity(request.outputAsset),
       signerAddress: request.walletAddress,
       slippageBps: DEFAULT_COMPOSER_SLIPPAGE_BPS,
       apiKey: request.apiKey,

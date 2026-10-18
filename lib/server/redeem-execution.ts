@@ -6,7 +6,10 @@ import { RedeemIntent, RedeemIntentFailureCode, RedeemIntentStepRecord } from '@
 import { SessionPayload } from '@/lib/auth/session';
 import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
 import { claimNewlyVerifiedTxHashes, TX_HASH_RE } from '@/lib/server/intent-tx-claims';
-import { paymentAssetsFor } from '@/lib/server/payment-assets';
+import { redeemOutputAssetsFor } from '@/lib/server/payment-assets';
+import { measureNativeReceived } from '@/lib/blockchain/native-received';
+import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
+import { paymentAmountInQuoteCurrency, paymentAssetUsdPrice } from '@/lib/server/payment-value';
 import { getBagNavSafe } from '@/lib/server/bag-nav';
 import { getShareSupply } from '@/lib/server/bag-share-state-repo';
 import { getInvestorPosition } from '@/lib/server/bag-investor-position-repo';
@@ -161,13 +164,24 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
   const bag = await getBagById(admin, bagId);
   if (!bag) return { ok: false, error: { kind: 'BAG_NOT_FOUND' } };
 
+  const ownBag = bag.creatorId === session.userId;
+  const feeVersion = ownBag ? null : await getCurrentBagVersion(admin, bagId);
+  const feeBps = ownBag ? 0 : (bag.performanceFeeBpsLocked ?? feeVersion?.recipe.performanceFeeBps ?? 0);
+
   // Output asset resolved by registry id ONLY — same invariant the deposit
   // side's `inputAssetId` already enforces (client never supplies
-  // chain/address/decimals directly).
+  // chain/address/decimals directly). A sale that pays a fee settles in the settlement token only.
   const assets = await listAssets(admin, { status: 'VERIFIED' });
-  const outputAssetRecord = paymentAssetsFor(assets, bag.chain).find((a) => a.id === outputAssetId);
+  const outputAssetRecord = redeemOutputAssetsFor(assets, bag.chain, { paysFee: feeBps > 0 }).find((a) => a.id === outputAssetId);
   if (!outputAssetRecord) return { ok: false, error: { kind: 'UNKNOWN_OUTPUT_ASSET' } };
   const outputAsset: AssetIdentity = { chain: outputAssetRecord.chain, address: outputAssetRecord.address };
+  // What the ledger books is USD: proceeds in any other token are converted at this price, fixed now (never guessed).
+  let outputUsdPrice: string;
+  try {
+    outputUsdPrice = await paymentAssetUsdPrice(outputAsset, priceProvider);
+  } catch {
+    return { ok: false, error: { kind: 'PRICE_UNAVAILABLE', message: `Unable to price ${outputAssetRecord.symbol} right now. Try again shortly.` } };
+  }
 
   const [position, observed] = await Promise.all([
     getInvestorPosition(admin, session.userId, bagId),
@@ -200,10 +214,6 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
   const symbolFor = (asset: AssetIdentity) => symbolByKey.get(`${asset.chain}:${asset.address.toLowerCase()}`) ?? '';
   const executionSteps = buildRedeemExecutionSteps(allocation, outputAsset, symbolFor);
 
-  const ownBag = bag.creatorId === session.userId;
-  const feeVersion = ownBag ? null : await getCurrentBagVersion(admin, bagId);
-  const feeBps = ownBag ? 0 : (bag.performanceFeeBpsLocked ?? feeVersion?.recipe.performanceFeeBps ?? 0);
-
   // Same real, wallet-bound LI.FI quoting the deposit side uses — see
   // lib/blockchain/lifi-purchase-quote.ts's module doc on why this
   // function was narrowed to take `ExecutionStep[]` directly in this
@@ -222,9 +232,16 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
       apiKey: process.env.LIFI_API_KEY,
     });
   }
-  const { steps, allSwapsQuoted, firstFailure } = composer
+  // Native ETH arrives without a Transfer log; only the one-transaction route measures it (native-received.ts).
+  if (isNativeAssetIdentity(outputAsset) && !composer) {
+    return { ok: false, error: { kind: 'QUOTE_FAILED', failureCode: 'UNSUPPORTED_ROUTE', message: `Selling into ${outputAssetRecord.symbol} is not available for this position right now. Choose another token.` } };
+  }
+  const built = composer
     ? { steps: composer.steps, allSwapsQuoted: true, firstFailure: null }
     : await buildPurchaseIntentSteps(executionSteps, session.walletAddress, outputAssetRecord.decimals);
+  const { allSwapsQuoted, firstFailure } = built;
+  const withPrice = <T extends { outputUsdPrice?: string }>(list: T[]): T[] => (outputUsdPrice === '1' ? list : list.map((s) => ({ ...s, outputUsdPrice })));
+  const steps = withPrice(built.steps);
 
   // `redeemValueQuote` is the legacy fee basis of apply_redeem_execution (value − consumed share cost basis).
   // It stays NAV-based only where something still prices the fee from it: RedeemFeeRouter's attestation and the
@@ -251,7 +268,7 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
     }
   } else {
     const estimate = estimatedProceedsRaw(steps);
-    redeemValueQuote = estimate === null ? '0' : rawToDecimalString(estimate, outputAssetRecord.decimals);
+    redeemValueQuote = estimate === null ? '0' : paymentAmountInQuoteCurrency(rawToDecimalString(estimate, outputAssetRecord.decimals), outputUsdPrice);
     sharePriceAtQuote =
       sharesBurnRaw === '0' ? '0' : formatDec(mulDiv(parseDec(redeemValueQuote), BigInt(10) ** BigInt(position.shareDecimals), BigInt(sharesBurnRaw)));
   }
@@ -285,7 +302,7 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
       if (!sequential.allSwapsQuoted && sequential.firstFailure) {
         return { ok: false, error: { kind: 'QUOTE_FAILED', failureCode: sequential.firstFailure.failureCode, message: sequential.firstFailure.message } };
       }
-      intent = await insertRedeemIntent(admin, { ...intentInput, steps: sequential.steps });
+      intent = await insertRedeemIntent(admin, { ...intentInput, steps: withPrice(sequential.steps) });
     }
   } else {
     intent = await insertRedeemIntent(admin, intentInput);
@@ -883,6 +900,19 @@ async function verifyComposerRedeemSteps(
 
   const soldInFull = swaps.every((s) => BigInt(outcome.sentAmountsByAddress[s.inputAsset.address.toLowerCase()] ?? '0') >= BigInt(s.inputAmountRaw));
   let received = BigInt(outcome.receivedAmountsByAddress[intent.outputAsset.address.toLowerCase()] ?? '0');
+  if (soldInFull && isNativeAssetIdentity(intent.outputAsset)) {
+    // Native ETH has no Transfer log: measured from the wallet's balance around the block, bounded by the guaranteed
+    // minimum and the quoted amount (native-received.ts). Unmeasurable: not verified, nothing booked.
+    const sum = (vals: (string | null | undefined)[]) => vals.reduce((a, v) => a + (v && /^\d+$/.test(v) ? BigInt(v) : BigInt(0)), BigInt(0));
+    const native = await measureNativeReceived(getChainPublicClient('robinhood'), {
+      txHash: txHash as `0x${string}`,
+      wallet: intent.walletAddress as `0x${string}`,
+      expectedRaw: sum(swaps.map((s) => s.outputAmountRaw)),
+      minimumRaw: sum(swaps.map((s) => s.providerEnforcedMinOutputRaw)),
+    });
+    if (!native.ok) return markSwaps({ status: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
+    received = native.receivedRaw;
+  }
   if (!soldInFull || received <= BigInt(0)) return markSwaps({ status: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
 
   // A fee-paying sale settled through RedeemSettlement (§9): the contract's Settled event for THIS redemption is the
@@ -999,11 +1029,13 @@ async function applyRedeemAccountingIdempotently(admin: SupabaseClient, intent: 
     ? attributeSaleToLedger({ legs, sharesBurnRaw: BigInt(intent.sharesRaw), redeemValueQuote: intent.redeemValueQuote }, cover)
     : { legs, sharesBurnRaw: BigInt(intent.sharesRaw), redeemValueQuote: intent.redeemValueQuote };
 
+  // Proceeds arrive in the output token; the ledger books USD at the price fixed when the sale was quoted.
+  const outputUsdPrice = intent.steps.find((s) => s.outputUsdPrice)?.outputUsdPrice ?? '1';
   const holdingsSold = sale.legs.map((l) => ({
     chain: l.chain,
     address: l.address,
     quantity_raw: l.quantityRaw.toString(),
-    ...(l.proceedsRaw !== null ? { proceeds_quote: rawToDecimalString(l.proceedsRaw, intent.outputDecimals) } : {}),
+    ...(l.proceedsRaw !== null ? { proceeds_quote: paymentAmountInQuoteCurrency(rawToDecimalString(l.proceedsRaw, intent.outputDecimals), outputUsdPrice) } : {}),
   }));
 
   // Phase 22 — performance fee. Resolved fresh here (never trusted from

@@ -156,6 +156,12 @@ export interface PurchaseIntentStepRecord {
   /** LI.FI's own substatus/tool name once execution starts reporting one (spec Aşama 10's "destination execution pending/completed" distinction) — display/debugging only. */
   providerSubstatus: string | null;
   failureCode: PurchaseIntentFailureCode | null;
+  /**
+   * Redemptions: USD per whole unit of the sale's output token, fixed when the sale was quoted. Turns what arrived
+   * into the USD proceeds the ledger books. Absent on sales into the settlement stablecoin (counted 1:1) and on
+   * purchases.
+   */
+  outputUsdPrice?: string;
 }
 
 export interface PurchaseIntent {
