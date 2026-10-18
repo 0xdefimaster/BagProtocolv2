@@ -28,13 +28,11 @@
 @media (prefers-reduced-motion: reduce) {
   .chain-badge .dot::after { animation: none; }
 }
-/* App header: six links plus chain/bell/wallet need more room than the landing
-   bar, so the menu takes over below 1100px instead of the landing's 840px. */
-.app-navlinks { gap: 24px; margin: 0 20px; }
+/* App header: the sidebar carries the links on desktop; below 1100px the menu
+   button takes over (the landing's breakpoint is 840px). */
 header .brand { flex-shrink: 0; white-space: nowrap; }
 .app-nav-actions { display: flex; align-items: center; gap: 12px; position: relative; min-width: 0; }
 @media (max-width: 1100px) {
-  .app-navlinks { display: none; }
   .app-nav-toggle { display: inline-flex; }
 }
 @media (max-width: 640px) {
@@ -671,3 +669,50 @@ header .brand { flex-shrink: 0; white-space: nowrap; }
 .wallet-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; font-size: 13px; color: var(--ink); background: transparent; border: 0; border-radius: 8px; padding: 9px 8px; cursor: pointer; }
 .wallet-menu-item:hover { background: var(--surface-2); }
 .wallet-menu-hint { font-size: 11px; line-height: 1.5; color: var(--mute); margin: 4px 6px 2px; }
+
+/* =====================================================
+   App shell: sidebar (≥1101px) + top bar
+   ===================================================== */
+.app-shell { display: flex; min-height: 100vh; }
+.app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.app-sidebar {
+  width: 232px; flex: none; position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 6px; padding: 18px 12px;
+  border-right: 1px solid var(--line-soft); background: var(--surface);
+}
+.app-sidebar-brand { padding: 4px 10px 18px; }
+.app-sidebar-brand img { width: 28px; height: 28px; }
+.app-sidebar-nav { display: flex; flex-direction: column; }
+.app-sidebar-group { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.app-sidebar-group + .app-sidebar-group { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.app-sidebar-link {
+  display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 0 12px; border-radius: 10px;
+  color: var(--ink-soft); font-size: 15px; transition: background 0.15s, color 0.15s;
+}
+.app-sidebar-link:hover { background: var(--gold-tint); color: var(--ink); }
+.app-sidebar-link[aria-current='page'] { background: var(--surface-2); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.app-sidebar-link[aria-current='page'] svg { color: var(--gold); }
+.app-sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 16px; }
+.app-sidebar-foot .chain-badge { justify-content: flex-start; }
+.app-sidebar-hint { font-size: 12px; color: var(--mute); padding: 0 4px; }
+
+.app-topbar { max-width: none; padding: 0 28px; gap: 16px; }
+.app-header-brand { display: none; }
+.app-search {
+  flex: 1 1 260px; max-width: 460px; display: flex; align-items: center; gap: 8px;
+  height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-soft);
+  background: var(--surface); color: var(--mute);
+}
+.app-search:focus-within { border-color: var(--line); color: var(--ink-soft); }
+.app-search input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--ink); font: inherit; font-size: 14px; }
+.app-search input::placeholder { color: var(--mute); }
+.app-mobile-nav a[aria-current='page'] { color: var(--gold-lt); background: var(--gold-tint); }
+
+@media (max-width: 1100px) {
+  .app-sidebar { display: none; }
+  .app-header-brand { display: flex; }
+  .app-topbar { padding: 0 20px; }
+}
+@media (max-width: 640px) {
+  .app-search { display: none; }
+}
