@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, CheckCircle2, AlertTriangle, Pencil, X } from 'lucide-react';
 import { useWallet } from '@/lib/wallet-context';
 import { useEditStrategy } from '@/hooks/use-edit-strategy';
@@ -14,14 +14,35 @@ import type { Bag } from '@/types';
 // Everything else about the Bag (name, rules, fee) stays as it is.
 // -----------------------------------------------------------------------------
 
-export function EditStrategyPanel({ bag, onSaved }: { bag: Bag; onSaved?: () => void }) {
+export function EditStrategyPanel({
+  bag,
+  onSaved,
+  open: openProp,
+  onOpenChange,
+  hideTrigger = false,
+}: {
+  bag: Bag;
+  onSaved?: () => void;
+  /** Controlled open state, for a page that shows its own "Edit strategy" button (with `hideTrigger`). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
+}) {
   const chain = bag.chains[0] ?? 'robinhood';
   const { isConnected, walletAddress, connect } = useWallet();
   const { state, submit, resumePending, reset, sync, checkStatus, recover } = useEditStrategy(bag.id);
   const [recoverTx, setRecoverTx] = useState('');
   // A failed status read alone (e.g. RPC briefly down) is not worth a banner on a closed panel; a failed recovery is.
   const [recoverTried, setRecoverTried] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (onOpenChange) onOpenChange(next);
+      if (openProp === undefined) setOpenState(next);
+    },
+    [onOpenChange, openProp]
+  );
   const [rows, setRows] = useState<CompositionRow[]>(() => rowsFromBag(bag));
   const [reason, setReason] = useState('');
   const resumed = useRef(false);
@@ -35,7 +56,7 @@ export function EditStrategyPanel({ bag, onSaved }: { bag: Bag; onSaved?: () => 
       if (had) setOpen(true);
       else void checkStatus();
     });
-  }, [resumePending, checkStatus]);
+  }, [resumePending, checkStatus, setOpen]);
 
   const behind = sync.kind === 'ready' && sync.sync.chainVersion > sync.sync.recordedVersion;
   const syncPanel = (behind || sync.kind === 'recovering' || (sync.kind === 'error' && (open || recoverTried))) && (
@@ -100,6 +121,7 @@ export function EditStrategyPanel({ bag, onSaved }: { bag: Bag; onSaved?: () => 
   };
 
   if (!open) {
+    if (hideTrigger) return syncPanel || null;
     return (
       <div className="space-y-3">
         {syncPanel}

@@ -18,6 +18,7 @@ import {
   Copy,
   Check,
   AlertTriangle,
+  Pencil,
 } from 'lucide-react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
@@ -144,6 +145,12 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
   // After the creator saves a new version, the page scrolls to their own position and its rebalance card,
   // which refetches against the new version (refreshAfterTrade bumps its refreshKey).
   const [savedVersion, setSavedVersion] = useState(false);
+  // "Edit strategy" is a header button; the editor opens under the header.
+  const [editOpen, setEditOpen] = useState(false);
+  const editRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (editOpen) editRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [editOpen]);
   const positionRef = useRef<HTMLDivElement>(null);
   const onVersionSaved = useCallback(() => {
     refreshAfterTrade();
@@ -213,6 +220,8 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
     { id: 'json', label: 'JSON' },
   ];
   const returns = bagReturns(bag);
+  // The server checks creator, wallet, MUTABLE and deployment again; this only hides the button from others.
+  const canEdit = bag.status === 'ACTIVE' && isOwnBag && bag.mutability === 'MUTABLE';
   const anyHeld = !!bag.holdings?.some((h) => BigInt(h.quantityRaw) > BigInt(0));
 
   const copyToClipboard = () => {
@@ -269,6 +278,16 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
           </div>
 
           <div className="flex flex-wrap gap-2">
+            {canEdit && (
+              <button
+                onClick={() => setEditOpen(true)}
+                data-testid="bag-edit-strategy"
+                className="flex items-center gap-2 px-5 py-3 rounded-xl font-semibold border transition-all bag-edit-btn"
+              >
+                <Pencil className="w-5 h-5" />
+                Edit strategy
+              </button>
+            )}
             <button onClick={() => setShowInvest(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-emerald-500 text-black font-semibold transition-all hover:bg-emerald-400">
               <TrendingUp className="w-5 h-5" />
               Invest
@@ -340,10 +359,9 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
           </div>
         )}
 
-        {/* The server checks creator, wallet, MUTABLE and deployment again; this only hides the button from others. */}
-        {bag.status === 'ACTIVE' && isOwnBag && bag.mutability === 'MUTABLE' && (
-          <div className="mb-6">
-            <EditStrategyPanel bag={bag} onSaved={onVersionSaved} />
+        {canEdit && (
+          <div ref={editRef} className="mb-6" style={{ scrollMarginTop: 90 }}>
+            <EditStrategyPanel bag={bag} onSaved={onVersionSaved} open={editOpen} onOpenChange={setEditOpen} hideTrigger />
           </div>
         )}
 

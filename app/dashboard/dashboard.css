@@ -745,3 +745,13 @@ header .brand { flex-shrink: 0; white-space: nowrap; }
 .bag-swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .weight-slider { accent-color: var(--gold); height: 24px; cursor: pointer; }
 .weight-slider:disabled { cursor: default; opacity: 0.5; }
+.bag-edit-btn { border-color: var(--gold); color: var(--gold-lt); background: var(--gold-tint); }
+.bag-edit-btn:hover { background: rgba(217, 185, 139, 0.2); }
+.composition-picker-toggle {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 10px;
+  border: 1px solid var(--gold); background: var(--gold-tint); color: var(--gold-lt); font: inherit; font-weight: 600; cursor: pointer;
+}
+.composition-picker-toggle:hover { background: rgba(217, 185, 139, 0.2); }
+.composition-picker-toggle:disabled { opacity: 0.5; cursor: default; }
+:root[data-theme='light'] .bag-edit-btn,
+:root[data-theme='light'] .composition-picker-toggle { color: var(--ink); }
