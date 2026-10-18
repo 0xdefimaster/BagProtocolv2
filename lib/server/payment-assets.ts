@@ -20,9 +20,8 @@ export const PAYMENT_TOKEN_BY_CHAIN: Partial<Record<ChainId, { symbol: string; a
 };
 
 /**
- * The settlement token on `chain`, from the registry. Used for redemptions
- * (what a seller receives) and as the first purchase option. Never native
- * ETH: sales settle in the stablecoin only.
+ * The settlement token on `chain`, from the registry: the first purchase and sale option, and the only output of a
+ * sale that pays a performance fee.
  */
 export function paymentAssetsFor(assets: CanonicalAsset[], chain: ChainId): CanonicalAsset[] {
   const pinned = PAYMENT_TOKEN_BY_CHAIN[chain];
@@ -58,13 +57,43 @@ export function nativePaymentAssetFor(chain: ChainId): CanonicalAsset | null {
   };
 }
 
+/** True for the pinned settlement stablecoin of `asset.chain` (counted 1:1 in USD, no price lookup). */
+export function isSettlementToken(asset: { chain: string; address: string }): boolean {
+  const pinned = PAYMENT_TOKEN_BY_CHAIN[asset.chain as ChainId];
+  return !!pinned && pinned.address.toLowerCase() === asset.address.toLowerCase();
+}
+
 /**
- * What a buyer can pay with on `chain`: the settlement token first (so the
- * default purchase stays exactly as before), then the native token where it
- * is enabled.
+ * Every other registry-VERIFIED token on `chain` (crypto and stock tokens), by symbol. Only the registry's
+ * verified list, never an arbitrary address; each one is valued at its USD oracle price when used, and without a
+ * price the purchase or sale is refused (lib/server/payment-value.ts), never estimated.
+ */
+function otherVerifiedAssets(assets: CanonicalAsset[], chain: ChainId): CanonicalAsset[] {
+  return assets
+    // A registry row at the native sentinel is never a token: native ETH is offered only as nativePaymentAssetFor().
+    .filter((a) => a.status === 'VERIFIED' && a.chain === chain && !isSettlementToken(a) && a.address.toLowerCase() !== NATIVE_ASSET_ADDRESS.toLowerCase())
+    .sort((x, y) => x.symbol.localeCompare(y.symbol) || x.address.localeCompare(y.address));
+}
+
+/**
+ * What a buyer can pay with on `chain`: the settlement token first (so the default purchase stays exactly as
+ * before), then the native token where it is enabled, then any other verified token. LI.FI Composer routes from
+ * each into the Bag's assets; a token that is itself a Bag asset is kept as is (KEEP leg).
  */
 export function purchaseInputAssetsFor(assets: CanonicalAsset[], chain: ChainId): CanonicalAsset[] {
   const native = nativePaymentAssetFor(chain);
   const settlement = paymentAssetsFor(assets, chain);
-  return native ? [...settlement, native] : settlement;
+  return [...settlement, ...(native ? [native] : []), ...otherVerifiedAssets(assets, chain)];
+}
+
+/**
+ * What a seller can receive on `chain`. A sale that pays a performance fee settles in the settlement token only
+ * (RedeemSettlement / RedeemFeeRouter pay the fee in it). A free sale may receive the settlement token, native ETH
+ * where native payments are on (one Composer transaction only), or any other verified token.
+ */
+export function redeemOutputAssetsFor(assets: CanonicalAsset[], chain: ChainId, opts: { paysFee: boolean }): CanonicalAsset[] {
+  const settlement = paymentAssetsFor(assets, chain);
+  if (opts.paysFee) return settlement;
+  const native = nativePaymentAssetFor(chain);
+  return [...settlement, ...(native ? [native] : []), ...otherVerifiedAssets(assets, chain)];
 }

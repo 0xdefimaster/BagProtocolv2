@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CanonicalAsset } from '@/types/basket-protocol';
-import { nativePaymentAssetFor, paymentAssetsFor, purchaseInputAssetsFor } from '../payment-assets';
+import { nativePaymentAssetFor, paymentAssetsFor, purchaseInputAssetsFor, redeemOutputAssetsFor } from '../payment-assets';
 import { NATIVE_ASSET_ADDRESS } from '@/lib/domain/basket-protocol/asset-identity';
 
 const USDG = '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168';
@@ -76,5 +76,39 @@ describe('purchaseInputAssetsFor — native ETH as a purchase input', () => {
   it('a registry row at the zero address is never picked up as the payment token; redemptions stay stablecoin-only', () => {
     const fakeNative = asset('ETH', NATIVE_ASSET_ADDRESS, { decimals: 18 });
     expect(paymentAssetsFor([asset('USDG', USDG), fakeNative], 'robinhood').map((a) => a.symbol)).toEqual(['USDG']);
+  });
+});
+
+describe('any verified token as a purchase input or a free sale output', () => {
+  const PFE = asset('PFE', '0x00000000000000000000000000000000000000f1', { assetType: 'stock', decimals: 18 });
+  const WETH = asset('WETH', '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73', { decimals: 18 });
+  const pool = [
+    PFE,
+    WETH,
+    asset('USDG', USDG),
+    asset('OLD', '0x00000000000000000000000000000000000000f2', { status: 'DEPRECATED' }),
+    asset('BASE', '0x00000000000000000000000000000000000000f3', { chain: 'base' }),
+    asset('ETH', NATIVE_ASSET_ADDRESS, { decimals: 18 }),
+  ];
+
+  it('purchase: settlement token, native ETH, then every other VERIFIED token of the chain by symbol', () => {
+    expect(purchaseInputAssetsFor(pool, 'robinhood').map((a) => [a.symbol, a.id])).toEqual([
+      ['USDG', `USDG-${USDG}`],
+      ['ETH', 'native:robinhood'],
+      ['PFE', PFE.id],
+      ['WETH', WETH.id],
+    ]);
+  });
+
+  it('never offers a deprecated token, another chain’s token, or a registry row at the native sentinel', () => {
+    const ids = [...purchaseInputAssetsFor(pool, 'robinhood'), ...redeemOutputAssetsFor(pool, 'robinhood', { paysFee: false })].map((a) => a.id);
+    expect(ids).not.toContain(`OLD-0x00000000000000000000000000000000000000f2`);
+    expect(ids).not.toContain(`BASE-0x00000000000000000000000000000000000000f3`);
+    expect(ids).not.toContain(`ETH-${NATIVE_ASSET_ADDRESS}`);
+  });
+
+  it('a free sale may receive any verified token or native ETH; a sale that pays a fee settles in the settlement token only', () => {
+    expect(redeemOutputAssetsFor(pool, 'robinhood', { paysFee: false }).map((a) => a.symbol)).toEqual(['USDG', 'ETH', 'PFE', 'WETH']);
+    expect(redeemOutputAssetsFor(pool, 'robinhood', { paysFee: true }).map((a) => a.symbol)).toEqual(['USDG']);
   });
 });

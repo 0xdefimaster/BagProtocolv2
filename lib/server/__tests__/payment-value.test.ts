@@ -40,6 +40,16 @@ describe('payment value in USD', () => {
     expect(p.getPrice).toHaveBeenCalledWith({ chain: 'base', address: '0x4200000000000000000000000000000000000006' });
   });
 
+  it('any other verified token is valued at its own USD oracle price', async () => {
+    const PFE = { chain: 'robinhood' as const, address: '0x00000000000000000000000000000000000000f1' };
+    const p = provider('25.5');
+    const v = await valuePayment(PFE, '4', p);
+    expect(p.getPrice).toHaveBeenCalledWith(PFE);
+    expect(v).toEqual({ quoteAmount: '102.000000000000000000', inputUsdPrice: '25.5' });
+    await expect(paymentAssetUsdPrice(PFE, provider('0'))).rejects.toBeInstanceOf(PaymentValuationError);
+    await expect(paymentAssetUsdPrice(PFE, provider('25', 'EUR'))).rejects.toBeInstanceOf(PaymentValuationError);
+  });
+
   it('a price outage propagates (no estimate)', async () => {
     const p: PriceProvider = { getPrice: async () => { throw new Error('LI.FI down'); } };
     await expect(valuePayment(ETH_RH, '1', p)).rejects.toThrow('LI.FI down');

@@ -34,7 +34,12 @@ vi.mock('@/lib/server/asset-repo', () => ({
     { id: 'msft', chain: 'robinhood', address: MSFT, symbol: 'MSFT', decimals: 18, status: 'VERIFIED' },
   ],
 }));
-vi.mock('@/lib/server/payment-assets', () => ({ paymentAssetsFor: (assets: { symbol: string }[]) => assets.filter((a) => a.symbol === 'USDG') }));
+// The test's settlement token is the asset called USDG (counted 1:1, no price lookup).
+vi.mock('@/lib/server/payment-assets', () => ({
+  paymentAssetsFor: (assets: { symbol: string }[]) => assets.filter((a) => a.symbol === 'USDG'),
+  redeemOutputAssetsFor: (assets: { symbol: string }[]) => assets.filter((a) => a.symbol === 'USDG'),
+  isSettlementToken: () => true,
+}));
 vi.mock('@/lib/server/bag-nav', () => ({ getBagNavSafe: async () => ({ ok: false, reason: 'PRICE_UNAVAILABLE', message: 'weekend' }) }));
 vi.mock('@/lib/server/bag-share-state-repo', () => ({ getShareSupply: async () => ({ shareDecimals: 18 }) }));
 vi.mock('@/lib/server/bag-investor-position-repo', () => ({ getInvestorPosition: (...a: unknown[]) => positionMock(...a) }));

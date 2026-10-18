@@ -57,6 +57,9 @@ vi.mock('@/lib/blockchain/redeem-settlement-event', () => ({ readSettlementResul
 vi.mock('@/lib/blockchain/lifi-status', () => ({ trackStepStatus: (...a: unknown[]) => trackStepStatusMock(...a) }));
 vi.mock('@/lib/server/price-provider', () => ({ getPriceProvider: () => ({}) }));
 vi.mock('@/lib/server/bag-nav-snapshots', () => ({ recordNavSnapshot: async () => undefined }));
+const measureNativeMock = vi.fn();
+vi.mock('@/lib/blockchain/native-received', () => ({ measureNativeReceived: (...a: unknown[]) => measureNativeMock(...a) }));
+vi.mock('@/lib/blockchain/rpc/clients', () => ({ getChainPublicClient: () => ({}) }));
 
 const { verifyRedeemExecution, recheckUnmatchedComposerSales } = await import('../redeem-execution');
 
@@ -156,6 +159,46 @@ describe('verifyRedeemExecution — one-transaction (Composer) redemption', () =
       { chain: 'robinhood', address: NVDA, quantity_raw: '2000', proceeds_quote: '3.96' },
     ]);
     expect(markRedeemAccountingAppliedMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('a sale into native ETH: no Transfer log, the measured amount is split across legs and booked in USD', async () => {
+    const ETH = '0x0000000000000000000000000000000000000000';
+    row = {
+      ...intent(),
+      outputAsset: { chain: 'robinhood', address: ETH },
+      outputDecimals: 18,
+      steps: intent().steps.map((s, i) => ({
+        ...s,
+        outputAsset: { chain: 'robinhood', address: ETH },
+        outputDecimals: 18,
+        outputAmountRaw: i === 0 ? '3000000000000000' : '2000000000000000',
+        providerEnforcedMinOutputRaw: i === 0 ? '2970000000000000' : '1980000000000000',
+        outputUsdPrice: '2500',
+      })),
+    };
+    trackComposerMock.mockResolvedValue({ kind: 'DONE', receivedAmountsByAddress: {}, sentAmountsByAddress: { [MSFT]: '1000', [NVDA]: '2000' } });
+    measureNativeMock.mockResolvedValue({ ok: true, receivedRaw: BigInt('4950000000000000'), measuredRaw: BigInt('4950000000000000'), clamped: 'NONE' });
+
+    const outcome = await verify();
+
+    expect(outcome.ok && outcome.value.status).toBe('COMPLETED');
+    expect(measureNativeMock.mock.calls[0][1]).toMatchObject({ txHash: HASH, wallet: WALLET, expectedRaw: BigInt('5000000000000000'), minimumRaw: BigInt('4950000000000000') });
+    expect(row.steps.map((s) => s.outputAmountRaw)).toEqual(['2970000000000000', '1980000000000000']);
+    // 0.00297 ETH × $2500 = $7.425, 0.00198 ETH × $2500 = $4.95
+    expect(accountingCall()?.[1].p_holdings_sold).toEqual([
+      { chain: 'robinhood', address: MSFT, quantity_raw: '1000', proceeds_quote: '7.425000000000000000' },
+      { chain: 'robinhood', address: NVDA, quantity_raw: '2000', proceeds_quote: '4.950000000000000000' },
+    ]);
+  });
+
+  it('a sale into native ETH whose amount cannot be measured is not verified; nothing is booked', async () => {
+    const ETH = '0x0000000000000000000000000000000000000000';
+    row = { ...intent(), outputAsset: { chain: 'robinhood', address: ETH }, outputDecimals: 18 };
+    trackComposerMock.mockResolvedValue({ kind: 'DONE', receivedAmountsByAddress: {}, sentAmountsByAddress: { [MSFT]: '1000', [NVDA]: '2000' } });
+    measureNativeMock.mockResolvedValue({ ok: false, reason: 'OTHER_ACTIVITY_IN_BLOCK' });
+    const outcome = await verify();
+    expect(outcome.ok && outcome.value.status).toBe('FAILED');
+    expect(accountingCall()).toBeUndefined();
   });
 
   it('a leg not sold in full fails the whole sale; nothing is burned', async () => {

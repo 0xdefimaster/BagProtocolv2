@@ -20,7 +20,12 @@ let ledgerEvents: unknown[] = [];
 vi.mock('@/lib/server/bag-repo', () => ({ getBagById: async () => bagRow, getCurrentBagVersion: async () => ({ recipe: { performanceFeeBps: 0 } }) }));
 vi.mock('@/lib/server/ledger-repo', () => ({ listAllLedgerEventsForPosition: async () => ledgerEvents }));
 vi.mock('@/lib/server/asset-repo', () => ({ listAssets: (...a: unknown[]) => listAssets(...a) }));
-vi.mock('@/lib/server/payment-assets', () => ({ paymentAssetsFor: (assets: { symbol: string }[]) => assets.filter((a) => a.symbol === 'USDG') }));
+// The test's settlement token is the asset called USDG (counted 1:1, no price lookup).
+vi.mock('@/lib/server/payment-assets', () => ({
+  paymentAssetsFor: (assets: { symbol: string }[]) => assets.filter((a) => a.symbol === 'USDG'),
+  redeemOutputAssetsFor: (assets: { symbol: string }[]) => assets.filter((a) => a.symbol === 'USDG'),
+  isSettlementToken: () => true,
+}));
 vi.mock('@/lib/server/position-valuation', async (orig) => ({
   ...(await orig<object>()),
   observeUserHoldings: (...a: unknown[]) => observeMock(...a),

@@ -8,7 +8,7 @@ import { computePositionPnl } from '@/lib/domain/basket-protocol/accounting/posi
 import { feeBasisFromPositionPnl } from '@/lib/domain/basket-protocol/redeem/performance-fee-b0';
 import { formatDec, parseDec } from '@/lib/domain/basket-protocol/accounting/decimal';
 import { listAssets } from '@/lib/server/asset-repo';
-import { paymentAssetsFor } from '@/lib/server/payment-assets';
+import { redeemOutputAssetsFor } from '@/lib/server/payment-assets';
 import { getDisplayPriceProvider } from '@/lib/server/price-provider';
 import { getChainPublicClient } from '@/lib/blockchain/rpc/clients';
 import { observeUserHoldings, sellableHoldingsForBag, valueUserPositions, assetKey } from '@/lib/server/position-valuation';
@@ -56,7 +56,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const chainAssets = await listAssets(admin, { chain: bag.chain });
   const symbolByKey = new Map(chainAssets.map((a) => [assetKey(a.chain, a.address), a.symbol]));
-  const outputAssets = paymentAssetsFor(chainAssets.filter((a) => a.status === 'VERIFIED'), bag.chain);
+  // A sale that pays a performance fee settles in the settlement token only; a free one into any verified token.
+  const paysFee = redemptionPaysFee(bag, await getCurrentBagVersion(admin, id), auth.session.userId);
+  const outputAssets = redeemOutputAssetsFor(chainAssets.filter((a) => a.status === 'VERIFIED'), bag.chain, { paysFee });
   const values = await valueUserPositions(admin, getChainPublicClient('robinhood'), priceProvider, auth.session, (c, a) => symbolByKey.get(assetKey(c, a)));
   const value = values.get(id) ?? null;
 
@@ -118,7 +120,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!bag) return NextResponse.json({ error: 'Bag not found.' }, { status: 404 });
 
   const chainAssets = await listAssets(admin, { chain: bag.chain });
-  const outputAssets = paymentAssetsFor(chainAssets.filter((a) => a.status === 'VERIFIED'), bag.chain);
+  const version = await getCurrentBagVersion(admin, id);
+  const outputAssets = redeemOutputAssetsFor(chainAssets.filter((a) => a.status === 'VERIFIED'), bag.chain, {
+    paysFee: redemptionPaysFee(bag, version, auth.session.userId),
+  });
   const outputAsset = outputAssets.find((a) => a.id === body.outputAssetId);
   if (!outputAsset) return NextResponse.json({ error: 'Unknown or unverified output asset.' }, { status: 400 });
 
@@ -168,7 +173,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // B0 (docs/FEE_ECONOMICS_DESIGN.md): the performance fee this sale pays, ESTIMATED from the slice's value at
   // display prices. The exact fee is set when the wallet signs, on the guaranteed minimum proceeds — never more than
   // the rate × the gain actually realized (above earlier losses).
-  const version = await getCurrentBagVersion(admin, id);
   let performanceFee: {
     rateBps: number;
     basisAvailable: boolean;
