@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Bag } from '@/types';
 import { bagReturns, formatCompact, formatReturn, formatUsdCompact } from '@/lib/format';
-import { useForkBag } from '@/hooks/useForkBag';
 import dynamic from 'next/dynamic';
 import { getCategoryBreakdown, getDiversificationScore, categoryForPosition, CATEGORY_COLORS } from '@/lib/categorize';
 import { Users, GitFork, TrendingUp, TrendingDown, Star } from 'lucide-react';
@@ -48,7 +47,6 @@ export function BagCard({ bag, isNew }: BagCardProps) {
   const router = useRouter();
 
   const [showInvest, setShowInvest] = useState(false);
-  const { fork, isForking, forkError } = useForkBag();
 
   const handleCreatorClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -59,7 +57,8 @@ export function BagCard({ bag, isNew }: BagCardProps) {
   const handleFork = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    void fork(bag);
+    // The fork is chosen in the Bag page's editor (ForkPanel), the same one as Edit strategy.
+    router.push(`/dashboard/bag/${encodeURIComponent(bag.id)}?fork=1`);
   };
 
   return (
@@ -185,9 +184,9 @@ export function BagCard({ bag, isNew }: BagCardProps) {
       </div>
 
       <div className="bag-actions">
-        <button onClick={handleFork} className="btn btn-ghost" disabled={isForking} title={forkError ?? undefined}>
+        <button onClick={handleFork} className="btn btn-ghost">
           <GitFork size={15} />
-          {isForking ? 'Forking…' : 'Fork'}
+          Fork
         </button>
         <button
           onClick={(e) => {

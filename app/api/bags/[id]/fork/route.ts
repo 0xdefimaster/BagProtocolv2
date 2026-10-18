@@ -6,6 +6,8 @@ import { mapBagRecordToApiResponse } from '@/lib/mappers/bag-mapper';
 import { loadRecipeAssets } from '@/lib/server/bag-asset-context';
 import { loadCreatorProfiles } from '@/lib/server/user-profile-repo';
 import { validateBagText } from '@/lib/server/bag-text';
+import { parseCompositionEdit, resolveCompositionAssets } from '@/lib/server/strategy-edit';
+import { defaultMaxAssets } from '@/types/basket-protocol';
 import { checkRateLimit, rateLimitedResponseBody } from '@/lib/server/rate-limit';
 
 const FORK_RATE_LIMIT = { windowSeconds: 3600, maxRequests: 30 };
@@ -62,9 +64,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Source bag has no composition to fork.' }, { status: 409 });
   }
 
-  const body = (await req.json().catch(() => ({}))) as { name?: string; reason?: string };
+  const body = (await req.json().catch(() => ({}))) as { name?: string; reason?: string; composition?: unknown };
   const textIssue = validateBagText({ name: body.name });
   if (textIssue) return NextResponse.json({ error: textIssue }, { status: 400 });
+
+  // Optional: the forker's own assets and weights (the same editor and rules as Edit strategy). Without it the fork
+  // copies the source's current composition.
+  let assets = sourceVersion.recipe.assets;
+  if (body.composition !== undefined) {
+    const edit = parseCompositionEdit(body.composition);
+    if (!edit) return NextResponse.json({ error: 'composition must be a list of { address, weightBps }.' }, { status: 400 });
+    const resolved = await resolveCompositionAssets(admin, sourceVersion.recipe.chain, sourceVersion.recipe.assets, edit);
+    if (!resolved.ok) return NextResponse.json({ error: 'Forked recipe failed validation.', issues: resolved.issues }, { status: 422 });
+    assets = resolved.assets;
+  }
   const name = body.name?.trim() || (await defaultForkName(admin, source.name));
   const symbol =
     name
@@ -90,10 +103,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // Forks copy the parent's strategy type — only one exists today, but
       // this makes the copy exact rather than silently re-defaulting.
       strategyType: sourceVersion.recipe.strategyType,
-      assets: sourceVersion.recipe.assets,
+      assets,
       rebalanceRule: sourceVersion.recipe.rebalanceRule,
       minInvestment: sourceVersion.recipe.minInvestment,
-      maxAssets: sourceVersion.recipe.maxAssets,
+      maxAssets: Math.max(sourceVersion.recipe.maxAssets, defaultMaxAssets(assets.length)),
       minWeightBps: sourceVersion.recipe.minWeightBps,
       maxWeightBps: sourceVersion.recipe.maxWeightBps,
       mutability: source.mutability,

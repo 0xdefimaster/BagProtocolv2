@@ -12,6 +12,8 @@ vi.mock('@/lib/supabase/server', () => ({ isSupabaseConfigured: () => true, supa
 vi.mock('@/lib/auth/require-session', () => ({ requireSession: async () => ({ ok: true, session: { userId: 'forker', walletAddress: '0xf' } }) }));
 vi.mock('@/lib/server/rate-limit', () => ({ checkRateLimit: async () => ({ allowed: true }), rateLimitedResponseBody: () => ({}) }));
 vi.mock('@/lib/server/bag-asset-context', () => ({ loadRecipeAssets: async () => new Map() }));
+const getAssetsByIdentities = vi.fn(async () => [] as unknown[]);
+vi.mock('@/lib/server/asset-repo', () => ({ getAssetsByIdentities: (...a: unknown[]) => getAssetsByIdentities(...(a as [])) }));
 vi.mock('@/lib/server/user-profile-repo', () => ({ loadCreatorProfiles: async () => new Map() }));
 vi.mock('@/lib/mappers/bag-mapper', () => ({ mapBagRecordToApiResponse: (b: unknown) => b }));
 vi.mock('@/lib/server/bag-repo', async () => ({
@@ -71,5 +73,51 @@ describe('POST /api/bags/:id/fork names (names are unique, migration 0058)', () 
     expect(isBagNameAvailable).not.toHaveBeenCalled();
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ code: 'DUPLICATE_NAME' });
+  });
+});
+
+describe('POST /api/bags/:id/fork with the forker\'s own composition (same editor as Edit strategy)', () => {
+  const HELD = '0x' + 'a'.repeat(40);
+  const NEW = '0x' + 'c'.repeat(40);
+  beforeEach(() => {
+    getCurrentBagVersion.mockResolvedValue({
+      version: 2,
+      recipe: {
+        description: '',
+        chain: 'robinhood',
+        strategyType: 'STATIC_BASKET',
+        assets: [{ chain: 'robinhood', address: HELD, symbol: 'AAA', decimals: 6, weightBps: 10000 }],
+        rebalanceRule: {},
+        minInvestment: 1,
+        maxAssets: 10,
+        minWeightBps: 0,
+        maxWeightBps: 10000,
+      },
+    });
+    getAssetsByIdentities.mockReset();
+    getAssetsByIdentities.mockResolvedValue([{ chain: 'robinhood', address: NEW, symbol: 'CCC', decimals: 18, status: 'VERIFIED' }]);
+  });
+
+  it('creates the draft with the chosen assets: held ones keep their stored data, new ones come from the registry', async () => {
+    const res = await call({ name: 'Mine', composition: [{ address: HELD, weightBps: 4000 }, { address: NEW, weightBps: 6000 }] });
+    expect(res.status).toBe(201);
+    expect(createForkBag.mock.calls[0][1].recipe.assets).toEqual([
+      { chain: 'robinhood', address: HELD, symbol: 'AAA', decimals: 6, weightBps: 4000 },
+      { chain: 'robinhood', address: NEW, symbol: 'CCC', decimals: 18, weightBps: 6000 },
+    ]);
+    expect(createForkBag.mock.calls[0][1].recipe.name).toBe('Mine');
+  });
+
+  it('refuses an unverified asset (422) and a malformed composition (400); nothing is created', async () => {
+    getAssetsByIdentities.mockResolvedValue([]);
+    expect((await call({ composition: [{ address: NEW, weightBps: 10000 }] })).status).toBe(422);
+    expect((await call({ composition: [{ address: 'nope', weightBps: 10000 }] })).status).toBe(400);
+    expect(createForkBag).not.toHaveBeenCalled();
+  });
+
+  it('without a composition the source is copied as before', async () => {
+    expect((await call({ name: 'Copy' })).status).toBe(201);
+    expect(createForkBag.mock.calls[0][1].recipe.assets).toEqual([{ chain: 'robinhood', address: HELD, symbol: 'AAA', decimals: 6, weightBps: 10000 }]);
+    expect(getAssetsByIdentities).not.toHaveBeenCalled();
   });
 });

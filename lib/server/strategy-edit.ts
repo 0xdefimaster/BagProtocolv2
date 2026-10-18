@@ -1,12 +1,12 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { AssetIdentity, CanonicalAsset, RecipeAsset, ValidationIssue } from '@/types/basket-protocol';
+import { AssetIdentity, CanonicalAsset, ChainId, RecipeAsset, ValidationIssue } from '@/types/basket-protocol';
 import { assetIdentityKey } from '@/lib/domain/basket-protocol/asset-identity';
 import { getAssetsByIdentities } from '@/lib/server/asset-repo';
 import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
 import type { VersionChange } from '@/lib/server/bag-versioning';
 
 // -----------------------------------------------------------------------------
-// "Edit strategy": the creator changes only WHICH assets the Bag holds and their target weights; the client sends
+// "Edit strategy" (and "Fork", which starts a new Bag from an edited copy): the client sends
 // only (address, weightBps). Each asset's symbol and decimals come from the registry (VERIFIED, on the Bag's chain),
 // or from the current recipe for an asset it already holds. Everything else in the recipe is derived from the current
 // version by bag-versioning.ts (deriveVersionBody), never taken from the request.
@@ -47,19 +47,25 @@ export interface StrategyEditDeps {
   lookupAssets?: (admin: SupabaseClient, identities: AssetIdentity[]) => Promise<CanonicalAsset[]>;
 }
 
-export async function buildEditedRecipe(admin: SupabaseClient, bagId: string, edit: CompositionEdit[], deps: StrategyEditDeps = {}): Promise<EditedRecipeResult> {
-  const bag = await getBagById(admin, bagId);
-  if (!bag) return { ok: false, error: 'BAG_NOT_FOUND' };
-  const current = await getCurrentBagVersion(admin, bag.id);
-  if (!current) return { ok: false, error: 'BAG_NOT_FOUND' };
+export type ResolvedAssets = { ok: true; assets: RecipeAsset[] } | { ok: false; error: 'VALIDATION_FAILED'; issues: ValidationIssue[] };
 
-  const keys = edit.map((e) => assetIdentityKey({ chain: bag.chain, address: e.address }));
+/**
+ * (address, weightBps) pairs → recipe assets on `chain`: an asset `held` already keeps its stored symbol and
+ * decimals; any other must be VERIFIED in the registry on that chain. Shared by Edit strategy and Fork, so both accept
+ * exactly the same assets.
+ */
+export async function resolveCompositionAssets(
+  admin: SupabaseClient,
+  chain: ChainId,
+  heldAssets: RecipeAsset[],
+  edit: CompositionEdit[],
+  deps: StrategyEditDeps = {}
+): Promise<ResolvedAssets> {
+  const keys = edit.map((e) => assetIdentityKey({ chain, address: e.address }));
   if (new Set(keys).size !== keys.length) return { ok: false, error: 'VALIDATION_FAILED', issues: [issue('DUPLICATE_ASSET', 'An asset is listed twice.')] };
 
-  const held = new Map(current.recipe.assets.map((a) => [assetIdentityKey(a), a]));
-  const registry = new Map(
-    (await (deps.lookupAssets ?? getAssetsByIdentities)(admin, edit.map((e) => ({ chain: bag.chain, address: e.address })))).map((a) => [assetIdentityKey(a), a])
-  );
+  const held = new Map(heldAssets.map((a) => [assetIdentityKey(a), a]));
+  const registry = new Map((await (deps.lookupAssets ?? getAssetsByIdentities)(admin, edit.map((e) => ({ chain, address: e.address })))).map((a) => [assetIdentityKey(a), a]));
 
   const assets: RecipeAsset[] = [];
   const issues: ValidationIssue[] = [];
@@ -72,12 +78,19 @@ export async function buildEditedRecipe(admin: SupabaseClient, bagId: string, ed
     }
     const listed = registry.get(key);
     if (!listed || listed.status !== 'VERIFIED') {
-      issues.push(issue('UNVERIFIED_ASSET', `${e.address} is not a verified asset on ${bag.chain}.`));
+      issues.push(issue('UNVERIFIED_ASSET', `${e.address} is not a verified asset on ${chain}.`));
       return;
     }
     assets.push({ chain: listed.chain, address: listed.address, symbol: listed.symbol, decimals: listed.decimals, weightBps: e.weightBps });
   });
-  if (issues.length > 0) return { ok: false, error: 'VALIDATION_FAILED', issues };
+  return issues.length > 0 ? { ok: false, error: 'VALIDATION_FAILED', issues } : { ok: true, assets };
+}
 
-  return { ok: true, recipe: { assets } };
+export async function buildEditedRecipe(admin: SupabaseClient, bagId: string, edit: CompositionEdit[], deps: StrategyEditDeps = {}): Promise<EditedRecipeResult> {
+  const bag = await getBagById(admin, bagId);
+  if (!bag) return { ok: false, error: 'BAG_NOT_FOUND' };
+  const current = await getCurrentBagVersion(admin, bag.id);
+  if (!current) return { ok: false, error: 'BAG_NOT_FOUND' };
+  const resolved = await resolveCompositionAssets(admin, bag.chain, current.recipe.assets, edit, deps);
+  return resolved.ok ? { ok: true, recipe: { assets: resolved.assets } } : resolved;
 }

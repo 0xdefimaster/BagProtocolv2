@@ -4,10 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, CheckCircle2, AlertTriangle, Pencil, X } from 'lucide-react';
 import { useWallet } from '@/lib/wallet-context';
 import { useEditStrategy } from '@/hooks/use-edit-strategy';
-import { fetchRegistryAssetsForChain } from '@/lib/registry-assets-client';
-import { AssetSelector } from '@/components/create/AssetSelector';
-import { bpsToPercent, equalWeightsBps, percentToBps } from '@/lib/weight-input';
-import type { Asset } from '@/lib/create-assets-data';
+import { CompositionEditor, rowsFromBag, summarizeComposition, type CompositionRow } from '@/components/bags/CompositionEditor';
 import type { Bag } from '@/types';
 
 // -----------------------------------------------------------------------------
@@ -17,20 +14,6 @@ import type { Bag } from '@/types';
 // Everything else about the Bag (name, rules, fee) stays as it is.
 // -----------------------------------------------------------------------------
 
-interface Row {
-  address: string;
-  symbol: string;
-  percent: string;
-}
-
-const idOf = (chain: string, address: string) => `${chain}:${address.toLowerCase()}`;
-
-function rowsFromBag(bag: Bag): Row[] {
-  return bag.composition
-    .filter((p) => typeof p.address === 'string')
-    .map((p) => ({ address: p.address as string, symbol: p.symbol, percent: bpsToPercent(p.weightBps ?? Math.round(p.weight * 100)) }));
-}
-
 export function EditStrategyPanel({ bag, onSaved }: { bag: Bag; onSaved?: () => void }) {
   const chain = bag.chains[0] ?? 'robinhood';
   const { isConnected, walletAddress, connect } = useWallet();
@@ -39,10 +22,8 @@ export function EditStrategyPanel({ bag, onSaved }: { bag: Bag; onSaved?: () => 
   // A failed status read alone (e.g. RPC briefly down) is not worth a banner on a closed panel; a failed recovery is.
   const [recoverTried, setRecoverTried] = useState(false);
   const [open, setOpen] = useState(false);
-  const [rows, setRows] = useState<Row[]>(() => rowsFromBag(bag));
+  const [rows, setRows] = useState<CompositionRow[]>(() => rowsFromBag(bag));
   const [reason, setReason] = useState('');
-  const [pool, setPool] = useState<Asset[]>([]);
-  const [poolLoading, setPoolLoading] = useState(false);
   const resumed = useRef(false);
 
   // A version transaction sent before a refresh is confirmed without asking for another signature; otherwise the
@@ -97,51 +78,10 @@ export function EditStrategyPanel({ bag, onSaved }: { bag: Bag; onSaved?: () => 
     onSaved?.();
   }, [state.phase, onSaved]);
 
-  useEffect(() => {
-    if (!open || pool.length > 0) return;
-    let cancelled = false;
-    setPoolLoading(true);
-    void fetchRegistryAssetsForChain(chain).then((assets) => {
-      if (cancelled) return;
-      setPool(assets);
-      setPoolLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, chain, pool.length]);
-
   const original = useMemo(() => rowsFromBag(bag), [bag]);
-  const parsed = rows.map((r) => percentToBps(r.percent));
-  const totalBps = parsed.reduce<number>((sum, bps) => sum + (bps ?? 0), 0);
-  const allValid = parsed.every((bps) => bps !== null);
-
-  const diff = useMemo(() => {
-    const before = new Map(original.map((r) => [r.address.toLowerCase(), r]));
-    const after = new Map(rows.map((r) => [r.address.toLowerCase(), r]));
-    const added = rows.filter((r) => !before.has(r.address.toLowerCase())).map((r) => r.symbol);
-    const removed = original.filter((r) => !after.has(r.address.toLowerCase())).map((r) => r.symbol);
-    const changed = rows
-      .filter((r) => {
-        const prev = before.get(r.address.toLowerCase());
-        return prev && percentToBps(prev.percent) !== percentToBps(r.percent);
-      })
-      .map((r) => `${r.symbol} ${before.get(r.address.toLowerCase())!.percent}% → ${r.percent}%`);
-    return { added, removed, changed, any: added.length + removed.length + changed.length > 0 };
-  }, [original, rows]);
-
+  const summary = useMemo(() => summarizeComposition(original, rows), [original, rows]);
   const busy = state.phase === 'preparing' || state.phase === 'awaiting_signature' || state.phase === 'confirming';
-  const canSave = !busy && rows.length > 0 && allValid && totalBps === 10_000 && diff.any;
-  // The selector matches its own ids exactly; take the pool's id for each held asset (address case may differ).
-  const selectedIds = rows.map((r) => pool.find((a) => a.address?.toLowerCase() === r.address.toLowerCase())?.id ?? idOf(chain, r.address));
-
-  const addAsset = (assetId: string) => {
-    const asset = pool.find((a) => a.id.toLowerCase() === assetId.toLowerCase());
-    if (!asset?.address || rows.some((r) => r.address.toLowerCase() === asset.address!.toLowerCase())) return;
-    setRows((prev) => [...prev, { address: asset.address!, symbol: asset.symbol, percent: '0' }]);
-  };
-  const removeAsset = (address: string) => setRows((prev) => prev.filter((r) => r.address.toLowerCase() !== address.toLowerCase()));
-  const equalize = () => setRows((prev) => equalWeightsBps(prev.length).map((bps, i) => ({ ...prev[i], percent: bpsToPercent(bps) })));
+  const canSave = !busy && summary.complete && summary.changedAny;
 
   const save = () => {
     if (!canSave) return;
@@ -149,11 +89,7 @@ export function EditStrategyPanel({ bag, onSaved }: { bag: Bag; onSaved?: () => 
       void connect();
       return;
     }
-    void submit(
-      walletAddress,
-      rows.map((r, i) => ({ address: r.address, weightBps: parsed[i] as number })),
-      reason.trim()
-    );
+    if (summary.entries) void submit(walletAddress, summary.entries, reason.trim());
   };
 
   const close = () => {
@@ -204,63 +140,12 @@ export function EditStrategyPanel({ bag, onSaved }: { bag: Bag; onSaved?: () => 
         signature, network fee only).
       </p>
 
-      <div className="space-y-2">
-        {rows.map((r, i) => (
-          <div key={r.address} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ flex: 1, color: 'var(--ink)', fontWeight: 600 }}>{r.symbol}</span>
-            <input
-              type="text"
-              inputMode="decimal"
-              aria-label={`${r.symbol} weight in percent`}
-              value={r.percent}
-              disabled={busy}
-              onChange={(e) => setRows((prev) => prev.map((x, j) => (j === i ? { ...x, percent: e.target.value } : x)))}
-              style={{ width: 90, textAlign: 'right', borderColor: parsed[i] === null ? 'var(--red, #E5786D)' : undefined }}
-            />
-            <span className="text-white/60">%</span>
-            <button type="button" aria-label={`Remove ${r.symbol}`} disabled={busy || rows.length <= 1} onClick={() => removeAsset(r.address)} style={{ background: 'none', border: 'none', color: 'var(--ink-soft)', cursor: 'pointer' }}>
-              <X size={16} />
-            </button>
-          </div>
-        ))}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
-          <button type="button" className="btn btn-secondary" disabled={busy || rows.length === 0} onClick={equalize}>
-            Equal weights
-          </button>
-          <span data-testid="edit-strategy-total" style={{ color: totalBps === 10_000 ? 'var(--green, #6FCF97)' : 'var(--red, #E5786D)' }}>
-            Total {bpsToPercent(totalBps)}%
-          </span>
-        </div>
-      </div>
-
-      <details>
-        <summary className="text-sm text-white/70" style={{ cursor: 'pointer' }}>Add or remove assets</summary>
-        <div className="mt-3">
-          <AssetSelector
-            assets={pool}
-            selectedIds={selectedIds}
-            onSelect={addAsset}
-            onDeselect={(assetId) => {
-              const asset = pool.find((a) => a.id.toLowerCase() === assetId.toLowerCase());
-              if (asset?.address && rows.length > 1) removeAsset(asset.address);
-            }}
-            loadingRegistryAssets={poolLoading}
-          />
-        </div>
-      </details>
+      <CompositionEditor chain={chain} original={original} rows={rows} onChange={setRows} disabled={busy} />
 
       <div className="field">
         <label className="text-sm text-white/70">Why this change? (shown in the version history)</label>
         <textarea value={reason} maxLength={500} rows={2} disabled={busy} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Swapped X for Y, trimmed Z" />
       </div>
-
-      {diff.any && (
-        <div data-testid="edit-strategy-diff" className="text-sm text-white/70">
-          {diff.added.length > 0 && <div>Added: {diff.added.join(', ')}</div>}
-          {diff.removed.length > 0 && <div>Removed: {diff.removed.join(', ')}</div>}
-          {diff.changed.length > 0 && <div>Changed: {diff.changed.join(', ')}</div>}
-        </div>
-      )}
 
       {state.phase === 'failed' && state.error && (
         <div role="alert" style={{ display: 'flex', gap: 8, color: 'var(--red, #E5786D)', fontSize: 13 }}>
