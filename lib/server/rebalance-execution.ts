@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { PublicClient } from 'viem';
 import type { PriceProvider } from '@/lib/domain/basket-protocol/pricing';
+import type { ComposerFallbackNotice } from '@/types/purchase-intent';
 import { planRebalance, type RebalancePlanBuy, type RebalancePlanSell } from '@/lib/server/rebalance-quote';
 import { findActiveRedeemIntentForBag } from '@/lib/server/redeem-intent-repo';
 import { TX_HASH_RE } from '@/lib/server/intent-tx-claims';
@@ -131,7 +132,9 @@ export async function hasOpenRebalance(admin: SupabaseClient, userId: string, ba
   return (await openRebalanceFor(admin, userId, bagId, now))?.id ?? null;
 }
 
-export type CreateRebalanceOutcome = { ok: true; intent: RebalanceIntent } | { ok: false; status: number; error: string };
+export type CreateRebalanceOutcome =
+  | { ok: true; intent: RebalanceIntent }
+  | { ok: false; status: number; error: string; composerFallback?: ComposerFallbackNotice; acceptablePriceImpactBps?: number | null };
 
 export async function createRebalanceIntent(
   admin: SupabaseClient,
@@ -139,7 +142,7 @@ export async function createRebalanceIntent(
   priceProvider: PriceProvider,
   session: { userId: string; walletAddress: string },
   bagId: string,
-  options: { apiKey: string | undefined; fetchImpl?: typeof fetch; now?: Date }
+  options: { apiKey: string | undefined; fetchImpl?: typeof fetch; now?: Date; acceptedPriceImpactBps?: number }
 ): Promise<CreateRebalanceOutcome> {
   const now = options.now ?? new Date();
   if (await openRebalanceFor(admin, session.userId, bagId, now)) {
@@ -149,7 +152,7 @@ export async function createRebalanceIntent(
     return { ok: false, status: 409, error: 'A sale of this position is in progress; rebalance once it has settled.' };
   }
   const plan = await planRebalance(admin, client, priceProvider, session, bagId, options);
-  if (!plan.ok) return { ok: false, status: plan.status, error: plan.error };
+  if (!plan.ok) return plan;
 
   const { data, error } = await admin
     .from('rebalance_intents')
