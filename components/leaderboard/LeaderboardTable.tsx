@@ -5,6 +5,7 @@ import { CreatorAvatar } from '@/components/creator/CreatorAvatar';
 import { VerificationBadge } from '@/components/bags/VerificationBadge';
 import { formatCompact, formatReturn, formatUsdCompact } from '@/lib/format';
 import type { BagMetric, RankedBag, RankedCreator } from '@/lib/domain/leaderboard/rank';
+import { bagDisplayName } from '@/lib/bag-display-name';
 
 const same = (a: string | undefined, b: string | undefined) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
@@ -37,7 +38,7 @@ export function BagLeaderboardTable({ rows, metric, metricLabel, selfAddress }: 
               </td>
               <td>
                 <Link href={`/dashboard/bag/${bag.id}`} className="lb-trader">
-                  {bag.name}
+                  {bagDisplayName(bag)}
                 </Link>
               </td>
               <td>

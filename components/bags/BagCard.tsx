@@ -12,6 +12,7 @@ import { Users, GitFork, TrendingUp, TrendingDown, Star } from 'lucide-react';
 import { VerificationBadge } from '@/components/bags/VerificationBadge';
 import { assessRisk } from '@/lib/domain/discovery/bag-discovery';
 import { useWatchlist } from '@/lib/watchlist-store';
+import { bagDisplayName } from '@/lib/bag-display-name';
 
 // Loaded when Invest is opened: the purchase flow (LI.FI SDK, viem) stays out of every page that lists Bags.
 const PurchasePreviewModal = dynamic(() => import('@/components/app/PurchasePreviewModal').then((m) => m.PurchasePreviewModal), { ssr: false });
@@ -78,7 +79,7 @@ export function BagCard({ bag, isNew }: BagCardProps) {
             </span>
           </span>
           <div style={{ minWidth: 0 }}>
-            <div className="bag-card-title">{bag.name}</div>
+            <div className="bag-card-title">{bagDisplayName(bag)}</div>
             <div className="bag-card-sub">
               by <span className="creator-link" onClick={handleCreatorClick}>{bag.creator.name}</span>
             </div>

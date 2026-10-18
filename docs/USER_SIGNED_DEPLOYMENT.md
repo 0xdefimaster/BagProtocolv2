@@ -260,10 +260,10 @@ calls the deployed `Bag.recordVersion`. The server never signs.
 
 | Step | Where |
 |---|---|
-| 1. Creator submits the new recipe | `POST /api/bags/[id]/versions/prepare` → `prepareBagVersionUpdate()` |
-| 2. Validation, composition hash and metadata URI; checks that the Bag is mutable, deployed, owned by the session user, created on-chain by the session wallet, fee-lock compatible, and that `Bag.version()` equals the recorded `bag_deployments.on_chain_version` | `lib/server/bag-versioning.ts` |
-| 3. Returns unsigned calldata; the creator's wallet signs and sends it | browser wallet |
-| 4. Creator re-submits the recipe with the `txHash` | `POST /api/bags/[id]/versions/confirm` → `confirmBagVersionUpdate()` |
+| 1. Creator submits the new assets and weights (`{ composition: [{ address, weightBps }] }`) | `POST /api/bags/[id]/versions/prepare` → `prepareBagVersionUpdate()` |
+| 2. Every other recipe field is taken from the current version (`deriveVersionBody`); a client value that differs is refused (`IMMUTABLE_FIELD`). Then validation, composition hash and metadata URI; checks that the Bag is mutable, deployed, owned by the session user, created on-chain by the session wallet, and that `Bag.version()` equals the recorded `bag_deployments.on_chain_version` | `lib/server/bag-versioning.ts` |
+| 3. Stores the canonical body as a pending proposal (migration 0059; a different body for the same on-chain composition is refused, `PROPOSAL_CONFLICT`), then returns unsigned calldata; the creator's wallet signs and sends it | `save_bag_version_proposal()`, browser wallet |
+| 4. Creator re-submits the same body with the `txHash` — or, from any browser, `POST …/versions/recover`, which finds the version on chain itself | `POST /api/bags/[id]/versions/confirm` → `confirmBagVersionUpdate()`; `lib/server/bag-version-recovery.ts` |
 | 5. Verifies the tx, the receipt (bounded wait, confirmation depth), and exactly one `BagVersionRecorded` plus exactly one `CompositionUpdated` matching the server-derived bagId, address, creator, version, hash and URI | `lib/blockchain/evm/version-adapter.ts` |
 | 6. Records the version atomically, only after step 5 | `record_onchain_bag_version()` (migration 0035) |
 
@@ -284,16 +284,19 @@ calls the deployed `Bag.recordVersion`. The server never signs.
 - **The database cannot run ahead of the chain.** `create_bag_version`
   (off-chain only) refuses a deployed Bag. Undeployed DRAFT Bags keep
   versioning off-chain; the deployment then commits to the latest version.
-- **Fee lock.** If the performance fee locks between prepare and confirm, the
-  already-mined version is recorded with the locked fee and flagged
-  `feeLockedOverride`. The on-chain hash covers the composition only, so the
-  chain and the database still agree.
+- **Only the composition changes.** The on-chain hash covers the assets only
+  (chain, address, symbol, decimals, weight). Name, rules, minimum, policy and
+  the performance fee are therefore fixed to the current version's in every
+  version update: one on-chain composition always means one recipe, and a
+  version update can no longer change the fee. (`feeLockedOverride` remains as
+  a guard and stays false in normal operation.)
 
 **Contract ABI change.** `createBag` now takes a fourth argument,
 `bool isMutable`. `BagCreated` is unchanged. Any already-deployed factory from
 before this change must be redeployed.
 
-**Not built.** There is no version-editing UI yet. The two routes and the
-server functions are complete and tested
-(`bag-versioning-local-evm.integration.test.ts`, contract tests in
-`contracts/test/BagFactory.test.ts`).
+**UI.** The Bag page's "Edit strategy" panel (creator only) drives this flow and
+shows "Complete update" when the chain is ahead of the database. Tests:
+`bag-versioning-local-evm.integration.test.ts`,
+`bag-version-recovery-local-evm.integration.test.ts`, contract tests in
+`contracts/test/BagFactory.test.ts`.

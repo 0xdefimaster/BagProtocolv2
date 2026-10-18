@@ -35,8 +35,10 @@ import { MyBagPosition } from '@/components/bags/MyBagPosition';
 import { DeployBagPanel } from '@/components/bags/DeployBagPanel';
 import { StrategyRegistryPanel } from '@/components/bags/StrategyRegistryPanel';
 import { RebalancePreviewCard } from '@/components/bags/RebalancePreviewCard';
+import { EditStrategyPanel } from '@/components/bags/EditStrategyPanel';
 import { StockQuote } from '@/components/bags/StockQuote';
 import { useStockQuotes } from '@/hooks/useStockQuotes';
+import { bagDisplayName } from '@/lib/bag-display-name';
 
 function unroutableLabel(policy: string | undefined): { title: string; detail: string } {
   if (policy === 'HOLD_INPUT') {
@@ -243,7 +245,10 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
 
           {bag.status === 'ACTIVE' && (
             <div className="mb-8 space-y-6">
-              <StrategyRegistryPanel bagId={bag.id} />
+              {/* The server checks creator, wallet, MUTABLE and deployment again; this only hides the button from others. */}
+              {isOwnBag && bag.mutability === 'MUTABLE' && <EditStrategyPanel bag={bag} onSaved={refreshAfterTrade} />}
+              {/* Remounted per version, so a newly saved version is offered for registration right away. */}
+              <StrategyRegistryPanel key={bag.version ?? 0} bagId={bag.id} />
               <RebalancePreviewCard bagId={bag.id} refreshKey={tradeRefresh} onRebalanced={refreshAfterTrade} />
             </div>
           )}
@@ -253,7 +258,7 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
             <div className="md:col-span-2 space-y-6">
               <div>
                 <h1 className="text-4xl md:text-5xl font-bold text-white mb-2">
-                  {bag.name}
+                  {bagDisplayName(bag)}
                 </h1>
                 <p className="text-lg text-white/60">{bag.description}</p>
                 <RiskSummary composition={bag.composition} />

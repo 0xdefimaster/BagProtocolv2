@@ -187,6 +187,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Recipe validation failed.', issues: result.issues }, { status: 422 });
       case 'DUPLICATE_SLUG':
         return NextResponse.json({ error: result.message }, { status: 409 });
+      case 'DUPLICATE_NAME':
+        return NextResponse.json({ error: result.message, code: 'DUPLICATE_NAME' }, { status: 409 });
       case 'DB_ERROR':
         return NextResponse.json({ error: result.message }, { status: 502 });
     }

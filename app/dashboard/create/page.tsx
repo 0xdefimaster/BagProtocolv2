@@ -20,6 +20,7 @@ import { DeployBagPanel } from '@/components/bags/DeployBagPanel';
 import { PurchasePreviewModal } from '@/components/app/PurchasePreviewModal';
 import { isNativePaymentChain } from '@/lib/payments/native-payment';
 import { LaunchBuyBalance } from '@/components/create/LaunchBuyBalance';
+import { useBagNameAvailable } from '@/hooks/use-bag-name-available';
 
 const INVEST_PRESETS = ['0', '10', '100', '500', '1000'];
 const ETH_INVEST_PRESETS = ['0', '0.01', '0.05', '0.1', '0.5'];
@@ -81,6 +82,9 @@ export default function CreatePage() {
   const { addNotification } = useNotifications();
   const { signIn, connect, isConnected, isSigningIn, authError, walletAddress } = useWallet();
   const [bagName, setBagName] = useState('');
+  // Names are unique across BAG (case and spacing ignored); the server checks again on create.
+  const nameAvailability = useBagNameAvailable(bagName);
+  const nameTaken = nameAvailability === 'taken';
   const [description, setDescription] = useState('');
   const [thesis, setThesis] = useState('');
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
@@ -265,11 +269,11 @@ export default function CreatePage() {
   const noRouteAssetIds = new Set(noRouteAssets.map((a) => a!.id));
 
   const totalAllocation = selectedAssetIds.reduce((sum, id) => sum + (allocations[id] || 0), 0);
-  const isValid = totalAllocation === 100 && selectedAssetIds.length > 0;
+  const isValid = totalAllocation === 100 && selectedAssetIds.length > 0 && !nameTaken;
 
   const steps = [
     { key: 'basic', label: 'Bag Info', disabled: false },
-    { key: 'assets', label: 'Select Assets', disabled: !bagName },
+    { key: 'assets', label: 'Select Assets', disabled: !bagName || nameTaken },
     { key: 'allocation', label: 'Allocate', disabled: selectedAssetIds.length === 0 },
     { key: 'review', label: 'Review', disabled: !isValid },
   ] as const;
@@ -432,7 +436,13 @@ export default function CreatePage() {
                   placeholder="e.g., AI Leaders, L2 Ecosystem, etc."
                   value={bagName}
                   onChange={(e) => setBagName(e.target.value)}
+                  aria-invalid={nameTaken}
                 />
+                {nameTaken && (
+                  <div role="alert" data-testid="bag-name-taken" style={{ marginTop: 6, fontSize: 12, color: 'var(--red, #E5786D)' }}>
+                    A Bag with this name already exists. Pick another name.
+                  </div>
+                )}
               </div>
               <div className="field">
                 <label>Description</label>
@@ -472,7 +482,7 @@ export default function CreatePage() {
                 )}
               </div>
               <div className="create-actions">
-                <button className="btn btn-primary" disabled={!bagName} onClick={() => setCurrentStep('assets')}>
+                <button className="btn btn-primary" disabled={!bagName || nameTaken} onClick={() => setCurrentStep('assets')}>
                   Next: Select Assets <ArrowRight size={17} />
                 </button>
               </div>

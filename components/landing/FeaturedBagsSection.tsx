@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePublicBags } from '@/hooks/usePublicBags';
+import { bagDisplayName } from '@/lib/bag-display-name';
 
 // -----------------------------------------------------------------------------
 // Strategy discovery: what a visitor sees for any Bag (an annotated EXAMPLE
@@ -140,7 +141,7 @@ export default function FeaturedBagsSection() {
             const topAssets = [...bag.composition].sort((a, b) => b.weight - a.weight).slice(0, 3);
             return (
               <Link href={`/dashboard/bag/${bag.id}`} className="landing-bag-card" key={bag.id}>
-                <div className="lbc-name">{bag.name}</div>
+                <div className="lbc-name">{bagDisplayName(bag)}</div>
                 <div className="lbc-creator">{bag.creator?.name ?? 'Unknown creator'}</div>
                 <div className="lbc-composition">
                   {topAssets.map((asset, i) => (
