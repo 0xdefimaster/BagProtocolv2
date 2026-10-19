@@ -18,7 +18,8 @@ function graph(): BagExecutionGraph {
     id: `leg_${i}`,
     sourceAsset: USDG,
     targetAsset: target(address),
-    amountRaw: '333333',
+    // The legs spend the whole deposit, as a real plan's allocation does.
+    amountRaw: i === 2 ? '333334' : '333333',
     weightBps: i === 2 ? 3334 : 3333,
     minimumOutputRaw: null,
     slippageBps: 100,
@@ -111,5 +112,35 @@ describe('LiFiComposerProvider — consent, slippage and refusals (same rules as
     });
     buildComposerPurchaseMock.mockRejectedValueOnce(await composeError('simulation_revert', 'execution reverted'));
     await expect(new LiFiComposerProvider({ apiKey: 'k' }).compile({} as BagExecutionIntent, graph())).rejects.toThrow('execution reverted');
+  });
+});
+
+describe('LiFiComposerProvider — legs planned by the SDK partition planner', () => {
+  it('sends Composer only what the legs spend (a kept part is never swapped) and maps outputs back in planner order', async () => {
+    const g = graph();
+    // Legs in reverse address order, 400k + 300k + 200k of a 1M deposit: 100k stays in the input asset.
+    const legs = [
+      { ...g.legs[0], id: 'leg_c', targetAsset: target('0xccc'), amountRaw: '200000' },
+      { ...g.legs[1], id: 'leg_b', targetAsset: target('0xbbb'), amountRaw: '300000' },
+      { ...g.legs[2], id: 'leg_a', targetAsset: target('0xaaa'), amountRaw: '400000' },
+    ];
+    const outputs = Object.fromEntries(
+      ['400', '300', '200'].map((v, i) => [`swap_${i}.amountOut`, { role: 'terminal', resource: { kind: 'erc20', token: '0x', chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: v }, minimum: { basis: 'op', value: v } } }])
+    );
+    buildComposerPurchaseMock.mockResolvedValue({ approvals: [], transactionRequest: { to: '0xvm', data: '0x', value: '0', chainId: 4663 }, userProxy: '0xproxy', outputs, gasLimitRaw: null, priceImpact: null, fees: [] });
+    const compiled = await new LiFiComposerProvider({ apiKey: 'k' }).compile({} as BagExecutionIntent, { ...g, legs } as BagExecutionGraph);
+    expect(buildComposerPurchaseMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        inputAmountRaw: '900000',
+        legs: [
+          // 4444.4 / 3333.3 / 2222.2 → the one leftover bp to the largest remainder.
+          { address: '0xaaa', weightBps: 4445, symbol: '0xaaa' },
+          { address: '0xbbb', weightBps: 3333, symbol: '0xbbb' },
+          { address: '0xccc', weightBps: 2222, symbol: '0xccc' },
+        ],
+      })
+    );
+    // leg_c is Composer leg 2, leg_a is leg 0.
+    expect(compiled.expectedOutputs.map((o) => [o.legId, o.quotedOutputRaw])).toEqual([['leg_c', '200'], ['leg_b', '300'], ['leg_a', '400']]);
   });
 });

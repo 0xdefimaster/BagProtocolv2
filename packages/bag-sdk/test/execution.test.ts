@@ -70,7 +70,7 @@ function fakeProvider(override: (r: ComposerCompileResult, q: ComposerCompileReq
 }
 
 describe('planPurchase', () => {
-  it('exact target allocation, whole-bp legs, cascade, limits, and the accounting boundary', () => {
+  it('exact target allocation, whole-bp legs, partition, limits, and the accounting boundary', () => {
     const plan = planPurchase(doc(), req());
     expect(plan.chainId).toBe(4663);
     expect(plan.kept).toBeNull();
@@ -79,7 +79,7 @@ describe('planPurchase', () => {
       { token: B, targetInputRaw: BigInt(6_000_000), legBps: 6000 },
     ]);
     expect(plan.swapAmountRaw).toBe(BigInt(10_000_000));
-    expect(plan.cascadeSplitBps).toEqual([4000]);
+    expect(plan.partition).toEqual({ outerBps: [4000, 6000], groups: [{ legs: [0], innerBps: null }, { legs: [1], innerBps: null }] });
     expect(plan.slippageBps).toBe(100); // declared
     expect(plan.maxPriceImpactBps).toBe(V1_EXECUTION_POLICY.maxPriceImpactBps);
     expect(plan.accounting).toBe('NOT_BAG_ACCOUNTED');
@@ -95,7 +95,7 @@ describe('planPurchase', () => {
     expect(plan.kept).toEqual({ token: USDG, amountRaw: BigInt(4_000_000) });
     expect(plan.legs).toEqual([{ token: '0xb0000000000000000000000000000000000000bb', targetInputRaw: BigInt(6_000_000), legBps: 10000 }]);
     expect(plan.swapAmountRaw).toBe(BigInt(6_000_000));
-    expect(plan.cascadeSplitBps).toEqual([]);
+    expect(plan.partition).toEqual({ outerBps: [10000], groups: [{ legs: [0], innerBps: null }] });
   });
 
   it('slippage: declared, capped at 300, default 100 for null; a caller can only tighten', () => {
@@ -135,8 +135,8 @@ describe('compileBag / quoteBag', () => {
     expect(compiled.approvals).toEqual([{ token: USDG, spender: SPENDER, amountRaw: BigInt(10_000_000) }]);
     expect(compiled.quote.legs.map((l) => l.minOutRaw)).toEqual(['990', '990']);
     expect(provider.requests[0]).toEqual({
-      chainId: 4663, inputToken: USDG, inputKind: 'erc20', amountRaw: BigInt(10_000_000), signer: SIGNER, legs: [{ token: A }, { token: B }],
-      cascadeSplitBps: [4000], slippageBps: 100, maxPriceImpactBps: 500,
+      chainId: 4663, inputToken: USDG, inputKind: 'erc20', amountRaw: BigInt(10_000_000), signer: SIGNER, legs: [{ token: A, legBps: 4000 }, { token: B, legBps: 6000 }],
+      slippageBps: 100, maxPriceImpactBps: 500,
     });
     const quote = await quoteBag(doc(), req(), { provider: fakeProvider(), trust: TRUST });
     expect(quote.priceImpactBps).toBe(12);
@@ -213,7 +213,7 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     expect(() => lifiComposer({ apiKey: 'k', baseUrl: '' })).toThrow(/baseUrl/);
   });
 
-  it('builds the split/swap flow from the plan and maps the compile response', async () => {
+  it('builds the partition/swap flow from the plan and maps the compile response', async () => {
     const fetchImpl = composeFetch(compileData);
     const compiled = await compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'test-key', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST });
     expect(compiled.transaction).toEqual({ to: ROUTER, data: '0xdeadbeef', value: BigInt(0), chainId: 4663 });
@@ -223,7 +223,8 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     const calls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls as [string, RequestInit][];
     const compose = calls.find(([url]) => String(url).endsWith('/compose'))!;
     const body = String(compose[1].body);
-    expect(body).toContain('"bps":4000'); // the cascade split
+    expect(body).toContain('"bps":[4000,6000]'); // one core.partition by the legs' bps
+    expect(body).not.toContain('core.split');
     expect(body).toContain('"maxPriceImpactBps":500');
     expect(body.toLowerCase()).toContain(SIGNER);
     expect(JSON.stringify(compose[1].headers)).toContain('test-key');

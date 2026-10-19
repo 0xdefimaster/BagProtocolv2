@@ -12,7 +12,7 @@ It needs no BAG frontend, server or database.
   Getting the bytes is an adapter's job:
   - `@bag-protocol/sdk/http`: `fetchBag(url, { fetch })`.
   - `@bag-protocol/sdk/evm`: `readTokenDecimals(definition, clientFor)`.
-  - `@bag-protocol/sdk/lifi`: `lifiComposer({ apiKey, baseUrl })`, a routing provider for quote/compile (optional peer `@lifi/composer-sdk`).
+  - `@bag-protocol/sdk/lifi`: `lifiComposer({ apiKey, baseUrl })`, a routing provider for quote/compile (optional peer `@lifi/composer-sdk` `>=0.11.0 <0.12.0`, tested with 0.11.3: `COMPOSER_SDK_COMPAT`).
   - Other sources (a local file, IPFS, wallet storage, a registry `uri`) end in the same `parseBag(text)`.
 - Network access only through what you pass in (a `fetch`, a viem client).
 - Status: in-repo package (`private`), not published to npm yet.
@@ -187,11 +187,13 @@ The parts always sum to the deposit, with nothing left over and nothing created.
 - spend the **whole** deposit, with no unallocated remainder and nothing created;
 - give each asset its target amount, within **2 bps of the deposit**.
 
-An executor that splits off-chain into fixed per-asset amounts (BAG's sequential path) hits the target exactly. An executor that splits on-chain by basis-point ratios cannot. This is the case for LI.FI Composer: `core.split` divides one input in two by a bps ratio, so an N-asset purchase is a cascade of N−1 splits. Two things make it deviate:
-- each step's ratio is rounded to a whole bp of the *remaining* amount, giving at most 0.95 bp of the deposit per asset (measured over 20,000 random baskets);
-- the target amounts are converted to whole-bp weights first, adding less than 1 bp.
+An executor that splits off-chain into fixed per-asset amounts (BAG's sequential path) hits the target exactly. An executor that splits on-chain by basis-point ratios cannot. This is the case for LI.FI Composer: `core.partition` divides one input into 2–16 shares by whole-bp ratios (each share rounded down, the last one takes the remainder). BAG and the SDK build it the same way, with one implementation (`partition.ts`):
 
-The last asset absorbs what remains, so the whole deposit is still spent. This bound is pinned by a test (`bag-sdk-consistency.test.ts`). On a 10 USDG purchase, 2 bps is at most 0.2 cents per asset.
+1. **Leg weights:** the exact target amounts become whole-bp weights by largest remainder, in bigint (`largestRemainderBps`): `floor(10000 × amount_i / total)`, the bps lost to flooring one each to the largest remainders, ties by token address ascending. They sum to exactly 10000.
+2. **Partition:** one node for 2–16 legs. Above 16, an outer node over at most 16 groups (sizes as even as possible) and one node per group, its members' weights rescaled to 10000 by the same rule (`planPartition`).
+3. **Legs** are in canonical order (token address ascending, `planPartitionLegs`), so the same targets always build the same nodes.
+
+Each leg then lands within 1 bp of the swapped amount of its target (below 2 bps with the second level above 16 legs), plus a few raw units of flooring. The bound is pinned by tests (`bag-sdk-consistency.test.ts`, `split-weight-adversarial.test.ts`). On a 10 USDG purchase, 2 bps is at most 0.2 cents per asset. A leg whose share would round below 1 bp cannot be expressed: the SDK refuses the plan (`AMOUNT_TOO_SMALL`); BAG buys that purchase per asset instead.
 
 Before v1 was frozen, BAG accepted 9998–10002 at version creation but its purchase path already refused anything but exactly 10000. Both now require exactly 10000. The create UI always sent whole percents summing to 100.
 
@@ -294,7 +296,7 @@ A provider answer that breaks any row is refused with `ProviderResponseError`.
 
 | Function | What it does |
 |---|---|
-| `planPurchase` | Pure plan: exact target allocation (`splitByWeight`), the asset that is the input token is kept (never swapped), whole-bp legs and their on-chain cascade, slippage and price-impact limits |
+| `planPurchase` | Pure plan: exact target allocation (`splitByWeight`), the asset that is the input token is kept (never swapped), whole-bp legs (largest remainder) and the `core.partition` that divides the swap between them, slippage and price-impact limits |
 | `quoteBag` / `compileBag` | Ask the provider for the route and return the quote, or the quote plus the **unsigned** transaction and the approvals it needs |
 | `simulateBag` | Dry run with `eth_call` from the signer on your client: input balance, then approvals, then the call. A point-in-time check, not a guarantee |
 

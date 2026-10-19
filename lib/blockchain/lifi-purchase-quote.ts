@@ -6,6 +6,7 @@ import { getLiFiClient, toLiFiChainId } from './lifi-config';
 import { getLiFiTokenData } from './lifi-token-data';
 import { mapLiFiError } from './lifi-execution-adapter';
 import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
+import { PartitionError, planPartitionLegs } from '@/packages/bag-sdk/src';
 import { buildComposerPurchase, composeErrorOf, composerLegEnforcedMinOutputRaw, composerLegSimulatedOutputRaw, ComposerIneligibleError, ComposerPurchaseLeg, isComposerEligible } from './lifi-composer-adapter';
 
 // -----------------------------------------------------------------------------
@@ -194,7 +195,7 @@ export function composerFallbackFrom(err: unknown): ComposerFallbackNotice {
  * without this and must keep doing so: a redemption's SWAP steps have
  * DIFFERENT `inputAsset`s per step (selling several distinct holdings into
  * one output — see redeem/allocation.ts), the opposite shape from what
- * lifi-composer-adapter.ts's cascading-split fan-out (one input, N
+ * lifi-composer-adapter.ts's partition fan-out (one input, N
  * outputs) was built for. Passing this to a redeem call wouldn't just be
  * unnecessary, it would silently attempt to build a nonsensical flow —
  * the eligibility check below only tests for a matching output chain per
@@ -254,27 +255,24 @@ async function tryBuildComposerSteps(
   const sameChain = swapSteps.every((s) => s.route.sourceChain === chain && s.route.destinationChain === chain);
   if (!sameChain) return null;
 
-  const totalInputRaw = swapSteps.reduce((sum, s) => sum + BigInt(s.route.inputAmountRaw), BigInt(0));
-  if (totalInputRaw === BigInt(0)) return null;
+  // Leg weights and leg order from the SDK's partition planner (packages/bag-sdk/src/partition.ts), fed the SAME
+  // per-leg raw amounts calculateDepositAllocation already computed: whole bps by largest remainder (bigint), legs
+  // in token-address order, so BAG and the SDK build identical nodes from identical targets. A purchase a
+  // partition cannot express (a leg under 1 bp) keeps the per-asset path.
+  let partitioned: ReturnType<typeof planPartitionLegs>;
+  try {
+    partitioned = planPartitionLegs(swapSteps.map((s) => ({ token: s.route.outputAsset.address, amountRaw: BigInt(s.route.inputAmountRaw) })));
+  } catch (err) {
+    if (err instanceof PartitionError) return null;
+    throw err;
+  }
+  const totalInputRaw = partitioned.totalRaw;
+  const stepByToken = new Map(swapSteps.map((s) => [s.route.outputAsset.address.toLowerCase(), s]));
+  // Composer leg i (`swap_<i>`) is orderedSteps[i].
+  const orderedSteps = partitioned.legs.map((l) => stepByToken.get(l.token)!);
+  const legs: ComposerPurchaseLeg[] = partitioned.legs.map((l, i) => ({ address: orderedSteps[i].route.outputAsset.address, weightBps: l.legBps, symbol: orderedSteps[i].targetSymbol }));
 
-  // bps per leg from the SAME per-leg raw amounts calculateDepositAllocation
-  // already computed — this reuses the existing allocation math verbatim,
-  // it does not recompute weights independently. The last leg absorbs
-  // whatever's left after the others round down, so the legs' bps always
-  // sum to exactly 10000 regardless of integer-division remainder — same
-  // "dust lands on the last leg" choice lifi-composer-adapter.ts's own
-  // cascading split already makes, applied one level up here too.
-  let assignedBps = 0;
-  const legs: ComposerPurchaseLeg[] = swapSteps.map((s, i) => {
-    const isLast = i === swapSteps.length - 1;
-    const bps = isLast
-      ? 10000 - assignedBps
-      : Number((BigInt(s.route.inputAmountRaw) * BigInt(10000)) / totalInputRaw);
-    if (!isLast) assignedBps += bps;
-    return { address: s.route.outputAsset.address, weightBps: bps, symbol: s.targetSymbol };
-  });
-
-  if (!isComposerEligible(chain as ChainId, legs) || legs.some((l) => l.weightBps <= 0)) return null;
+  if (!isComposerEligible(chain as ChainId, legs)) return null;
 
   let composerResult;
   try {
@@ -332,7 +330,7 @@ async function tryBuildComposerSteps(
       };
     }
 
-    const legIndex = swapSteps.indexOf(step);
+    const legIndex = orderedSteps.indexOf(step);
     const simulatedOut = composerLegSimulatedOutputRaw(composerResult.outputs, legIndex);
 
     return {

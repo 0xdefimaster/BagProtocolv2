@@ -24,9 +24,8 @@ export interface ComposerCompileRequest {
   /** Amount to swap (the plan's `swapAmountRaw`). */
   amountRaw: bigint;
   signer: string;
-  /** Legs in order; leg i < n−1 is split off with `cascadeSplitBps[i]` of what remains, the last takes the rest. */
-  legs: { token: string }[];
-  cascadeSplitBps: number[];
+  /** Legs in order, each with its whole-bp share of `amountRaw` (summing to 10000). Build the partition with `planPartition(legs.map(l => l.legBps))`. */
+  legs: { token: string; legBps: number }[];
   slippageBps: number;
   maxPriceImpactBps: number;
 }
@@ -127,8 +126,7 @@ function requestFor(plan: PurchasePlan): ComposerCompileRequest {
     inputKind: plan.inputKind,
     amountRaw: plan.swapAmountRaw,
     signer: plan.signer,
-    legs: plan.legs.map((l) => ({ token: l.token })),
-    cascadeSplitBps: plan.cascadeSplitBps,
+    legs: plan.legs.map((l) => ({ token: l.token, legBps: l.legBps })),
     slippageBps: plan.slippageBps,
     maxPriceImpactBps: plan.maxPriceImpactBps,
   };

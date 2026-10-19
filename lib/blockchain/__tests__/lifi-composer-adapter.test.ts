@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   buildComposerPurchase,
   describeFailedComposerLegs,
-  computeCascadeSplitBps,
   ComposerIneligibleError,
   composerLegEnforcedMinOutputRaw,
   composerLegSimulatedOutputRaw,
@@ -57,45 +56,19 @@ describe('isComposerEligible', () => {
   });
 });
 
-describe('computeCascadeSplitBps', () => {
-  it('computes a single relative bps for a 2-leg 60/40 split', () => {
-    const legs = [
-      { address: '0xa', weightBps: 6000, symbol: 'A' },
-      { address: '0xb', weightBps: 4000, symbol: 'B' },
-    ];
-    // Only N-1 = 1 split step; the last leg needs no split.
-    expect(computeCascadeSplitBps(legs)).toEqual([6000]);
-  });
-
-  it('recomputes each step relative to the REMAINING pool, not the original total, for a 3-leg 50/30/20 split', () => {
-    const legs = [
-      { address: '0xa', weightBps: 5000, symbol: 'A' },
-      { address: '0xb', weightBps: 3000, symbol: 'B' },
-      { address: '0xc', weightBps: 2000, symbol: 'C' },
-    ];
-    // Step 1: 5000/10000 = 5000 bps of the original pool.
-    // Step 2: remaining pool is 5000 bps; leg B wants 3000 of the
-    // original 10000, i.e. 3000/5000 = 6000 bps of what's LEFT.
-    // Leg C (last) needs no split — it just takes what remains.
-    expect(computeCascadeSplitBps(legs)).toEqual([5000, 6000]);
-  });
-
-  it('throws if weights do not sum to exactly 10000 bps, rather than silently normalizing', () => {
-    const legs = [
-      { address: '0xa', weightBps: 5000, symbol: 'A' },
-      { address: '0xb', weightBps: 4000, symbol: 'B' },
-    ];
-    expect(() => computeCascadeSplitBps(legs)).toThrow(/sum to exactly 10000/);
-  });
-
-  it('returns an empty array for a single leg (no split needed at all)', () => {
-    expect(computeCascadeSplitBps([{ address: '0xa', weightBps: 10000, symbol: 'A' }])).toEqual([]);
-  });
-});
-
 // The old cascade as Composer executed it (core.split rounds output `a` up), for the issue #88 comparison.
+// Each step's bps relative to the REMAINING pool, rounded (the removed computeCascadeSplitBps, kept here as history).
+function cascadeSteps(weights: number[]): number[] {
+  const steps: number[] = [];
+  let remaining = 10000;
+  for (let i = 0; i < weights.length - 1; i++) {
+    steps.push(Math.min(9999, Math.max(1, Math.round((weights[i] / remaining) * 10000))));
+    remaining -= weights[i];
+  }
+  return steps;
+}
 function cascadeDelivered(amount: bigint, weights: number[]): bigint[] {
-  const steps = computeCascadeSplitBps(weights.map((weightBps, i) => ({ address: `0x${i}`, weightBps, symbol: `A${i}` })));
+  const steps = cascadeSteps(weights);
   let remaining = amount;
   const out = steps.map((bps) => {
     const a = (remaining * BigInt(bps) + BigInt(9999)) / BigInt(10000);
@@ -157,7 +130,7 @@ describe('core.partition allocation (issue #88)', () => {
       got.forEach((g, i) => expect(Math.abs(Number(g - exact(A, weights[i])))).toBeLessThanOrEqual(Number(A) / 10000 + 16));
     }
     expect(simulatePartition(A, [10000])).toEqual([A]);
-    expect(() => planPartition([5000, 4000])).toThrow(/sum to exactly 10000/);
+    expect(() => planPartition([5000, 4000])).toThrow(/sum to 9000, not 10000/);
     expect(() => planPartition([10000, 0])).toThrow(/positive/);
   });
 });

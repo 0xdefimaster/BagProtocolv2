@@ -19,7 +19,7 @@ try {
   if (!tarball) throw new Error('npm pack produced no tarball');
   copyFileSync(fixture, join(dir, 'feetest.bag.json'));
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'consumer', private: true, type: 'module' }));
-  sh('npm', ['install', '--no-audit', '--no-fund', `./${tarball}`, 'viem@^2', '@lifi/composer-sdk@0.5.0', 'typescript@5'], dir);
+  sh('npm', ['install', '--no-audit', '--no-fund', `./${tarball}`, 'viem@^2', '@lifi/composer-sdk@0.11.3', 'typescript@5'], dir);
 
   writeFileSync(
     join(dir, 'consumer.mjs'),
