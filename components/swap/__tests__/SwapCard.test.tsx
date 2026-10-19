@@ -11,6 +11,7 @@ const WALLET = '0x49da000000000000000000000000000000fe46';
 const USDG = '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168';
 const AAPL = '0x00000000000000000000000000000000000000a1';
 const NVDA = '0x00000000000000000000000000000000000000b2';
+const DUST = '0x00000000000000000000000000000000000000d5';
 const assets = [
   { address: AAPL, symbol: 'AAPL', name: 'Apple', decimals: 18 },
   { address: NVDA, symbol: 'NVDA', name: 'Nvidia', decimals: 18 },
@@ -27,7 +28,7 @@ const holdings = {
       chainId: 4663,
       nativeBalance: '0.05',
       outputToken: { address: USDG, symbol: 'USDG', decimals: 6 },
-      tokens: [tok(AAPL, 'AAPL', '500000000000000000', '0.5', '115.25'), tok(NVDA, 'NVDA', '10000000000000000', '0.01', '2.24'), tok(USDG, 'USDG', '2500000', '2.5', '2.5', false, 6)],
+      tokens: [tok(AAPL, 'AAPL', '500000000000000000', '0.5', '115.25'), tok(NVDA, 'NVDA', '10000000000000000', '0.01', '2.24'), tok(USDG, 'USDG', '2500000', '2.5', '2.5', false, 6), tok(DUST, 'AVAV', '1', '0.000000000000000001', '0')],
     },
     { chain: 'base', chainId: 8453, error: 'rpc down' },
   ],
@@ -230,5 +231,17 @@ describe('SwapCard — shares', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     fireEvent.change(screen.getByLabelText('AAPL share of the spend'), { target: { value: '10000' } });
     expect((screen.getByRole('button', { name: 'Each token needs a share above 0%' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('a dust balance that rounds to 0 at a share is named; All sells it', async () => {
+    render(<SwapCard walletAddress={WALLET} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Multi-sell' }));
+    await pick('AVAV');
+    expect(screen.getByText(/< 0.000001 of < 0.000001/)).toBeTruthy();
+    fireEvent.click(within(screen.getByRole('group', { name: 'Share of AVAV to sell' })).getByRole('button', { name: '50%' }));
+    const blocked = screen.getByRole('button', { name: 'AVAV: 50% of this balance is 0 — pick All or remove it' }) as HTMLButtonElement;
+    expect(blocked.disabled).toBe(true);
+    fireEvent.click(within(screen.getByRole('group', { name: 'Share of AVAV to sell' })).getByRole('button', { name: 'All' }));
+    expect((screen.getByRole('button', { name: 'Sell 1 token for USDG' }) as HTMLButtonElement).disabled).toBe(false);
   });
 });

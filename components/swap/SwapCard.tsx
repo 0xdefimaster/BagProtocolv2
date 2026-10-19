@@ -84,6 +84,12 @@ export function equalShares(n: number): number[] {
   return Array.from({ length: n }, (_, i) => base + (i < 10000 - base * n ? 1 : 0));
 }
 
+/** A raw amount for display; a non-zero amount too small for six decimals reads "< 0.000001", never "0". */
+function tinyAmount(raw: string, decimals: number): string {
+  const shown = formatRawAmount(raw, decimals, { maxFractionDigits: 6 });
+  return BigInt(raw) > BigInt(0) && /^0([.,]0*)?$/.test(shown) ? '< 0.000001' : shown;
+}
+
 const isHoldings = (r: ChainHoldingsResult): r is WalletHoldings => !('error' in r);
 const DECIMAL_RE = /^\d+(\.\d+)?$/;
 
@@ -220,6 +226,8 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
       return null;
     }
   })();
+  // A tiny balance (a few raw units) can round down to nothing at 25–75%: name it instead of selling more than asked.
+  const dustPick = mode === 'sell' ? (sellList.find((a) => BigInt(sellAmountRaw(a)) <= BigInt(0)) ?? null) : null;
   // Display only: the USD estimate of what is being sold.
   const sellUsd = sellList.reduce((sum, a) => sum + (Number(heldBy.get(a)?.usdValue ?? 0) * shareOf(a)) / 100, 0);
   const weights = buyWeights.length === buyList.length ? buyWeights : equalWeightsBps(buyList.length);
@@ -232,8 +240,8 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
         ? `Enter an amount in ${moneySym}`
         : mode === 'buy' && weights.some((w) => w <= 0)
           ? 'Each token needs a share above 0%'
-          : mode === 'sell' && sellList.some((a) => BigInt(sellAmountRaw(a)) <= BigInt(0))
-            ? 'Nothing to sell for one of the tokens'
+          : mode === 'sell' && dustPick
+            ? `${heldBy.get(dustPick)?.symbol ?? 'A token'}: ${shareOf(dustPick)}% of this balance is 0 — pick All or remove it`
             : null;
   const ready = blocker === null;
 
@@ -337,7 +345,7 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
                   <span className="swap-row-sym">{a.symbol}</span>
                   <span className="swap-row-sub">
                     {held
-                      ? `${formatRawAmount(sellAmountRaw(address), held.decimals, { maxFractionDigits: 6 })} of ${formatDecimalString(held.balance, { maxFractionDigits: 6 })}${held.usdValue === null ? '' : ` · ≈ ${formatDecimalStringUsd(((Number(held.usdValue) * share) / 100).toFixed(2))}`}`
+                      ? `${tinyAmount(sellAmountRaw(address), held.decimals)} of ${tinyAmount(held.balanceRaw, held.decimals)}${held.usdValue === null ? '' : ` · ≈ ${formatDecimalStringUsd(((Number(held.usdValue) * share) / 100).toFixed(2))}`}`
                       : `${bpsToPercent(weights[i] ?? 0)}% of the spend`}
                   </span>
                 </div>
