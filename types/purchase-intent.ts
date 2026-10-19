@@ -129,14 +129,17 @@ export interface PurchaseIntentStepRecord {
   /** BAG's own minimum-output / verification floor for this step (the one `verifyExecution` checks). */
   minOutputRaw: string | null;
   /**
-   * Execution metadata only: the minimum the execution PROVIDER enforces
-   * on chain at its own swap boundary — today only Composer steps, from the
-   * same compile response (`producedResources["swap_<i>.amountOut"].simulated.amountOutMin`).
-   * It is NOT BAG's guarantee for what reaches the wallet (the proxy's
-   * sweep, or a transfer-fee token, can reduce that) and verification and
-   * accounting never read it. Absent or null on every other path and on
-   * intents stored before it existed. Label it "provider-enforced minimum",
-   * never "guaranteed minimum".
+   * The minimum the execution PROVIDER enforces on chain at its own swap
+   * boundary — today only Composer steps, from the same compile response
+   * (`producedResources["swap_<i>.amountOut"].simulated.amountOutMin`).
+   * `verifyExecution` uses it as a Composer leg's floor when `minOutputRaw`
+   * is unset: the purchase flow sweeps the whole swap output from the proxy
+   * to the wallet and takes no fee from it (an integrator fee comes off the
+   * input), so a transaction that delivered less did not run the call BAG
+   * built (F-01). A transfer-fee token would also land below it and fail
+   * verification. Accounting never reads it. Absent or null on every other
+   * path and on intents stored before it existed. Label it
+   * "provider-enforced minimum", never "guaranteed minimum".
    */
   providerEnforcedMinOutputRaw?: string | null;
   route: string | null;

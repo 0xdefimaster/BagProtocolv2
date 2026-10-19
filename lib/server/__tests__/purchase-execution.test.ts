@@ -2147,11 +2147,10 @@ describe('partialPurchaseShare', () => {
   });
 });
 
-// providerEnforcedMinOutputRaw is Composer's own swap-boundary floor, kept as
-// execution metadata only. Verification must behave EXACTLY as if it were
-// absent — same statuses, same persisted steps, same accounting — even when
-// the actual received amount is below it.
-describe('verifyExecution — providerEnforcedMinOutputRaw never changes the verification outcome', () => {
+// providerEnforcedMinOutputRaw is Composer's own on-chain swap floor, and the purchase flow sweeps the whole swap
+// output to the wallet. At or above it verification behaves EXACTLY as if it were absent — same statuses, same
+// persisted steps, same accounting. Below it the transaction did not run the call BAG built (F-01): refused.
+describe('verifyExecution — providerEnforcedMinOutputRaw is a Composer leg\'s floor', () => {
   const COMPOSER_TX = { to: '0xComposerDiamond', data: '0xcomposercalldata', value: '0', chainId: 4663, userProxy: '0xProxy' };
 
   function composerIntent(providerMins: [string | null, string | null] | null): PurchaseIntent {
@@ -2180,7 +2179,13 @@ describe('verifyExecution — providerEnforcedMinOutputRaw never changes the ver
   async function verify(intent: PurchaseIntent, received: Record<string, string>) {
     vi.clearAllMocks();
     getPurchaseIntentForUserMock.mockResolvedValue({ ok: true, intent });
-    trackComposerTransactionMock.mockResolvedValue({ kind: 'DONE', receivedAmountsByAddress: received });
+    // The deposit left the wallet in the same transaction, as a real Composer purchase pulls it.
+    const spent = intent.steps.filter((st) => st.action === 'SWAP').reduce((sum, st) => sum + BigInt(st.inputAmountRaw), BigInt(0));
+    trackComposerTransactionMock.mockResolvedValue({
+      kind: 'DONE',
+      receivedAmountsByAddress: received,
+      sentAmountsByAddress: { [intent.inputAsset.address.toLowerCase()]: spent.toString() },
+    });
     statefulIntentRow(intent);
     const rpcMock = rpcGrantingClaims();
     const outcome = await verifyExecution({ rpc: rpcMock } as never, session(), 'intent_1');
@@ -2195,17 +2200,43 @@ describe('verifyExecution — providerEnforcedMinOutputRaw never changes the ver
 
   const received = { [NVDA_ADDRESS.toLowerCase()]: '900', [AAPL_ADDRESS.toLowerCase()]: '950' };
 
-  it('same result with and without the field — including when the received amount is BELOW the provider minimum', async () => {
+  it('same result with and without the field when the received amount reaches the provider minimum', async () => {
     const without = await verify(composerIntent(null), received);
-    // Provider minimums deliberately above what was received (900 < 990, 950 < 990).
-    const withAbove = await verify(composerIntent(['990', '990']), received);
-    const withBelow = await verify(composerIntent(['1', '1']), received);
+    const withMet = await verify(composerIntent(['1', '1']), received);
+    const withExact = await verify(composerIntent(['900', '950']), received);
 
     expect(without.status).toBe('COMPLETED');
-    expect(withAbove).toEqual(without);
-    expect(withBelow).toEqual(without);
+    expect(withMet).toEqual(without);
+    expect(withExact).toEqual(without);
     expect(without.steps.map((st) => st.status)).toEqual(['COMPLETED', 'COMPLETED']);
     expect(without.holdings).toHaveLength(2);
+  });
+
+  it('refuses the purchase when the deposit never left the wallet in that transaction (F-01)', async () => {
+    const intent = composerIntent(null);
+    vi.clearAllMocks();
+    getPurchaseIntentForUserMock.mockResolvedValue({ ok: true, intent });
+    // Outputs arrived, but only 1 raw unit of the input moved out of the wallet.
+    trackComposerTransactionMock.mockResolvedValue({ kind: 'DONE', receivedAmountsByAddress: received, sentAmountsByAddress: { [intent.inputAsset.address.toLowerCase()]: '1' } });
+    statefulIntentRow(intent);
+    const rpcMock = rpcGrantingClaims();
+    const outcome = await verifyExecution({ rpc: rpcMock } as never, session(), 'intent_1');
+    const persisted = (updatePurchaseIntentStepsMock.mock.calls[0]?.[3] ?? []) as PurchaseIntentStepRecord[];
+    expect(persisted.map((st) => [st.status, st.failureCode])).toEqual([
+      ['FAILED', 'VERIFICATION_FAILED'],
+      ['FAILED', 'VERIFICATION_FAILED'],
+    ]);
+    expect(outcome.ok && outcome.value.status).not.toBe('COMPLETED');
+  });
+
+  it('refuses a leg that received less than the provider minimum (VERIFICATION_FAILED), and books none of it', async () => {
+    // 900 < 990: the Composer swap cannot have succeeded with this output.
+    const below = await verify(composerIntent(['990', '1']), received);
+    expect(below.steps.map((st) => [st.status, st.failureCode])).toEqual([
+      ['FAILED', 'VERIFICATION_FAILED'],
+      ['COMPLETED', null],
+    ]);
+    expect(below.status).not.toBe('COMPLETED');
   });
 });
 

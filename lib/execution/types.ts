@@ -168,7 +168,8 @@ export interface ExpectedOutput {
    * A minimum the PROVIDER itself enforces on chain at its own swap
    * boundary (today only Composer: LI.FI's swap reverts below it). Not
    * BAG's guarantee for what reaches the wallet — that is
-   * `minimumGuaranteedOutputRaw` — and never used for verification.
+   * `minimumGuaranteedOutputRaw`. A Composer purchase's verification checks
+   * it as the leg's floor (see `PurchaseIntentStepRecord.providerEnforcedMinOutputRaw`).
    * Absent/null for providers that report none.
    */
   providerEnforcedMinOutputRaw?: string | null;

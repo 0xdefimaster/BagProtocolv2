@@ -151,6 +151,16 @@ describe('trackComposerTransaction: wallet batches', () => {
     });
   }
 
+  it('rejects a redeemDelegations-shaped transaction sent to a contract that is not a configured DelegationManager (F-01)', async () => {
+    // Same selector and the exact Composer bytes, but the called contract can ignore them and never run the call.
+    const encoded = redeem(pad('0x01', { dir: 'right', size: 32 }), executionBatch(calls()));
+    getTransactionMock.mockResolvedValue({ from: WALLET, to: '0x5555555555555555555555555555555555555555', input: encoded, value: BigInt(0) });
+    expect(await trackComposerTransaction(batchInput)).toMatchObject({ kind: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
+    // A DelegationManager is only trusted on the chain it is configured for.
+    getTransactionMock.mockResolvedValue({ from: WALLET, to: DELEGATION_MANAGER, input: encoded, value: BigInt(0) });
+    expect(await trackComposerTransaction({ ...batchInput, chain: 'ethereum' })).toMatchObject({ kind: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
+  });
+
   it('rejects a redeemDelegations transaction sent by ANOTHER wallet', async () => {
     getTransactionMock.mockResolvedValue({ from: '0x9999999999999999999999999999999999999999', to: DELEGATION_MANAGER, input: redeem(pad('0x01', { dir: 'right', size: 32 }), executionBatch(calls())), value: BigInt(0) });
     expect(await trackComposerTransaction(batchInput)).toMatchObject({ kind: 'FAILED', failureCode: 'VERIFICATION_FAILED' });

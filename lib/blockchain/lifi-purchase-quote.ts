@@ -353,8 +353,8 @@ async function tryBuildComposerSteps(
       outputAmountRaw: simulatedOut,
       outputDecimals: outputDecimalsByStep.get(step) ?? null,
       // BAG's own floor stays unset; the swap's on-chain floor is the
-      // provider's (see composerLegEnforcedMinOutputRaw) and is recorded
-      // separately, never used for verification.
+      // provider's (see composerLegEnforcedMinOutputRaw), recorded
+      // separately and checked by verifyExecution as the leg's floor.
       minOutputRaw: null,
       providerEnforcedMinOutputRaw: composerLegEnforcedMinOutputRaw(composerResult.outputs, legIndex),
       route: null,

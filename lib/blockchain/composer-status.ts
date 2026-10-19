@@ -1,6 +1,6 @@
 import { decodeEventLog, parseAbiItem } from 'viem';
 import { getChainPublicClient, hasRpcEndpoint } from '@/lib/blockchain/rpc/clients';
-import { isBagChain } from '@/lib/config/chains';
+import { BAG_CHAINS, isBagChain } from '@/lib/config/chains';
 import { ChainId } from '@/types/basket-protocol';
 import { PurchaseIntentFailureCode } from '@/types/purchase-intent';
 
@@ -99,13 +99,25 @@ export const REDEEM_DELEGATIONS_SELECTOR = '0xcef6d209';
 /**
  * A wallet-routed batch that carries the exact Composer call: either the wallet calling itself (EIP-5792 over
  * an EIP-7702 account) or the wallet calling a DelegationManager's `redeemDelegations` (MetaMask smart account),
- * whose execution calldata embeds the same ERC-7579 encodings `batchContainsCall` already reads. The caller
- * still requires `tx.from` to be the wallet, so only the wallet's own transaction can match.
+ * whose execution calldata embeds the same ERC-7579 encodings `batchContainsCall` already reads. The
+ * DelegationManager must be one configured for `chain` (lib/config/chains.ts): any other contract can take the
+ * same calldata and never run the call. The caller still requires `tx.from` to be the wallet, so only the
+ * wallet's own transaction can match.
+ *
+ * Calldata alone never proves the call ran — an EIP-7702 account's code is the wallet's own choice — so the
+ * callers also check the receipt (what arrived, and what left the wallet).
  */
-export function isWalletRoutedBatch(tx: { to?: string | null; input?: unknown }, wallet: string, call: { to: string; data: string; value: string }): boolean {
-  if (typeof tx.input !== 'string') return false;
-  const selfCall = typeof tx.to === 'string' && tx.to.toLowerCase() === wallet.toLowerCase();
-  const delegationRedeem = tx.input.toLowerCase().startsWith(REDEEM_DELEGATIONS_SELECTOR);
+export function isWalletRoutedBatch(
+  tx: { to?: string | null; input?: unknown },
+  wallet: string,
+  call: { to: string; data: string; value: string },
+  chain: ChainId
+): boolean {
+  if (typeof tx.input !== 'string' || typeof tx.to !== 'string') return false;
+  const to = tx.to.toLowerCase();
+  const selfCall = to === wallet.toLowerCase();
+  const managers = isBagChain(chain) ? BAG_CHAINS[chain].delegationManagers : [];
+  const delegationRedeem = tx.input.toLowerCase().startsWith(REDEEM_DELEGATIONS_SELECTOR) && managers.includes(to);
   return (selfCall || delegationRedeem) && batchContainsCall(tx.input, call);
 }
 
@@ -145,7 +157,7 @@ export async function trackComposerTransaction(input: TrackComposerTransactionIn
   // to itself or through a DelegationManager; the account's code then runs the approvals and the Composer call.
   // Accepted only when the wallet is the sender and the exact Composer call (target, value, calldata) is one of
   // the batched calls.
-  const walletBatch = isWalletRoutedBatch(tx, input.recipient, input.expectedTransaction);
+  const walletBatch = isWalletRoutedBatch(tx, input.recipient, input.expectedTransaction, input.chain);
   if (!walletBatch) {
     if (!same(tx.to, input.expectedTransaction.to)) mismatches.push('to');
     if (!same(tx.input, input.expectedTransaction.data)) mismatches.push('calldata');
