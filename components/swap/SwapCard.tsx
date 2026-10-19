@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, Loader2, Plus, Search, X } from 'lucide-react';
 import { parseUnits } from 'viem';
 import { formatDecimalString, formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
 import { describeWalletError } from '@/lib/blockchain/wallet-error';
+import { recheckWalletAfterTrade } from '@/lib/wallet-recheck';
 import { executeWalletSweep, SweepProgress } from '@/lib/blockchain/wallet-sweep-client';
 import { BAG_CHAINS, BAG_CHAINS_LIST, type BagChain } from '@/lib/config/chains';
 import type { ChainHoldingsResult, WalletHoldings, WalletTokenBalance } from '@/lib/server/wallet-holdings';
@@ -107,6 +108,8 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
   const [picker, setPicker] = useState(false);
   const [query, setQuery] = useState('');
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
+  const recheckCancel = useRef<(() => void) | null>(null);
+  useEffect(() => () => recheckCancel.current?.(), []);
   const [acceptImpact, setAcceptImpact] = useState(false);
 
   const cfg = BAG_CHAINS[chain];
@@ -233,6 +236,9 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
       try {
         const hash = await executeWalletSweep(walletAddress, quote.q, (step) => setPhase({ kind: 'executing', step, quote }));
         setPhase({ kind: 'done', txHash: hash });
+        // Tokens a Bag tracks may have left the wallet: let positions and Bag TVL follow.
+        recheckCancel.current?.();
+        recheckCancel.current = recheckWalletAfterTrade();
         setBuyList([]);
         setSellList([]);
         setAmount('');
