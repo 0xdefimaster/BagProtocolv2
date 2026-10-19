@@ -28,7 +28,7 @@ export function useForkBag() {
     /** `choices`: the forker's own name and assets/weights (CompositionEditor); without them the source is copied. */
     async (
       bag: { id: string; name: string },
-      choices: { name?: string; composition?: { address: string; weightBps: number }[]; launchBuy?: string } = {}
+      choices: { name?: string; composition?: { address: string; weightBps: number }[]; launchBuy?: string; launchPayment?: 'settlement' | 'native' } = {}
     ) => {
       if (isForking) return;
       setIsForking(true);
@@ -64,7 +64,8 @@ export function useForkBag() {
 
         addActivity(`Forked ${bag.name}`);
         const buy = choices.launchBuy?.trim();
-        const launch = buy && /^\d+(\.\d+)?$/.test(buy) && Number(buy) > 0 ? `&buy=${encodeURIComponent(buy)}` : '';
+        const launch =
+          buy && /^\d+(\.\d+)?$/.test(buy) && Number(buy) > 0 ? `&buy=${encodeURIComponent(buy)}${choices.launchPayment === 'native' ? '&pay=native' : ''}` : '';
         router.push(`/dashboard/bag/${body.bag.id}?deploy=1${launch}`);
       } catch {
         setForkError('Could not fork: network error. Try again.');

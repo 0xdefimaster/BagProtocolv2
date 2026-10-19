@@ -29,8 +29,11 @@ interface DeployBagPanelProps {
   bagId: string;
   bagName: string;
   chain: string;
-  /** Called once the deployment is verified; `launchBuyAmount` is set when the creator opted into a launch buy. */
-  onDeployed?: (launchBuyAmount?: string) => void;
+  /**
+   * Called once the deployment is verified; `launchBuyAmount` is set when the creator opted into a launch buy, and
+   * `launchPayment` is 'native' when that buy is paid in ETH (the amount is then in ETH).
+   */
+  onDeployed?: (launchBuyAmount?: string, launchPayment?: 'settlement' | 'native') => void;
   /** Open the deploy wallet prompt as soon as the panel mounts (the Create page's one-click launch). */
   autoStart?: boolean;
   /** Launch-buy amount chosen elsewhere (the Create page); when set, the panel's own launch-buy input is hidden. */
@@ -64,6 +67,8 @@ export function DeployBagPanel({ bagId, bagName, chain, onDeployed, autoStart, p
   const [launchBuyAmount, setLaunchBuyAmount] = useState(presetLaunchBuy ?? '100');
   const launchBuyControlled = presetLaunchBuy !== undefined;
   const launchBuyRef = useRef<string | undefined>(undefined);
+  // Set from `&pay=native` (the Fork panel's ETH launch buy); the panel's own input is in dollars.
+  const launchPaymentRef = useRef<'settlement' | 'native'>('settlement');
 
   useEffect(() => {
     let cancelled = false;
@@ -98,9 +103,11 @@ export function DeployBagPanel({ bagId, bagName, chain, onDeployed, autoStart, p
         if (buy && /^\d+(\.\d+)?$/.test(buy) && Number(buy) > 0) {
           setLaunchBuy(true);
           setLaunchBuyAmount(buy);
+          if (params.get('pay') === 'native') launchPaymentRef.current = 'native';
         }
         params.delete('deploy');
         params.delete('buy');
+        params.delete('pay');
         const query = params.toString();
         window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
       }
@@ -125,14 +132,15 @@ export function DeployBagPanel({ bagId, bagName, chain, onDeployed, autoStart, p
     if (state.phase !== 'completed' || deployedNotifiedRef.current) return;
     deployedNotifiedRef.current = true;
     const launch = launchBuyRef.current;
+    const payment = launch ? launchPaymentRef.current : undefined;
     if (!registerAfterDeploy || !walletAddress) {
-      onDeployedRef.current?.(launch);
+      onDeployedRef.current?.(launch, payment);
       return;
     }
     setAfterDeploy('registering');
     void registration.register(walletAddress).then((outcome) => {
       setAfterDeploy(outcome);
-      onDeployedRef.current?.(launch);
+      onDeployedRef.current?.(launch, payment);
     });
     // Once per deployment; the wallet and registration hook are read at that moment.
     // eslint-disable-next-line react-hooks/exhaustive-deps

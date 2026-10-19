@@ -3,6 +3,10 @@
 import { useMemo, useState } from 'react';
 import { GitFork, Loader2, X, AlertTriangle } from 'lucide-react';
 import { useForkBag } from '@/hooks/useForkBag';
+import { useWallet } from '@/lib/wallet-context';
+import { BAG_CHAINS, isBagChain } from '@/lib/config/chains';
+import { isNativePaymentChain } from '@/lib/payments/native-payment';
+import { LaunchBuyBalance } from '@/components/create/LaunchBuyBalance';
 import { useBagNameAvailable } from '@/hooks/use-bag-name-available';
 import { CompositionEditor, rowsFromBag, summarizeComposition, type CompositionRow } from '@/components/bags/CompositionEditor';
 import type { Bag } from '@/types';
@@ -22,6 +26,13 @@ export function ForkPanel({ bag, onClose }: { bag: Bag; onClose: () => void }) {
   const [name, setName] = useState(`${bag.name} (Fork)`);
   const [buyAfter, setBuyAfter] = useState(false);
   const [buyAmount, setBuyAmount] = useState('50');
+  // Pay the launch buy with the chain's stablecoin (USDG on Robinhood Chain) or, where offered, its native ETH.
+  const [payment, setPayment] = useState<'settlement' | 'native'>('settlement');
+  const nativeOffered = isNativePaymentChain(chain);
+  const native = payment === 'native' && nativeOffered;
+  const settlementSymbol = isBagChain(chain) ? BAG_CHAINS[chain].sweepOutputToken.symbol : 'USD';
+  const nativeSymbol = isBagChain(chain) ? BAG_CHAINS[chain].nativeCurrency.symbol : 'ETH';
+  const { isConnected, walletAddress } = useWallet();
   const buyValid = !buyAfter || (/^\d+(\.\d+)?$/.test(buyAmount.trim()) && Number(buyAmount) > 0);
   const availability = useBagNameAvailable(name);
   const summary = useMemo(() => summarizeComposition(original, rows), [original, rows]);
@@ -34,7 +45,7 @@ export function ForkPanel({ bag, onClose }: { bag: Bag; onClose: () => void }) {
     void fork(bag, {
       name,
       ...(summary.changedAny ? { composition: summary.entries } : {}),
-      ...(buyAfter ? { launchBuy: buyAmount.trim() } : {}),
+      ...(buyAfter ? { launchBuy: buyAmount.trim(), launchPayment: native ? ('native' as const) : ('settlement' as const) } : {}),
     });
   };
 
@@ -68,20 +79,49 @@ export function ForkPanel({ bag, onClose }: { bag: Bag; onClose: () => void }) {
       <div className="field">
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
           <input type="checkbox" data-testid="fork-buy-after" checked={buyAfter} disabled={isForking} onChange={(e) => setBuyAfter(e.target.checked)} />
-          Be the first buyer: buy into it right after it&apos;s deployed (amount in $)
+          Be the first buyer: buy into it right after it&apos;s deployed
         </label>
         {buyAfter && (
-          <input
-            type="text"
-            inputMode="decimal"
-            aria-label="Launch buy amount in dollars"
-            data-testid="fork-buy-amount"
-            value={buyAmount}
-            disabled={isForking}
-            onChange={(e) => setBuyAmount(e.target.value)}
-            aria-invalid={!buyValid}
-            style={{ marginTop: 6, maxWidth: 160 }}
-          />
+          <div style={{ marginTop: 8 }}>
+            {nativeOffered && (
+              <div className="invest-presets" role="group" aria-label="Pay the launch buy with" style={{ marginBottom: 8 }}>
+                {(['settlement', 'native'] as const).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    data-testid={`fork-pay-${p}`}
+                    aria-pressed={payment === p}
+                    className={`invest-preset ${payment === p ? 'active' : ''}`}
+                    disabled={isForking}
+                    onClick={() => {
+                      if (p === payment) return;
+                      setPayment(p);
+                      // A dollar amount means nothing in ETH and back: start from a typical amount of the new unit.
+                      setBuyAmount(p === 'native' ? '0.01' : '50');
+                    }}
+                  >
+                    {p === 'native' ? nativeSymbol : settlementSymbol}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="text-white/60" style={{ fontSize: 14 }}>{native ? 'Ξ' : '$'}</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                aria-label={native ? `Launch buy in ${nativeSymbol}` : 'Launch buy amount in dollars'}
+                data-testid="fork-buy-amount"
+                value={buyAmount}
+                disabled={isForking}
+                onChange={(e) => setBuyAmount(e.target.value.replace(',', '.'))}
+                aria-invalid={!buyValid}
+                style={{ maxWidth: 160 }}
+              />
+              <span className="text-white/50" style={{ fontSize: 12 }}>{native ? nativeSymbol : settlementSymbol}</span>
+            </div>
+            <LaunchBuyBalance chain={chain} native={native} walletAddress={isConnected ? walletAddress : null} amount={buyAmount} onMax={setBuyAmount} />
+          </div>
         )}
       </div>
 
