@@ -137,6 +137,8 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
   const [linkCopied, setLinkCopied] = useState(false);
   const [showInvest, setShowInvest] = useState(false);
   const [investInitialAmount, setInvestInitialAmount] = useState<string | undefined>(undefined);
+  // The launch buy is paid in ETH (chosen in the Fork panel): the purchase opens with ETH selected.
+  const [investPreferNative, setInvestPreferNative] = useState(false);
   const [showRedeem, setShowRedeem] = useState(false);
   // Fork opens the same editor as Edit strategy (ForkPanel); `?fork=1` (from a Bag card) opens it on arrival.
   const [showFork, setShowFork] = useState(false);
@@ -348,10 +350,11 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
               bagId={bag.id}
               bagName={bag.name}
               chain={bag.chains[0] ?? "robinhood"}
-              onDeployed={(launchBuyAmount) => {
+              onDeployed={(launchBuyAmount, launchPayment) => {
                 void api.refresh();
                 if (launchBuyAmount) {
                   setInvestInitialAmount(launchBuyAmount);
+                  setInvestPreferNative(launchPayment === 'native');
                   setShowInvest(true);
                 }
               }}
@@ -657,12 +660,14 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
         bagId={bag.id}
         bagName={bag.name}
         initialAmount={investInitialAmount}
+        preferNativeInput={investPreferNative}
         autoStart={investInitialAmount !== undefined}
         // Holdings (and so TVL) change once the purchase is accounted for.
         onCompleted={refreshAfterTrade}
         onClose={() => {
           setShowInvest(false);
           setInvestInitialAmount(undefined);
+          setInvestPreferNative(false);
         }}
       />
     )}

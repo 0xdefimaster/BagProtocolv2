@@ -4,7 +4,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 
 const push = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
-vi.mock('@/lib/wallet-context', () => ({ useWallet: () => ({ isConnected: true, connect: vi.fn(), signIn: vi.fn() }) }));
+vi.mock('@/lib/wallet-context', () => ({ useWallet: () => ({ isConnected: true, walletAddress: '0xwallet', connect: vi.fn(), signIn: vi.fn() }) }));
+const balanceProps = vi.fn();
+vi.mock('@/components/create/LaunchBuyBalance', () => ({
+  LaunchBuyBalance: (p: { native: boolean; walletAddress: string | null; amount: string }) => {
+    balanceProps(p);
+    return <div data-testid="launch-buy-balance">{p.native ? 'ETH balance' : 'USDG balance'}</div>;
+  },
+}));
 vi.mock('@/lib/activity-store', () => ({ useActivity: () => ({ addActivity: vi.fn() }) }));
 vi.mock('@/lib/registry-assets-client', () => ({ fetchRegistryAssetsForChain: async () => [] }));
 
@@ -84,5 +91,19 @@ describe('ForkPanel', () => {
     fireEvent.click(screen.getByTestId('fork-create'));
     await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/weight exceeds the maximum/));
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it('the launch buy can be paid in USDG or ETH, with the wallet balance of that one shown; ETH goes along as pay=native', async () => {
+    serve(() => new Response(JSON.stringify({ bag: { id: 'new4' } }), { status: 201 }));
+    render(<ForkPanel bag={bag} onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('fork-buy-after'));
+    expect(screen.getByTestId('fork-pay-settlement').textContent).toBe('USDG');
+    expect(screen.getByTestId('launch-buy-balance').textContent).toBe('USDG balance');
+    expect(balanceProps).toHaveBeenLastCalledWith(expect.objectContaining({ native: false, walletAddress: '0xwallet', amount: '50' }));
+    fireEvent.click(screen.getByTestId('fork-pay-native'));
+    expect(screen.getByTestId('launch-buy-balance').textContent).toBe('ETH balance');
+    expect(screen.getByLabelText('Launch buy in ETH')).toHaveValue('0.01');
+    fireEvent.click(screen.getByTestId('fork-create'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard/bag/new4?deploy=1&buy=0.01&pay=native'));
   });
 });
