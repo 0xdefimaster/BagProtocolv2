@@ -844,3 +844,4 @@ header .brand { flex-shrink: 0; white-space: nowrap; }
 .bcv-mini > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 .bcv-mini .bag-risk-chip { white-space: nowrap; }
 .bcv-mini .v { font-size: 13px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.swap-balance { display: inline-flex; gap: 8px; align-items: center; }

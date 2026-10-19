@@ -41,6 +41,16 @@ const drifted = {
 };
 
 describe('RebalancePreviewCard', () => {
+  it('a drift worth under $1 to move (dust): says so and offers no quote or rebalance', async () => {
+    const dust = { ...drifted, orders: drifted.orders.map((o) => ({ ...o, value: '0.004' })) };
+    serve({ symbols, preview: dust });
+    render(<RebalancePreviewCard bagId="b1" />);
+    await waitFor(() => expect(screen.getByTestId('rebalance-too-small')).toBeTruthy());
+    expect(screen.getByTestId('rebalance-too-small').textContent).toMatch(/worth \$0\.00 to move, under \$1: too little to rebalance/);
+    expect(screen.queryByText('Get a live rebalance quote')).toBeNull();
+    expect(screen.queryByText('Rebalance now')).toBeNull();
+  });
+
   it('shows the drift against the current version and what a rebalance would trade', async () => {
     serve({ symbols, preview: drifted });
     render(<RebalancePreviewCard bagId="b1" />);

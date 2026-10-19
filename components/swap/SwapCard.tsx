@@ -153,6 +153,8 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
   const chainHoldings = holdings?.find((h) => h.chain === chain);
   const walletTokens = useMemo<WalletTokenBalance[]>(() => (chainHoldings && isHoldings(chainHoldings) ? chainHoldings.tokens : []), [chainHoldings]);
   const nativeBalance = chainHoldings && isHoldings(chainHoldings) ? chainHoldings.nativeBalance : null;
+  // The stablecoin is in the wallet's token list (not sellable for itself); its balance is what USDG pays with.
+  const stableHeld = walletTokens.find((t) => t.address.toLowerCase() === stable && BigInt(t.balanceRaw) > BigInt(0)) ?? null;
 
   // What can go in each list: buy = registry tokens (not the stablecoin when paying with it); sell = held tokens
   // (not the stablecoin when receiving it).
@@ -493,6 +495,16 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
               <span>You pay</span>
               {mode === 'buy' && nativeBalance !== null && money === 'NATIVE' && (
                 <span className="mono">Balance {formatDecimalString(nativeBalance, { maxFractionDigits: 5 })} {nativeSym}</span>
+              )}
+              {mode === 'buy' && money === 'STABLE' && holdings !== null && (
+                <span className="mono swap-balance">
+                  Balance {stableHeld ? formatDecimalString(stableHeld.balance, { maxFractionDigits: 2 }) : '0'} {stableSym}
+                  {stableHeld && (
+                    <button type="button" className="link-button" disabled={busy} onClick={() => { setAmount(stableHeld.balance); resetQuote(); }}>
+                      MAX
+                    </button>
+                  )}
+                </span>
               )}
             </div>
             {mode === 'buy' ? (

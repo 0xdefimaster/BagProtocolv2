@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Scale, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
-import { formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
+import { formatDecimalStringUsd, formatRawAmount, formatRawAmountUsd, parseDecimalToRaw } from '@/lib/format';
 import type { PositionRebalancePreview } from '@/lib/domain/basket-protocol/rebalance/position-rebalance';
 import { useWallet } from '@/lib/wallet-context';
 import { executeWalletSweep, type SweepProgress } from '@/lib/blockchain/wallet-sweep-client';
@@ -49,6 +49,17 @@ interface IntentView {
 type RunPhase = 'idle' | 'planning' | 'wallet' | 'confirming' | 'done';
 
 const pct = (bps: number) => `${(bps / 100).toFixed(1)}%`;
+
+/** Below this much to sell, a rebalance is not worth a transaction (and the buys round to nothing). */
+export const MIN_REBALANCE_USD = '1';
+const usdUnits = (value: string) => BigInt(parseDecimalToRaw(value, 18) ?? '0');
+/** The USD value the plan would sell, and whether that is too small to offer a rebalance at all. */
+export function rebalanceSize(preview: { orders: { side: string; value: string }[] }): { sellUsd: bigint; tooSmall: boolean } {
+  const sells = preview.orders.filter((o) => o.side === 'SELL');
+  const buys = preview.orders.filter((o) => o.side === 'BUY');
+  const sellUsd = sells.reduce((sum, o) => sum + usdUnits(o.value), BigInt(0));
+  return { sellUsd, tooSmall: sells.length === 0 || buys.length === 0 || sellUsd < usdUnits(MIN_REBALANCE_USD) };
+}
 const VERIFY_POLL_MS = 3000;
 const VERIFY_ATTEMPTS = 60;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -197,7 +208,7 @@ export function RebalancePreviewCard({
   useEffect(() => {
     if (autoRunVersion === undefined || autoRanRef.current === autoRunVersion) return;
     if (!data || data.preview.status !== 'OK' || data.preview.targetVersion < autoRunVersion) return;
-    if (!data.preview.requiresRebalance || phase !== 'idle') return;
+    if (!data.preview.requiresRebalance || rebalanceSize(data.preview).tooSmall || phase !== 'idle') return;
     autoRanRef.current = autoRunVersion;
     void runRebalance();
     // Runs once per saved version, when the preview for it has loaded.
@@ -235,6 +246,7 @@ export function RebalancePreviewCard({
 
   const sells = preview.orders.filter((o) => o.side === 'SELL');
   const buys = preview.orders.filter((o) => o.side === 'BUY');
+  const size = rebalanceSize(preview);
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 p-6">
@@ -267,7 +279,12 @@ export function RebalancePreviewCard({
           ))}
         </tbody>
       </table>
-      {preview.requiresRebalance ? (
+      {preview.requiresRebalance && size.tooSmall ? (
+        <p className="text-sm text-white/60" data-testid="rebalance-too-small">
+          What your wallet holds for this strategy is worth {formatRawAmountUsd(size.sellUsd.toString(), 18)} to move,
+          under ${MIN_REBALANCE_USD}: too little to rebalance. Buy into the Bag to hold strategy v{preview.targetVersion}.
+        </p>
+      ) : preview.requiresRebalance ? (
         <div className="text-sm">
           <p className="text-amber-400 inline-flex items-center gap-1 mb-2">
             <AlertTriangle size={14} /> Drift of {pct(preview.maxAbsDriftBps)} is beyond this strategy&apos;s {pct(preview.driftThresholdBps)} threshold.
