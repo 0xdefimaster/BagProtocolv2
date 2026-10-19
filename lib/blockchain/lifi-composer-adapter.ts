@@ -23,17 +23,18 @@ import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identi
 // remains the only option for cross-chain and Solana-target purchases (see
 // ELIGIBLE eligibility check below).
 //
-// HOW THE FAN-OUT IS BUILT: Composer's `core.split` op only ever produces
-// TWO outputs from ONE bps ratio (verified against
-// node_modules/@lifi/composer-sdk/dist/generated/operations.generated.d.ts's
-// own doc comment: "Split a resource into two outputs by basis-point ratio"
-// — there is no N-way split op). An N-leg purchase is therefore built as a
-// CASCADE of N-1 two-way splits, each one splitting off the next leg's share
-// from whatever remains, with each step's bps recomputed relative to the
-// REMAINING pool (not the original total) so the final percentages come out
-// right. The very last leg consumes the final remainder directly with no
-// split at all — this is also where any bps-rounding dust lands, rather than
-// being silently lost or requiring a separate sweep-in step.
+// HOW THE FAN-OUT IS BUILT: one `core.partition` node (@lifi/composer-sdk
+// 0.7+; verified against node_modules/@lifi/composer-sdk/dist/generated/
+// operations.generated.d.ts: "Partition a resource into one output per
+// basis-point share. `bps` lists 2 to 16 shares summing to 10000; output
+// `parts.i` receives share i, rounded down, and the last part takes the
+// remainder"). It takes the leg weights as they are, so each leg gets
+// floor(amount × weight / 10000) and the last leg the rounding dust.
+// Above 16 legs the legs are grouped (at most 16 groups of 2–16): an outer
+// partition by group weight, then one partition per group with the members'
+// weights rescaled to 10000 (planPartition). This replaced a cascade of N−1
+// two-way `core.split` nodes whose relative bps were rounded at every step,
+// so small legs drifted from their weights (issue #88).
 //
 // WHAT THIS MODULE DOES NOT DO: sign or broadcast anything. It returns
 // compiled calldata (`transactionRequest`) for the caller's wallet layer to
@@ -114,7 +115,11 @@ export function isComposerEligible(chain: ChainId, legs: readonly ComposerPurcha
   return COMPOSER_ELIGIBLE_CHAINS.includes(chain) && legs.length > 0;
 }
 
-/** Recomputes each leg's split-bps relative to the REMAINING pool at that cascade step, not the original total — see this file's header comment for why. Exported standalone (pure, no SDK calls) so the math can be unit-tested without mocking fetch. */
+/**
+ * The old N−1 two-way `core.split` cascade: each leg's split-bps relative to the REMAINING pool. No longer used to
+ * build flows (see planPartition); kept because the bag.json v1 SDK (packages/bag-sdk) still plans purchases with this
+ * cascade, and bag-sdk-consistency.test.ts holds the two to the same arithmetic until the SDK moves to partition too.
+ */
 export function computeCascadeSplitBps(legs: readonly ComposerPurchaseLeg[]): number[] {
   const totalBps = legs.reduce((sum, leg) => sum + leg.weightBps, 0);
   if (totalBps !== 10000) {
@@ -135,6 +140,81 @@ export function computeCascadeSplitBps(legs: readonly ComposerPurchaseLeg[]): nu
     remainingBps -= leg.weightBps;
   }
   return splitBpsByStep;
+}
+
+/** `core.partition` takes 2 to 16 shares (operations.generated.d.ts). */
+export const PARTITION_MAX_PARTS = 16;
+
+/**
+ * How `weights` (bps, summing to 10000) are partitioned: one node when 2–16 legs; above 16, an outer node over at
+ * most 16 groups (sizes as even as possible, so never a group of one) and one node per group with its members'
+ * weights rescaled to 10000 (largest remainder). One leg: no node at all.
+ */
+export interface PartitionPlan {
+  outerBps: number[];
+  groups: { legs: number[]; innerBps: number[] | null }[];
+}
+
+export function planPartition(weights: readonly number[]): PartitionPlan {
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  if (total !== 10000) throw new Error(`Leg weights must sum to exactly 10000 bps, got ${total}.`);
+  if (weights.some((w) => !Number.isInteger(w) || w <= 0)) throw new Error('Every leg weight must be a positive whole number of bps.');
+  if (weights.length <= PARTITION_MAX_PARTS) return { outerBps: [...weights], groups: weights.map((_, i) => ({ legs: [i], innerBps: null })) };
+  const groupCount = Math.ceil(weights.length / PARTITION_MAX_PARTS);
+  if (groupCount > PARTITION_MAX_PARTS) throw new Error(`At most ${PARTITION_MAX_PARTS * PARTITION_MAX_PARTS} legs, got ${weights.length}.`);
+  const base = Math.floor(weights.length / groupCount);
+  const extra = weights.length - base * groupCount;
+  const groups: PartitionPlan['groups'] = [];
+  const outerBps: number[] = [];
+  let next = 0;
+  for (let g = 0; g < groupCount; g++) {
+    const legs = Array.from({ length: base + (g < extra ? 1 : 0) }, () => next++);
+    const sum = legs.reduce((s, i) => s + weights[i], 0);
+    // Rescaled to 10000 by largest remainder, so no member is more than 1 bp of its group off.
+    const exactInner = legs.map((i) => weights[i] * 10000);
+    const innerBps = exactInner.map((x) => Math.floor(x / sum));
+    let left = 10000 - innerBps.reduce((s, b) => s + b, 0);
+    const order = exactInner.map((x, k) => ({ k, r: x % sum })).sort((a, b) => b.r - a.r || a.k - b.k);
+    for (let j = 0; left > 0; j++, left--) innerBps[order[j].k] += 1;
+    groups.push({ legs, innerBps });
+    outerBps.push(sum);
+  }
+  return { outerBps, groups };
+}
+
+/** What `core.partition` delivers: each share floor(amount × bps / 10000), the last share the remainder. */
+function partitionAmount(amount: bigint, bps: readonly number[]): bigint[] {
+  const parts = bps.map((b) => (amount * BigInt(b)) / BigInt(10000));
+  parts[parts.length - 1] = amount - parts.slice(0, -1).reduce((s, x) => s + x, BigInt(0));
+  return parts;
+}
+
+/** The raw amount each leg receives on-chain under planPartition (pure; for tests and expected-amount checks). */
+export function simulatePartition(amount: bigint, weights: readonly number[]): bigint[] {
+  if (weights.length === 1) return [amount];
+  const plan = planPartition(weights);
+  const outer = partitionAmount(amount, plan.outerBps);
+  const out: bigint[] = new Array(weights.length);
+  plan.groups.forEach((g, gi) => {
+    const inner = g.innerBps ? partitionAmount(outer[gi], g.innerBps) : [outer[gi]];
+    g.legs.forEach((leg, k) => (out[leg] = inner[k]));
+  });
+  return out;
+}
+
+type PartitionBuilder = { core: { partition: (id: string, args: { bind: { source: Bindable<'resource'> }; config: { bps: number[] } }) => { parts: readonly Bindable<'resource'>[] } } };
+
+/** Adds the partition node(s) for `weights` under node ids `${prefix}` / `${prefix}_g${n}`; returns one resource per leg, in order. */
+function partitionAcross(builder: PartitionBuilder, prefix: string, source: Bindable<'resource'>, weights: readonly number[]): Bindable<'resource'>[] {
+  if (weights.length === 1) return [source];
+  const plan = planPartition(weights);
+  const outer = Array.from(builder.core.partition(prefix, { bind: { source }, config: { bps: plan.outerBps } }).parts);
+  const out: Bindable<'resource'>[] = new Array(weights.length);
+  plan.groups.forEach((g, gi) => {
+    const inner = g.innerBps ? Array.from(builder.core.partition(`${prefix}_g${gi}`, { bind: { source: outer[gi] }, config: { bps: g.innerBps } }).parts) : [outer[gi]];
+    g.legs.forEach((leg, k) => (out[leg] = inner[k]));
+  });
+  return out;
 }
 
 /** Verified against the actual installed `@lifi/compose-spec@0.5.0` `ComposeCompileSuccessData` type before adding this — see this file's own header doc on not assuming a newer SDK. `inputValueUsd`/`outputValueUsd` are already USD; `impactBps` is the SDK's own computed price impact, never re-derived here. */
@@ -346,34 +426,16 @@ export async function buildComposerPurchase(request: ComposerPurchaseRequest): P
   });
 
   const slippage = request.slippageBps / 10000;
-  const splitBpsByStep = computeCascadeSplitBps(request.legs);
-
-  let currentResource: Bindable<'resource'> = builder.inputs.amountIn;
-  for (let i = 0; i < request.legs.length - 1; i++) {
-    const leg = request.legs[i];
-    const { a, b } = builder.core.split(`split_${i}`, {
-      bind: { source: currentResource },
-      config: { bps: splitBpsByStep[i] },
-    });
+  // One partition of the input by the legs' weights (see this file's header); the last leg takes the rounding dust.
+  const legInputs = partitionAcross(builder as unknown as PartitionBuilder, 'alloc', builder.inputs.amountIn, request.legs.map((l) => l.weightBps));
+  request.legs.forEach((leg, i) => {
     builder.lifi.swap(buildLegNodeId(i), {
-      bind: { amountIn: a },
+      bind: { amountIn: legInputs[i] },
       config: {
         resourceOut: { kind: 'erc20', token: leg.address as `0x${string}`, chainId },
         slippage,
       },
     });
-    currentResource = b;
-  }
-
-  // Last leg: whatever remains, no split needed.
-  const lastIndex = request.legs.length - 1;
-  const lastLeg = request.legs[lastIndex];
-  builder.lifi.swap(buildLegNodeId(lastIndex), {
-    bind: { amountIn: currentResource },
-    config: {
-      resourceOut: { kind: 'erc20', token: lastLeg.address as `0x${string}`, chainId },
-      slippage,
-    },
   });
 
   const result = await compileStrict(
@@ -690,16 +752,10 @@ export async function buildComposerRebalance(request: ComposerRebalanceRequest):
       bind: { amountIn: source },
       config: { resourceOut: { kind: 'erc20', token: token as `0x${string}`, chainId }, slippage },
     });
-  // Cascade split of `source` across the buys (same arithmetic as the purchase flow).
+  // `source` partitioned across the buys by weight (same as the purchase flow).
   const splitAcrossBuys = (source: Bindable<'resource'>) => {
-    const steps = computeCascadeSplitBps(request.buys);
-    let current = source;
-    for (let j = 0; j < request.buys.length - 1; j++) {
-      const { a, b } = builder.core.split(`rb_split_${j}`, { bind: { source: current }, config: { bps: steps[j] } });
-      swap(rebalanceBuyNodeId(j), a, request.buys[j].address);
-      current = b;
-    }
-    swap(rebalanceBuyNodeId(request.buys.length - 1), current, request.buys[request.buys.length - 1].address);
+    const parts = partitionAcross(builder as unknown as PartitionBuilder, 'rb_alloc', source, request.buys.map((b) => b.weightBps));
+    request.buys.forEach((buy, j) => swap(rebalanceBuyNodeId(j), parts[j], buy.address));
   };
 
   if (shape === 'ONE_SELL') {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { V1_DEFAULTS, V1_LIMITS, BAG_V1_CHAINS, splitByWeight, V1_EXECUTION_TOLERANCE_BPS, cascadeSplitBps } from '@/packages/bag-sdk/src';
-import { computeCascadeSplitBps } from '@/lib/blockchain/lifi-composer-adapter';
+import { computeCascadeSplitBps, simulatePartition } from '@/lib/blockchain/lifi-composer-adapter';
 import { distributeExactByWeight } from '../exact-allocation';
 import { assetIdentityKey } from '../asset-identity';
 import {
@@ -71,9 +71,9 @@ describe('bag.json v1 (SDK) ↔ BAG app', () => {
     }
   });
 
-  it('BAG’s Composer purchase (on-chain bps cascade) stays within the v1 execution bound of the exact target', () => {
+  it('BAG’s Composer purchase (one core.partition) stays within the v1 execution bound of the exact target', () => {
     // Mirrors lifi-purchase-quote.ts: exact target amounts → whole-bp leg weights (last leg absorbs) →
-    // computeCascadeSplitBps → each on-chain split takes `bps` of what remains.
+    // core.partition: each leg floor(amount × bps / 10000), the last the remainder (simulatePartition).
     let seed = 11;
     const rand = (m: number) => ((seed = (seed * 1103515245 + 12345) % 2 ** 31), seed % m);
     let worst = 0;
@@ -96,14 +96,7 @@ describe('bag.json v1 (SDK) ↔ BAG app', () => {
         return b;
       });
       if (legBps.some((b) => b <= 0)) continue;
-      const steps = computeCascadeSplitBps(legBps.map((weightBps, i) => ({ address: assets[i].address, weightBps, symbol: `A${i}` })));
-      let remaining = amount;
-      const executed = steps.map((bps) => {
-        const part = (remaining * BigInt(bps)) / BigInt(10000);
-        remaining -= part;
-        return part;
-      });
-      executed.push(remaining);
+      const executed = simulatePartition(amount, legBps);
       expect(executed.reduce((a, b) => a + b, BigInt(0))).toBe(amount); // whole deposit spent
       executed.forEach((e, i) => {
         const dev = Math.abs(Number(e - target[i])) / Number(amount) * 10000;
@@ -113,7 +106,9 @@ describe('bag.json v1 (SDK) ↔ BAG app', () => {
     expect(worst).toBeLessThan(V1_EXECUTION_TOLERANCE_BPS);
   });
 
-  it('the SDK’s cascade split is BAG’s Composer cascade (computeCascadeSplitBps)', () => {
+  // The SDK (packages/bag-sdk) still plans purchases as the old cascade; BAG now builds a partition (issue #88). Until
+  // the SDK moves too, the cascade arithmetic both expose must stay the same.
+  it('the SDK’s cascade split is the same arithmetic as BAG’s computeCascadeSplitBps', () => {
     let seed = 5;
     const rand = (m: number) => ((seed = (seed * 1103515245 + 12345) % 2 ** 31), seed % m);
     for (let t = 0; t < 2000; t++) {

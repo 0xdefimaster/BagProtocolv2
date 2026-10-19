@@ -49,7 +49,7 @@ describe('buildComposerRebalance', () => {
     const body = sentBody(f);
     expect(r.shape).toBe('HUB');
     for (const id of ['rb_sell_0', 'rb_sell_1', 'rb_sell_2', 'rb_merge_1', 'rb_merge_2', 'rb_buy_0']) expect(body).toContain(id);
-    expect(body).not.toContain('rb_split_');
+    expect(body).not.toContain('rb_alloc');
     expect(body).not.toContain('rb_buy_1');
     expect(body.toLowerCase()).toContain(USDG.toLowerCase());
   });
@@ -59,7 +59,7 @@ describe('buildComposerRebalance', () => {
     const r = await buildComposerRebalance({ ...base, sells: [sell(A)], buys: [buy(B, 6000), buy(C, 4000)], fetchImpl: f });
     const body = sentBody(f);
     expect(r.shape).toBe('HUB');
-    for (const id of ['rb_sell_0', 'rb_split_0', 'rb_buy_0', 'rb_buy_1']) expect(body).toContain(id);
+    for (const id of ['rb_sell_0', 'rb_alloc', 'rb_buy_0', 'rb_buy_1']) expect(body).toContain(id);
     expect(body).not.toContain('rb_merge_');
   });
 
@@ -77,7 +77,7 @@ describe('buildComposerRebalance', () => {
     const r = await buildComposerRebalance({ ...base, sells: [sell(A), sell(B)], buys: [buy(C, 5000), buy(D, 5000)], fetchImpl: f });
     const body = sentBody(f);
     expect(r.shape).toBe('HUB');
-    for (const id of ['rb_sell_0', 'rb_sell_1', 'rb_merge_1', 'rb_split_0', 'rb_buy_0', 'rb_buy_1']) expect(body).toContain(id);
+    for (const id of ['rb_sell_0', 'rb_sell_1', 'rb_merge_1', 'rb_alloc', 'rb_buy_0', 'rb_buy_1']) expect(body).toContain(id);
     expect(body.toLowerCase()).toContain(USDG.toLowerCase());
   });
 
