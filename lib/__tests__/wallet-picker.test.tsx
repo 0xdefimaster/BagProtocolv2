@@ -81,7 +81,11 @@ describe('wallet picker', () => {
     await waitFor(() => expect(result.current.walletAddress).toBe('0xbbbb000000000000000000000000000000000002'));
     expect(metamask.request).not.toHaveBeenCalledWith({ method: 'eth_requestAccounts' });
     // Every signing path now talks to the wallet the user picked.
-    expect(getEthereumProvider()).toBe(rabby);
+    // (Wrapped with chain fee hints, so compared by what its requests reach.)
+    rabby.request.mockClear();
+    await getEthereumProvider()!.request({ method: 'eth_chainId' });
+    expect(rabby.request).toHaveBeenCalledWith({ method: 'eth_chainId' });
+    expect(metamask.request).not.toHaveBeenCalledWith({ method: 'eth_chainId' });
     expect(result.current.chainName).toBe('Robinhood Chain');
     expect(screen.queryByRole('dialog', { name: 'Connect a wallet' })).toBeNull();
     expect(window.localStorage.getItem('bag-protocol:wallet-id')).toBe('io.rabby');

@@ -57,6 +57,11 @@ export interface BagChainConfig {
    * USDG on Robinhood Chain, Circle's native USDC on Ethereum, Arbitrum and Base.
    */
   sweepOutputToken: { address: string; symbol: string; decimals: number };
+  /**
+   * The wallet has no fee-market data for this chain (MetaMask on Robinhood Chain shows 0 GWEI and a fee
+   * ~100× the real one), so transactions BAG sends carry fees read from the chain (lib/wallet/chain-fees.ts).
+   */
+  walletFeeHints: boolean;
 }
 
 const ROBINHOOD_NATIVE = { name: 'Ether', ...ROBINHOOD_NATIVE_CURRENCY };
@@ -83,6 +88,7 @@ export const BAG_CHAINS: Record<BagChain, BagChainConfig> = {
     // Canonical WETH9 on Ethereum mainnet.
     wrappedNativeAddress: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
     sweepOutputToken: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', decimals: 6 },
+    walletFeeHints: false,
   },
   arbitrum: {
     chain: 'arbitrum',
@@ -98,6 +104,7 @@ export const BAG_CHAINS: Record<BagChain, BagChainConfig> = {
     wrappedNativeAddress: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
     // Native USDC (not the bridged USDC.e).
     sweepOutputToken: { address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', symbol: 'USDC', decimals: 6 },
+    walletFeeHints: false,
   },
   base: {
     chain: 'base',
@@ -112,6 +119,7 @@ export const BAG_CHAINS: Record<BagChain, BagChainConfig> = {
     // WETH predeploy on Base (OP Stack).
     wrappedNativeAddress: '0x4200000000000000000000000000000000000006',
     sweepOutputToken: { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', decimals: 6 },
+    walletFeeHints: false,
   },
   robinhood: {
     chain: 'robinhood',
@@ -125,6 +133,7 @@ export const BAG_CHAINS: Record<BagChain, BagChainConfig> = {
     viemChain: robinhoodViemChain,
     wrappedNativeAddress: ROBINHOOD_WETH_ADDRESS,
     sweepOutputToken: { address: ROBINHOOD_REWARD_TOKEN.address, symbol: ROBINHOOD_REWARD_TOKEN.symbol, decimals: ROBINHOOD_REWARD_TOKEN.decimals },
+    walletFeeHints: true,
   },
 };
 

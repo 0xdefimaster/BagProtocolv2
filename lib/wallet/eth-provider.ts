@@ -9,6 +9,7 @@
 // WalletConnect is added to the list when it is configured.
 // -----------------------------------------------------------------------------
 
+import { withChainFeeHints } from './chain-fees';
 import { getWalletConnectOption } from './walletconnect';
 
 /** Minimal EIP-1193 provider — what every injected wallet exposes. */
@@ -43,10 +44,13 @@ interface Eip6963AnnounceDetail {
 
 let activeProvider: Eip1193Provider | null = null;
 
-/** The wallet every signing path should talk to: the one the user picked, else `window.ethereum`. */
+/**
+ * The wallet every signing path should talk to: the one the user picked, else `window.ethereum`. Wrapped so a
+ * transaction on a chain the wallet has no fee data for carries the chain's real fees (lib/wallet/chain-fees.ts).
+ */
 export function getEthereumProvider(): Eip1193Provider | undefined {
-  if (activeProvider) return activeProvider;
-  return typeof window !== 'undefined' ? window.ethereum : undefined;
+  const provider = activeProvider ?? (typeof window !== 'undefined' ? window.ethereum : undefined);
+  return provider ? withChainFeeHints(provider) : undefined;
 }
 
 export function setActiveEthereumProvider(provider: Eip1193Provider | null): void {
