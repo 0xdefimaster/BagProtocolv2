@@ -164,3 +164,32 @@ describe('apply_wallet_observation', () => {
     expect(after.indexOf(u.userId)).toBe(after.length - 1);
   });
 });
+
+describe('mark_wallets_reconciled (0060)', () => {
+  const state = async (ids: string[]) =>
+    (await db.admin.query('select user_id, last_block_number::text as b from wallet_reconciliation_state where user_id = any($1) order by last_block_number, user_id', [ids])).rows.map((r) => [r.user_id, r.b]);
+
+  it('marks a list at one block in one call; the block never moves back; duplicates count once', async () => {
+    const a = await newWallet(db);
+    const b = await newWallet(db);
+    await db.service.query('select mark_wallet_reconciled($1, 5000)', [a.userId]);
+    const n = (await db.service.query('select mark_wallets_reconciled($1::uuid[], 4000) as n', [[a.userId, b.userId, b.userId]])).rows[0].n;
+    expect(n).toBe(2);
+    // a stays at 5000 (newer than 4000); b is new at 4000.
+    expect(await state([a.userId, b.userId])).toEqual(
+      [
+        [b.userId, '4000'],
+        [a.userId, '5000'],
+      ]
+    );
+    await db.service.query('select mark_wallets_reconciled($1::uuid[], 9000)', [[a.userId, b.userId]]);
+    expect((await state([a.userId, b.userId])).map((r) => r[1])).toEqual(['9000', '9000']);
+  });
+
+  it('only the service role may call it', async () => {
+    for (const role of ['anon', 'authenticated'] as const) {
+      await expect(db.asRole(role, (c) => c.query('select mark_wallets_reconciled($1::uuid[], 1)', [[]]))).rejects.toThrow(/permission denied/);
+    }
+  });
+});
+

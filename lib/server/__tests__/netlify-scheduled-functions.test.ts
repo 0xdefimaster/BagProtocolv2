@@ -5,6 +5,7 @@ import { config as refreshConfig } from '@/netlify/functions/refresh-asset-route
 import { config as reconcileWalletsConfig } from '@/netlify/functions/reconcile-wallets.mjs';
 import { config as settlePendingConfig } from '@/netlify/functions/settle-pending-executions.mjs';
 import { config as snapshotConfig } from '@/netlify/functions/snapshot-bag-navs.mjs';
+import scanWalletTransfers, { config as scanConfig } from '@/netlify/functions/scan-wallet-transfers.mjs';
 
 // The creator-reward schedules skip before invoking the route when the vault is not configured, so an
 // unconfigured deployment does not spend a function run every few minutes on a guaranteed 503.
@@ -64,5 +65,15 @@ describe('creator-reward scheduled functions', () => {
     expect(reconcileWalletsConfig.schedule).toBe('0 * * * *');
     expect(settlePendingConfig.schedule).toBe('0 * * * *');
     expect(snapshotConfig.schedule).toBe('0 * * * *');
+  });
+
+  it('the Transfer-log scan runs every minute and calls its own route with the cron secret', async () => {
+    expect(scanConfig.schedule).toBe('* * * * *');
+    const res = await scanWalletTransfers();
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith('https://site.example/api/cron/scan-wallet-transfers', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer a-long-enough-cron-secret-value-123456' },
+    });
   });
 });

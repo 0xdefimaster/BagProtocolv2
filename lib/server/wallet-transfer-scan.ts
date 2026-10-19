@@ -14,8 +14,12 @@ import { reconcileWallet, type TrackedAsset } from '@/lib/server/wallet-reconcil
 //   2. a wallet with such a transfer after its own last check, or with an
 //      outflow still being confirmed (open DRIFT), gets a full reconciliation
 //      (balances re-read at one block, apply_wallet_observation);
-//   3. every other covered wallet is marked verified at the latest block:
-//      nothing left it since its last full check.
+//   3. every other covered wallet is verified at the latest block: nothing
+//      left it since its last full check. Its row is rewritten only once its
+//      recorded block is REMARK_AFTER_BLOCKS old, in one call for all of them
+//      (mark_wallets_reconciled, 0060): the scan runs every minute, and a
+//      write per wallet per minute would grow with the number of users, not
+//      with what actually moved. Re-scanning those extra blocks costs nothing.
 //
 // A wallet never fully checked, or last checked beyond MAX_SCAN_BLOCKS, is not
 // covered here: the round-robin pass (reconcileDueWallets) checks it in full.
@@ -29,6 +33,8 @@ export const MAX_SCAN_BLOCKS = BigInt(200_000);
 export const SCAN_CHUNK_BLOCKS = BigInt(10_000);
 export const SCAN_WALLET_CHUNK = 100;
 export const SCAN_BUDGET_MS = 8_000;
+/** A covered wallet's recorded block is moved forward once it is this many blocks behind (about 30 minutes at 0.25 s). */
+export const REMARK_AFTER_BLOCKS = BigInt(7_200);
 
 type ScanClient = Pick<PublicClient, 'getBlockNumber' | 'getLogs'> & PublicClient;
 
@@ -46,6 +52,8 @@ export interface TransferScanResult {
   scannedTo: string | null;
   reconciled: number;
   verified: number;
+  /** Of the verified wallets, how many rows were written this run (the rest were recent enough). */
+  marked: number;
   deferred: number;
   failed: number;
 }
@@ -86,7 +94,7 @@ export async function scanTrackedWalletTransfers(
   const started = now();
   const budget = options.budgetMs ?? SCAN_BUDGET_MS;
   const users = await trackedUsers(admin);
-  const result: TransferScanResult = { wallets: users.length, covered: 0, scannedFrom: null, scannedTo: null, reconciled: 0, verified: 0, deferred: 0, failed: 0 };
+  const result: TransferScanResult = { wallets: users.length, covered: 0, scannedFrom: null, scannedTo: null, reconciled: 0, verified: 0, marked: 0, deferred: 0, failed: 0 };
   if (users.length === 0) return result;
 
   const latest = await client.getBlockNumber();
@@ -129,11 +137,22 @@ export async function scanTrackedWalletTransfers(
   }
 
   const reconcileIds = new Set(toReconcile.map((u) => u.userId));
-  for (const u of covered) {
-    if (reconcileIds.has(u.userId)) continue;
-    const { error } = await admin.rpc('mark_wallet_reconciled', { p_user_id: u.userId, p_block_number: Number(latest) });
-    if (error) result.failed++;
-    else result.verified++;
+  const verified = covered.filter((u) => !reconcileIds.has(u.userId));
+  const stale = verified.filter((u) => latest - u.lastBlock! >= REMARK_AFTER_BLOCKS).map((u) => u.userId);
+  result.verified = verified.length;
+  if (stale.length > 0) {
+    const { error } = await admin.rpc('mark_wallets_reconciled', { p_user_ids: stale, p_block_number: Number(latest) });
+    if (!error) {
+      result.marked = stale.length;
+    } else {
+      // 0060 not applied yet: one call per wallet, as before, within the time budget.
+      for (const userId of stale) {
+        if (now() - started >= budget) break;
+        const { error: oneError } = await admin.rpc('mark_wallet_reconciled', { p_user_id: userId, p_block_number: Number(latest) });
+        if (oneError) result.failed++;
+        else result.marked++;
+      }
+    }
   }
   return result;
 }

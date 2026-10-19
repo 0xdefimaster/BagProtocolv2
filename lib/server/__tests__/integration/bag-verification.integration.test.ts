@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createBag } from '@/lib/server/bag-repo';
 import { getBagVerification } from '@/lib/server/bag-verification';
-import { scanTrackedWalletTransfers } from '@/lib/server/wallet-transfer-scan';
+import { REMARK_AFTER_BLOCKS, scanTrackedWalletTransfers } from '@/lib/server/wallet-transfer-scan';
 import { TestDatabase, createTestDatabase, validRecipeInput } from './pg-harness';
 import { ASSET, insertPurchaseIntent, newWallet } from './economics-harness';
 
@@ -34,18 +34,21 @@ describe('Bag verification (real PostgreSQL)', () => {
     const { bagId, u } = await bagWithHolder();
     expect((await getBagVerification(db.client, [bagId])).get(bagId)).toEqual({ checkedAt: null, pendingOutflows: 0 });
 
-    // A first full check at block 100 (what the round-robin pass records), then a scan at 150 with no transfers.
+    // A first full check at block 100 (what the round-robin pass records), then scans with no transfers. A scan
+    // 50 blocks later verifies without writing; once the row is REMARK_AFTER_BLOCKS old it is moved forward (0060).
     await db.service.query('select mark_wallet_reconciled($1, $2)', [u.userId, 100]);
-    const scan = await scanTrackedWalletTransfers(db.client, stubChain(BigInt(150)));
-    expect(scan).toMatchObject({ covered: 1, verified: 1, reconciled: 0 });
-    const state = (await db.admin.query('select last_block_number from wallet_reconciliation_state where user_id = $1', [u.userId])).rows[0];
-    expect(String(state.last_block_number)).toBe('150');
+    const block = async () => String((await db.admin.query('select last_block_number from wallet_reconciliation_state where user_id = $1', [u.userId])).rows[0].last_block_number);
+    expect(await scanTrackedWalletTransfers(db.client, stubChain(BigInt(150)))).toMatchObject({ covered: 1, verified: 1, marked: 0, reconciled: 0 });
+    expect(await block()).toBe('100');
+    const later = BigInt(100) + REMARK_AFTER_BLOCKS + BigInt(50);
+    expect(await scanTrackedWalletTransfers(db.client, stubChain(later))).toMatchObject({ covered: 1, verified: 1, marked: 1, reconciled: 0 });
+    expect(await block()).toBe(later.toString());
     const fresh = (await getBagVerification(db.client, [bagId])).get(bagId)!;
     expect(fresh.checkedAt).not.toBeNull();
     expect(fresh.pendingOutflows).toBe(0);
 
     // The wallet now holds 60 of the tracked 100: a first sighting records a DRIFT naming the Bag.
-    const obs = (await db.service.query('select apply_wallet_observation($1, $2, $3, $4, $5) as r', [u.userId, ASSET.chain, ASSET.address, 151, '60'])).rows[0].r;
+    const obs = (await db.service.query('select apply_wallet_observation($1, $2, $3, $4, $5) as r', [u.userId, ASSET.chain, ASSET.address, Number(later) + 1, '60'])).rows[0].r;
     expect(obs.status).toBe('DRIFT');
     expect((await getBagVerification(db.client, [bagId])).get(bagId)!.pendingOutflows).toBe(1);
   });

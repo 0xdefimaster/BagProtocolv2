@@ -8598,4 +8598,27 @@ begin
   end loop;
 end $$;
 
+-- 0060_bulk_wallet_reconciled.sql
+create or replace function mark_wallets_reconciled(p_user_ids uuid[], p_block_number bigint) returns integer
+language sql
+as $$
+  with upserted as (
+    insert into wallet_reconciliation_state (user_id, last_checked_at, last_block_number)
+    select distinct u, now(), p_block_number from unnest(p_user_ids) as u
+    on conflict (user_id) do update
+      set last_checked_at = now(),
+          last_block_number = greatest(coalesce(wallet_reconciliation_state.last_block_number, excluded.last_block_number), excluded.last_block_number)
+    returning 1
+  )
+  select count(*)::integer from upserted
+$$;
+
+do $$
+begin
+  revoke execute on function mark_wallets_reconciled(uuid[], bigint) from public;
+  if exists (select 1 from pg_roles where rolname = 'anon') then revoke execute on function mark_wallets_reconciled(uuid[], bigint) from anon; end if;
+  if exists (select 1 from pg_roles where rolname = 'authenticated') then revoke execute on function mark_wallets_reconciled(uuid[], bigint) from authenticated; end if;
+  if exists (select 1 from pg_roles where rolname = 'service_role') then grant execute on function mark_wallets_reconciled(uuid[], bigint) to service_role; end if;
+end $$;
+
 notify pgrst, 'reload schema';

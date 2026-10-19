@@ -21,6 +21,7 @@ vi.mock('@/lib/server/wallet-transfer-scan', () => ({ scanTrackedWalletTransfers
 
 import { POST as webhook } from '@/app/api/webhooks/alchemy/address-activity/route';
 import { POST as cron } from '@/app/api/cron/reconcile-wallets/route';
+import { POST as scanCron } from '@/app/api/cron/scan-wallet-transfers/route';
 
 const KEY = 'whsec_k';
 const A = '0x49da000000000000000000000000000000000001';
@@ -73,5 +74,24 @@ describe('POST /api/cron/reconcile-wallets', () => {
     // Every holder through Transfer logs first, then a few wallets in full.
     expect(transferScan).toHaveBeenCalled();
     expect(reconcileDue).toHaveBeenCalledWith(expect.anything(), expect.anything(), 5);
+  });
+});
+
+describe('POST /api/cron/scan-wallet-transfers', () => {
+  it('needs the cron secret; runs only the Transfer scan (no round-robin full checks)', async () => {
+    transferScan.mockResolvedValue({ wallets: 3, covered: 3, reconciled: 0, verified: 3, marked: 0 });
+    expect((await scanCron(new Request('http://x', { method: 'POST' }) as never)).status).toBe(401);
+    const ok = await scanCron(new Request('http://x', { method: 'POST', headers: { authorization: 'Bearer a-long-enough-cron-secret-value-123456' } }) as never);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ scan: { wallets: 3, covered: 3, reconciled: 0, verified: 3, marked: 0 } });
+    expect(transferScan).toHaveBeenCalledTimes(1);
+    expect(reconcileDue).not.toHaveBeenCalled();
+  });
+
+  it('a failed scan is a 500 with the reason, nothing else runs', async () => {
+    transferScan.mockRejectedValue(new Error('rpc down'));
+    const res = await scanCron(new Request('http://x', { method: 'POST', headers: { authorization: 'Bearer a-long-enough-cron-secret-value-123456' } }) as never);
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'rpc down' });
   });
 });

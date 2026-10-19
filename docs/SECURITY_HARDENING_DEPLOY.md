@@ -66,6 +66,7 @@ $CRON_SECRET`:
 
 - `settle-pending-executions` — hourly
 - `reconcile-wallets` — hourly (plus a check of each wallet when it connects)
+- `scan-wallet-transfers` — every minute: the Transfer-log scan only, so a token leaving a holder's wallet reaches positions and Bag TVL within a minute or two. Two chain reads and no database writes when nothing moved; needs migration `0060` to mark covered wallets in one call (falls back to one call per wallet without it)
 - `snapshot-bag-navs` — hourly (a Bag page visit also records one when the last is over 15 minutes old)
 - `settle-creator-rewards` — every 15 minutes; skipped while
   `CREATOR_REWARDS_VAULT_ADDRESS` or `CREATOR_REWARDS_SETTLEMENT_PRIVATE_KEY` is unset
