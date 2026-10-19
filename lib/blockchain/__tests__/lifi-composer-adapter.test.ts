@@ -7,6 +7,9 @@ import {
   composerLegEnforcedMinOutputRaw,
   composerLegSimulatedOutputRaw,
   isComposerEligible,
+  planPartition,
+  simulatePartition,
+  PARTITION_MAX_PARTS,
 } from '../lifi-composer-adapter';
 import { composeResponse, out, wireOut } from './composer-fixtures';
 
@@ -90,6 +93,75 @@ describe('computeCascadeSplitBps', () => {
   });
 });
 
+// The old cascade as Composer executed it (core.split rounds output `a` up), for the issue #88 comparison.
+function cascadeDelivered(amount: bigint, weights: number[]): bigint[] {
+  const steps = computeCascadeSplitBps(weights.map((weightBps, i) => ({ address: `0x${i}`, weightBps, symbol: `A${i}` })));
+  let remaining = amount;
+  const out = steps.map((bps) => {
+    const a = (remaining * BigInt(bps) + BigInt(9999)) / BigInt(10000);
+    remaining -= a;
+    return a;
+  });
+  return [...out, remaining];
+}
+const exact = (amount: bigint, w: number) => (amount * BigInt(w)) / BigInt(10000);
+
+describe('core.partition allocation (issue #88)', () => {
+  const A = BigInt(1_000_000_000);
+
+  it('the issue\'s cases: every leg gets exactly its weight; the cascade drifted', () => {
+    for (const w of [[2500, 2500, 2500, 2500], [3333, 3333, 3334], [9001, 7, 992]]) {
+      const got = simulatePartition(A, w);
+      expect(got.reduce((s, x) => s + x, BigInt(0))).toBe(A);
+      got.forEach((g, i) => expect(g).toBe(exact(A, w[i])));
+    }
+    // What the issue measured for the cascade: 2500×4 → 0, −25 000, +12 500, +12 500.
+    expect(cascadeDelivered(A, [2500, 2500, 2500, 2500]).map((g) => g - exact(A, 2500))).toEqual([BigInt(0), BigInt(-25000), BigInt(12500), BigInt(12500)]);
+  });
+
+  it('up to 16 legs: one node; each leg is floor(amount × weight), the last takes under n raw units of dust', () => {
+    let seed = 3;
+    const rand = (m: number) => ((seed = (seed * 1103515245 + 12345) % 2 ** 31), seed % m);
+    for (let t = 0; t < 3000; t++) {
+      const n = 2 + rand(15);
+      const raw = Array.from({ length: n }, () => 1 + rand(4000));
+      const sum = raw.reduce((a, b) => a + b, 0);
+      const w = raw.map((x) => Math.max(1, Math.floor((x * 10000) / sum)));
+      w[0] += 10000 - w.reduce((a, b) => a + b, 0);
+      if (w.some((x) => x <= 0)) continue;
+      expect(planPartition(w)).toEqual({ outerBps: w, groups: w.map((_, i) => ({ legs: [i], innerBps: null })) });
+      const amount = BigInt(1 + rand(1_000_000_007)) * BigInt(1 + rand(1000));
+      const got = simulatePartition(amount, w);
+      expect(got.reduce((s, x) => s + x, BigInt(0))).toBe(amount);
+      got.forEach((g, i) => {
+        const d = g - exact(amount, w[i]);
+        if (i < n - 1) expect(d).toBe(BigInt(0));
+        else expect(d >= BigInt(0) && d < BigInt(n)).toBe(true);
+      });
+    }
+  });
+
+  it('above 16 legs: at most 16 groups of 2–16, every leg within about 1 bp of its weight; one leg needs no node', () => {
+    const w = Array.from({ length: 100 }, () => 100); // the largest basket validate_bag allows
+    const plan = planPartition(w);
+    expect(plan.outerBps.length).toBeLessThanOrEqual(PARTITION_MAX_PARTS);
+    for (const g of plan.groups) expect(g.legs.length >= 2 && g.legs.length <= PARTITION_MAX_PARTS).toBe(true);
+    expect(planPartition(Array.from({ length: 17 }, (_, i) => (i === 0 ? 10000 - 16 * 588 : 588))).groups.map((g) => g.legs.length)).toEqual([9, 8]);
+    const odd = Array.from({ length: 37 }, (_, i) => 1 + ((i * 97) % 400));
+    const oddSum = odd.reduce((a, b) => a + b, 0);
+    const ow = odd.map((x) => Math.floor((x * 10000) / oddSum));
+    ow[0] += 10000 - ow.reduce((a, b) => a + b, 0);
+    for (const weights of [w, ow]) {
+      const got = simulatePartition(A, weights);
+      expect(got.reduce((s, x) => s + x, BigInt(0))).toBe(A);
+      got.forEach((g, i) => expect(Math.abs(Number(g - exact(A, weights[i])))).toBeLessThanOrEqual(Number(A) / 10000 + 16));
+    }
+    expect(simulatePartition(A, [10000])).toEqual([A]);
+    expect(() => planPartition([5000, 4000])).toThrow(/sum to exactly 10000/);
+    expect(() => planPartition([10000, 0])).toThrow(/positive/);
+  });
+});
+
 describe('buildComposerPurchase', () => {
   const baseRequest = {
     chain: 'ethereum' as const,
@@ -121,6 +193,21 @@ describe('buildComposerPurchase', () => {
     const byDefault = vi.fn(mockComposeFetch());
     await buildComposerPurchase({ ...baseRequest, legs, fetchImpl: byDefault });
     expect(JSON.stringify((byDefault.mock.calls as unknown as [unknown, RequestInit][])[0][1].body)).not.toContain('maxPriceImpactBps');
+  });
+
+  it('splits the input with ONE core.partition node carrying the leg weights (no core.split cascade)', async () => {
+    const f = vi.fn(mockComposeFetch());
+    const legs = [
+      { address: '0xTargetA', weightBps: 9001, symbol: 'A' },
+      { address: '0xTargetB', weightBps: 7, symbol: 'B' },
+      { address: '0xTargetC', weightBps: 992, symbol: 'C' },
+    ];
+    await buildComposerPurchase({ ...baseRequest, legs, fetchImpl: f });
+    const sent = String((f.mock.calls as unknown as [unknown, RequestInit][])[0][1].body);
+    expect(sent).toContain('core.partition');
+    expect(sent).not.toContain('core.split');
+    expect(sent.replace(/\s/g, '')).toContain('[9001,7,992]');
+    for (const p of ['parts.0', 'parts.1', 'parts.2']) expect(sent).toContain(p);
   });
 
   it('compiles a multi-leg flow and returns transactionRequest + userProxy + outputs', async () => {
