@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 
 // How much the app shows at once on a wide screen, like the browser's zoom but only for the app (the landing page
 // is left alone) and only above 1100px wide (phones and tablets never shrink). "Auto" picks by screen width:
-// 67% from 1800px, 80% from 1400px, otherwise 100%. The choice is remembered in this browser.
+// 80% from 1400px, otherwise 100% (67% made balances and small text hard to read, so it is only a manual choice).
+// The choice is remembered in this browser.
 
 export type Density = 'auto' | '100' | '80' | '67';
 export const DENSITY_STORAGE_KEY = 'bag-protocol:density';
@@ -30,8 +31,8 @@ export function applyDensity(density: Density): void {
 }
 
 /** What "auto" resolves to at this screen width. */
-export function autoDensity(width: number): '100' | '80' | '67' {
-  return width >= 1800 ? '67' : width >= 1400 ? '80' : '100';
+export function autoDensity(width: number): '100' | '80' {
+  return width >= 1400 ? '80' : '100';
 }
 
 const label = (d: Density) => (d === 'auto' ? 'Auto' : `${d}%`);
@@ -39,7 +40,7 @@ const label = (d: Density) => (d === 'auto' ? 'Auto' : `${d}%`);
 /** One button that steps through Auto → 100% → 80% → 67%. */
 export function DensityControl() {
   const [density, setDensity] = useState<Density>('auto');
-  const [autoValue, setAutoValue] = useState<'100' | '80' | '67'>('100');
+  const [autoValue, setAutoValue] = useState<'100' | '80'>('100');
   useEffect(() => {
     setDensity(readDensity());
     const update = () => setAutoValue(autoDensity(window.innerWidth));

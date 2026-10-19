@@ -782,7 +782,7 @@ header .brand { flex-shrink: 0; white-space: nowrap; }
 
 /* ---------- screen density (components/ui/DensityControl.tsx) ----------
    Like the browser's zoom, for the app only and only above 1100px. Page widths grow by the same factor, so a
-   denser screen shows more, not just smaller. Auto: 67% from 1800px, 80% from 1400px. */
+   denser screen shows more, not just smaller. Auto: 80% from 1400px; 67% only when chosen. */
 .app-density { zoom: var(--app-zoom, 1); }
 .app-density .wrap { max-width: calc(1140px / var(--app-zoom, 1)); }
 .app-density .create3 { max-width: calc(1400px / var(--app-zoom, 1)); }
@@ -791,7 +791,6 @@ header .brand { flex-shrink: 0; white-space: nowrap; }
 .app-density .max-w-5xl { max-width: calc(64rem / var(--app-zoom, 1)); }
 .density-toggle { width: auto; min-width: 36px; padding: 0 8px; font-size: 11px; }
 @media (min-width: 1400px) { html:not([data-density]) { --app-zoom: 0.8; } }
-@media (min-width: 1800px) { html:not([data-density]) { --app-zoom: 0.67; } }
 @media (min-width: 1101px) {
   html[data-density='80'] { --app-zoom: 0.8; }
   html[data-density='67'] { --app-zoom: 0.67; }

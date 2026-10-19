@@ -10,8 +10,8 @@ afterEach(() => {
 });
 
 describe('DensityControl', () => {
-  it('auto follows the screen width: 67% from 1800px, 80% from 1400px, else 100%', () => {
-    expect([autoDensity(1920), autoDensity(1800), autoDensity(1440), autoDensity(1280)]).toEqual(['67', '67', '80', '100']);
+  it('auto follows the screen width: 80% from 1400px (also on wide screens), else 100%', () => {
+    expect([autoDensity(2560), autoDensity(1920), autoDensity(1440), autoDensity(1280)]).toEqual(['80', '80', '80', '100']);
   });
 
   it('steps Auto → 100% → 80% → 67% → Auto, sets data-density and remembers the choice', () => {
