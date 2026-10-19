@@ -39,6 +39,7 @@ import { EditStrategyPanel } from '@/components/bags/EditStrategyPanel';
 import { ForkPanel } from '@/components/bags/ForkPanel';
 import { StockQuote } from '@/components/bags/StockQuote';
 import { useStockQuotes } from '@/hooks/useStockQuotes';
+import { visibleAssets } from '@/lib/visible-assets';
 import { allocationColor, allocationGradient } from '@/lib/allocation-colors';
 
 function unroutableLabel(policy: string | undefined): { title: string; detail: string } {
@@ -227,6 +228,7 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
   // The server checks creator, wallet, MUTABLE and deployment again; this only hides the button from others.
   const canEdit = bag.status === 'ACTIVE' && isOwnBag && bag.mutability === 'MUTABLE';
   const anyHeld = !!bag.holdings?.some((h) => BigInt(h.quantityRaw) > BigInt(0));
+  const { allocation, breakdown, hidden: hiddenInBreakdown, heldOf } = visibleAssets(bag.composition, bag.holdings);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(JSON.stringify(bag, null, 2));
@@ -452,14 +454,14 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
                 <div className="rounded-xl border border-white/10 bg-white/5 p-6">
                   <h3 className="text-lg font-bold text-white mb-4">Allocation</h3>
                   <div className="flex flex-wrap items-center gap-8">
-                    <div className="bag-donut" style={{ background: allocationGradient(bag.composition) }} aria-hidden="true">
+                    <div className="bag-donut" style={{ background: allocationGradient(allocation) }} aria-hidden="true">
                       <div className="bag-donut-hole">
-                        <span className="text-2xl font-bold text-white">{bag.composition.length}</span>
+                        <span className="text-2xl font-bold text-white">{allocation.length}</span>
                         <span className="text-xs text-white/50">assets</span>
                       </div>
                     </div>
                     <ul className="flex-1 min-w-[160px] space-y-2" aria-label="Target weights">
-                      {bag.composition.map((pos, i) => (
+                      {allocation.map((pos, i) => (
                         <li key={pos.symbol} className="flex items-center gap-3">
                           <span className="bag-swatch" style={{ background: allocationColor(i) }} aria-hidden="true" />
                           <span className="flex-1 font-medium text-white">{pos.symbol}</span>
@@ -473,8 +475,8 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
                 <div className="rounded-xl border border-white/10 bg-white/5 p-6">
                   <h3 className="text-lg font-bold text-white mb-4">Breakdown</h3>
                   <div className="space-y-2">
-                    {bag.composition.map((pos) => {
-                      const held = bag.holdings?.find((h) => h.symbol.toUpperCase() === pos.symbol.toUpperCase());
+                    {breakdown.map((pos) => {
+                      const held = heldOf(pos.symbol);
                       const hasQuantity = !!held && BigInt(held.quantityRaw) > BigInt(0);
                       return (
                         <div
@@ -515,6 +517,12 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
                       );
                     })}
                   </div>
+                  {hiddenInBreakdown > 0 && (
+                    <p className="mt-3 text-xs text-white/40" data-testid="breakdown-hidden">
+                      {hiddenInBreakdown === 1 ? '1 target asset is' : `${hiddenInBreakdown} target assets are`} not held right now and
+                      hidden here; a rebalance buys {hiddenInBreakdown === 1 ? 'it' : 'them'} back.
+                    </p>
+                  )}
                   <p className="mt-3 text-xs text-white/40">
                     {anyHeld
                       ? 'Value = what this Bag holds of each asset × its current price — the same prices as the TVL above. "Per token" is the price of one token.'
