@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, RefreshCw, Wallet } from 'lucide-react';
 import { formatDecimalString, formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
 import { describeWalletError } from '@/lib/blockchain/wallet-error';
+import { recheckWalletAfterTrade } from '@/lib/wallet-recheck';
 import { executeWalletSweep, SweepProgress } from '@/lib/blockchain/wallet-sweep-client';
 import type { ChainHoldingsResult, WalletHoldings, WalletTokenBalance } from '@/lib/server/wallet-holdings';
 import { BAG_CHAINS, BAG_CHAINS_LIST, type BagChain } from '@/lib/config/chains';
@@ -65,6 +66,8 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
+  const recheckCancel = useRef<(() => void) | null>(null);
+  useEffect(() => () => recheckCancel.current?.(), []);
   const [acceptImpact, setAcceptImpact] = useState(false);
   // The exact token list being quoted, so accepting a price impact re-quotes the same sale.
   const [pending, setPending] = useState<WalletTokenBalance[]>([]);
@@ -153,6 +156,9 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
             }),
         });
         setPhase({ kind: 'done', txHash: hash, received: quote.expectedOutRaw });
+        // Tokens a Bag tracks may have left the wallet: let positions and Bag TVL follow.
+        recheckCancel.current?.();
+        recheckCancel.current = recheckWalletAfterTrade();
         load();
       } catch (err) {
         const { message, rejected } = describeWalletError(err);

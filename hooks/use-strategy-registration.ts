@@ -14,6 +14,14 @@ import { describeWalletError } from '@/lib/blockchain/wallet-error';
 
 export type RegistrationPhase = 'idle' | 'preparing' | 'awaiting_signature' | 'confirming' | 'completed' | 'failed';
 
+/**
+ * What `register` ended with. `skipped`: nothing this wallet can register right now that is not an error of the flow
+ * itself (no registry on this deployment, or a fork whose parent is not registered) — a flow that registers as a
+ * follow-up step (after deploy or a new version) carries on; the Passport tab still offers it later.
+ */
+export type RegistrationOutcome = 'completed' | 'skipped' | 'rejected' | 'failed';
+const NOT_BLOCKING = new Set(['REGISTRY_NOT_CONFIGURED', 'FORK_PARENT_VERSION_UNKNOWN', 'PARENT_NOT_REGISTERED']);
+
 interface PrepareResponse {
   transaction?: { to: string; data: string; chainId: number };
   kind?: 'REGISTER' | 'REGISTER_FORK' | 'PUBLISH_VERSIONS';
@@ -51,19 +59,19 @@ export function useStrategyRegistration(bagId: string) {
   );
 
   const register = useCallback(
-    async (connectedWallet: string) => {
+    async (connectedWallet: string): Promise<RegistrationOutcome> => {
       setError(null);
       for (let round = 0; round < 4; round++) {
         setPhase('preparing');
         const { status, json } = await post<PrepareResponse>(`/api/bags/${bagId}/registry/prepare`);
         if (status === 409 && json.code === 'NOTHING_TO_REGISTER') {
           setPhase('completed');
-          return;
+          return 'completed';
         }
         if (status !== 200 || !json.transaction) {
           setError(json.error ?? 'Could not prepare the registration.');
           setPhase('failed');
-          return;
+          return json.code && NOT_BLOCKING.has(json.code) ? 'skipped' : 'failed';
         }
         const versions = (json.covers ?? []).map((c) => `v${c.version}`).join(', ');
         setStep(json.kind === 'PUBLISH_VERSIONS' ? `Publishing ${versions}` : json.kind === 'REGISTER_FORK' ? 'Registering the fork (v1)' : 'Registering v1');
@@ -82,15 +90,16 @@ export function useStrategyRegistration(bagId: string) {
           const d = describeWalletError(err);
           setError(d.rejected ? 'Signature request was rejected.' : d.message);
           setPhase('failed');
-          return;
+          return d.rejected ? 'rejected' : 'failed';
         }
         setPhase('confirming');
         if (!(await confirm(txHash))) {
           setPhase('failed');
-          return;
+          return 'failed';
         }
       }
       setPhase('completed');
+      return 'completed';
     },
     [bagId, confirm]
   );

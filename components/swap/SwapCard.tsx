@@ -1,23 +1,26 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowDown, Loader2, Plus, Search, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowDown, Loader2, Search, X } from 'lucide-react';
 import { parseUnits } from 'viem';
 import { formatDecimalString, formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
 import { describeWalletError } from '@/lib/blockchain/wallet-error';
+import { recheckWalletAfterTrade } from '@/lib/wallet-recheck';
 import { executeWalletSweep, SweepProgress } from '@/lib/blockchain/wallet-sweep-client';
 import { BAG_CHAINS, BAG_CHAINS_LIST, type BagChain } from '@/lib/config/chains';
 import type { ChainHoldingsResult, WalletHoldings, WalletTokenBalance } from '@/lib/server/wallet-holdings';
 import type { ComposerFallbackNotice } from '@/types/purchase-intent';
+import { bpsToPercent, equalWeightsBps, setWeightKeepingTotal } from '@/lib/weight-input';
 import { MAX_ACCEPTABLE_PRICE_IMPACT_BPS } from '@/types/purchase-intent';
 
 // -----------------------------------------------------------------------------
-// The Swap page's one card, laid out like a bridge/swap UI ("You pay" → "You
-// receive"), but many-to-one and one-to-many:
+// The Swap page, laid out like Create: tokens on the left, the swap in the
+// middle ("You pay" → "You receive"), the summary and the button on the right.
 //   Multi-buy:  one payment (ETH — no approval, one signature — or the chain's
-//               stablecoin) → several tokens, split equally (POST /api/wallet/buy-quote).
-//   Multi-sell: several wallet tokens (whole balances) → the chain's stablecoin
-//               or ETH (POST /api/wallet/sweep-quote).
+//               stablecoin) → several tokens, split by sliders that keep 100%
+//               (POST /api/wallet/buy-quote).
+//   Multi-sell: several wallet tokens, each 25/50/75% or all of it → the chain's
+//               stablecoin or ETH (POST /api/wallet/sweep-quote).
 // Either way ONE LI.FI Composer transaction on one chain, compiled by the
 // server and signed only by the user's wallet; with a MetaMask smart account,
 // any approvals and the swap are confirmed together (EIP-5792).
@@ -59,7 +62,7 @@ type Quote = { mode: 'buy'; q: BuyQuote } | { mode: 'sell'; q: SellQuote };
 type Phase =
   | { kind: 'idle' }
   | { kind: 'quoting' }
-  | { kind: 'quoted'; quote: Quote }
+  | { kind: 'quote'; quote: Quote }
   | { kind: 'impact'; notice: ComposerFallbackNotice }
   | { kind: 'executing'; step: SweepProgress; quote: Quote }
   | { kind: 'done'; txHash: string }
@@ -79,6 +82,12 @@ const PROGRESS: Record<SweepProgress, string> = {
 export function equalShares(n: number): number[] {
   const base = Math.floor(10000 / n);
   return Array.from({ length: n }, (_, i) => base + (i < 10000 - base * n ? 1 : 0));
+}
+
+/** A raw amount for display; a non-zero amount too small for six decimals reads "< 0.000001", never "0". */
+function tinyAmount(raw: string, decimals: number): string {
+  const shown = formatRawAmount(raw, decimals, { maxFractionDigits: 6 });
+  return BigInt(raw) > BigInt(0) && /^0([.,]0*)?$/.test(shown) ? '< 0.000001' : shown;
 }
 
 const isHoldings = (r: ChainHoldingsResult): r is WalletHoldings => !('error' in r);
@@ -104,9 +113,13 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
   const [sellList, setSellList] = useState<string[]>([]);
   const [assets, setAssets] = useState<RegistryAsset[] | null>(null);
   const [holdings, setHoldings] = useState<ChainHoldingsResult[] | null>(null);
-  const [picker, setPicker] = useState(false);
+  const [buyWeights, setBuyWeights] = useState<number[]>([]);
+  // Share of each picked holding to sell, in percent (25, 50, 75 or 100).
+  const [sellPct, setSellPct] = useState<Record<string, number>>({});
   const [query, setQuery] = useState('');
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
+  const recheckCancel = useRef<(() => void) | null>(null);
+  useEffect(() => () => recheckCancel.current?.(), []);
   const [acceptImpact, setAcceptImpact] = useState(false);
 
   const cfg = BAG_CHAINS[chain];
@@ -165,21 +178,43 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
   const switchChain = (c: BagChain) => {
     setChain(c);
     setBuyList([]);
+    setBuyWeights([]);
     setSellList([]);
+    setSellPct({});
     resetQuote();
   };
   const switchMoney = (m: Money) => {
     setMoney(m);
     // The stablecoin cannot be on both sides.
     if (m === 'STABLE') {
-      setBuyList((l) => l.filter((a) => a.toLowerCase() !== stable));
+      if (buyList.some((a) => a.toLowerCase() === stable)) {
+        const next = buyList.filter((a) => a.toLowerCase() !== stable);
+        setBuyList(next);
+        setBuyWeights(equalWeightsBps(next.length));
+      }
       setSellList((l) => l.filter((a) => a.toLowerCase() !== stable));
     }
     resetQuote();
   };
   const toggle = (address: string) => {
-    setList((prev) => (prev.includes(address) ? prev.filter((a) => a !== address) : prev.length < MAX_SWAP_TOKENS ? [...prev, address] : prev));
+    const next = list.includes(address) ? list.filter((a) => a !== address) : list.length < MAX_SWAP_TOKENS ? [...list, address] : list;
+    setList(next);
+    if (mode === 'buy') setBuyWeights(equalWeightsBps(next.length));
     resetQuote();
+  };
+  const setBuyWeight = (i: number, bps: number) => {
+    setBuyWeights((w) => setWeightKeepingTotal(w, i, bps));
+    resetQuote();
+  };
+  const setSellShare = (address: string, pct: number) => {
+    setSellPct((m) => ({ ...m, [address]: pct }));
+    resetQuote();
+  };
+  const shareOf = (address: string) => sellPct[address] ?? 100;
+  /** The raw amount of a holding to sell at its chosen share (bigint; never more than the balance). */
+  const sellAmountRaw = (address: string): string => {
+    const bal = heldBy.get(address)?.balanceRaw ?? '0';
+    return ((BigInt(bal) * BigInt(shareOf(address))) / BigInt(100)).toString();
   };
 
   const amountRaw = (() => {
@@ -191,8 +226,24 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
       return null;
     }
   })();
-  const sellUsd = sellList.reduce((sum, a) => sum + Number(heldBy.get(a)?.usdValue ?? 0), 0);
-  const ready = list.length > 0 && (mode === 'sell' || amountRaw !== null);
+  // A tiny balance (a few raw units) can round down to nothing at 25–75%: name it instead of selling more than asked.
+  const dustPick = mode === 'sell' ? (sellList.find((a) => BigInt(sellAmountRaw(a)) <= BigInt(0)) ?? null) : null;
+  // Display only: the USD estimate of what is being sold.
+  const sellUsd = sellList.reduce((sum, a) => sum + (Number(heldBy.get(a)?.usdValue ?? 0) * shareOf(a)) / 100, 0);
+  const weights = buyWeights.length === buyList.length ? buyWeights : equalWeightsBps(buyList.length);
+  const blocker =
+    list.length === 0
+      ? mode === 'buy'
+        ? 'Pick tokens to buy'
+        : 'Pick tokens to sell'
+      : mode === 'buy' && amountRaw === null
+        ? `Enter an amount in ${moneySym}`
+        : mode === 'buy' && weights.some((w) => w <= 0)
+          ? 'Each token needs a share above 0%'
+          : mode === 'sell' && dustPick
+            ? `${heldBy.get(dustPick)?.symbol ?? 'A token'}: ${shareOf(dustPick)}% of this balance is 0 — pick All or remove it`
+            : null;
+  const ready = blocker === null;
 
   const requestQuote = useCallback(
     async (acceptedPriceImpactBps?: number) => {
@@ -203,11 +254,11 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
         mode === 'buy'
           ? [
               '/api/wallet/buy-quote',
-              { chain, pay: money, amountRaw, buys: buyList.map((address, i) => ({ address, weightBps: equalShares(buyList.length)[i] })), ...extra },
+              { chain, pay: money, amountRaw, buys: buyList.map((address, i) => ({ address, weightBps: weights[i] })), ...extra },
             ]
           : [
               '/api/wallet/sweep-quote',
-              { chain, receive: money, tokens: sellList.map((address) => ({ address, amountRaw: heldBy.get(address)?.balanceRaw ?? '0' })), ...extra },
+              { chain, receive: money, tokens: sellList.map((address) => ({ address, amountRaw: sellAmountRaw(address) })), ...extra },
             ];
       try {
         const res = await fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -217,14 +268,14 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
           return;
         }
         if (!res.ok) throw new Error(json?.error ?? `Request failed (${res.status}).`);
-        setPhase({ kind: 'quoted', quote: mode === 'buy' ? { mode, q: json as BuyQuote } : { mode, q: json as SellQuote } });
+        setPhase({ kind: 'quote', quote: mode === 'buy' ? { mode, q: json as BuyQuote } : { mode, q: json as SellQuote } });
       } catch (err) {
         setPhase({ kind: 'error', message: (err as Error).message });
       }
     },
     // heldBy is derived from holdings each render; its balances are what the list shows.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mode, chain, money, amountRaw, buyList, sellList, holdings]
+    [mode, chain, money, amountRaw, buyList, sellList, holdings, weights, sellPct]
   );
 
   const confirm = useCallback(
@@ -233,8 +284,13 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
       try {
         const hash = await executeWalletSweep(walletAddress, quote.q, (step) => setPhase({ kind: 'executing', step, quote }));
         setPhase({ kind: 'done', txHash: hash });
+        // Tokens a Bag tracks may have left the wallet: let positions and Bag TVL follow.
+        recheckCancel.current?.();
+        recheckCancel.current = recheckWalletAfterTrade();
         setBuyList([]);
+        setBuyWeights([]);
         setSellList([]);
+        setSellPct({});
         setAmount('');
         loadHoldings();
       } catch (err) {
@@ -245,14 +301,13 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
     [walletAddress, loadHoldings]
   );
 
-  const quote = phase.kind === 'quoted' || phase.kind === 'executing' ? phase.quote : null;
+  const quote = phase.kind === 'quote' || phase.kind === 'executing' ? phase.quote : null;
   const buyOut = (address: string) => {
     if (quote?.mode !== 'buy') return null;
     const l = quote.q.legs.find((x) => x.address.toLowerCase() === address.toLowerCase());
     return l?.expectedOutRaw ? formatRawAmount(l.expectedOutRaw, l.decimals, { maxFractionDigits: 6 }) : null;
   };
   const sellOut = quote?.mode === 'sell' && quote.q.expectedOutRaw ? formatRawAmount(quote.q.expectedOutRaw, quote.q.outputToken.decimals, { maxFractionDigits: 6 }) : null;
-  const shares = equalShares(Math.max(buyList.length, 1));
 
   const q = query.trim().toLowerCase();
   const pickerItems =
@@ -273,7 +328,7 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
 
   const tokenRows =
     list.length === 0 ? (
-      <p className="swap-empty">{mode === 'buy' ? 'No tokens yet — add up to 12.' : 'Pick the tokens to sell — up to 12.'}</p>
+      <p className="swap-empty">{mode === 'buy' ? 'Pick up to 12 tokens on the left.' : 'Pick the tokens to sell on the left — up to 12.'}</p>
     ) : (
       <ul className="swap-rows">
         {list.map((address, i) => {
@@ -281,257 +336,318 @@ export function SwapCard({ walletAddress, initialMode = 'buy' }: { walletAddress
           if (!a) return null;
           const held = mode === 'sell' ? (a as WalletTokenBalance) : null;
           const out = mode === 'buy' ? buyOut(address) : null;
+          const share = shareOf(address);
           return (
-            <li key={address} className="swap-row">
-              <TokenIcon symbol={a.symbol} logoUrl={a.logoUrl} />
-              <div className="swap-row-main">
-                <span className="swap-row-sym">{a.symbol}</span>
-                <span className="swap-row-sub">{held ? `${formatDecimalString(held.balance, { maxFractionDigits: 6 })} · ${held.usdValue === null ? '—' : formatDecimalStringUsd(held.usdValue)}` : `${(shares[i] / 100).toFixed(2)}% of the spend`}</span>
+            <li key={address} className="swap-row swap-row-col">
+              <div className="swap-row-top">
+                <TokenIcon symbol={a.symbol} logoUrl={a.logoUrl} />
+                <div className="swap-row-main">
+                  <span className="swap-row-sym">{a.symbol}</span>
+                  <span className="swap-row-sub">
+                    {held
+                      ? `${tinyAmount(sellAmountRaw(address), held.decimals)} of ${tinyAmount(held.balanceRaw, held.decimals)}${held.usdValue === null ? '' : ` · ≈ ${formatDecimalStringUsd(((Number(held.usdValue) * share) / 100).toFixed(2))}`}`
+                      : `${bpsToPercent(weights[i] ?? 0)}% of the spend`}
+                  </span>
+                </div>
+                {out && <span className="swap-row-out mono">≈ {out}</span>}
+                <button className="swap-row-remove" aria-label={`Remove ${a.symbol}`} disabled={busy} onClick={() => toggle(address)}>
+                  <X size={14} />
+                </button>
               </div>
-              {out && <span className="swap-row-out mono">≈ {out}</span>}
-              <button className="swap-row-remove" aria-label={`Remove ${a.symbol}`} disabled={busy} onClick={() => toggle(address)}>
-                <X size={14} />
-              </button>
+              {held ? (
+                <div className="swap-shares" role="group" aria-label={`Share of ${a.symbol} to sell`}>
+                  {[25, 50, 75, 100].map((p) => (
+                    <button key={p} type="button" aria-pressed={share === p} className={share === p ? 'active' : ''} disabled={busy} onClick={() => setSellShare(address, p)}>
+                      {p === 100 ? 'All' : `${p}%`}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                list.length > 1 && (
+                  <input
+                    type="range"
+                    className="swap-weight"
+                    min={0}
+                    max={10000}
+                    step={100}
+                    value={weights[i] ?? 0}
+                    aria-label={`${a.symbol} share of the spend`}
+                    disabled={busy}
+                    onChange={(e) => setBuyWeight(i, Number(e.target.value))}
+                  />
+                )
+              )}
             </li>
           );
         })}
       </ul>
     );
 
-  const addButton = (
-    <button className="swap-add" disabled={busy || list.length >= MAX_SWAP_TOKENS} onClick={() => { setQuery(''); setPicker(true); }}>
-      <Plus size={14} /> Add token
-    </button>
-  );
+  const summary: { k: string; v: string; cls?: string }[] = [
+    { k: 'Network', v: cfg.name },
+    { k: mode === 'buy' ? 'Buying' : 'Selling', v: list.length === 0 ? '—' : `${list.length} token${list.length === 1 ? '' : 's'}` },
+    mode === 'buy'
+      ? { k: 'You pay', v: amountRaw === null ? '—' : `${formatDecimalString(amount.trim(), { maxFractionDigits: 6 })} ${moneySym}` }
+      : { k: 'Value sold (est.)', v: sellList.length === 0 ? '—' : `≈ ${formatDecimalStringUsd(sellUsd.toFixed(2))}` },
+    mode === 'sell'
+      ? { k: 'You receive (est.)', v: sellOut ? `${sellOut} ${moneySym}` : 'After the quote' }
+      : { k: 'Split', v: buyList.length === 0 ? '—' : buyList.map((a, i) => `${assetBy.get(a)?.symbol ?? '?'} ${bpsToPercent(weights[i] ?? 0)}%`).join(' · ') },
+    {
+      k: 'Minimum (on-chain)',
+      v:
+        quote?.mode === 'sell' && quote.q.minOutRaw
+          ? `${formatRawAmount(quote.q.minOutRaw, quote.q.outputToken.decimals, { maxFractionDigits: 6 })} ${quote.q.outputToken.symbol}`
+          : quote?.mode === 'buy'
+            ? 'Per token; below it nothing is swapped'
+            : 'After the quote',
+      cls: quote ? 'ok' : '',
+    },
+    { k: 'Price impact', v: quote && quote.q.priceImpactBps !== null ? `${(quote.q.priceImpactBps / 100).toFixed(2)}%` : '—' },
+    {
+      k: 'Wallet steps',
+      v: quote
+        ? quote.q.approvals.length === 0
+          ? 'One signature'
+          : `${quote.q.approvals.length} exact approval${quote.q.approvals.length === 1 ? '' : 's'} + swap`
+        : '—',
+    },
+  ];
 
   return (
-    <div className="swap-wrap">
-      <div className="swap-card">
-        <div className="swap-card-head">
-          <div className="swap-modes" role="tablist" aria-label="Mode">
-            {(['buy', 'sell'] as const).map((m) => (
-              <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? 'swap-mode-tab active' : 'swap-mode-tab'} disabled={busy} onClick={() => switchMode(m)}>
-                {m === 'buy' ? 'Multi-buy' : 'Multi-sell'}
-              </button>
+    <div className="swap3">
+      <div className="swap3-head">
+        <div className="swap-modes" role="tablist" aria-label="Mode">
+          {(['buy', 'sell'] as const).map((m) => (
+            <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? 'swap-mode-tab active' : 'swap-mode-tab'} disabled={busy} onClick={() => switchMode(m)}>
+              {m === 'buy' ? 'Multi-buy' : 'Multi-sell'}
+            </button>
+          ))}
+        </div>
+        <label className="swap-chain">
+          <span className="sr-only">Network</span>
+          <select aria-label="Network" value={chain} disabled={busy} onChange={(e) => switchChain(e.target.value as BagChain)}>
+            {BAG_CHAINS_LIST.map((c) => (
+              <option key={c} value={c}>
+                {BAG_CHAINS[c].name}
+              </option>
             ))}
-          </div>
-          <label className="swap-chain">
-            <span className="sr-only">Network</span>
-            <select aria-label="Network" value={chain} disabled={busy} onChange={(e) => switchChain(e.target.value as BagChain)}>
-              {BAG_CHAINS_LIST.map((c) => (
-                <option key={c} value={c}>
-                  {BAG_CHAINS[c].name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+          </select>
+        </label>
+      </div>
 
-        {/* You pay */}
-        <div className="swap-box">
-          <div className="swap-box-label">
-            <span>You pay</span>
-            {mode === 'buy' && nativeBalance !== null && money === 'NATIVE' && (
-              <span className="mono">Balance {formatDecimalString(nativeBalance, { maxFractionDigits: 5 })} {nativeSym}</span>
+      <div className="create3-grid swap3-grid">
+        {/* Tokens */}
+        <section className="create3-card" aria-label={mode === 'buy' ? 'Tokens to buy' : 'Your tokens'}>
+          <div className="create3-card-head">
+            <h2>{mode === 'buy' ? 'Tokens' : 'Your wallet'}</h2>
+            <span className="create3-count">
+              {list.length} / {MAX_SWAP_TOKENS}
+            </span>
+          </div>
+          <div className="swap-search">
+            <Search size={14} aria-hidden="true" />
+            <input placeholder="Search name or symbol" aria-label="Search tokens" value={query} onChange={(e) => setQuery(e.target.value)} />
+          </div>
+          {mode === 'buy' && assets === null ? (
+            <p className="swap-empty">Loading tokens…</p>
+          ) : mode === 'sell' && holdings === null ? (
+            <p className="swap-empty">Reading your wallet…</p>
+          ) : pickerItems.length === 0 ? (
+            <p className="swap-empty">{mode === 'buy' ? `No tokens are listed on ${cfg.name} yet.` : `No sellable tokens in your wallet on ${cfg.name}.`}</p>
+          ) : (
+            <ul className="swap-picker-list swap3-list">
+              {pickerItems.map((t) => {
+                const on = list.includes(t.address);
+                const held = mode === 'sell' ? (t as WalletTokenBalance) : null;
+                return (
+                  <li key={t.address}>
+                    <button
+                      className={on ? 'swap-pick active' : 'swap-pick'}
+                      aria-pressed={on}
+                      aria-label={`${on ? 'Unpick' : 'Pick'} ${t.symbol}`}
+                      disabled={busy || (!on && list.length >= MAX_SWAP_TOKENS)}
+                      onClick={() => toggle(t.address)}
+                    >
+                      <TokenIcon symbol={t.symbol} logoUrl={t.logoUrl} />
+                      <span className="swap-row-main">
+                        <span className="swap-row-sym">{t.symbol}</span>
+                        <span className="swap-row-sub">{t.name}</span>
+                      </span>
+                      {held && <span className="mono swap-row-out">{held.usdValue === null ? formatDecimalString(held.balance, { maxFractionDigits: 4 }) : formatDecimalStringUsd(held.usdValue)}</span>}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        {/* The swap */}
+        <section className="create3-card create3-card-hot" aria-label="Your swap">
+          <div className="create3-card-head">
+            <h2>Your swap</h2>
+            <span className={ready ? 'create3-ready ok' : 'create3-ready'}>{ready ? 'READY' : 'DRAFT'}</span>
+          </div>
+          <div className="swap-box">
+            <div className="swap-box-label">
+              <span>You pay</span>
+              {mode === 'buy' && nativeBalance !== null && money === 'NATIVE' && (
+                <span className="mono">Balance {formatDecimalString(nativeBalance, { maxFractionDigits: 5 })} {nativeSym}</span>
+              )}
+            </div>
+            {mode === 'buy' ? (
+              <div className="swap-amount-row">
+                <input
+                  className="swap-amount mono"
+                  inputMode="decimal"
+                  placeholder="0.0"
+                  aria-label={`Amount in ${moneySym}`}
+                  value={amount}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setAmount(e.target.value.replace(',', '.'));
+                    resetQuote();
+                  }}
+                />
+                {moneyPill}
+              </div>
+            ) : (
+              <>
+                {tokenRows}
+                {sellList.length > 0 && <div className="swap-box-foot mono">≈ {formatDecimalStringUsd(sellUsd.toFixed(2))}</div>}
+              </>
             )}
           </div>
-          {mode === 'buy' ? (
-            <div className="swap-amount-row">
-              <input
-                className="swap-amount mono"
-                inputMode="decimal"
-                placeholder="0.0"
-                aria-label={`Amount in ${moneySym}`}
-                value={amount}
-                disabled={busy}
-                onChange={(e) => {
-                  setAmount(e.target.value.replace(',', '.'));
-                  resetQuote();
-                }}
-              />
-              {moneyPill}
-            </div>
-          ) : (
-            <>
-              {tokenRows}
-              {addButton}
-              {sellList.length > 0 && <div className="swap-box-foot mono">≈ {formatDecimalStringUsd(sellUsd.toFixed(2))}</div>}
-            </>
-          )}
-        </div>
 
-        <div className="swap-arrow" aria-hidden="true">
-          <ArrowDown size={16} />
-        </div>
-
-        {/* You receive */}
-        <div className="swap-box">
-          <div className="swap-box-label">
-            <span>You receive</span>
-            {mode === 'buy' && buyList.length > 1 && <span>split equally</span>}
+          <div className="swap-arrow" aria-hidden="true">
+            <ArrowDown size={16} />
           </div>
-          {mode === 'buy' ? (
-            <>
-              {tokenRows}
-              {addButton}
-            </>
-          ) : (
-            <div className="swap-amount-row">
-              <span className="swap-amount mono" aria-live="polite">
-                {sellOut ?? '—'}
-              </span>
-              {moneyPill}
-            </div>
-          )}
-        </div>
 
-        {(phase.kind === 'quoted' || phase.kind === 'executing') && (
-          <div className="swap-details">
-            {phase.quote.mode === 'sell' && (phase.quote.q.skipped?.length ?? 0) > 0 && (
-              <div role="status" className="swap-skipped">
-                Not sold (no route right now, stays in your wallet): {phase.quote.q.skipped!.map((x) => x.symbol).join(', ')}
+          <div className="swap-box">
+            <div className="swap-box-label">
+              <span>You receive</span>
+              {mode === 'buy' && buyList.length > 1 && (
+                <button type="button" className="link-button" disabled={busy} onClick={() => setBuyWeights(equalWeightsBps(buyList.length))}>
+                  Split equally
+                </button>
+              )}
+            </div>
+            {mode === 'buy' ? (
+              tokenRows
+            ) : (
+              <div className="swap-amount-row">
+                <span className="swap-amount mono" aria-live="polite">
+                  {sellOut ?? '—'}
+                </span>
+                {moneyPill}
               </div>
             )}
-            {phase.quote.mode === 'sell' && phase.quote.q.minOutRaw && (
-              <div>
-                Minimum (enforced on-chain): {formatRawAmount(phase.quote.q.minOutRaw, phase.quote.q.outputToken.decimals, { maxFractionDigits: 6 })} {phase.quote.q.outputToken.symbol}
+          </div>
+        </section>
+
+        {/* Summary */}
+        <section className="create3-card swap3-summary" aria-label="Summary">
+          <div className="create3-card-head">
+            <h2>Summary</h2>
+            <span className="create3-ready">ONE TRANSACTION</span>
+          </div>
+          <dl className="swap3-kv">
+            {summary.map((row) => (
+              <div key={row.k}>
+                <dt>{row.k}</dt>
+                <dd className={row.cls}>{row.v}</dd>
               </div>
-            )}
-            {phase.quote.mode === 'buy' && <div>Each swap has an on-chain minimum; below it the whole transaction reverts.</div>}
-            {phase.quote.q.priceImpactBps !== null && <div>Price impact: {(phase.quote.q.priceImpactBps / 100).toFixed(2)}%</div>}
-            <div>
-              {phase.quote.q.approvals.length === 0
+            ))}
+          </dl>
+
+          {phase.kind === 'quote' && phase.quote.mode === 'sell' && (phase.quote.q.skipped?.length ?? 0) > 0 && (
+            <div role="status" className="swap-skipped">
+              Not sold (no route right now, stays in your wallet): {phase.quote.q.skipped!.map((x) => x.symbol).join(', ')}
+            </div>
+          )}
+          {quote && (
+            <p className="swap-hint" style={{ margin: 0 }}>
+              {quote.q.approvals.length === 0
                 ? 'No approval needed: one signature.'
-                : `${phase.quote.q.approvals.length} exact-amount approval${phase.quote.q.approvals.length === 1 ? '' : 's'} + the swap — one confirmation in MetaMask, one per step in other wallets.`}
-            </div>
-          </div>
-        )}
+                : `${quote.q.approvals.length} exact-amount approval${quote.q.approvals.length === 1 ? '' : 's'} + the swap — one confirmation in MetaMask, one per step in other wallets.`}
+            </p>
+          )}
 
-        {phase.kind === 'quoted' ? (
-          <div className="swap-actions">
-            <button className="btn btn-primary swap-cta" onClick={() => confirm(phase.quote)}>
-              Confirm swap
-            </button>
-            <button className="btn btn-ghost" onClick={resetQuote}>
-              Cancel
-            </button>
-          </div>
-        ) : phase.kind === 'executing' ? (
-          <button className="btn btn-primary swap-cta" disabled>
-            <Loader2 size={14} className="animate-spin" /> {PROGRESS[phase.step]}
-          </button>
-        ) : (
-          <button className="btn btn-primary swap-cta" disabled={busy || !ready} onClick={() => requestQuote()}>
-            {phase.kind === 'quoting' ? (
-              <>
-                <Loader2 size={14} className="animate-spin" /> Finding the best route…
-              </>
-            ) : mode === 'buy' ? (
-              `Buy ${buyList.length || ''} token${buyList.length === 1 ? '' : 's'} with ${moneySym}`.replace('  ', ' ')
-            ) : (
-              `Sell ${sellList.length || ''} token${sellList.length === 1 ? '' : 's'} for ${moneySym}`.replace('  ', ' ')
-            )}
-          </button>
-        )}
-
-        {phase.kind === 'impact' && (
-          <div className="swap-note">
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>High price impact</div>
-            <p style={{ margin: '0 0 8px' }}>{phase.notice.message}</p>
-            {phase.notice.priceImpactBps !== null && phase.notice.priceImpactBps <= MAX_ACCEPTABLE_PRICE_IMPACT_BPS ? (
-              <>
-                <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input type="checkbox" checked={acceptImpact} onChange={(e) => setAcceptImpact(e.target.checked)} />I accept a {(phase.notice.priceImpactBps / 100).toFixed(2)}% price impact
-                </label>
-                <div className="swap-actions">
-                  <button className="btn btn-primary" disabled={!acceptImpact} onClick={() => requestQuote(phase.notice.priceImpactBps ?? undefined)}>
-                    Continue anyway
-                  </button>
-                  <button className="btn btn-ghost" onClick={resetQuote}>
-                    Cancel
-                  </button>
-                </div>
-              </>
-            ) : (
-              <p style={{ margin: 0, color: '#E0847A' }}>Above {MAX_ACCEPTABLE_PRICE_IMPACT_BPS / 100}% — try a smaller amount.</p>
-            )}
-          </div>
-        )}
-        {phase.kind === 'done' && (
-          <p className="swap-note" style={{ color: 'var(--emerald)' }}>
-            Done — everything is in your wallet.{' '}
-            <a href={`${cfg.explorerUrl}/tx/${phase.txHash}`} target="_blank" rel="noreferrer">
-              View transaction →
-            </a>
-          </p>
-        )}
-        {phase.kind === 'error' && (
-          <p className="swap-note" style={{ color: '#E0847A' }}>
-            {phase.message}{' '}
-            <button onClick={resetQuote} className="link-button">
-              Dismiss
-            </button>
-          </p>
-        )}
-        {chain === 'ethereum' && <p className="swap-hint">Network fees on Ethereum can be higher than small amounts are worth — check the fee in your wallet.</p>}
-      </div>
-
-      <div className="swap-metamask">
-        <b>Works best with MetaMask.</b> Buying with ETH is one signature. Paying or selling with tokens needs exact-amount approvals: with a MetaMask smart
-        account they are confirmed together with the swap, in one step. Other wallets (e.g. Rabby) confirm each step separately.
-      </div>
-
-      {picker && (
-        <div className="swap-picker-overlay" role="dialog" aria-modal="true" aria-label={mode === 'buy' ? 'Choose tokens to buy' : 'Choose tokens to sell'} onClick={() => setPicker(false)}>
-          <div className="swap-picker" onClick={(e) => e.stopPropagation()}>
-            <div className="swap-picker-head">
-              <span>{mode === 'buy' ? `Tokens on ${cfg.name}` : `Your tokens on ${cfg.name}`}</span>
-              <button aria-label="Close" className="swap-row-remove" onClick={() => setPicker(false)}>
-                <X size={16} />
+          {phase.kind === 'quote' ? (
+            <div className="swap-actions">
+              <button className="btn btn-primary swap-cta" onClick={() => confirm(phase.quote)}>
+                Confirm swap
+              </button>
+              <button className="btn btn-ghost" onClick={resetQuote}>
+                Cancel
               </button>
             </div>
-            <div className="swap-search">
-              <Search size={14} aria-hidden="true" />
-              <input autoFocus placeholder="Search name or symbol" aria-label="Search tokens" value={query} onChange={(e) => setQuery(e.target.value)} />
-            </div>
-            {mode === 'buy' && assets === null ? (
-              <p className="swap-empty">Loading tokens…</p>
-            ) : mode === 'sell' && holdings === null ? (
-              <p className="swap-empty">Reading your wallet…</p>
-            ) : pickerItems.length === 0 ? (
-              <p className="swap-empty">{mode === 'buy' ? `No tokens are listed on ${cfg.name} yet.` : `No sellable tokens in your wallet on ${cfg.name}.`}</p>
-            ) : (
-              <ul className="swap-picker-list">
-                {pickerItems.map((t) => {
-                  const on = list.includes(t.address);
-                  const held = mode === 'sell' ? (t as WalletTokenBalance) : null;
-                  return (
-                    <li key={t.address}>
-                      <button
-                        className={on ? 'swap-pick active' : 'swap-pick'}
-                        aria-pressed={on}
-                        aria-label={`${on ? 'Remove' : 'Add'} ${t.symbol}`}
-                        disabled={!on && list.length >= MAX_SWAP_TOKENS}
-                        onClick={() => toggle(t.address)}
-                      >
-                        <TokenIcon symbol={t.symbol} logoUrl={t.logoUrl} />
-                        <span className="swap-row-main">
-                          <span className="swap-row-sym">{t.symbol}</span>
-                          <span className="swap-row-sub">{t.name}</span>
-                        </span>
-                        {held && <span className="mono swap-row-out">{held.usdValue === null ? formatDecimalString(held.balance, { maxFractionDigits: 4 }) : formatDecimalStringUsd(held.usdValue)}</span>}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            <button className="btn btn-primary swap-cta" onClick={() => setPicker(false)}>
-              Done{list.length > 0 ? ` · ${list.length} selected` : ''}
+          ) : phase.kind === 'executing' ? (
+            <button className="btn btn-primary swap-cta" disabled>
+              <Loader2 size={14} className="animate-spin" /> {PROGRESS[phase.step]}
             </button>
+          ) : (
+            <button className="btn btn-primary swap-cta" disabled={busy || !ready} onClick={() => requestQuote()}>
+              {phase.kind === 'quoting' ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" /> Finding the best route…
+                </>
+              ) : blocker !== null ? (
+                blocker
+              ) : mode === 'buy' ? (
+                `Buy ${buyList.length} token${buyList.length === 1 ? '' : 's'} with ${moneySym}`
+              ) : (
+                `Sell ${sellList.length} token${sellList.length === 1 ? '' : 's'} for ${moneySym}`
+              )}
+            </button>
+          )}
+
+          {phase.kind === 'impact' && (
+            <div className="swap-note">
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>High price impact</div>
+              <p style={{ margin: '0 0 8px' }}>{phase.notice.message}</p>
+              {phase.notice.priceImpactBps !== null && phase.notice.priceImpactBps <= MAX_ACCEPTABLE_PRICE_IMPACT_BPS ? (
+                <>
+                  <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input type="checkbox" checked={acceptImpact} onChange={(e) => setAcceptImpact(e.target.checked)} />I accept a {(phase.notice.priceImpactBps / 100).toFixed(2)}% price impact
+                  </label>
+                  <div className="swap-actions">
+                    <button className="btn btn-primary" disabled={!acceptImpact} onClick={() => requestQuote(phase.notice.priceImpactBps ?? undefined)}>
+                      Continue anyway
+                    </button>
+                    <button className="btn btn-ghost" onClick={resetQuote}>
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p style={{ margin: 0, color: '#E0847A' }}>Above {MAX_ACCEPTABLE_PRICE_IMPACT_BPS / 100}% — try a smaller amount.</p>
+              )}
+            </div>
+          )}
+          {phase.kind === 'done' && (
+            <p className="swap-note" style={{ color: 'var(--emerald)' }}>
+              Done — everything is in your wallet.{' '}
+              <a href={`${cfg.explorerUrl}/tx/${phase.txHash}`} target="_blank" rel="noreferrer">
+                View transaction →
+              </a>
+            </p>
+          )}
+          {phase.kind === 'error' && (
+            <p className="swap-note" style={{ color: '#E0847A' }}>
+              {phase.message}{' '}
+              <button onClick={resetQuote} className="link-button">
+                Dismiss
+              </button>
+            </p>
+          )}
+          {chain === 'ethereum' && <p className="swap-hint">Network fees on Ethereum can be higher than small amounts are worth — check the fee in your wallet.</p>}
+          <div className="swap-metamask">
+            <b>Works best with MetaMask.</b> Buying with ETH is one signature. Paying or selling with tokens needs exact-amount approvals: with a MetaMask smart
+            account they are confirmed together with the swap, in one step. Other wallets (e.g. Rabby) confirm each step separately.
           </div>
-        </div>
-      )}
+        </section>
+      </div>
     </div>
   );
 }

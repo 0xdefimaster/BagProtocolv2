@@ -2,29 +2,36 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
-import { Wallet, Loader2 } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Wallet, Loader2, Search } from 'lucide-react';
 import { useWallet } from '@/lib/wallet-context';
 import { NotificationBell } from './NotificationBell';
 import { WalletMenu } from './WalletMenu';
+import { APP_NAV, isActiveLink } from './app-nav';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { DensityControl } from '@/components/ui/DensityControl';
 
-const APP_LINKS = [
-  { href: '/dashboard/explore', label: 'Explore' },
-  { href: '/dashboard/leaderboard', label: 'Leaderboard' },
-  { href: '/dashboard/proof', label: 'Proof' },
-  { href: '/dashboard/create', label: 'Create' },
-  { href: '/dashboard/swap', label: 'Swap' },
-  { href: '/dashboard/portfolio', label: 'Portfolio' },
-  { href: '/dashboard/profile', label: 'Profile' },
-];
+// Top bar: brand, the app's pages (app-nav.ts), search, chain, theme, alerts and wallet.
+// Below 1101px the page links move into the menu button's panel.
+const APP_LINKS = APP_NAV;
 
 const PANEL_ID = 'app-mobile-nav';
 
 export function AppHeader() {
   const { isConnected, isConnecting, hasProvider, chainName, error, connect } = useWallet();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const toggleRef = useRef<HTMLButtonElement>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Search runs on Explore, which filters by name, creator or asset.
+  const onSearch = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const q = search.trim();
+    router.push(q ? `/dashboard/explore?q=${encodeURIComponent(q)}` : '/dashboard/explore');
+  };
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -40,8 +47,8 @@ export function AppHeader() {
 
   return (
     <header>
-      <div className="wrap nav">
-        <Link href="/dashboard" className="brand">
+      <div className="nav app-topbar">
+        <Link href="/dashboard" className="brand app-header-brand">
           <Image src="/logo.png" alt="Bag Protocol mark" width={32} height={32} />
           <div className="brand-text">
             <span className="b1">BAG PROTOCOL</span>
@@ -49,13 +56,24 @@ export function AppHeader() {
           </div>
         </Link>
 
-        <nav className="navlinks app-navlinks" aria-label="App">
+        <nav className="app-toplinks" aria-label="App">
           {APP_LINKS.map((link) => (
-            <Link key={link.href} href={link.href}>
+            <Link key={link.href} href={link.href} className="app-toplink" aria-current={isActiveLink(link, pathname) ? 'page' : undefined}>
               {link.label}
             </Link>
           ))}
         </nav>
+
+        <form className="app-search" role="search" onSubmit={onSearch}>
+          <Search size={16} aria-hidden="true" />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search strategies, creators, assets…"
+            aria-label="Search Bags"
+          />
+        </form>
 
         <div className="app-nav-actions">
           <span className="chain-badge">
@@ -63,6 +81,7 @@ export function AppHeader() {
             {chainName ?? 'Robinhood Chain'}
           </span>
 
+          <DensityControl />
           <ThemeToggle />
           <NotificationBell />
 
@@ -105,7 +124,7 @@ export function AppHeader() {
           <ul>
             {APP_LINKS.map((link) => (
               <li key={link.href}>
-                <Link href={link.href} onClick={() => setMenuOpen(false)}>
+                <Link href={link.href} aria-current={isActiveLink(link, pathname) ? 'page' : undefined} onClick={() => setMenuOpen(false)}>
                   {link.label}
                 </Link>
               </li>

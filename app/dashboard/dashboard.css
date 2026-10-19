@@ -28,13 +28,11 @@
 @media (prefers-reduced-motion: reduce) {
   .chain-badge .dot::after { animation: none; }
 }
-/* App header: six links plus chain/bell/wallet need more room than the landing
-   bar, so the menu takes over below 1100px instead of the landing's 840px. */
-.app-navlinks { gap: 24px; margin: 0 20px; }
+/* App header: the sidebar carries the links on desktop; below 1100px the menu
+   button takes over (the landing's breakpoint is 840px). */
 header .brand { flex-shrink: 0; white-space: nowrap; }
 .app-nav-actions { display: flex; align-items: center; gap: 12px; position: relative; min-width: 0; }
 @media (max-width: 1100px) {
-  .app-navlinks { display: none; }
   .app-nav-toggle { display: inline-flex; }
 }
 @media (max-width: 640px) {
@@ -671,3 +669,178 @@ header .brand { flex-shrink: 0; white-space: nowrap; }
 .wallet-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; font-size: 13px; color: var(--ink); background: transparent; border: 0; border-radius: 8px; padding: 9px 8px; cursor: pointer; }
 .wallet-menu-item:hover { background: var(--surface-2); }
 .wallet-menu-hint { font-size: 11px; line-height: 1.5; color: var(--mute); margin: 4px 6px 2px; }
+
+/* =====================================================
+   App top bar: brand · page links · search · chain / theme / alerts / wallet
+   ===================================================== */
+.app-topbar { max-width: none; padding: 0 28px; gap: 16px; }
+.app-toplinks { display: flex; gap: 2px; align-items: center; flex-shrink: 0; }
+.app-toplink {
+  display: inline-flex; align-items: center; min-height: 40px; padding: 0 11px; border-radius: 10px;
+  font-family: var(--font-mono), monospace; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-soft); transition: background 0.15s, color 0.15s;
+}
+.app-toplink:hover { color: var(--ink); background: var(--gold-tint); }
+.app-toplink[aria-current='page'] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--gold); }
+.app-search {
+  flex: 1 1 180px; max-width: 280px; display: flex; align-items: center; gap: 8px;
+  height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-soft);
+  background: var(--surface); color: var(--mute);
+}
+.app-search:focus-within { border-color: var(--line); color: var(--ink-soft); }
+.app-search input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--ink); font: inherit; font-size: 14px; }
+.app-search input::placeholder { color: var(--mute); }
+.app-mobile-nav a[aria-current='page'] { color: var(--gold-lt); background: var(--gold-tint); }
+
+/* Seven links and the wallet controls need the room: logo mark only below 1600px, no search box below 1360px. */
+@media (max-width: 1600px) { .app-topbar .brand-text { display: none; } }
+@media (max-width: 1360px) { .app-search { display: none; } }
+@media (max-width: 1100px) {
+  .app-toplinks { display: none; }
+  .app-search { display: flex; }
+  .app-topbar { padding: 0 20px; }
+}
+@media (max-width: 640px) {
+  .app-search { display: none !important; }
+}
+
+/* =====================================================
+   Bag page
+   ===================================================== */
+.bag-hero-icon {
+  width: 56px; height: 56px; flex: none; border-radius: 14px; display: flex; align-items: center; justify-content: center;
+  background: var(--gold-tint); border: 1px solid var(--line); color: var(--gold); font-size: 22px; font-weight: 700;
+}
+.bag-version-badge {
+  font-family: var(--font-mono), monospace; font-size: 13px; color: var(--gold);
+  border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px;
+}
+.bag-draft-badge { font-size: 12px; color: var(--bronze); border: 1px solid var(--bronze); border-radius: 999px; padding: 3px 10px; }
+.bag-tag { font-size: 12px; color: var(--ink-soft); border: 1px solid var(--line-soft); border-radius: 999px; padding: 3px 10px; text-transform: capitalize; }
+.bag-page-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1px;
+  background: var(--line-soft); border: 1px solid var(--line-soft); border-radius: 14px; overflow: hidden;
+}
+.bag-page-stat { background: var(--surface); padding: 14px 16px; }
+.bag-page-stat .k { font-size: 12px; color: var(--mute); text-transform: uppercase; letter-spacing: 0.06em; }
+.bag-page-stat .v { font-size: 20px; font-weight: 700; margin-top: 4px; color: var(--ink); }
+.bag-donut { width: 150px; height: 150px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.bag-donut-hole {
+  width: 96px; height: 96px; border-radius: 50%; background: var(--surface);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.bag-swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.weight-slider { accent-color: var(--gold); height: 24px; cursor: pointer; }
+.weight-slider:disabled { cursor: default; opacity: 0.5; }
+.bag-edit-btn { border-color: var(--gold); color: var(--gold-lt); background: var(--gold-tint); }
+.bag-edit-btn:hover { background: rgba(217, 185, 139, 0.2); }
+.composition-picker-toggle {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border-radius: 10px;
+  border: 1px solid var(--gold); background: var(--gold-tint); color: var(--gold-lt); font: inherit; font-weight: 600; cursor: pointer;
+}
+.composition-picker-toggle:hover { background: rgba(217, 185, 139, 0.2); }
+.composition-picker-toggle:disabled { opacity: 0.5; cursor: default; }
+:root[data-theme='light'] .bag-edit-btn,
+:root[data-theme='light'] .composition-picker-toggle { color: var(--ink); }
+
+/* =====================================================
+   Create: one screen, three columns
+   ===================================================== */
+.create3 { max-width: 1400px; margin: 0 auto; padding: 28px 28px 0; }
+.create3-head h1 { font-size: 32px; margin: 4px 0; }
+.create3-eyebrow { font-family: var(--font-mono), monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); }
+.create3-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; margin-top: 22px; align-items: start; }
+.create3-card { border: 1px solid var(--line-soft); border-radius: 16px; background: var(--surface); padding: 20px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.create3-card-hot { border-color: var(--line); }
+.create3-card-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.create3-card-head h2 { font-size: 22px; margin: 0; }
+.create3-count { font-family: var(--font-mono), monospace; font-size: 13px; color: var(--mute); }
+.create3-ready { font-family: var(--font-mono), monospace; font-size: 11px; letter-spacing: 0.1em; border: 1px solid var(--line-soft); border-radius: 999px; padding: 3px 10px; color: var(--mute); }
+.create3-ready.ok { color: var(--emerald); border-color: var(--emerald); }
+.create3-notice { margin-top: 10px; font-size: 13px; color: var(--ink-soft); padding: 8px 12px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); }
+.create3-bag { position: relative; width: 220px; height: 200px; margin: 4px auto 0; }
+.create3-bag-handle { position: absolute; left: 52px; top: 0; width: 116px; height: 84px; border: 9px solid var(--gold); border-bottom: 0; border-radius: 66px 66px 0 0; }
+.create3-bag-body {
+  position: absolute; left: 0; bottom: 0; width: 220px; height: 150px; border-radius: 20px 20px 34px 34px;
+  border: 2px solid var(--gold); background: var(--gold-tint);
+  display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 8px; padding: 16px;
+}
+.create3-bag-empty { color: var(--mute); font-size: 13px; text-align: center; }
+.create3-note { font-size: 13px; line-height: 1.55; color: var(--mute); margin: 0; }
+.create3-donut-row { display: flex; gap: 18px; align-items: center; }
+.create3-legend { list-style: none; margin: 0; padding: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.create3-legend li { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono), monospace; font-size: 13px; color: var(--ink); }
+.create3-legend .sym { flex: 1; }
+.create3-section { border-top: 1px solid var(--line-soft); padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.create3-section .lbl, .create3-toggle .lbl { font-weight: 600; color: var(--ink); font-size: 15px; }
+.create3-toggle { display: flex; justify-content: space-between; align-items: center; gap: 12px; cursor: pointer; }
+.create3-toggle input[type='checkbox'] { width: 22px; height: 22px; accent-color: var(--gold); flex: none; }
+.create3-cta { width: 100%; justify-content: center; min-height: 52px; font-size: 16px; }
+.create3-steps { display: flex; gap: 6px; flex-wrap: wrap; }
+.create3-steps span { flex: 1 1 90px; font-family: var(--font-mono), monospace; font-size: 11px; text-align: center; padding: 8px 6px; border-radius: 8px; background: var(--surface-2); color: var(--mute); }
+@media (max-width: 640px) { .create3 { padding: 20px 16px 0; } .create3-head h1 { font-size: 26px; } }
+
+/* ---------- screen density (components/ui/DensityControl.tsx) ----------
+   Like the browser's zoom, for the app only and only above 1100px. Page widths grow by the same factor, so a
+   denser screen shows more, not just smaller. Auto: 80% from 1400px; 67% only when chosen. */
+.app-density { zoom: var(--app-zoom, 1); }
+.app-density .wrap { max-width: calc(1140px / var(--app-zoom, 1)); }
+.app-density .create3 { max-width: calc(1400px / var(--app-zoom, 1)); }
+.app-density .max-w-7xl { max-width: calc(80rem / var(--app-zoom, 1)); }
+.app-density .max-w-6xl { max-width: calc(72rem / var(--app-zoom, 1)); }
+.app-density .max-w-5xl { max-width: calc(64rem / var(--app-zoom, 1)); }
+.density-toggle { width: auto; min-width: 36px; padding: 0 8px; font-size: 11px; }
+@media (min-width: 1400px) { html:not([data-density]) { --app-zoom: 0.8; } }
+@media (min-width: 1101px) {
+  html[data-density='80'] { --app-zoom: 0.8; }
+  html[data-density='67'] { --app-zoom: 0.67; }
+}
+@media (max-width: 1100px) { .density-toggle { display: none; } }
+
+/* ---------- Swap, laid out like Create (components/swap/SwapCard.tsx) ---------- */
+.swap3 { margin-top: 18px; }
+.swap3-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.swap3-grid { grid-template-columns: minmax(300px, 1fr) minmax(360px, 1.2fr) minmax(320px, 1fr); }
+.swap3-list { max-height: 560px; }
+.swap3-summary { position: sticky; top: 90px; }
+.swap3-kv { margin: 0; display: flex; flex-direction: column; }
+.swap3-kv > div { display: flex; justify-content: space-between; gap: 14px; padding: 9px 0; border-bottom: 1px solid var(--line-soft); font-family: var(--font-mono), monospace; font-size: 12.5px; }
+.swap3-kv dt { color: var(--mute); }
+.swap3-kv dd { margin: 0; text-align: right; color: var(--ink); }
+.swap3-kv dd.ok { color: var(--emerald); }
+.swap-row-col { flex-direction: column; align-items: stretch; gap: 8px; }
+.swap-row-top { display: flex; align-items: center; gap: 10px; }
+.swap-shares { display: flex; gap: 4px; }
+.swap-shares button { flex: 1; min-height: 28px; border-radius: 8px; border: 1px solid var(--line-soft); background: transparent; color: var(--ink-soft); font-family: var(--font-mono), monospace; font-size: 11.5px; cursor: pointer; }
+.swap-shares button.active { border-color: var(--gold); color: var(--ink); background: var(--gold-tint); }
+.swap-weight { width: 100%; accent-color: var(--gold); }
+@media (max-width: 1100px) { .swap3-grid { grid-template-columns: minmax(0, 1fr); } .swap3-summary { position: static; } }
+
+/* ---------- Bag card (components/bags/BagCard.tsx) ---------- */
+.bag-card-v2 { display: flex; flex-direction: column; gap: 14px; }
+.bcv-head { display: flex; gap: 12px; align-items: flex-start; }
+.bcv-icon { width: 44px; height: 44px; border-radius: 12px; flex: none; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; color: #141007; }
+.bcv-id { flex: 1; min-width: 0; }
+.bcv-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.bcv-name { font-size: 16px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bcv-ver { font-family: var(--font-mono), monospace; font-size: 11.5px; color: var(--gold); border: 1px solid var(--gold); border-radius: 6px; padding: 0 6px; flex: none; }
+.bcv-by { font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
+.bcv-tick { color: var(--emerald); }
+.bcv-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.bcv-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line-soft); color: var(--ink); background: var(--surface-2); }
+.bcv-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.bcv-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; color: var(--mute); }
+.bcv-chain { text-transform: capitalize; }
+.bcv-meta span { display: inline-flex; align-items: center; gap: 4px; }
+.bcv-numbers { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; }
+.bcv-numbers .l, .bcv-mini .l { display: block; font-family: var(--font-mono), monospace; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mute); }
+.bcv-tvl { font-size: 22px; color: var(--ink); margin-top: 2px; }
+.bcv-returns { text-align: right; }
+.bcv-ret { font-size: 20px; }
+.bcv-ret7 { font-size: 12px; display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; }
+.bcv-ret.pos, .bcv-ret7.pos { color: var(--emerald); }
+.bcv-ret.neg, .bcv-ret7.neg { color: #E0847A; }
+.bcv-mini { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 10px; border-radius: 12px; background: var(--surface-2); }
+.bcv-mini > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.bcv-mini .bag-risk-chip { white-space: nowrap; }
+.bcv-mini .v { font-size: 13px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }

@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, CheckCircle2, AlertTriangle, Pencil, X } from 'lucide-react';
 import { useWallet } from '@/lib/wallet-context';
 import { useEditStrategy } from '@/hooks/use-edit-strategy';
+import { useStrategyRegistration, type RegistrationOutcome } from '@/hooks/use-strategy-registration';
 import { CompositionEditor, rowsFromBag, summarizeComposition, type CompositionRow } from '@/components/bags/CompositionEditor';
 import type { Bag } from '@/types';
 
@@ -14,14 +15,36 @@ import type { Bag } from '@/types';
 // Everything else about the Bag (name, rules, fee) stays as it is.
 // -----------------------------------------------------------------------------
 
-export function EditStrategyPanel({ bag, onSaved }: { bag: Bag; onSaved?: () => void }) {
+export function EditStrategyPanel({
+  bag,
+  onSaved,
+  open: openProp,
+  onOpenChange,
+  hideTrigger = false,
+}: {
+  bag: Bag;
+  /** After a saved version (and its registry entry): the new version number, so the page can rebalance to it. */
+  onSaved?: (newVersion?: number) => void;
+  /** Controlled open state, for a page that shows its own "Edit strategy" button (with `hideTrigger`). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
+}) {
   const chain = bag.chains[0] ?? 'robinhood';
   const { isConnected, walletAddress, connect } = useWallet();
   const { state, submit, resumePending, reset, sync, checkStatus, recover } = useEditStrategy(bag.id);
   const [recoverTx, setRecoverTx] = useState('');
   // A failed status read alone (e.g. RPC briefly down) is not worth a banner on a closed panel; a failed recovery is.
   const [recoverTried, setRecoverTried] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (onOpenChange) onOpenChange(next);
+      if (openProp === undefined) setOpenState(next);
+    },
+    [onOpenChange, openProp]
+  );
   const [rows, setRows] = useState<CompositionRow[]>(() => rowsFromBag(bag));
   const [reason, setReason] = useState('');
   const resumed = useRef(false);
@@ -35,7 +58,7 @@ export function EditStrategyPanel({ bag, onSaved }: { bag: Bag; onSaved?: () => 
       if (had) setOpen(true);
       else void checkStatus();
     });
-  }, [resumePending, checkStatus]);
+  }, [resumePending, checkStatus, setOpen]);
 
   const behind = sync.kind === 'ready' && sync.sync.chainVersion > sync.sync.recordedVersion;
   const syncPanel = (behind || sync.kind === 'recovering' || (sync.kind === 'error' && (open || recoverTried))) && (
@@ -66,8 +89,16 @@ export function EditStrategyPanel({ bag, onSaved }: { bag: Bag; onSaved?: () => 
     </div>
   );
 
-  // Once per saved version, whatever the identity of `onSaved`.
+  // Once per saved version, whatever the identity of `onSaved`: first the new version goes into the on-chain
+  // StrategyRegistry (one more wallet confirmation, prompted right away; a skip or rejection does not block),
+  // then the page is told, which rebalances the creator's own position to it.
+  const registration = useStrategyRegistration(bag.id);
+  const [registryStep, setRegistryStep] = useState<'registering' | RegistrationOutcome | null>(null);
   const savedRef = useRef(false);
+  const onSavedRef = useRef(onSaved);
+  useEffect(() => {
+    onSavedRef.current = onSaved;
+  }, [onSaved]);
   useEffect(() => {
     if (state.phase !== 'completed') {
       savedRef.current = false;
@@ -75,8 +106,19 @@ export function EditStrategyPanel({ bag, onSaved }: { bag: Bag; onSaved?: () => 
     }
     if (savedRef.current) return;
     savedRef.current = true;
-    onSaved?.();
-  }, [state.phase, onSaved]);
+    const newVersion = state.newVersion ?? undefined;
+    if (!walletAddress) {
+      onSavedRef.current?.(newVersion);
+      return;
+    }
+    setRegistryStep('registering');
+    void registration.register(walletAddress).then((outcome) => {
+      setRegistryStep(outcome);
+      onSavedRef.current?.(newVersion);
+    });
+    // Once per saved version; the wallet and registration hook are read at that moment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.phase]);
 
   const original = useMemo(() => rowsFromBag(bag), [bag]);
   const summary = useMemo(() => summarizeComposition(original, rows), [original, rows]);
@@ -100,6 +142,7 @@ export function EditStrategyPanel({ bag, onSaved }: { bag: Bag; onSaved?: () => 
   };
 
   if (!open) {
+    if (hideTrigger) return syncPanel || null;
     return (
       <div className="space-y-3">
         {syncPanel}
@@ -116,8 +159,19 @@ export function EditStrategyPanel({ bag, onSaved }: { bag: Bag; onSaved?: () => 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--green, #6FCF97)', fontWeight: 600 }}>
           <CheckCircle2 size={18} /> Saved{state.newVersion ? ` as v${state.newVersion}` : ''}.
         </div>
+        {registryStep && (
+          <p data-testid="edit-strategy-registry" className="text-sm text-white/70 mt-2">
+            {registryStep === 'registering'
+              ? registration.phase === 'awaiting_signature'
+                ? 'Next: confirm the on-chain registry entry for this version in your wallet…'
+                : 'Publishing this version to the on-chain strategy registry…'
+              : registryStep === 'completed'
+                ? 'Published to the on-chain registry: anyone can verify this version.'
+                : 'Not published to the registry yet; you can do it from the Passport & verification tab.'}
+          </p>
+        )}
         <p className="text-sm text-white/60 mt-2">
-          Holders keep their current assets until they rebalance; the Rebalance card shows each holder how far they are from the new weights.
+          If you hold this Bag, your rebalance to the new weights opens below. Other holders keep their assets until they rebalance.
         </p>
         <button type="button" className="btn btn-secondary mt-3" onClick={close}>
           Close
@@ -136,8 +190,8 @@ export function EditStrategyPanel({ bag, onSaved }: { bag: Bag; onSaved?: () => 
         </button>
       </div>
       <p className="text-sm text-white/60">
-        Change which assets the Bag holds and their target weights. Saving records version v{(bag.version ?? 1) + 1} on chain from your wallet (one
-        signature, network fee only).
+        Change which assets the Bag holds and their target weights. Saving records version v{(bag.version ?? 1) + 1} on chain, publishes it to the
+        strategy registry and, if you hold this Bag, opens your rebalance to it. Each step is confirmed in your wallet (network fees only).
       </p>
 
       <CompositionEditor chain={chain} original={original} rows={rows} onChange={setRows} disabled={busy} />

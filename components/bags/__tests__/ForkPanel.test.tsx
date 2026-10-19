@@ -52,7 +52,7 @@ describe('ForkPanel', () => {
     expect((screen.getByTestId('fork-create') as HTMLButtonElement).disabled).toBe(true); // 70%
     fireEvent.change(screen.getByLabelText('BBB weight in percent'), { target: { value: '70' } });
     fireEvent.click(screen.getByTestId('fork-create'));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard/bag/new1'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard/bag/new1?deploy=1'));
     expect(bodies[0]).toEqual({ name: 'My Majors', composition: [{ address: A, weightBps: 3000 }, { address: B, weightBps: 7000 }] });
   });
 
@@ -60,8 +60,20 @@ describe('ForkPanel', () => {
     const bodies = serve(() => new Response(JSON.stringify({ bag: { id: 'new2' } }), { status: 201 }));
     render(<ForkPanel bag={bag} onClose={() => {}} />);
     fireEvent.click(screen.getByTestId('fork-create'));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard/bag/new2'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard/bag/new2?deploy=1'));
     expect(bodies[0]).toEqual({ name: 'Majors (Fork)' });
+  });
+
+  it('a launch buy goes along: the new page deploys, registers and then buys that amount', async () => {
+    serve(() => new Response(JSON.stringify({ bag: { id: 'new3' } }), { status: 201 }));
+    render(<ForkPanel bag={bag} onClose={() => {}} />);
+    fireEvent.click(screen.getByTestId('fork-buy-after'));
+    fireEvent.change(screen.getByTestId('fork-buy-amount'), { target: { value: 'abc' } });
+    expect((screen.getByTestId('fork-create') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByTestId('fork-buy-amount'), { target: { value: '25' } });
+    expect(screen.getByTestId('fork-create').textContent).toBe('Create, deploy & buy');
+    fireEvent.click(screen.getByTestId('fork-create'));
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard/bag/new3?deploy=1&buy=25'));
   });
 
   it('a refusal (e.g. an asset that failed validation) is shown and nothing opens', async () => {

@@ -37,7 +37,7 @@ describe('useForkBag', () => {
 
     expect(fetchMock.mock.calls[0][0]).toBe('/api/bags/src-1/fork');
     expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe('POST');
-    expect(push).toHaveBeenCalledWith('/dashboard/bag/new-1');
+    expect(push).toHaveBeenCalledWith('/dashboard/bag/new-1?deploy=1');
     expect(result.current.forkError).toBeNull();
   });
 

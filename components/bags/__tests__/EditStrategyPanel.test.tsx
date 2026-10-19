@@ -60,7 +60,12 @@ describe('EditStrategyPanel', () => {
     expect(calls.find((c) => c.url.endsWith('/prepare'))).toEqual({ url: '/api/bags/bag1/versions/prepare', body: { composition: [{ address: A, weightBps: 5000 }, { address: B, weightBps: 5000 }], reason: '' } });
     expect(sendTransaction).toHaveBeenCalledTimes(1);
     expect(calls.find((c) => c.url.endsWith('/confirm'))!.body).toMatchObject({ txHash: '0x' + 'ab'.repeat(32), composition: [{ address: A, weightBps: 5000 }, { address: B, weightBps: 5000 }] });
-    expect(onSaved).toHaveBeenCalledTimes(1);
+    // onSaved runs in an effect after the "Saved" screen renders: wait for it rather than assume it already ran.
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    // The new version is offered to the on-chain registry first (here the registry answers 404 → not published,
+    // which does not block), then the page is told which version to rebalance to.
+    expect(calls.some((c) => c.url.endsWith('/registry/prepare'))).toBe(true);
+    expect(onSaved).toHaveBeenCalledWith(2);
     expect(localStorage.getItem('bag-version-pending:bag1')).toBeNull();
   });
 

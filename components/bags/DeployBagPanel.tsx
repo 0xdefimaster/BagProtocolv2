@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useWallet } from '@/lib/wallet-context';
 import { useDeployBag } from '@/hooks/use-deploy-bag';
+import { useStrategyRegistration, type RegistrationOutcome } from '@/hooks/use-strategy-registration';
 import { Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 // -----------------------------------------------------------------------------
@@ -18,6 +19,10 @@ import { Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 // buy: once the deployment is verified, `onDeployed` hands the amount back so
 // the page opens the normal purchase flow prefilled (a separate, ordinary
 // purchase — the deploy transaction itself never buys anything).
+//
+// One flow after the creator presses Deploy: deploy → register v1 in the on-chain StrategyRegistry (a second
+// wallet confirmation, prompted right away) → the launch buy. Each step is still signed by the creator's wallet;
+// a skipped or rejected registration does not stop the buy (the Passport tab offers it again).
 // -----------------------------------------------------------------------------
 
 interface DeployBagPanelProps {
@@ -30,7 +35,11 @@ interface DeployBagPanelProps {
   autoStart?: boolean;
   /** Launch-buy amount chosen elsewhere (the Create page); when set, the panel's own launch-buy input is hidden. */
   presetLaunchBuy?: string;
+  /** Register v1 in the StrategyRegistry right after the deployment (default on). */
+  registerAfterDeploy?: boolean;
 }
+
+type AfterDeployStep = 'registering' | RegistrationOutcome | null;
 
 interface CreationFeeView {
   amountWei: string;
@@ -44,9 +53,11 @@ function formatFee(fee: CreationFeeView): string {
   return `${wei / base}${frac ? `.${frac}` : ''} ETH`;
 }
 
-export function DeployBagPanel({ bagId, bagName, chain, onDeployed, autoStart, presetLaunchBuy }: DeployBagPanelProps) {
+export function DeployBagPanel({ bagId, bagName, chain, onDeployed, autoStart, presetLaunchBuy, registerAfterDeploy = true }: DeployBagPanelProps) {
   const { isConnected, walletAddress, connect } = useWallet();
   const { state, deploy, resumePending, cancel } = useDeployBag(bagId);
+  const registration = useStrategyRegistration(bagId);
+  const [afterDeploy, setAfterDeploy] = useState<AfterDeployStep>(null);
   const resumedRef = useRef(false);
   const [fee, setFee] = useState<CreationFeeView | null>(null);
   const [launchBuy, setLaunchBuy] = useState(presetLaunchBuy !== undefined && Number(presetLaunchBuy) > 0);
@@ -103,13 +114,29 @@ export function DeployBagPanel({ bagId, bagName, chain, onDeployed, autoStart, p
   }, [resumePending, cancel]);
 
   // Fired once per deployment — callers may pass an inline callback that
-  // changes every render, which must not re-trigger it.
+  // changes every render, which must not re-trigger it. The registration runs
+  // first: `onDeployed` refreshes the page, which unmounts this (DRAFT-only) panel.
   const deployedNotifiedRef = useRef(false);
+  const onDeployedRef = useRef(onDeployed);
+  useEffect(() => {
+    onDeployedRef.current = onDeployed;
+  }, [onDeployed]);
   useEffect(() => {
     if (state.phase !== 'completed' || deployedNotifiedRef.current) return;
     deployedNotifiedRef.current = true;
-    onDeployed?.(launchBuyRef.current);
-  }, [state.phase, onDeployed]);
+    const launch = launchBuyRef.current;
+    if (!registerAfterDeploy || !walletAddress) {
+      onDeployedRef.current?.(launch);
+      return;
+    }
+    setAfterDeploy('registering');
+    void registration.register(walletAddress).then((outcome) => {
+      setAfterDeploy(outcome);
+      onDeployedRef.current?.(launch);
+    });
+    // Once per deployment; the wallet and registration hook are read at that moment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.phase]);
 
   const startDeploy = () => {
     launchBuyRef.current = launchBuy ? launchBuyAmount.trim() : undefined;
@@ -133,6 +160,17 @@ export function DeployBagPanel({ bagId, bagName, chain, onDeployed, autoStart, p
           <p style={{ color: 'var(--ink-soft)', fontSize: 13 }}>
             &ldquo;{bagName}&rdquo; is live. Contract {state.deployment?.contractAddress}
           </p>
+          {afterDeploy && (
+            <p data-testid="deploy-registration-step" style={{ color: 'var(--ink-soft)', fontSize: 13, marginTop: 4 }}>
+              {afterDeploy === 'registering'
+                ? registration.phase === 'awaiting_signature'
+                  ? 'Next: confirm the on-chain registry entry in your wallet (verifiable by anyone)…'
+                  : 'Registering v1 in the on-chain strategy registry…'
+                : afterDeploy === 'completed'
+                  ? 'Registered on-chain: anyone can verify this strategy.'
+                  : 'Not registered on-chain yet; you can do it any time from the Passport & verification tab.'}
+            </p>
+          )}
         </div>
       </div>
     );

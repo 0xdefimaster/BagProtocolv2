@@ -19,7 +19,7 @@ describe('Swap page', () => {
   it('signed out: explains multi-buy / multi-sell and asks to connect, MetaMask named; no card', () => {
     wallet = { isConnected: false, authUser: null, connect: vi.fn(), signIn: vi.fn() };
     render(<SwapPage />);
-    expect(screen.getByRole('heading', { name: 'Swap' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Pick tokens. Swap them in one transaction.' })).toBeInTheDocument();
     expect(screen.getByText(/Buy several tokens with one payment, or sell several for one/)).toBeInTheDocument();
     expect(screen.getByText(/Works best with MetaMask/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Connect wallet' })).toBeInTheDocument();

@@ -20,15 +20,22 @@ export function ForkPanel({ bag, onClose }: { bag: Bag; onClose: () => void }) {
   const original = useMemo(() => rowsFromBag(bag), [bag]);
   const [rows, setRows] = useState<CompositionRow[]>(original);
   const [name, setName] = useState(`${bag.name} (Fork)`);
+  const [buyAfter, setBuyAfter] = useState(false);
+  const [buyAmount, setBuyAmount] = useState('50');
+  const buyValid = !buyAfter || (/^\d+(\.\d+)?$/.test(buyAmount.trim()) && Number(buyAmount) > 0);
   const availability = useBagNameAvailable(name);
   const summary = useMemo(() => summarizeComposition(original, rows), [original, rows]);
   const nameTaken = availability === 'taken';
-  const canCreate = !isForking && name.trim().length > 0 && !nameTaken && summary.complete;
+  const canCreate = !isForking && name.trim().length > 0 && !nameTaken && summary.complete && buyValid;
 
   const create = () => {
     if (!canCreate || !summary.entries) return;
     // Unchanged weights: a plain copy (the server copies the source's recipe exactly).
-    void fork(bag, { name, ...(summary.changedAny ? { composition: summary.entries } : {}) });
+    void fork(bag, {
+      name,
+      ...(summary.changedAny ? { composition: summary.entries } : {}),
+      ...(buyAfter ? { launchBuy: buyAmount.trim() } : {}),
+    });
   };
 
   return (
@@ -42,8 +49,8 @@ export function ForkPanel({ bag, onClose }: { bag: Bag; onClose: () => void }) {
         </button>
       </div>
       <p className="text-sm text-white/60">
-        Your own Bag, starting from this one: pick its name, assets and weights now. It is created as a draft and deployed from your wallet in one step.
-        This Bag and its holders are not affected.
+        Your own Bag, starting from this one: pick its name, assets and weights now. Then it is deployed, registered on-chain and (if you choose)
+        bought in one flow, each step confirmed in your wallet. This Bag and its holders are not affected.
       </p>
 
       <div className="field">
@@ -58,6 +65,26 @@ export function ForkPanel({ bag, onClose }: { bag: Bag; onClose: () => void }) {
 
       <CompositionEditor chain={chain} original={original} rows={rows} onChange={setRows} disabled={isForking} />
 
+      <div className="field">
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+          <input type="checkbox" data-testid="fork-buy-after" checked={buyAfter} disabled={isForking} onChange={(e) => setBuyAfter(e.target.checked)} />
+          Be the first buyer: buy into it right after it&apos;s deployed (amount in $)
+        </label>
+        {buyAfter && (
+          <input
+            type="text"
+            inputMode="decimal"
+            aria-label="Launch buy amount in dollars"
+            data-testid="fork-buy-amount"
+            value={buyAmount}
+            disabled={isForking}
+            onChange={(e) => setBuyAmount(e.target.value)}
+            aria-invalid={!buyValid}
+            style={{ marginTop: 6, maxWidth: 160 }}
+          />
+        )}
+      </div>
+
       {forkError && (
         <div role="alert" style={{ display: 'flex', gap: 8, color: 'var(--red, #E5786D)', fontSize: 13 }}>
           <AlertTriangle size={16} /> {forkError}
@@ -66,7 +93,7 @@ export function ForkPanel({ bag, onClose }: { bag: Bag; onClose: () => void }) {
 
       <button type="button" data-testid="fork-create" className="btn btn-primary" disabled={!canCreate} onClick={create} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
         {isForking && <Loader2 size={16} className="animate-spin" />}
-        {isForking ? 'Creating…' : summary.changedAny ? 'Create fork with these weights' : 'Create fork'}
+        {isForking ? 'Creating…' : buyAfter ? 'Create, deploy & buy' : 'Create & deploy fork'}
       </button>
     </div>
   );

@@ -6,12 +6,12 @@ import { useState } from 'react';
 import { Bag } from '@/types';
 import { bagReturns, formatCompact, formatReturn, formatUsdCompact } from '@/lib/format';
 import dynamic from 'next/dynamic';
-import { getCategoryBreakdown, getDiversificationScore, categoryForPosition, CATEGORY_COLORS } from '@/lib/categorize';
+import { getCategoryBreakdown, getDiversificationScore, CATEGORY_COLORS } from '@/lib/categorize';
 import { Users, GitFork, TrendingUp, TrendingDown, Star } from 'lucide-react';
 import { VerificationBadge } from '@/components/bags/VerificationBadge';
 import { assessRisk } from '@/lib/domain/discovery/bag-discovery';
 import { useWatchlist } from '@/lib/watchlist-store';
-import { bagDisplayName } from '@/lib/bag-display-name';
+import { allocationColor } from '@/lib/allocation-colors';
 
 // Loaded when Invest is opened: the purchase flow (LI.FI SDK, viem) stays out of every page that lists Bags.
 const PurchasePreviewModal = dynamic(() => import('@/components/app/PurchasePreviewModal').then((m) => m.PurchasePreviewModal), { ssr: false });
@@ -33,8 +33,6 @@ function initials(name: string) {
 export function BagCard({ bag, isNew }: BagCardProps) {
   const returns = bagReturns(bag);
   const isPositive = (returns.d7 ?? 0) >= 0;
-  const topComposition = bag.composition.slice(0, 4);
-  const restCount = bag.composition.length - topComposition.length;
 
   const breakdown = getCategoryBreakdown(bag.composition);
   const diversification = getDiversificationScore(bag.composition);
@@ -61,133 +59,112 @@ export function BagCard({ bag, isNew }: BagCardProps) {
     router.push(`/dashboard/bag/${encodeURIComponent(bag.id)}?fork=1`);
   };
 
+  // Up to three assets by weight; the rest as one "Others" chip.
+  const byWeight = [...bag.composition].sort((x, y) => y.weight - x.weight);
+  const topAssets = byWeight.slice(0, 3);
+  const othersWeight = byWeight.slice(3).reduce((sum, p) => sum + p.weight, 0);
+  const version = typeof bag.version === 'number' ? bag.version : 1;
+  const rebalance = bag.rules?.rebalanceFrequency || 'Manual';
+
   return (
     <>
-    <Link
-      href={`/dashboard/bag/${bag.id}`}
-      className={`bag-card bag-card-pro ${isNew ? 'bag-card-new' : ''}`}
-      style={{ ['--accent' as string]: accent }}
-    >
-      <div className="bag-card-accent" />
-
-      <div className="bag-card-head">
-        <div className="bag-card-id">
-          <span className="bag-avatar-ring">
-            <span className="bag-avatar creator-link" onClick={handleCreatorClick}>
-              {initials(bag.creator.name)}
+    <Link href={`/dashboard/bag/${bag.id}`} className={`bag-card bag-card-v2 ${isNew ? 'bag-card-new' : ''}`} style={{ ['--accent' as string]: accent }}>
+      <div className="bcv-head">
+        <span className="bcv-icon" style={{ background: allocationColor(0) }} aria-hidden="true">
+          {initials(bag.name)}
+        </span>
+        <div className="bcv-id">
+          <div className="bcv-title">
+            <span className="bcv-name">{bag.name}</span>
+            <span className="bcv-ver">v{version}</span>
+            {isNew && <span className="bag-new-badge">Just Published</span>}
+          </div>
+          <div className="bcv-by">
+            by{' '}
+            <span className="creator-link" onClick={handleCreatorClick}>
+              {bag.creator.name}
             </span>
-          </span>
-          <div style={{ minWidth: 0 }}>
-            <div className="bag-card-title">{bagDisplayName(bag)}</div>
-            <div className="bag-card-sub">
-              by <span className="creator-link" onClick={handleCreatorClick}>{bag.creator.name}</span>
-            </div>
+            {bag.creator.verified && <span className="bcv-tick" title="Verified creator"> ✓</span>}
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {isNew && <span className="bag-new-badge">Just Published</span>}
-          <button
-            type="button"
-            className={`watch-btn ${watching ? 'on' : ''}`}
-            aria-pressed={watching}
-            aria-label={watching ? `Remove ${bag.name} from watchlist` : `Add ${bag.name} to watchlist`}
-            title={watching ? 'Watching (saved in this browser)' : 'Watch (saved in this browser)'}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              toggleWatch(bag.id);
-            }}
-          >
-            <Star size={15} fill={watching ? 'currentColor' : 'none'} />
-          </button>
-        </div>
+        <button
+          type="button"
+          className={`watch-btn ${watching ? 'on' : ''}`}
+          aria-pressed={watching}
+          aria-label={watching ? `Remove ${bag.name} from watchlist` : `Add ${bag.name} to watchlist`}
+          title={watching ? 'Watching (saved in this browser)' : 'Watch (saved in this browser)'}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleWatch(bag.id);
+          }}
+        >
+          <Star size={15} fill={watching ? 'currentColor' : 'none'} />
+        </button>
       </div>
 
-      <div className="bag-card-tags">
-        <span className="bag-category-chip">
-          <span className="dot" style={{ background: accent }} />
-          {dominantCategory}
-        </span>
-        {risk && (
-          <span className={`bag-risk-chip risk-${risk.level.toLowerCase()}`} title={`${risk.reasons.join(' · ')}. Rule-based estimate from the composition, not investment advice.`}>
-            {risk.level} risk
+      <div className="bcv-chips">
+        {topAssets.map((pos, i) => (
+          <span key={pos.symbol} className="bcv-chip mono" title={`${pos.symbol} · ${pos.weight}%`}>
+            <span className="bcv-dot" style={{ background: allocationColor(i) }} />
+            {pos.symbol} {pos.weight}%
+          </span>
+        ))}
+        {othersWeight > 0 && (
+          <span className="bcv-chip mono">
+            <span className="bcv-dot" style={{ background: 'var(--mute)' }} />
+            Others {Math.round(othersWeight * 100) / 100}%
           </span>
         )}
-        {/* Phase 11 — only strategy type today; falls back for pre-Phase-11 Bags. */}
-        <span className="bag-risk-chip">{bag.strategyType === 'STATIC_BASKET' || !bag.strategyType ? 'Static Basket' : bag.strategyType}</span>
       </div>
 
-      <div className="bag-hero">
+      <div className="bcv-meta">
+        <span className="bcv-chain">{bag.chains.join(' · ')}</span>
+        <span>
+          <Users size={12} /> {formatCompact(bag.holders ?? bag.followers)} holders
+        </span>
+        <span>
+          <GitFork size={12} /> {formatCompact(bag.forks)} forks
+        </span>
+        <VerificationBadge verification={bag.verification} />
+      </div>
+
+      <div className="bcv-numbers">
         <div>
           <span className="l">TVL</span>
-          <div className="bag-hero-value">${formatUsdCompact(bag.tvl)}</div>
+          <div className="bcv-tvl mono">${formatUsdCompact(bag.tvl)}</div>
         </div>
-        <div className={`bag-trend-badge ${isPositive ? 'pos' : 'neg'}`}>
-          {isPositive ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
-          {formatReturn(returns.d7)} <span className="bag-trend-period">7D</span>
-        </div>
-      </div>
-
-      <div className="bag-stats bag-stats-secondary">
-        <div>
-          <span className="l">30D</span>
-          <div className={`v ${(returns.d30 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{formatReturn(returns.d30)}</div>
-        </div>
-        <div>
-          <span className="l">YTD</span>
-          <div className={`v ${(returns.ytd ?? 0) >= 0 ? 'pos' : 'neg'}`}>{formatReturn(returns.ytd)}</div>
-        </div>
-        <div>
-          <span className="l">Diversification</span>
-          <div className="v">{diversification}/100</div>
+        <div className="bcv-returns">
+          <div className={`bcv-ret mono ${(returns.d30 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{formatReturn(returns.d30)}</div>
+          <span className="l">30D return</span>
+          <div className={`bcv-ret7 mono ${isPositive ? 'pos' : 'neg'}`}>
+            {isPositive ? <TrendingUp size={12} /> : <TrendingDown size={12} />} {formatReturn(returns.d7)} 7D
+          </div>
         </div>
       </div>
 
-      <div className="bag-comp">
-        <div className="bag-comp-bar">
-          {topComposition.map((pos) => (
-            <span
-              key={pos.symbol}
-              title={`${pos.symbol} · ${pos.weight}%`}
-              style={{ width: `${pos.weight}%`, background: CATEGORY_COLORS[categoryForPosition(pos)] }}
-            />
-          ))}
-        </div>
-        <div className="bag-comp-legend">
-          {topComposition.map((pos) => (
-            <span key={pos.symbol}>
-              <span className="bag-comp-dot" style={{ background: CATEGORY_COLORS[categoryForPosition(pos)] }} />
-              {pos.symbol} <b>{pos.weight}%</b>
+      <div className="bcv-mini">
+        <div>
+          <span className="l">Risk</span>
+          {risk ? (
+            <span className={`bag-risk-chip risk-${risk.level.toLowerCase()}`} title={`${risk.reasons.join(' · ')}. Rule-based estimate from the composition, not investment advice.`}>
+              {risk.level} risk
             </span>
-          ))}
-          {restCount > 0 && <span className="bag-comp-more">+{restCount}</span>}
+          ) : (
+            <span className="v">—</span>
+          )}
         </div>
-      </div>
-
-      <div className="bag-card-footer">
-        <div className="bag-footer-stats">
-          <span>
-            <Users size={12} /> {formatCompact(bag.holders ?? bag.followers)} holders
-          </span>
-          <span>
-            <GitFork size={12} /> {formatCompact(bag.forks)} forks
-          </span>
-          <VerificationBadge verification={bag.verification} />
+        <div>
+          <span className="l">Rebalance</span>
+          <span className="v">{rebalance}</span>
         </div>
-        <div className="bag-chains">
-          {bag.chains.map((chain) => (
-            <span key={chain} className="bag-chain-tag">
-              {chain}
-            </span>
-          ))}
+        <div>
+          <span className="l" title="Diversification score">Spread</span>
+          <span className="v">{diversification}/100</span>
         </div>
       </div>
 
       <div className="bag-actions">
-        <button onClick={handleFork} className="btn btn-ghost">
-          <GitFork size={15} />
-          Fork
-        </button>
         <button
           onClick={(e) => {
             e.preventDefault();
@@ -197,6 +174,10 @@ export function BagCard({ bag, isNew }: BagCardProps) {
           className="btn btn-primary"
         >
           Invest
+        </button>
+        <button onClick={handleFork} className="btn btn-ghost">
+          <GitFork size={15} />
+          Fork
         </button>
       </div>
     </Link>

@@ -8,7 +8,7 @@ import { useActivity } from '@/lib/activity-store';
 import { useBag } from '@/hooks/useBag';
 import { bagReturns, formatCompact, formatUsdCompact, formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
 import { Bag } from '@/types';
-import { use, useCallback, useEffect, useState } from 'react';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
 import {
   TrendingUp,
   ArrowDownLeft,
@@ -18,6 +18,7 @@ import {
   Copy,
   Check,
   AlertTriangle,
+  Pencil,
 } from 'lucide-react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
@@ -38,7 +39,8 @@ import { EditStrategyPanel } from '@/components/bags/EditStrategyPanel';
 import { ForkPanel } from '@/components/bags/ForkPanel';
 import { StockQuote } from '@/components/bags/StockQuote';
 import { useStockQuotes } from '@/hooks/useStockQuotes';
-import { bagDisplayName } from '@/lib/bag-display-name';
+import { visibleAssets } from '@/lib/visible-assets';
+import { allocationColor, allocationGradient } from '@/lib/allocation-colors';
 
 function unroutableLabel(policy: string | undefined): { title: string; detail: string } {
   if (policy === 'HOLD_INPUT') {
@@ -141,6 +143,27 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
   useEffect(() => {
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('fork') === '1') setShowFork(true);
   }, []);
+  // After the creator saves a new version, the page scrolls to their own position and its rebalance card,
+  // which refetches against the new version (refreshAfterTrade bumps its refreshKey).
+  // The version just saved by the creator (true when its number is unknown): the rebalance card starts on it.
+  const [savedVersion, setSavedVersion] = useState<number | boolean>(false);
+  // "Edit strategy" is a header button; the editor opens under the header.
+  const [editOpen, setEditOpen] = useState(false);
+  const editRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (editOpen) editRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [editOpen]);
+  const positionRef = useRef<HTMLDivElement>(null);
+  const onVersionSaved = useCallback(
+    (newVersion?: number) => {
+      refreshAfterTrade();
+      setSavedVersion(newVersion ?? true);
+    },
+    [refreshAfterTrade]
+  );
+  useEffect(() => {
+    if (savedVersion) positionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [savedVersion]);
   const isFollowing = bag ? following.includes(bag.id) : false;
   const isOwnBag = useIsSelf(bag?.creator.address);
   const isRobinhood = bag?.chains.includes('robinhood') ?? false;
@@ -190,7 +213,22 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
 
 
 
-  const tabs = ['Overview', 'Passport', 'Thesis', 'Rules', 'Performance', 'History', 'Executions', 'JSON'];
+  // Tabs: what the strategy is (Overview), how it did (Performance & risk), how it changed (Versions),
+  // whether it checks out (Passport & verification), what was executed, its rules and raw data.
+  const tabs: { id: string; label: string }[] = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'performance', label: 'Performance & risk' },
+    { id: 'history', label: 'Versions' },
+    { id: 'passport', label: 'Passport & verification' },
+    { id: 'executions', label: 'Executions' },
+    { id: 'rules', label: 'Rules' },
+    { id: 'json', label: 'JSON' },
+  ];
+  const returns = bagReturns(bag);
+  // The server checks creator, wallet, MUTABLE and deployment again; this only hides the button from others.
+  const canEdit = bag.status === 'ACTIVE' && isOwnBag && bag.mutability === 'MUTABLE';
+  const anyHeld = !!bag.holdings?.some((h) => BigInt(h.quantityRaw) > BigInt(0));
+  const { allocation, breakdown, hidden: hiddenInBreakdown, heldOf } = visibleAssets(bag.composition, bag.holdings);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(JSON.stringify(bag, null, 2));
@@ -214,159 +252,72 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
   return (
     <>
     <main className="min-h-screen bg-black pb-20">
-      {/* Hero Section */}
-      <div className="bg-gradient-to-b from-emerald-500/10 to-transparent pt-12 pb-10">
-        <div className="mx-auto max-w-7xl px-4">
-          <Link
-            href="/dashboard/explore"
-            className="text-sm text-white/60 hover:text-white transition-colors mb-8 inline-flex"
-          >
-            ← Back to Bags
-          </Link>
+      <div className="mx-auto max-w-7xl px-4 pt-8">
+        <Link href="/dashboard/explore" className="text-sm text-white/60 hover:text-white transition-colors mb-6 inline-flex">
+          ← Back to Explore
+        </Link>
 
-          {/* GET /api/bags/[id] already 404s a DRAFT/ARCHIVED bag for anyone but its creator (see that
-              route's header comment) — reaching this render with status DRAFT means we ARE the owner,
-              so no separate wallet-address comparison is needed (bag.creator.address is a display stub
-              here, not necessarily the wallet — see bag-mapper.ts's default CreatorProfile). */}
-          {bag.status === 'DRAFT' && (
-            <div className="mb-8">
-              <DeployBagPanel
-                bagId={bag.id}
-                bagName={bag.name}
-                chain={bag.chains[0] ?? "robinhood"}
-                onDeployed={(launchBuyAmount) => {
-                  void api.refresh();
-                  if (launchBuyAmount) {
-                    setInvestInitialAmount(launchBuyAmount);
-                    setShowInvest(true);
-                  }
-                }}
-              />
-            </div>
-          )}
-
-          {bag.status === 'ACTIVE' && (
-            <div className="mb-8 space-y-6">
-              {/* The server checks creator, wallet, MUTABLE and deployment again; this only hides the button from others. */}
-              {isOwnBag && bag.mutability === 'MUTABLE' && <EditStrategyPanel bag={bag} onSaved={refreshAfterTrade} />}
-              {/* Remounted per version, so a newly saved version is offered for registration right away. */}
-              <StrategyRegistryPanel key={bag.version ?? 0} bagId={bag.id} />
-              <RebalancePreviewCard bagId={bag.id} refreshKey={tradeRefresh} onRebalanced={refreshAfterTrade} />
-            </div>
-          )}
-
-          <div className="grid md:grid-cols-3 gap-8 mb-12">
-            {/* Left Column - Bag Info */}
-            <div className="md:col-span-2 space-y-6">
-              <div>
-                <h1 className="text-4xl md:text-5xl font-bold text-white mb-2">
-                  {bagDisplayName(bag)}
-                </h1>
-                <p className="text-lg text-white/60">{bag.description}</p>
-                <RiskSummary composition={bag.composition} />
+        {/* Header: who and what first, then the actions. */}
+        <div className="flex flex-wrap items-start justify-between gap-6 mb-6">
+          <div className="flex items-start gap-4 min-w-0">
+            <div className="bag-hero-icon" aria-hidden="true">{bag.name.slice(0, 1).toUpperCase()}</div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-3xl md:text-4xl font-bold text-white">{bag.name}</h1>
+                <span className="bag-version-badge" data-testid="bag-version">v{bag.version ?? 1}</span>
+                {bag.status === 'DRAFT' && <span className="bag-draft-badge">Draft · not deployed</span>}
               </div>
-
-              {/* Creator Info */}
-              <div className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
-                <Link
-                  href={`/dashboard/creator/${encodeURIComponent(bag.creator.address)}`}
-                  className="flex items-center gap-4 flex-1 min-w-0 group"
-                >
-                  <CreatorAvatar avatarUrl={bag.creator.avatarUrl} fallback={bag.creator.avatar} size={44} />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-white group-hover:text-emerald-400 transition-colors">
-                      {bag.creator.name}
-                    </p>
-                    <p className="text-sm text-white/60 truncate">{bag.creator.address}</p>
-                    <div className="mt-1">
-                      <Reputation score={bag.creator.creatorScore} />
-                    </div>
-                  </div>
+              <p className="mt-2 text-white/60">
+                by{' '}
+                <Link href={`/dashboard/creator/${encodeURIComponent(bag.creator.address)}`} className="text-white hover:text-emerald-400">
+                  {bag.creator.name}
                 </Link>
-                <FollowButton creatorId={bag.creator.address} creatorName={bag.creator.name} />
-              </div>
-            </div>
-
-            {/* Right Column - Stats */}
-            <div className="space-y-3">
-              <div className="rounded-xl bg-white/5 border border-white/10 p-4">
-                <p className="text-xs font-medium text-white/50 uppercase tracking-wider">TVL</p>
-                <p className="text-2xl font-bold text-white mt-1">
-                  ${formatUsdCompact(bag.tvl)}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl bg-white/5 border border-white/10 p-4">
-                  <p className="text-xs font-medium text-white/50 uppercase tracking-wider">
-                    Followers
-                  </p>
-                  <p className="text-xl font-bold text-white mt-1">
-                    {formatCompact(bag.followers)}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-white/5 border border-white/10 p-4">
-                  <p className="text-xs font-medium text-white/50 uppercase tracking-wider">
-                    Forks
-                  </p>
-                  <p className="text-xl font-bold text-white mt-1">{bag.forks}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                {(
-                  [
-                    ['7D', bagReturns(bag).d7],
-                    ['30D', bagReturns(bag).d30],
-                    ['YTD', bagReturns(bag).ytd],
-                  ] as const
-                ).map(([label, pct]) => (
-                  <div key={label} className="rounded-xl bg-white/5 border border-white/10 p-3">
-                    <p className="text-xs font-medium text-white/50 uppercase tracking-wider">{label}</p>
-                    {pct === null ? (
-                      // Live Bag whose recorded history does not reach back this far yet.
-                      <p className="text-lg font-bold mt-1 text-white/40" title="Not enough recorded history yet">—</p>
-                    ) : (
-                      <p className={`text-lg font-bold mt-1 ${pct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {pct > 0 ? '+' : ''}
-                        {pct.toFixed(1)}%
-                      </p>
-                    )}
-                  </div>
+                {bag.description && <span className="text-white/50"> · {bag.description}</span>}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {bag.chains.map((chain) => (
+                  <span key={chain} className="bag-tag">{chain}</span>
                 ))}
               </div>
+              <RiskSummary composition={bag.composition} />
             </div>
           </div>
 
-          {/* CTA Buttons */}
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => setShowInvest(true)}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-500 text-black font-semibold transition-all hover:bg-emerald-400"
-            >
+          <div className="flex flex-wrap gap-2">
+            {canEdit && (
+              <button
+                onClick={() => setEditOpen(true)}
+                data-testid="bag-edit-strategy"
+                className="flex items-center gap-2 px-5 py-3 rounded-xl font-semibold border transition-all bag-edit-btn"
+              >
+                <Pencil className="w-5 h-5" />
+                Edit strategy
+              </button>
+            )}
+            <button onClick={() => setShowInvest(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-emerald-500 text-black font-semibold transition-all hover:bg-emerald-400">
               <TrendingUp className="w-5 h-5" />
-              Invest Now
+              Invest
             </button>
             <button
               onClick={() => setShowRedeem(true)}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 text-white font-semibold border border-white/20 transition-all hover:bg-white/20"
+              className="flex items-center gap-2 px-5 py-3 rounded-xl bg-white/10 text-white font-semibold border border-white/20 transition-all hover:bg-white/20"
               title="Sell your own holdings in this Bag back to an asset of your choice"
             >
               <ArrowDownLeft className="w-5 h-5" />
-              Redeem
+              Sell
             </button>
             <button
               onClick={handleFork}
               data-testid="fork-open"
-              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 text-white font-semibold border border-white/20 transition-all hover:bg-white/20"
+              className="flex items-center gap-2 px-5 py-3 rounded-xl bg-white/10 text-white font-semibold border border-white/20 transition-all hover:bg-white/20"
             >
               <GitFork className="w-5 h-5" />
-              Fork Bag
+              Fork
             </button>
             {!isOwnBag && (
               <button
                 onClick={handleFollow}
-                className={`flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border transition-all ${
+                className={`flex items-center gap-2 px-5 py-3 rounded-xl font-semibold border transition-all ${
                   isFollowing
                     ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/30'
                     : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
@@ -378,35 +329,118 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
             )}
             <button
               onClick={handleShare}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 text-white font-semibold border border-white/20 transition-all hover:bg-white/20"
+              aria-label="Copy link"
+              className="flex items-center gap-2 px-4 py-3 rounded-xl bg-white/10 text-white font-semibold border border-white/20 transition-all hover:bg-white/20"
             >
               {linkCopied ? <Check className="w-5 h-5" /> : <Share2 className="w-5 h-5" />}
-              {linkCopied ? 'Link Copied!' : 'Share'}
+              {linkCopied ? 'Copied' : ''}
             </button>
           </div>
-          {showFork && (
-            <div className="mt-6">
-              <ForkPanel bag={bag} onClose={() => setShowFork(false)} />
+        </div>
+
+        {/* GET /api/bags/[id] already 404s a DRAFT/ARCHIVED bag for anyone but its creator (see that
+            route's header comment) — reaching this render with status DRAFT means we ARE the owner,
+            so no separate wallet-address comparison is needed (bag.creator.address is a display stub
+            here, not necessarily the wallet — see bag-mapper.ts's default CreatorProfile). */}
+        {bag.status === 'DRAFT' && (
+          <div className="mb-6">
+            <DeployBagPanel
+              bagId={bag.id}
+              bagName={bag.name}
+              chain={bag.chains[0] ?? "robinhood"}
+              onDeployed={(launchBuyAmount) => {
+                void api.refresh();
+                if (launchBuyAmount) {
+                  setInvestInitialAmount(launchBuyAmount);
+                  setShowInvest(true);
+                }
+              }}
+            />
+          </div>
+        )}
+
+        {showFork && (
+          <div className="mb-6">
+            <ForkPanel bag={bag} onClose={() => setShowFork(false)} />
+          </div>
+        )}
+
+        {canEdit && (
+          <div ref={editRef} className="mb-6" style={{ scrollMarginTop: 90 }}>
+            <EditStrategyPanel bag={bag} onSaved={onVersionSaved} open={editOpen} onOpenChange={setEditOpen} hideTrigger />
+          </div>
+        )}
+
+        {/* Key numbers in one strip. */}
+        <div className="bag-page-stats mb-8" data-testid="bag-stats">
+          <div className="bag-page-stat">
+            <p className="k">TVL</p>
+            <p className="v">${formatUsdCompact(bag.tvl)}</p>
+          </div>
+          {(
+            [
+              ['7D', returns.d7],
+              ['30D', returns.d30],
+              ['YTD', returns.ytd],
+            ] as const
+          ).map(([label, pct]) => (
+            <div key={label} className="bag-page-stat">
+              <p className="k">{label} return</p>
+              {pct === null ? (
+                // Live Bag whose recorded history does not reach back this far yet.
+                <p className="v text-white/40" title="Not enough recorded history yet">—</p>
+              ) : (
+                <p className={`v ${pct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {pct > 0 ? '+' : ''}
+                  {pct.toFixed(1)}%
+                </p>
+              )}
+            </div>
+          ))}
+          <div className="bag-page-stat">
+            <p className="k">Followers</p>
+            <p className="v">{formatCompact(bag.followers)}</p>
+          </div>
+          <div className="bag-page-stat">
+            <p className="k">Forks</p>
+            <p className="v">{bag.forks}</p>
+          </div>
+        </div>
+
+        {/* Your side of this Bag: position, then what it takes to get back on target. */}
+        <div ref={positionRef} className="space-y-6 mb-10" style={{ scrollMarginTop: 90 }}>
+          {savedVersion && (
+            <div role="status" data-testid="version-saved-rebalance" className="rounded-xl border p-4 text-sm" style={{ borderColor: 'var(--gold, #D9B98B)', background: 'rgba(217,185,139,0.08)' }}>
+              <p className="text-white/80">
+                New version saved on chain. If you hold this Bag and it now differs from the new weights, your rebalance starts below:
+                your wallet asks you to confirm it. Nothing is sent without your signature.
+              </p>
             </div>
           )}
+          {/* Real position (bag_investor_positions + live NAV); refetched when the TVL changes after a purchase or redemption. */}
+          <MyBagPosition bagId={bag.id} refreshKey={`${bag.tvl}:${tradeRefresh}`} />
+          {bag.status === 'ACTIVE' && <RebalancePreviewCard
+              bagId={bag.id}
+              refreshKey={tradeRefresh}
+              onRebalanced={refreshAfterTrade}
+              autoRunVersion={typeof savedVersion === 'number' ? savedVersion : undefined}
+            />}
         </div>
-      </div>
 
-      {/* Tabs */}
-      <div className="mx-auto max-w-7xl px-4">
+        {/* Tabs */}
         <div className="border-b border-white/10 mb-8">
-          <div className="flex overflow-x-auto gap-8 -mb-px">
+          <div className="flex overflow-x-auto gap-8 -mb-px" role="tablist">
             {tabs.map((tab) => (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab.toLowerCase())}
+                key={tab.id}
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                onClick={() => setActiveTab(tab.id)}
                 className={`px-1 py-4 font-medium whitespace-nowrap transition-colors border-b-2 ${
-                  activeTab === tab.toLowerCase()
-                    ? 'text-emerald-400 border-emerald-400'
-                    : 'text-white/60 border-transparent hover:text-white'
+                  activeTab === tab.id ? 'text-emerald-400 border-emerald-400' : 'text-white/60 border-transparent hover:text-white'
                 }`}
               >
-                {tab}
+                {tab.label}
               </button>
             ))}
           </div>
@@ -414,40 +448,35 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
 
         {/* Tab Content */}
         <div className="mb-12">
-          {/* Overview opens on what the Bag holds: position, allocation and live breakdown first; the thesis has its own tab. */}
           {activeTab === 'overview' && (
             <div className="space-y-8">
-              <DiversificationScore composition={bag.composition} />
-
-              {/* Real position (bag_investor_positions + live NAV); refetched when the TVL changes after a purchase or redemption. */}
-              <MyBagPosition bagId={bag.id} refreshKey={`${bag.tvl}:${tradeRefresh}`} />
-              <div className="grid md:grid-cols-2 gap-8">
-                <div>
+              <div className="grid lg:grid-cols-2 gap-8">
+                <div className="rounded-xl border border-white/10 bg-white/5 p-6">
                   <h3 className="text-lg font-bold text-white mb-4">Allocation</h3>
-                  <div className="space-y-3">
-                    {bag.composition.map((pos) => (
-                      <div key={pos.symbol}>
-                        <div className="flex justify-between mb-2">
-                          <span className="font-medium text-white">{pos.symbol}</span>
-                          <span className="text-emerald-400 font-semibold">{pos.weight}%</span>
-                        </div>
-                        <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400"
-                            style={{ width: `${pos.weight}%` }}
-                          />
-                        </div>
+                  <div className="flex flex-wrap items-center gap-8">
+                    <div className="bag-donut" style={{ background: allocationGradient(allocation) }} aria-hidden="true">
+                      <div className="bag-donut-hole">
+                        <span className="text-2xl font-bold text-white">{allocation.length}</span>
+                        <span className="text-xs text-white/50">assets</span>
                       </div>
-                    ))}
+                    </div>
+                    <ul className="flex-1 min-w-[160px] space-y-2" aria-label="Target weights">
+                      {allocation.map((pos, i) => (
+                        <li key={pos.symbol} className="flex items-center gap-3">
+                          <span className="bag-swatch" style={{ background: allocationColor(i) }} aria-hidden="true" />
+                          <span className="flex-1 font-medium text-white">{pos.symbol}</span>
+                          <span className="text-emerald-400 font-semibold">{pos.weight}%</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
 
                 <div className="rounded-xl border border-white/10 bg-white/5 p-6">
                   <h3 className="text-lg font-bold text-white mb-4">Breakdown</h3>
                   <div className="space-y-2">
-                    {bag.composition.map((pos) => {
-                      const anyHeld = !!bag.holdings?.some((h) => BigInt(h.quantityRaw) > BigInt(0));
-                      const held = bag.holdings?.find((h) => h.symbol.toUpperCase() === pos.symbol.toUpperCase());
+                    {breakdown.map((pos) => {
+                      const held = heldOf(pos.symbol);
                       const hasQuantity = !!held && BigInt(held.quantityRaw) > BigInt(0);
                       return (
                         <div
@@ -488,8 +517,14 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
                       );
                     })}
                   </div>
+                  {hiddenInBreakdown > 0 && (
+                    <p className="mt-3 text-xs text-white/40" data-testid="breakdown-hidden">
+                      {hiddenInBreakdown === 1 ? '1 target asset is' : `${hiddenInBreakdown} target assets are`} not held right now and
+                      hidden here; a rebalance buys {hiddenInBreakdown === 1 ? 'it' : 'them'} back.
+                    </p>
+                  )}
                   <p className="mt-3 text-xs text-white/40">
-                    {bag.holdings && bag.holdings.some((h) => BigInt(h.quantityRaw) > BigInt(0))
+                    {anyHeld
                       ? 'Value = what this Bag holds of each asset × its current price — the same prices as the TVL above. "Per token" is the price of one token.'
                       : isRobinhood
                         ? stockQuotes.failed
@@ -500,15 +535,37 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
                 </div>
               </div>
 
+              <div className="grid lg:grid-cols-2 gap-8">
+                <div className="rounded-xl border border-white/10 bg-white/5 p-6">
+                  <h3 className="text-lg font-bold text-white mb-3">Strategy logic</h3>
+                  <p className="text-white/70 leading-relaxed">{bag.thesis || 'The creator has not written a thesis yet.'}</p>
+                </div>
+
+                {/* Creator */}
+                <div className="rounded-xl border border-white/10 bg-white/5 p-6">
+                  <h3 className="text-lg font-bold text-white mb-4">Creator</h3>
+                  <div className="flex items-center gap-4">
+                    <Link href={`/dashboard/creator/${encodeURIComponent(bag.creator.address)}`} className="flex items-center gap-4 flex-1 min-w-0 group">
+                      <CreatorAvatar avatarUrl={bag.creator.avatarUrl} fallback={bag.creator.avatar} size={44} />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-white group-hover:text-emerald-400 transition-colors">{bag.creator.name}</p>
+                        <p className="text-sm text-white/60 truncate">{bag.creator.address}</p>
+                        <div className="mt-1">
+                          <Reputation score={bag.creator.creatorScore} />
+                        </div>
+                      </div>
+                    </Link>
+                    <FollowButton creatorId={bag.creator.address} creatorName={bag.creator.name} />
+                  </div>
+                </div>
+              </div>
+
               {bag.updateLog.length > 0 && (
                 <div>
-                  <h2 className="text-2xl font-bold text-white mb-4">Update Log</h2>
+                  <h3 className="text-lg font-bold text-white mb-4">Update log</h3>
                   <div className="space-y-3">
                     {bag.updateLog.map((log, idx) => (
-                      <div
-                        key={idx}
-                        className="p-4 rounded-xl border border-white/10 bg-white/5"
-                      >
+                      <div key={idx} className="p-4 rounded-xl border border-white/10 bg-white/5">
                         <div className="flex justify-between items-start mb-1">
                           <p className="font-semibold text-white">{log.change}</p>
                           <p className="text-xs text-white/60">{log.date}</p>
@@ -522,11 +579,24 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
             </div>
           )}
 
-          {activeTab === 'thesis' && (
-            <div>
-              <p className="text-white/70 leading-relaxed text-lg">{bag.thesis}</p>
+          {activeTab === 'performance' && (
+            <div className="space-y-8">
+              <PerformanceTimeline bag={bag} />
+              <DiversificationScore composition={bag.composition} />
             </div>
           )}
+
+          {activeTab === 'history' && <VersionTimeline bagId={bag.id} />}
+
+          {activeTab === 'passport' && (
+            <div className="space-y-8">
+              {/* Remounted per version, so a newly saved version is offered for registration right away. */}
+              {bag.status === 'ACTIVE' && <StrategyRegistryPanel key={bag.version ?? 0} bagId={bag.id} />}
+              <StrategyPassportView bagId={bag.id} />
+            </div>
+          )}
+
+          {activeTab === 'executions' && <ExecutionHistory bagId={bag.id} />}
 
           {activeTab === 'rules' && (
             <div className="grid md:grid-cols-3 gap-6">
@@ -564,14 +634,6 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
             </div>
           )}
 
-          {activeTab === 'performance' && <PerformanceTimeline bag={bag} />}
-
-          {activeTab === 'passport' && <StrategyPassportView bagId={bag.id} />}
-
-          {activeTab === 'history' && <VersionTimeline bagId={bag.id} />}
-
-          {activeTab === 'executions' && <ExecutionHistory bagId={bag.id} />}
-
           {activeTab === 'json' && (
             <div className="space-y-4">
               <button
@@ -586,21 +648,6 @@ export default function BagDetailPage({ params }: BagDetailPageProps) {
               </pre>
             </div>
           )}
-        </div>
-
-        {/* Supported Chains */}
-        <div className="rounded-xl border border-white/10 bg-white/5 p-6">
-          <h3 className="text-lg font-bold text-white mb-4">Supported Chains</h3>
-          <div className="flex flex-wrap gap-3">
-            {bag.chains.map((chain) => (
-              <span
-                key={chain}
-                className="px-4 py-2 rounded-lg bg-white/10 text-white border border-white/20 font-medium"
-              >
-                {chain}
-              </span>
-            ))}
-          </div>
         </div>
       </div>
     </main>

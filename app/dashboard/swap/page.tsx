@@ -4,7 +4,7 @@ import { useWallet } from '@/lib/wallet-context';
 import { SwapCard } from '@/components/swap/SwapCard';
 
 // -----------------------------------------------------------------------------
-// Swap — one card (components/swap/SwapCard.tsx) on Robinhood Chain, Ethereum,
+// Swap — laid out like Create (components/swap/SwapCard.tsx) on Robinhood Chain, Ethereum,
 // Arbitrum or Base: Multi-buy (one payment → several tokens; ETH needs no
 // approval, one signature) or Multi-sell (several wallet tokens → the
 // stablecoin or ETH), each in ONE transaction. Tokens stay in the user's own
@@ -15,12 +15,12 @@ export default function SwapPage() {
   const { isConnected, isConnecting, isSigningIn, authError, connect, signIn, authUser } = useWallet();
 
   return (
-    <main className="wrap" style={{ paddingBottom: 80, paddingTop: 44 }}>
-      <div className="app-intro" style={{ textAlign: 'center' }}>
-        <h1 style={{ marginTop: 16 }}>Swap</h1>
-        <p className="lead" style={{ marginInline: 'auto' }}>
-          Buy several tokens with one payment, or sell several for one — in a single transaction, from your own wallet. Robinhood Chain, Ethereum,
-          Arbitrum and Base.
+    <main className="create3" style={{ paddingBottom: 80 }}>
+      <div className="create3-head">
+        <span className="create3-eyebrow">Swap</span>
+        <h1>Pick tokens. Swap them in one transaction.</h1>
+        <p className="create3-note">
+          Buy several tokens with one payment, or sell several for one — from your own wallet. Robinhood Chain, Ethereum, Arbitrum and Base.
         </p>
       </div>
 

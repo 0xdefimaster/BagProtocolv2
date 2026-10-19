@@ -5,9 +5,10 @@ vi.mock('@/lib/server/wallet-balances', () => ({ readBalancesAtBlock: vi.fn() })
 vi.mock('@/lib/server/redeem-execution', () => ({ verifyRedeemExecution: vi.fn() }));
 vi.mock('@/lib/server/purchase-execution', () => ({ settleUnsettledPurchasesForUser: vi.fn(async () => undefined) }));
 vi.mock('@/lib/server/redeem-intent-repo', () => ({ listUnsettledRedeemIntentsForUser: vi.fn(async () => []) }));
+vi.mock('@/lib/server/bag-nav-snapshots', () => ({ recordNavSnapshot: vi.fn() }));
 
 import { readBalancesAtBlock } from '@/lib/server/wallet-balances';
-import { RECONCILE_ON_CONNECT_MIN_INTERVAL_MS, reconcileWalletOnConnect } from '@/lib/server/wallet-reconciliation';
+import { RECONCILE_AFTER_TRADE_MIN_INTERVAL_MS, RECONCILE_ON_CONNECT_MIN_INTERVAL_MS, reconcileWalletOnConnect } from '@/lib/server/wallet-reconciliation';
 
 // The on-connect check: one wallet, at most once per interval, nothing read when BAG tracks nothing for it.
 
@@ -68,5 +69,12 @@ describe('reconcileWalletOnConnect', () => {
     const out = await reconcileWalletOnConnect(fakeAdmin({ lastCheckedAt: null, holdings: [{ quantity_raw: '0' }] }), client, session, NOW);
     expect(out).toEqual({ status: 'nothing-tracked' });
     expect(readBalancesAtBlock).not.toHaveBeenCalled();
+  });
+
+  it('after a trade a shorter interval applies: a check from a minute ago is not reused', async () => {
+    const admin = fakeAdmin({ lastCheckedAt: new Date(NOW - 60_000).toISOString(), holdings: [{ quantity_raw: '5' }] });
+    expect(await reconcileWalletOnConnect(admin, client, session, NOW, RECONCILE_AFTER_TRADE_MIN_INTERVAL_MS)).toEqual({ status: 'checked', blockNumber: '123' });
+    const fresh = fakeAdmin({ lastCheckedAt: new Date(NOW - 10_000).toISOString(), holdings: [{ quantity_raw: '5' }] });
+    expect(await reconcileWalletOnConnect(fresh, client, session, NOW, RECONCILE_AFTER_TRADE_MIN_INTERVAL_MS)).toEqual({ status: 'recent' });
   });
 });
