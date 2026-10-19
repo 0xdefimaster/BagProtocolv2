@@ -43,7 +43,19 @@ export {
   type RegistryVerification,
   type StrategyRegistryDeployment,
 } from './registry';
-export { cascadeSplitBps, planPurchase, PurchasePlanError, SDK_EXECUTION_ACCOUNTING, V1_EXECUTION_POLICY, type PlannedLeg, type PurchasePlan, type PurchaseRequest } from './purchase';
+export {
+  largestRemainderBps,
+  PARTITION_MAX_PARTS,
+  PartitionError,
+  partitionAmounts,
+  planPartition,
+  planPartitionLegs,
+  simulatePartition,
+  type LegTarget,
+  type PartitionedLegs,
+  type PartitionPlan,
+} from './partition';
+export { planPurchase, PurchasePlanError, SDK_EXECUTION_ACCOUNTING, V1_EXECUTION_POLICY, type PlannedLeg, type PurchasePlan, type PurchaseRequest } from './purchase';
 export {
   compileBag,
   ProviderResponseError,

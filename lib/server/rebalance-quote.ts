@@ -9,6 +9,7 @@ import { loadRebalancePreview } from '@/lib/server/rebalance-preview';
 import { toProtocolPrice } from '@/lib/domain/basket-protocol/pricing/price-precision';
 import { NAV_VALUE_DECIMALS } from '@/lib/domain/basket-protocol/nav/nav';
 import type { PriceProvider } from '@/lib/domain/basket-protocol/pricing';
+import { largestRemainderBps } from '@/packages/bag-sdk/src';
 
 // -----------------------------------------------------------------------------
 // Rebalance quote (R2): the position preview (rebalance-preview.ts) turned into
@@ -76,21 +77,10 @@ export type RebalanceQuoteResult =
       acceptablePriceImpactBps?: number | null;
     };
 
-/** Largest-remainder split of `values` into whole bps summing to exactly 10000; a value too small for 1 bp gets 0. */
+/** Largest-remainder split of `values` into whole bps summing to exactly 10000 (bag-sdk `largestRemainderBps`); a value too small for 1 bp gets 0. */
 export function weightsFromValues(values: bigint[]): number[] {
-  const total = values.reduce((s, v) => s + v, BigInt(0));
-  if (total <= BigInt(0)) throw new Error('Buy values must be positive.');
-  const bps = BigInt(10000);
-  const floors = values.map((v) => (v * bps) / total);
-  let left = Number(bps - floors.reduce((s, f) => s + f, BigInt(0)));
-  const order = values.map((v, i) => ({ i, rem: (v * bps) % total })).sort((a, b) => (a.rem === b.rem ? a.i - b.i : a.rem > b.rem ? -1 : 1));
-  const out = floors.map(Number);
-  for (const { i } of order) {
-    if (left <= 0) break;
-    out[i] += 1;
-    left -= 1;
-  }
-  return out;
+  if (values.reduce((s, v) => s + v, BigInt(0)) <= BigInt(0)) throw new Error('Buy values must be positive.');
+  return largestRemainderBps(values);
 }
 
 const str = (v: unknown) => (v === undefined || v === null ? null : String(v));

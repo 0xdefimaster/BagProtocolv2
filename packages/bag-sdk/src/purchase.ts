@@ -1,6 +1,7 @@
 import { chainIdOf, isNativeToken, normalizeAddress } from './chains';
 import { computeDefinitionHash } from './definition';
 import { resolveV1Rules } from './rules';
+import { PartitionError, planPartitionLegs, type PartitionPlan } from './partition';
 import { splitByWeight } from './split';
 import type { BagDocument, BagIssue, Hex } from './types';
 import { validateBag, type TokenInfo } from './validate';
@@ -12,8 +13,9 @@ import { validateBag, type TokenInfo } from './validate';
 //
 //   - the target allocation (splitByWeight, exact),
 //   - the asset that IS the input token, if any: kept, never swapped,
-//   - the swap legs and their on-chain bps cascade (the split a bps-ratio
-//     executor such as LI.FI Composer performs; within the v1 execution bound),
+//   - the swap legs and the on-chain partition that divides the swapped
+//     amount between them (partition.ts: the split a bps-ratio executor such
+//     as LI.FI Composer performs; within the v1 execution bound),
 //   - the slippage and price-impact limits, which a caller can only tighten.
 //
 // Accounting boundary (normative): a purchase built with the SDK is an
@@ -59,7 +61,7 @@ export interface PlannedLeg {
   token: string;
   /** Exact target share of the deposit this leg should spend (splitByWeight). */
   targetInputRaw: bigint;
-  /** This leg's share of the swapped amount, in whole bps (the last leg absorbs rounding). */
+  /** This leg's share of the swapped amount, in whole bps (largest remainder; the legs sum to 10000). */
   legBps: number;
 }
 
@@ -75,9 +77,10 @@ export interface PurchasePlan {
   kept: { token: string; amountRaw: bigint } | null;
   /** Amount actually swapped (`amountRaw − kept`). */
   swapAmountRaw: bigint;
+  /** Canonical order: token address ascending. */
   legs: PlannedLeg[];
-  /** bps of the REMAINING amount each split takes, for legs[0..n−2]; the last leg takes what remains. */
-  cascadeSplitBps: number[];
+  /** The `core.partition` node(s) that divide `swapAmountRaw` across `legs` (partition.ts `planPartition`). */
+  partition: PartitionPlan;
   slippageBps: number;
   maxPriceImpactBps: number;
   accounting: typeof SDK_EXECUTION_ACCOUNTING;
@@ -91,23 +94,6 @@ export class PurchasePlanError extends Error {
 }
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
-
-/**
- * bps of the remaining pool each cascade step splits off. Same algorithm as BAG's Composer purchase
- * (lifi-composer-adapter.ts computeCascadeSplitBps; a test keeps them equal).
- */
-export function cascadeSplitBps(legBps: number[]): number[] {
-  const total = legBps.reduce((s, b) => s + b, 0);
-  if (total !== 10000) throw new Error(`cascadeSplitBps: leg bps sum to ${total}, not 10000.`);
-  const steps: number[] = [];
-  let remaining = 10000;
-  for (let i = 0; i < legBps.length - 1; i++) {
-    const step = Math.round((legBps[i] / remaining) * 10000);
-    steps.push(Math.min(9999, Math.max(1, step)));
-    remaining -= legBps[i];
-  }
-  return steps;
-}
 
 /** Plans a purchase of a valid bag.json. Throws PurchasePlanError with every reason it cannot. */
 export function planPurchase(bag: BagDocument, req: PurchaseRequest): PurchasePlan {
@@ -159,16 +145,16 @@ export function planPurchase(bag: BagDocument, req: PurchaseRequest): PurchasePl
   swapAssets.forEach((a) => a.targetInputRaw <= BigInt(0) && err('AMOUNT_TOO_SMALL', 'request.amountRaw', `The deposit gives ${a.token} nothing to swap.`));
   if (swapAssets.length === 0) err('NOTHING_TO_SWAP', 'definition.assets', 'The strategy holds only the input token.');
 
-  const swapAmountRaw = swapAssets.reduce((s, a) => s + a.targetInputRaw, BigInt(0));
-  // Whole-bp leg weights from the exact target amounts; the last leg absorbs the rounding (as BAG does).
-  let assigned = 0;
-  const legs: PlannedLeg[] = swapAssets.map((a, i) => {
-    const legBps = i === swapAssets.length - 1 ? 10000 - assigned : swapAmountRaw > BigInt(0) ? Number((a.targetInputRaw * BigInt(10000)) / swapAmountRaw) : 0;
-    if (i < swapAssets.length - 1) assigned += legBps;
-    return { token: a.token, targetInputRaw: a.targetInputRaw, legBps };
-  });
-  legs.forEach((l) => l.legBps <= 0 && err('AMOUNT_TOO_SMALL', 'request.amountRaw', `${l.token} would get less than 1 bp of the swap; deposit more.`));
+  if (issues.length > 0) throw new PurchasePlanError(issues);
 
+  // Whole-bp leg weights from the exact target amounts, by largest remainder (partition.ts), as BAG builds them.
+  let partitioned: ReturnType<typeof planPartitionLegs> | null = null;
+  try {
+    partitioned = planPartitionLegs(swapAssets.map((a) => ({ token: a.token, amountRaw: a.targetInputRaw })));
+  } catch (e) {
+    if (!(e instanceof PartitionError)) throw e;
+    err(e.code === 'LEG_BELOW_ONE_BP' ? 'AMOUNT_TOO_SMALL' : 'UNPLANNABLE_SPLIT', 'request.amountRaw', `${e.message} Deposit more.`);
+  }
   if (issues.length > 0) throw new PurchasePlanError(issues);
 
   return {
@@ -179,9 +165,9 @@ export function planPurchase(bag: BagDocument, req: PurchaseRequest): PurchasePl
     signer: normalizeAddress(req.signer),
     amountRaw: req.amountRaw,
     kept: keptRaw === null ? null : { token: input, amountRaw: keptRaw },
-    swapAmountRaw,
-    legs,
-    cascadeSplitBps: cascadeSplitBps(legs.map((l) => l.legBps)),
+    swapAmountRaw: partitioned!.totalRaw,
+    legs: partitioned!.legs.map((l) => ({ token: l.token, targetInputRaw: l.amountRaw, legBps: l.legBps })),
+    partition: partitioned!.partition,
     slippageBps,
     maxPriceImpactBps,
     accounting: SDK_EXECUTION_ACCOUNTING,

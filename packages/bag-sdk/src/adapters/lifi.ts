@@ -1,12 +1,15 @@
 import { createComposeSdk, materialisers, resources } from '@lifi/composer-sdk';
 import type { Bindable } from '@lifi/composer-sdk';
 import type { ComposerCompileRequest, ComposerCompileResult, ComposerProvider } from '../execution';
+import { planPartition } from '../partition';
 
 // -----------------------------------------------------------------------------
 // Routing adapter: LI.FI Composer (@lifi/composer-sdk, optional peer
-// dependency). Builds the same flow BAG's own single-transaction purchase
-// uses (lib/blockchain/lifi-composer-adapter.ts):
-//   - a cascade of `core.split` by the plan's bps,
+// dependency, tested against Composer 0.11.x — see COMPOSER_SDK_COMPAT). Builds
+// the same flow BAG's own single-transaction purchase uses
+// (lib/blockchain/lifi-composer-adapter.ts):
+//   - one `core.partition` of the input by the legs' bps (partition.ts
+//     `planPartition`: a second level of nodes above 16 legs),
 //   - one `lifi.swap` per leg with the plan's slippage (Composer turns it into
 //     that swap's on-chain `amountOutMin`),
 //   - outputs swept to the signer,
@@ -19,7 +22,33 @@ import type { ComposerCompileRequest, ComposerCompileResult, ComposerProvider } 
 // Compile only: nothing is signed or sent. A refusal is thrown as the Compose
 // SDK's own typed `ComposeError` (`kind`, `failedOps`, …), unchanged, so a
 // consumer can branch on it with `isComposeError` / `isComposePreparationError`.
+// A version mismatch with the Composer server is one of those:
+// `isComposeSdkOutdatedError` (install a newer 0.x the server accepts) or
+// `isComposeServerOutdatedError` (pin to the server's major.minor).
 // -----------------------------------------------------------------------------
+
+/**
+ * The @lifi/composer-sdk line this adapter is written and tested for. Composer accepts a client from the server's
+ * `major.minor.0` up to the server's own version, so a minor bump on either side needs a new adapter release.
+ */
+export const COMPOSER_SDK_COMPAT = Object.freeze({ range: '>=0.11.0 <0.12.0', testedWith: '0.11.3' });
+
+type PartitionBuilder = {
+  core: { partition: (id: string, args: { bind: { source: Bindable<'resource'> }; config: { bps: number[] } }) => { parts: readonly Bindable<'resource'>[] } };
+};
+
+/** The partition node(s) for `legBps` under ids `alloc` / `alloc_g<n>`; one resource per leg, in order. */
+function partitionAcross(builder: PartitionBuilder, source: Bindable<'resource'>, legBps: readonly number[]): Bindable<'resource'>[] {
+  if (legBps.length === 1) return [source];
+  const plan = planPartition(legBps);
+  const outer = Array.from(builder.core.partition('alloc', { bind: { source }, config: { bps: plan.outerBps } }).parts);
+  const out: Bindable<'resource'>[] = new Array(legBps.length);
+  plan.groups.forEach((g, gi) => {
+    const inner = g.innerBps ? Array.from(builder.core.partition(`alloc_g${gi}`, { bind: { source: outer[gi] }, config: { bps: g.innerBps } }).parts) : [outer[gi]];
+    g.legs.forEach((leg, k) => (out[leg] = inner[k]));
+  });
+  return out;
+}
 
 export interface LifiComposerOptions {
   /** Your LI.FI API key. */
@@ -63,13 +92,8 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
           config: { resourceOut: { kind: 'erc20', token: req.legs[i].token as `0x${string}`, chainId }, slippage: req.slippageBps / 10000 },
         });
 
-      let remaining: Bindable<'resource'> = builder.inputs.amountIn;
-      for (let i = 0; i < req.legs.length - 1; i++) {
-        const { a, b } = builder.core.split(`split_${i}`, { bind: { source: remaining }, config: { bps: req.cascadeSplitBps[i] } });
-        swap(i, a);
-        remaining = b;
-      }
-      swap(req.legs.length - 1, remaining);
+      const legInputs = partitionAcross(builder as unknown as PartitionBuilder, builder.inputs.amountIn, req.legs.map((l) => l.legBps));
+      legInputs.forEach((amountIn, i) => swap(i, amountIn));
 
       const result = await builder.compile({
         signer: req.signer as `0x${string}`,

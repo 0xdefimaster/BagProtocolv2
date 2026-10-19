@@ -58,6 +58,36 @@ beforeEach(() => {
   buildComposerPurchaseMock.mockResolvedValue(composerResult);
 });
 
+describe('buildPurchaseIntentSteps — Composer legs from the SDK partition planner', () => {
+  it('orders legs by token address and reads each step\'s output from ITS leg, whatever the recipe order', async () => {
+    const ZED = { chain: 'ethereum', address: '0xzed' } as const;
+    const ABC = { chain: 'ethereum', address: '0xabc' } as const;
+    buildComposerPurchaseMock.mockResolvedValue({
+      ...composerResult,
+      // swap_0 is 0xabc (sorted first), swap_1 is 0xzed.
+      outputs: { 'swap_0.amountOut': out(111, 110), 'swap_1.amountOut': out(999, 990) },
+    });
+    const result = await buildPurchaseIntentSteps([step('SWAP', ZED, '700000'), step('SWAP', ABC, '300000')], '0xwallet', 6, {
+      apiKey: 'k',
+      slippageBps: 100,
+      resolveOutputDecimals: () => 18,
+    });
+    expect(buildComposerPurchaseMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputAmountRaw: '1000000',
+        legs: [
+          { address: '0xabc', weightBps: 3000, symbol: 'WETH' },
+          { address: '0xzed', weightBps: 7000, symbol: 'WETH' },
+        ],
+      })
+    );
+    expect(result.steps.map((st) => [st.outputAsset.address, st.outputAmountRaw, st.providerEnforcedMinOutputRaw])).toEqual([
+      ['0xzed', '999', '990'],
+      ['0xabc', '111', '110'],
+    ]);
+  });
+});
+
 describe('buildPurchaseIntentSteps — Composer path decimals', () => {
   it('stores the recipe decimals on SWAP steps and the input decimals on KEEP steps', async () => {
     const result = await buildPurchaseIntentSteps([step('KEEP', USDC, '400000'), step('SWAP', WETH, '600000')], '0xwallet', 6, {
