@@ -11,7 +11,7 @@ import { useWallet } from '@/lib/wallet-context';
 import { NETWORKS } from '@/lib/constants';
 import { Bag } from '@/types';
 import { MAX_PERFORMANCE_FEE_BPS, MAX_UNROUTABLE_WEIGHT_BPS, performanceFeeAllowedOn, UNROUTABLE_POLICIES, type UnroutablePolicy } from '@/types/basket-protocol';
-import { ArrowRight, Save, Check } from 'lucide-react';
+import { Save, Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -20,6 +20,7 @@ import { DeployBagPanel } from '@/components/bags/DeployBagPanel';
 import { PurchasePreviewModal } from '@/components/app/PurchasePreviewModal';
 import { isNativePaymentChain } from '@/lib/payments/native-payment';
 import { LaunchBuyBalance } from '@/components/create/LaunchBuyBalance';
+import { allocationColor, allocationGradient } from '@/lib/allocation-colors';
 import { useBagNameAvailable } from '@/hooks/use-bag-name-available';
 
 const INVEST_PRESETS = ['0', '10', '100', '500', '1000'];
@@ -134,9 +135,9 @@ export default function CreatePage() {
   useEffect(() => {
     if (!performanceFeeAllowedOn(selectedNetworkId)) setPerformanceFeeBps(0);
   }, [selectedNetworkId]);
-  // Bag rules chosen by the creator. Rebalancing is not automated yet, so the
-  // default is honest ("Manual"); slippage and minimum are enforced on purchase.
-  const [rebalanceChoice, setRebalanceChoice] = useState<'Manual' | 'Weekly' | 'Monthly' | 'Drift'>('Manual');
+  // Bag rules chosen by the creator. Nothing rebalances by itself: "Drift" (default) shows holders a Rebalance
+  // prompt once their position drifts 5% from the targets; slippage and minimum are enforced on purchase.
+  const [rebalanceChoice, setRebalanceChoice] = useState<'Manual' | 'Weekly' | 'Monthly' | 'Drift'>('Drift');
   const [slippageBps, setSlippageBps] = useState(100);
   // What a purchase does when an asset has no swap route (UNROUTABLE_POLICIES).
   // When the liquidity check flags an asset, the creator must pick explicitly.
@@ -147,7 +148,6 @@ export default function CreatePage() {
     setUnroutablePolicyChosen(true);
   };
   const [minInvestment, setMinInvestment] = useState(0);
-  const [currentStep, setCurrentStep] = useState<'basic' | 'assets' | 'allocation' | 'review'>('basic');
   const [isPublishing, setIsPublishing] = useState(false);
   // Deploying is the only way to publish: the button saves the draft and goes
   // straight to the on-chain deploy (which charges the creation fee), with an
@@ -271,12 +271,6 @@ export default function CreatePage() {
   const totalAllocation = selectedAssetIds.reduce((sum, id) => sum + (allocations[id] || 0), 0);
   const isValid = totalAllocation === 100 && selectedAssetIds.length > 0 && !nameTaken;
 
-  const steps = [
-    { key: 'basic', label: 'Bag Info', disabled: false },
-    { key: 'assets', label: 'Select Assets', disabled: !bagName || nameTaken },
-    { key: 'allocation', label: 'Allocate', disabled: selectedAssetIds.length === 0 },
-    { key: 'review', label: 'Review', disabled: !isValid },
-  ] as const;
 
   const equalize = (ids: string[]) => {
     if (ids.length === 0) return {};
@@ -404,455 +398,314 @@ export default function CreatePage() {
     }
   };
 
+  // One screen, three columns: pick the assets, watch the Bag fill and set its weights, review and launch.
+  const ruleLabel = rebalanceChoice === 'Drift' ? 'When drift ≥ 5%' : rebalanceChoice;
+  const blocker = !bagName.trim()
+    ? 'Name your Bag'
+    : nameTaken
+      ? 'Pick another name'
+      : selectedAssetIds.length === 0
+        ? 'Pick at least one asset'
+        : totalAllocation !== 100
+          ? 'Weights must total 100%'
+          : noRouteAssets.length > 0 && !unroutablePolicyChosen
+            ? 'Choose what happens to assets with no route'
+            : null;
+  const networkLabel = NETWORKS.find((n) => n.id === selectedNetworkId)?.label ?? selectedNetworkId;
+  const feeAllowed = performanceFeeAllowedOn(selectedNetworkId);
+  const donutRows = selectedAssets.map((asset, i) => ({ asset: asset!, weight: allocations[asset!.id] || 0, color: allocationColor(i) }));
+
   return (
-    <main className="wrap" style={{ paddingBottom: 80 }}>
-      <div className="create-header">
-        <Link href="/dashboard" className="create-back">← Back to Dashboard</Link>
-        <h1>Create a Bag</h1>
-        <p className="lead">Build your custom investment portfolio</p>
-      </div>
-
-      <div className="step-nav">
-        {steps.map((step) => (
-          <button
-            key={step.key}
-            className={`step-btn ${currentStep === step.key ? 'active' : ''}`}
-            disabled={step.disabled}
-            onClick={() => !step.disabled && setCurrentStep(step.key)}
-          >
-            {step.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="create-grid">
+    <main className="create3" style={{ paddingBottom: 80 }}>
+      <div className="create3-head">
         <div>
-          {currentStep === 'basic' && (
-            <div className="create-card">
-              <div className="field">
-                <label>Bag Name *</label>
-                <input
-                  type="text"
-                  placeholder="e.g., AI Leaders, L2 Ecosystem, etc."
-                  value={bagName}
-                  onChange={(e) => setBagName(e.target.value)}
-                  aria-invalid={nameTaken}
-                />
-                {nameTaken && (
-                  <div role="alert" data-testid="bag-name-taken" style={{ marginTop: 6, fontSize: 12, color: 'var(--red, #E5786D)' }}>
-                    A Bag with this name already exists. Pick another name.
-                  </div>
-                )}
+          <span className="create3-eyebrow">Create</span>
+          <h1>Pick the assets. Watch your Bag fill.</h1>
+          <p className="lead">Set the weights and rules, then deploy from your own wallet.</p>
+        </div>
+      </div>
+
+      <div className="create3-grid">
+        {/* 1 — Assets */}
+        <section className="create3-card" aria-label="Assets">
+          <div className="create3-card-head">
+            <h2>Assets</h2>
+            <span className="create3-count">{selectedAssetIds.length} selected</span>
+          </div>
+          <div className="field">
+            <label>Deploy on</label>
+            <NetworkSelector selected={selectedNetworkId} onChange={handleNetworkChange} deployable={deployableChains} />
+            {networkChangeNotice && (
+              <div role="status" className="create3-notice">
+                Network changed. Your asset selections were cleared.
               </div>
-              <div className="field">
-                <label>Description</label>
-                <textarea
-                  placeholder="What does this bag contain? What's the theme?"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={3}
-                />
+            )}
+          </div>
+          <AssetSelector
+            assets={assetPool}
+            selectedIds={selectedAssetIds}
+            onSelect={handleSelectAsset}
+            onDeselect={handleDeselectAsset}
+            loadingRegistryAssets={registryAssetsLoading}
+          />
+        </section>
+
+        {/* 2 — Your Bag */}
+        <section className="create3-card create3-card-hot" aria-label="Your Bag">
+          <div className="create3-card-head">
+            <h2>Your Bag</h2>
+            <span className={`create3-ready ${blocker ? '' : 'ok'}`}>{blocker ? 'DRAFT' : 'READY'}</span>
+          </div>
+          <div className="create3-bag" aria-hidden="true">
+            <div className="create3-bag-handle" />
+            <div className="create3-bag-body">
+              {selectedAssets.length === 0 ? (
+                <span className="create3-bag-empty">Pick assets to drop them in</span>
+              ) : (
+                selectedAssets.slice(0, 8).map((asset) => <AssetIcon key={asset!.id} asset={asset!} />)
+              )}
+            </div>
+          </div>
+          <div className="field">
+            <label>Bag name *</label>
+            <input type="text" placeholder="e.g., AI Leaders, L2 Ecosystem, etc." value={bagName} onChange={(e) => setBagName(e.target.value)} aria-invalid={nameTaken} />
+            {nameTaken && (
+              <div role="alert" data-testid="bag-name-taken" style={{ marginTop: 6, fontSize: 12, color: 'var(--red, #E5786D)' }}>
+                A Bag with this name already exists. Pick another name.
               </div>
-              <div className="field">
-                <label>Thesis (Why This Bag?)</label>
-                <textarea
-                  placeholder="Explain your investment thesis and reasoning..."
-                  value={thesis}
-                  onChange={(e) => setThesis(e.target.value)}
-                  rows={4}
-                />
-              </div>
-              <div className="field">
-                <label>Deploy On</label>
-                <NetworkSelector selected={selectedNetworkId} onChange={handleNetworkChange} deployable={deployableChains} />
-                {networkChangeNotice && (
-                  <div
-                    role="status"
-                    style={{
-                      marginTop: 10,
-                      fontSize: 13,
-                      color: 'var(--ink-soft)',
-                      padding: '8px 12px',
-                      borderRadius: 8,
-                      background: 'rgba(255,255,255,0.04)',
-                    }}
-                  >
-                    Network changed. Your asset selections were cleared.
-                  </div>
-                )}
-              </div>
-              <div className="create-actions">
-                <button className="btn btn-primary" disabled={!bagName || nameTaken} onClick={() => setCurrentStep('assets')}>
-                  Next: Select Assets <ArrowRight size={17} />
-                </button>
+            )}
+          </div>
+          <div className="field">
+            <label>Description</label>
+            <textarea placeholder="What does this bag contain? What's the theme?" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+          </div>
+          <div className="field">
+            <label>Strategy logic (why this Bag?)</label>
+            <textarea placeholder="Explain your thesis, and when you plan to change it..." value={thesis} onChange={(e) => setThesis(e.target.value)} rows={3} />
+          </div>
+          {selectedAssetIds.length > 0 ? (
+            <AllocationEditor
+              assetPool={assetPool}
+              assetIds={selectedAssetIds}
+              allocations={allocations}
+              investmentAmount={investmentNumber}
+              investmentCurrency={nativeLaunch ? 'ETH' : 'USD'}
+              onAllocationChange={handleAllocationChange}
+              onAutoBalance={handleAutoBalance}
+              noRouteAssetIds={noRouteAssetIds}
+            />
+          ) : (
+            <p className="create3-note">Weights appear here once you pick assets. Moving one slider moves the others, so the total stays at 100%.</p>
+          )}
+        </section>
+
+        {/* 3 — Summary, rules and launch */}
+        <section className="create3-card" aria-label="Summary">
+          <div className="create3-card-head">
+            <h2>Summary</h2>
+            <span className="bag-chain-tag">
+              {NETWORKS.find((n) => n.id === selectedNetworkId)?.glyph} {networkLabel}
+            </span>
+          </div>
+          <div className="create3-donut-row">
+            <div className="bag-donut" style={{ background: allocationGradient(donutRows.map((r) => ({ weight: r.weight }))), width: 120, height: 120 }}>
+              <div className="bag-donut-hole" style={{ width: 76, height: 76 }}>
+                <span style={{ fontSize: 22, fontWeight: 700, color: 'var(--ink)' }}>{selectedAssetIds.length}</span>
+                <span style={{ fontSize: 11, color: 'var(--mute)' }}>assets</span>
               </div>
             </div>
-          )}
+            <ul className="create3-legend">
+              {donutRows.map((r) => (
+                <li key={r.asset.id}>
+                  <span className="bag-swatch" style={{ background: r.color }} />
+                  <span className="sym">{r.asset.symbol}</span>
+                  <span className="pct">{r.weight}%</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="summary-row"><span className="l">Network</span><span className="v">{networkLabel}</span></div>
+          <div className="summary-row">
+            <span className="l">Allocation</span>
+            <span className={`v ${totalAllocation === 100 ? 'ok' : 'bad'}`}>{totalAllocation}%</span>
+          </div>
+          <div className="summary-row"><span className="l">Crypto · Stocks</span><span className="v">{selectedAssets.filter((a) => a!.type === 'crypto').length} · {selectedAssets.filter((a) => a!.type === 'stock').length}</span></div>
+          <div className="summary-row"><span className="l">Rebalance</span><span className="v">{ruleLabel}</span></div>
+          <div className="summary-row"><span className="l">Creator fee</span><span className="v">{performanceFeeBps > 0 ? `${(performanceFeeBps / 100).toFixed(1)}% of realized profit` : 'None'}</span></div>
+          <div className="summary-row"><span className="l">First buy</span><span className="v">{launchBuy ? formatLaunchAmount(investmentAmount) : 'None'}</span></div>
+          <div className="summary-row"><span className="l">Creation fee</span><span className="v">{creationFeeWei === null ? '…' : formatEthFee(creationFeeWei)}</span></div>
 
-          {currentStep === 'assets' && (
-            <div className="create-card">
-              <AssetSelector
-                assets={assetPool}
-                selectedIds={selectedAssetIds}
-                onSelect={handleSelectAsset}
-                onDeselect={handleDeselectAsset}
-                loadingRegistryAssets={registryAssetsLoading}
-              />
-              <div className="create-actions">
-                <button className="btn btn-ghost back" onClick={() => setCurrentStep('basic')}>Back</button>
-                <button className="btn btn-primary" disabled={selectedAssetIds.length === 0} onClick={() => setCurrentStep('allocation')}>
-                  Next: Allocate <ArrowRight size={17} />
+          <div className="create3-section">
+            <span className="lbl">Rebalance rule</span>
+            <div className="invest-presets">
+              {(['Drift', 'Weekly', 'Monthly', 'Manual'] as const).map((opt) => (
+                <button key={opt} type="button" className={`invest-preset ${rebalanceChoice === opt ? 'active' : ''}`} onClick={() => setRebalanceChoice(opt)}>
+                  {opt === 'Drift' ? 'When drift ≥ 5%' : opt}
                 </button>
-              </div>
+              ))}
             </div>
-          )}
+            <p className="create3-note">
+              Nothing trades by itself: holders get a Rebalance prompt and confirm it from their own wallet. You change the strategy by publishing a new version.
+            </p>
+          </div>
 
-          {currentStep === 'allocation' && (
-            <div className="create-card">
-              <div className="invest-box">
-                <span className="lbl">How much do you want to buy at launch?</span>
-                <div className="nm" style={{ marginBottom: 8 }}>
-                  {nativeLaunch ? '0 ETH' : '$0'} just creates the bag on-chain. Any amount buys into it right after it&apos;s deployed.
-                </div>
-                {isNativePaymentChain(selectedNetworkId) && (
-                  <div className="invest-presets" style={{ marginBottom: 10 }} role="group" aria-label="Pay the launch buy with">
-                    {(['settlement', 'native'] as const).map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        aria-pressed={launchPayment === p}
-                        className={`invest-preset ${launchPayment === p ? 'active' : ''}`}
-                        onClick={() => {
-                          if (p === launchPayment) return;
-                          setLaunchPayment(p);
-                          // Dollar presets mean nothing in ETH and back: start from "just create".
-                          setInvestmentAmount('0');
-                        }}
-                      >
-                        {p === 'native' ? 'ETH' : settlementSymbol}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <div className="invest-input-row">
-                  <span className="dollar">{nativeLaunch ? 'Ξ' : '$'}</span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    aria-label={nativeLaunch ? 'Launch buy in ETH' : 'Launch buy in dollars'}
-                    value={investmentAmount}
-                    onChange={(e) => setInvestmentAmount(e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))}
-                  />
-                </div>
-                <LaunchBuyBalance
-                  chain={selectedNetworkId}
-                  native={nativeLaunch}
-                  walletAddress={isConnected ? walletAddress : null}
-                  amount={investmentAmount}
-                  onMax={setInvestmentAmount}
-                />
-                <div className="invest-presets">
-                  {(nativeLaunch ? ETH_INVEST_PRESETS : INVEST_PRESETS).map((amt) => (
-                    <button
-                      key={amt}
-                      className={`invest-preset ${investmentAmount === amt ? 'active' : ''}`}
-                      onClick={() => setInvestmentAmount(amt)}
-                    >
-                      {amt === '0' ? 'Just create' : formatLaunchAmount(amt)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="invest-box" style={{ marginTop: 18 }}>
+          <div className="create3-section">
+            <label className="create3-toggle">
+              <span>
                 <span className="lbl">Creator performance fee (optional)</span>
-                <div className="nm" style={{ marginTop: 4, marginBottom: 12, lineHeight: 1.5 }}>
-                  Charged only on REALIZED profit when an investor redeems — never on their principal,
-                  and never if their position is at a loss. 0% is a fully valid choice. You can change it in a
-                  later version until the first outside investor buys in; from then on it is locked for good.
-                </div>
-                {!performanceFeeAllowedOn(selectedNetworkId) && (
-                  <div className="nm" style={{ marginBottom: 12, color: 'var(--gold)' }}>
-                    Performance fees are available on Robinhood Chain only for now; Bags on this network charge 0%.
-                  </div>
-                )}
+                <span className="create3-note" style={{ display: 'block' }}>
+                  {performanceFeeBps > 0 ? `${(performanceFeeBps / 100).toFixed(1)}% of holders' realized profit, paid to you when they sell` : 'Off: holders pay you no fee'}
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                aria-label="Creator performance fee"
+                checked={performanceFeeBps > 0}
+                disabled={!feeAllowed}
+                onChange={(e) => setPerformanceFeeBps(e.target.checked ? 1000 : 0)}
+              />
+            </label>
+            {!feeAllowed && <p className="create3-note" style={{ color: 'var(--gold)' }}>Performance fees are available on Robinhood Chain only for now; Bags on this network charge 0%.</p>}
+            {performanceFeeBps > 0 && (
+              <>
                 <div className="alloc-slider-row">
                   <input
                     type="range"
-                    disabled={!performanceFeeAllowedOn(selectedNetworkId)}
-                    min={0}
+                    aria-label="Performance fee percent"
+                    min={0.5}
                     max={MAX_PERFORMANCE_FEE_BPS / 100}
                     step={0.5}
                     value={performanceFeeBps / 100}
                     onChange={(e) => setPerformanceFeeBps(Math.round(parseFloat(e.target.value || '0') * 100))}
                     className="alloc-slider"
                   />
-                  <input
-                    type="number"
-                    disabled={!performanceFeeAllowedOn(selectedNetworkId)}
-                    min={0}
-                    max={MAX_PERFORMANCE_FEE_BPS / 100}
-                    step={0.5}
-                    value={performanceFeeBps / 100}
-                    onChange={(e) =>
-                      setPerformanceFeeBps(
-                        Math.max(0, Math.min(MAX_PERFORMANCE_FEE_BPS, Math.round(parseFloat(e.target.value || '0') * 100)))
-                      )
-                    }
-                    className="alloc-num"
-                  />
-                  <span className="nm" style={{ marginLeft: -4 }}>%</span>
+                  <span className="alloc-pct">{(performanceFeeBps / 100).toFixed(1)}%</span>
                 </div>
-              </div>
-
-              <div className="invest-box" style={{ marginTop: 18 }}>
-                <span className="lbl">Bag rules</span>
-
-                <div className="nm" style={{ marginTop: 10, marginBottom: 6 }}>Rebalance</div>
-                <div className="invest-presets">
-                  {(['Manual', 'Weekly', 'Monthly', 'Drift'] as const).map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      className={`invest-preset ${rebalanceChoice === opt ? 'active' : ''}`}
-                      onClick={() => setRebalanceChoice(opt)}
-                    >
-                      {opt === 'Drift' ? 'When drift ≥ 5%' : opt}
-                    </button>
-                  ))}
-                </div>
-                <div className="nm" style={{ marginTop: 6, lineHeight: 1.5 }}>
-                  Automatic rebalancing isn&apos;t live yet — this records your intended schedule; you update the Bag
-                  yourself by publishing a new version.
-                </div>
-
-                <div className="nm" style={{ marginTop: 14, marginBottom: 6 }}>Max slippage per purchase</div>
-                <div className="invest-presets">
-                  {[50, 100, 200, 300].map((bps) => (
-                    <button
-                      key={bps}
-                      type="button"
-                      className={`invest-preset ${slippageBps === bps ? 'active' : ''}`}
-                      onClick={() => setSlippageBps(bps)}
-                    >
-                      {bps / 100}%
-                    </button>
-                  ))}
-                </div>
-
-                <div className="nm" style={{ marginTop: 14, marginBottom: 6 }}>If an asset can&apos;t be bought (no liquidity)</div>
-                <UnroutablePolicyPicker value={unroutablePolicy} onChange={chooseUnroutablePolicy} />
-
-                <div className="nm" style={{ marginTop: 14, marginBottom: 6 }}>Minimum investment (USD, 0 = none)</div>
-                <div className="invest-input-row">
-                  <span className="dollar">$</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={minInvestment}
-                    onChange={(e) => setMinInvestment(Math.max(0, Number(e.target.value) || 0))}
-                  />
-                </div>
-              </div>
-
-              <AllocationEditor
-                assetPool={assetPool}
-                assetIds={selectedAssetIds}
-                allocations={allocations}
-                investmentAmount={investmentNumber}
-                investmentCurrency={nativeLaunch ? 'ETH' : 'USD'}
-                onAllocationChange={handleAllocationChange}
-                onAutoBalance={handleAutoBalance}
-                noRouteAssetIds={noRouteAssetIds}
-              />
-
-              <div className="create-actions">
-                <button className="btn btn-ghost back" onClick={() => setCurrentStep('assets')}>Back</button>
-                <button className="btn btn-primary" disabled={!isValid} onClick={() => setCurrentStep('review')}>
-                  Review <ArrowRight size={17} />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {currentStep === 'review' && (
-            <div className="create-card">
-              <span className="section-label">Bag Details</span>
-              <div className="alloc-row" style={{ marginBottom: 22 }}>
-                <div className="nm" style={{ marginBottom: 4 }}>NAME</div>
-                <div style={{ color: 'var(--ink)', fontWeight: 600, marginBottom: description || thesis ? 12 : 0 }}>{bagName}</div>
-                {description && (
-                  <>
-                    <div className="nm" style={{ marginBottom: 4 }}>DESCRIPTION</div>
-                    <div style={{ color: 'var(--ink-soft)', fontSize: 13.5, marginBottom: thesis ? 12 : 0 }}>{description}</div>
-                  </>
-                )}
-                {thesis && (
-                  <>
-                    <div className="nm" style={{ marginBottom: 4 }}>THESIS</div>
-                    <div style={{ color: 'var(--ink-soft)', fontSize: 13.5 }}>{thesis}</div>
-                  </>
-                )}
-              </div>
-
-              <span className="section-label">Strategy</span>
-              <div style={{ marginBottom: 22 }}>
-                <span className="bag-chain-tag">Static Basket</span>
-              </div>
-
-              <span className="section-label">Creator Fee</span>
-              <div style={{ marginBottom: 22 }}>
-                <span className="bag-chain-tag">
-                  {performanceFeeBps > 0 ? `${(performanceFeeBps / 100).toFixed(1)}% of realized profit` : 'No performance fee'}
-                </span>
-              </div>
-
-              <span className="section-label">Rules</span>
-              <div style={{ marginBottom: 22, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <span className="bag-chain-tag">Rebalance: {rebalanceChoice === 'Drift' ? 'when drift ≥ 5%' : rebalanceChoice}</span>
-                <span className="bag-chain-tag">Max slippage: {slippageBps / 100}%</span>
-                <span className="bag-chain-tag">No liquidity: {UNROUTABLE_POLICY_LABELS[unroutablePolicy].short}</span>
-                <span className="bag-chain-tag">Minimum: {minInvestment > 0 ? formatUSD(minInvestment) : 'none'}</span>
-              </div>
-
-              <span className="section-label">Network</span>
-              <div style={{ marginBottom: 22 }}>
-                <span className="bag-chain-tag">
-                  {NETWORKS.find((n) => n.id === selectedNetworkId)?.glyph}{' '}
-                  {NETWORKS.find((n) => n.id === selectedNetworkId)?.label ?? selectedNetworkId}
-                </span>
-              </div>
-
-              <span className="section-label">Composition</span>
-              {noRouteAssets.length > 0 && (
-                <NoRouteWarning
-                  symbols={noRouteAssets.map((a) => a!.symbol)}
-                  policy={unroutablePolicyChosen ? unroutablePolicy : null}
-                  onChoose={chooseUnroutablePolicy}
-                />
-              )}
-              <div className="review-list">
-                {selectedAssets.map((asset) => {
-                  const pct = allocations[asset!.id] || 0;
-                  return (
-                    <div key={asset!.id} className="review-row">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <AssetIcon asset={asset!} />
-                        <div className="asset-meta">
-                          <div className="sym">{asset!.symbol}</div>
-                          <div className="nm">
-                            {asset!.name}{launchBuy ? ` · ${nativeLaunch ? `≈${((pct / 100) * investmentNumber).toFixed(6).replace(/\.?0+$/, '')} ETH` : formatUSD((pct / 100) * investmentNumber)}` : ''}
-                          </div>
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div className="review-bar-wrap">
-                          <div className="review-bar" style={{ width: `${pct}%` }} />
-                        </div>
-                        <span className="alloc-pct">{pct}%</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {publishError && (
-                <div className="publish-error" role="alert" style={{
-                  marginTop: 16,
-                  marginBottom: 4,
-                  padding: '12px 14px',
-                  borderRadius: 10,
-                  border: '1px solid rgba(239,68,68,0.4)',
-                  background: 'rgba(239,68,68,0.08)',
-                  color: '#ef4444',
-                  fontSize: 13.5,
-                }}>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Couldn&apos;t deploy this bag</div>
-                  <ul style={{ margin: 0, paddingLeft: 18 }}>
-                    {publishError.map((msg, i) => (
-                      <li key={i}>{msg}</li>
-                    ))}
-                  </ul>
-                  {/* The actual reason sign-in failed, if it did — otherwise
-                      the creator only ever sees "sign in first" again. */}
-                  {isSigningIn && <div style={{ marginTop: 8 }}>Waiting for the signature in your wallet…</div>}
-                  {!isSigningIn && authError && <div style={{ marginTop: 8 }}>Sign-in error: {authError}</div>}
-                </div>
-              )}
-
-              <span className="section-label" style={{ marginTop: 22, display: 'block' }}>Launch</span>
-              <div className="alloc-row" style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 13.5, color: 'var(--ink-soft)', marginBottom: 10 }}>
-                  Your bag goes live when you deploy it on-chain. Protocol creation fee:{' '}
-                  <strong style={{ color: 'var(--ink)' }}>{creationFeeWei === null ? '…' : formatEthFee(creationFeeWei)}</strong>
-                  {creationFeeWei !== null && creationFeeWei !== '0' && ', paid in the same transaction. One signature.'}
-                </div>
-                <div style={{ fontSize: 13.5 }}>
-                  {launchBuy ? (
-                    <>
-                      Launch buy: <strong>{formatLaunchAmount(investmentAmount)}</strong> — starts right after the deploy is confirmed.
-                    </>
-                  ) : (
-                    'No launch buy — the bag is only created on-chain.'
-                  )}{' '}
-                  <button type="button" onClick={() => setCurrentStep('allocation')} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--gold-lt, #F0DFC0)', cursor: 'pointer', textDecoration: 'underline' }}>
-                    Change
-                  </button>
-                </div>
-              </div>
-
-              {launch ? (
-                <div style={{ marginTop: 16 }}>
-                  <DeployBagPanel
-                    bagId={launch.bagId}
-                    bagName={launch.name}
-                    chain={selectedNetworkId}
-                    autoStart
-                    presetLaunchBuy={launch.buy ?? '0'}
-                    onDeployed={(amount) => {
-                      if (amount) setLaunch((prev) => (prev ? { ...prev, buying: true } : prev));
-                      else router.push(`/dashboard/bag/${launch.bagId}`);
-                    }}
-                  />
-                  <p style={{ fontSize: 12.5, color: 'var(--mute)', marginTop: 8 }}>
-                    Your draft is saved — you can also <Link href={`/dashboard/bag/${launch.bagId}`}>open the bag page</Link> and deploy from there.
-                  </p>
-                </div>
-              ) : (
-                <div className="create-actions">
-                  <button className="btn btn-ghost back" onClick={() => setCurrentStep('allocation')}>Back</button>
-                  <button
-                    className="btn btn-primary"
-                    disabled={!isValid || isPublishing || (noRouteAssets.length > 0 && !unroutablePolicyChosen)}
-                    title={noRouteAssets.length > 0 && !unroutablePolicyChosen ? 'Choose what happens to the assets with no swap route first.' : undefined}
-                    onClick={handlePublish}
-                  >
-                    {isPublishing ? <Check size={17} /> : <Save size={17} />}
-                    {isPublishing ? 'Opening your wallet…' : launchBuy ? `Deploy & buy ${formatLaunchAmount(investmentAmount)}` : 'Deploy bag'}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="summary-card">
-          <span className="section-label">Bag Summary</span>
-          <div className="summary-row"><span className="l">Name</span><span className="v">{bagName || '-'}</span></div>
-          <div className="summary-row"><span className="l">Launch buy</span><span className="v">{launchBuy ? formatLaunchAmount(investmentAmount) : 'None'}</span></div>
-          <div className="summary-row"><span className="l">Assets</span><span className="v">{selectedAssetIds.length}</span></div>
-          <div className="summary-row"><span className="l">Network</span><span className="v">{NETWORKS.find((n) => n.id === selectedNetworkId)?.label ?? selectedNetworkId}</span></div>
-          <div className="summary-row">
-            <span className="l">Allocation</span>
-            <span className={`v ${totalAllocation === 100 ? 'ok' : 'bad'}`}>{totalAllocation}%</span>
+                <p className="create3-note">
+                  Charged only on realized profit when an investor sells — never on their principal, never at a loss. Max {MAX_PERFORMANCE_FEE_BPS / 100}%. Locked once the first outside investor buys in.
+                </p>
+              </>
+            )}
           </div>
-          <div className="summary-row"><span className="l">Crypto</span><span className="v">{selectedAssets.filter(a => a!.type === 'crypto').length}</span></div>
-          <div className="summary-row"><span className="l">Stocks</span><span className="v">{selectedAssets.filter(a => a!.type === 'stock').length}</span></div>
 
-          {currentStep === 'review' && (
-            <div className="summary-ready">✓ Ready to publish your bag!</div>
+          <div className="create3-section">
+            <span className="lbl">Be the first buyer (optional)</span>
+            {isNativePaymentChain(selectedNetworkId) && (
+              <div className="invest-presets" role="group" aria-label="Pay the launch buy with">
+                {(['settlement', 'native'] as const).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    aria-pressed={launchPayment === p}
+                    className={`invest-preset ${launchPayment === p ? 'active' : ''}`}
+                    onClick={() => {
+                      if (p === launchPayment) return;
+                      setLaunchPayment(p);
+                      // Dollar presets mean nothing in ETH and back: start from "just create".
+                      setInvestmentAmount('0');
+                    }}
+                  >
+                    {p === 'native' ? 'ETH' : settlementSymbol}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="invest-input-row">
+              <span className="dollar">{nativeLaunch ? 'Ξ' : '$'}</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                aria-label={nativeLaunch ? 'Launch buy in ETH' : 'Launch buy in dollars'}
+                value={investmentAmount}
+                onChange={(e) => setInvestmentAmount(e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))}
+              />
+            </div>
+            <LaunchBuyBalance chain={selectedNetworkId} native={nativeLaunch} walletAddress={isConnected ? walletAddress : null} amount={investmentAmount} onMax={setInvestmentAmount} />
+            <div className="invest-presets">
+              {(nativeLaunch ? ETH_INVEST_PRESETS : INVEST_PRESETS).map((amt) => (
+                <button key={amt} className={`invest-preset ${investmentAmount === amt ? 'active' : ''}`} onClick={() => setInvestmentAmount(amt)}>
+                  {amt === '0' ? 'Just create' : formatLaunchAmount(amt)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <details className="create3-section">
+            <summary className="lbl" style={{ cursor: 'pointer' }}>Advanced: slippage, no-liquidity rule, minimum</summary>
+            <div className="nm" style={{ marginTop: 10, marginBottom: 6 }}>Max slippage per purchase</div>
+            <div className="invest-presets">
+              {[50, 100, 200, 300].map((bps) => (
+                <button key={bps} type="button" className={`invest-preset ${slippageBps === bps ? 'active' : ''}`} onClick={() => setSlippageBps(bps)}>
+                  {bps / 100}%
+                </button>
+              ))}
+            </div>
+            <div className="nm" style={{ marginTop: 14, marginBottom: 6 }}>If an asset can&apos;t be bought (no liquidity)</div>
+            <UnroutablePolicyPicker value={unroutablePolicy} onChange={chooseUnroutablePolicy} />
+            <div className="nm" style={{ marginTop: 14, marginBottom: 6 }}>Minimum investment (USD, 0 = none)</div>
+            <div className="invest-input-row">
+              <span className="dollar">$</span>
+              <input type="number" min={0} value={minInvestment} onChange={(e) => setMinInvestment(Math.max(0, Number(e.target.value) || 0))} />
+            </div>
+          </details>
+
+          {noRouteAssets.length > 0 && (
+            <NoRouteWarning symbols={noRouteAssets.map((a) => a!.symbol)} policy={unroutablePolicyChosen ? unroutablePolicy : null} onChoose={chooseUnroutablePolicy} />
           )}
-        </div>
+
+          {publishError && (
+            <div className="publish-error" role="alert" style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: 13.5 }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>Couldn&apos;t deploy this bag</div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {publishError.map((msg, i) => (
+                  <li key={i}>{msg}</li>
+                ))}
+              </ul>
+              {/* The actual reason sign-in failed, if it did — otherwise
+                  the creator only ever sees "sign in first" again. */}
+              {isSigningIn && <div style={{ marginTop: 8 }}>Waiting for the signature in your wallet…</div>}
+              {!isSigningIn && authError && <div style={{ marginTop: 8 }}>Sign-in error: {authError}</div>}
+            </div>
+          )}
+
+          {launch ? (
+            <div>
+              <DeployBagPanel
+                bagId={launch.bagId}
+                bagName={launch.name}
+                chain={selectedNetworkId}
+                autoStart
+                presetLaunchBuy={launch.buy ?? '0'}
+                onDeployed={(amount) => {
+                  if (amount) setLaunch((prev) => (prev ? { ...prev, buying: true } : prev));
+                  else router.push(`/dashboard/bag/${launch.bagId}`);
+                }}
+              />
+              <p style={{ fontSize: 12.5, color: 'var(--mute)', marginTop: 8 }}>
+                Your draft is saved — you can also <Link href={`/dashboard/bag/${launch.bagId}`}>open the bag page</Link> and deploy from there.
+              </p>
+            </div>
+          ) : (
+            <button
+              className="btn btn-primary create3-cta"
+              data-testid="create-deploy"
+              disabled={blocker !== null || isPublishing}
+              onClick={handlePublish}
+            >
+              {isPublishing ? <Check size={17} /> : <Save size={17} />}
+              {isPublishing ? 'Opening your wallet…' : blocker ?? (launchBuy ? `Deploy, register & buy ${formatLaunchAmount(investmentAmount)}` : 'Deploy & register')}
+            </button>
+          )}
+          <div className="create3-steps">
+            <span>1 · Deploy</span>
+            <span>2 · Register</span>
+            {launchBuy && <span>3 · First buy</span>}
+          </div>
+          <p className="create3-note">
+            Your assets stay in your own wallet: buying swaps into them, selling swaps back. Each step asks your wallet to confirm; nothing is sent without your signature.
+          </p>
+        </section>
       </div>
 
       {launch?.buying && launch.buy && (

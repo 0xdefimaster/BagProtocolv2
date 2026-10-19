@@ -8,12 +8,12 @@ import { Wallet, Loader2, Search } from 'lucide-react';
 import { useWallet } from '@/lib/wallet-context';
 import { NotificationBell } from './NotificationBell';
 import { WalletMenu } from './WalletMenu';
-import { APP_NAV, isActiveLink } from './AppSidebar';
+import { APP_NAV, isActiveLink } from './app-nav';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
-// Top bar. On desktop the sidebar (AppSidebar) carries the navigation; below
-// 1101px the brand and the menu button come back here with the same links.
-const APP_LINKS = APP_NAV.flat();
+// Top bar: brand, the app's pages (app-nav.ts), search, chain, theme, alerts and wallet.
+// Below 1101px the page links move into the menu button's panel.
+const APP_LINKS = APP_NAV;
 
 const PANEL_ID = 'app-mobile-nav';
 
@@ -54,6 +54,14 @@ export function AppHeader() {
             <span className="b2 mono">Studio</span>
           </div>
         </Link>
+
+        <nav className="app-toplinks" aria-label="App">
+          {APP_LINKS.map((link) => (
+            <Link key={link.href} href={link.href} className="app-toplink" aria-current={isActiveLink(link, pathname) ? 'page' : undefined}>
+              {link.label}
+            </Link>
+          ))}
+        </nav>
 
         <form className="app-search" role="search" onSubmit={onSearch}>
           <Search size={16} aria-hidden="true" />

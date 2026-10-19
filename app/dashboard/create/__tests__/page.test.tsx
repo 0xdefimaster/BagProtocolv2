@@ -9,7 +9,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 // Every non-network dependency (router, local bag/activity/notification
 // stores, wallet context) is mocked; `fetch` is stubbed to serve
 // `GET /api/assets?chain=...` so the test proves the REAL component wiring
-// (NetworkSelector -> asset refetch -> selection-clearing -> Review step),
+// (NetworkSelector -> asset refetch -> selection-clearing -> summary),
 // not a reimplementation of it.
 // -----------------------------------------------------------------------------
 
@@ -69,9 +69,9 @@ function stubFetchForRegistry() {
   return fetchMock;
 }
 
+/** Create is one screen now: name the Bag and wait for the registry's assets in the left column. */
 async function goToAssetsStep() {
   fireEvent.change(screen.getByPlaceholderText(/e\.g\., ai leaders/i), { target: { value: 'My Bag' } });
-  fireEvent.click(screen.getByRole('button', { name: /next: select assets/i }));
   await waitFor(() => expect(screen.getByText(/available assets/i)).toBeInTheDocument());
 }
 
@@ -109,47 +109,44 @@ describe('Create Bag — single-chain network model', () => {
     // Select USDC (a real Robinhood-registry asset from the fixture).
     fireEvent.click(screen.getByText('USDC'));
     await waitFor(() => expect(screen.getByText(/selected \(1\)/i)).toBeInTheDocument());
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
 
-    // Go back to Basic Info and switch the network — assets/allocations for
-    // the PREVIOUS chain must not silently carry over to the new one.
-    fireEvent.click(screen.getByRole('button', { name: /^bag info$/i }));
+    // Switch the network — assets/allocations for the PREVIOUS chain must not silently carry over.
     await waitFor(() => expect(screen.getByRole('radio', { name: /base/i })).not.toBeDisabled());
     fireEvent.click(screen.getByRole('radio', { name: /base/i }));
 
     // Explicit notice, not a silent clear.
     expect(screen.getByText(/network changed\. your asset selections were cleared\./i)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /^select assets$/i }));
     await waitFor(() => expect(screen.queryByText(/selected \(1\)/i)).not.toBeInTheDocument());
-    // The "Allocate" step is disabled again with nothing selected — the
-    // allocation for the cleared USDC selection did not survive either.
-    expect(screen.getByRole('button', { name: /^allocate$/i })).toBeDisabled();
+    expect(screen.getByText('0 selected')).toBeInTheDocument();
+    // The allocation for the cleared USDC selection did not survive either: deploying asks for assets again.
+    expect(screen.getByTestId('create-deploy')).toBeDisabled();
+    expect(screen.getByTestId('create-deploy').textContent).toMatch(/pick at least one asset/i);
   });
 
-  it('4. Review shows exactly one Network row/value, never a plural "Networks" list', async () => {
+  it('4. the summary shows exactly one Network row/value, never a plural "Networks" list', async () => {
     const { container } = render(<CreatePage />);
     await goToAssetsStep();
 
     fireEvent.click(screen.getByText('USDC'));
-    fireEvent.click(screen.getByRole('button', { name: /next: allocate/i }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /^allocate$/i })).not.toBeDisabled());
+    await waitFor(() => expect(screen.getByTestId('create-deploy')).not.toBeDisabled());
 
-    // Two buttons legitimately read "Review": the step-nav tab and the
-    // allocation step's own submit button — disambiguate by DOM order
-    // (the step-nav renders first) rather than by text alone.
-    const reviewButtons = screen.getAllByRole('button', { name: /^review$/i });
-    fireEvent.click(reviewButtons[reviewButtons.length - 1]);
-
-    await waitFor(() => expect(screen.getAllByText('Network').length).toBeGreaterThan(0));
+    expect(screen.getAllByText('Network').length).toBeGreaterThan(0);
     expect(screen.queryByText('Networks')).not.toBeInTheDocument();
-
-    // Exactly one chain tag rendered anywhere in the review card — never a
-    // list of several (the old `chains: [...]` behavior).
     const chainTags = Array.from(container.querySelectorAll('.bag-chain-tag')).filter((el) =>
       /ethereum|base|arbitrum|robinhood chain/i.test(el.textContent ?? '')
     );
     expect(chainTags).toHaveLength(1);
     expect(chainTags[0].textContent).toMatch(/robinhood/i);
+  });
+
+  it('the deploy button says what is missing until the Bag is complete', async () => {
+    render(<CreatePage />);
+    expect(screen.getByTestId('create-deploy').textContent).toMatch(/name your bag/i);
+    await goToAssetsStep();
+    expect(screen.getByTestId('create-deploy').textContent).toMatch(/pick at least one asset/i);
+    fireEvent.click(screen.getByText('USDC'));
+    await waitFor(() => expect(screen.getByTestId('create-deploy').textContent).toMatch(/deploy & register/i));
   });
 
   it('opens on Robinhood Chain; a network without a configured BagFactory is shown as coming soon and cannot be picked', async () => {
@@ -171,15 +168,14 @@ describe('Create Bag — single-chain network model', () => {
     expect(screen.getByText('USDC')).toBeInTheDocument();
 
     // Switch to Arbitrum, which the fixture registry has nothing for.
-    fireEvent.click(screen.getByRole('button', { name: /^bag info$/i }));
     await waitFor(() => expect(screen.getByRole('radio', { name: /arbitrum/i })).not.toBeDisabled());
     fireEvent.click(screen.getByRole('radio', { name: /arbitrum/i }));
-    fireEvent.click(screen.getByRole('button', { name: /^select assets$/i }));
 
     await waitFor(() =>
       expect(screen.getByText(/no verified assets are currently available on this network/i)).toBeInTheDocument()
     );
     expect(screen.queryByText('BTC')).not.toBeInTheDocument();
-    expect(screen.queryByText('USDC')).not.toBeInTheDocument();
+    // The asset itself (by its name; "USDC" alone also labels the launch-buy currency on this one screen).
+    expect(screen.queryByText('USD Coin')).not.toBeInTheDocument();
   });
 });
