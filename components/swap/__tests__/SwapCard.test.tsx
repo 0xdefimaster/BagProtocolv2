@@ -74,10 +74,8 @@ afterEach(() => {
 });
 
 async function pick(...symbols: string[]) {
-  fireEvent.click(screen.getAllByRole('button', { name: /Add token/ })[0]);
-  const dialog = await screen.findByRole('dialog');
-  for (const s of symbols) fireEvent.click(await within(dialog).findByRole('button', { name: `Add ${s}` }));
-  fireEvent.click(within(dialog).getByRole('button', { name: /^Done/ }));
+  const list = await screen.findByRole('region', { name: /Tokens to buy|Your tokens/ });
+  for (const s of symbols) fireEvent.click(await within(list).findByRole('button', { name: `Pick ${s}` }));
 }
 
 describe('equalShares', () => {
@@ -96,7 +94,7 @@ describe('SwapCard — Multi-buy', () => {
     expect(screen.getByText(/Works best with MetaMask/)).toBeTruthy();
     await screen.findByText(/Balance 0.05 ETH/);
     await pick('AAPL', 'NVDA');
-    expect(screen.getAllByText('50.00% of the spend')).toHaveLength(2);
+    expect(screen.getAllByText('50% of the spend')).toHaveLength(2);
     fireEvent.change(screen.getByLabelText('Amount in ETH'), { target: { value: '0.01' } });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Buy 2 tokens with ETH' }));
@@ -122,7 +120,7 @@ describe('SwapCard — Multi-buy', () => {
 
   it('paying with the stablecoin removes it from the tokens to buy; the button needs both an amount and a token', async () => {
     render(<SwapCard walletAddress={WALLET} />);
-    const cta = () => screen.getByRole('button', { name: /^Buy .*with (ETH|USDG)$/ }) as HTMLButtonElement;
+    const cta = () => screen.getByRole('region', { name: 'Summary' }).querySelector('.swap-cta') as HTMLButtonElement;
     expect(cta().disabled).toBe(true);
     await pick('USDG', 'AAPL');
     fireEvent.change(screen.getByLabelText('Amount in ETH'), { target: { value: '1e5' } });
@@ -143,10 +141,9 @@ describe('SwapCard — tokens without a route', () => {
       throw new Error('unexpected ' + url);
     });
     render(<SwapCard walletAddress={WALLET} />);
-    fireEvent.click(screen.getAllByRole('button', { name: /Add token/ })[0]);
-    const dialog = await screen.findByRole('dialog');
-    expect(await within(dialog).findByRole('button', { name: 'Add AAPL' })).toBeTruthy();
-    expect(within(dialog).queryByRole('button', { name: 'Add NVDA' })).toBeNull();
+    const list = await screen.findByRole('region', { name: 'Tokens to buy' });
+    expect(await within(list).findByRole('button', { name: 'Pick AAPL' })).toBeTruthy();
+    expect(within(list).queryByRole('button', { name: 'Pick NVDA' })).toBeNull();
   });
 });
 
@@ -156,7 +153,7 @@ describe('SwapCard — Multi-sell', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Multi-sell' }));
     expect(screen.getByRole('radio', { name: 'USDG' }).getAttribute('aria-checked')).toBe('true');
     await pick('AAPL', 'NVDA');
-    expect(screen.getByText('≈ $117.49')).toBeTruthy();
+    expect(screen.getAllByText('≈ $117.49').length).toBeGreaterThan(0);
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Sell 2 tokens for USDG' }));
     });
@@ -196,7 +193,42 @@ describe('SwapCard — Multi-sell', () => {
     await pick('USDG');
     expect(screen.getByRole('button', { name: 'Sell 1 token for ETH' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Network'), { target: { value: 'base' } });
-    fireEvent.click(screen.getAllByRole('button', { name: /Add token/ })[0]);
     expect(await screen.findByText(/No sellable tokens in your wallet on Base/)).toBeTruthy();
+  });
+});
+
+describe('SwapCard — shares', () => {
+  it('Multi-sell: a share per token sells that part of the balance (bigint), the rest stays', async () => {
+    render(<SwapCard walletAddress={WALLET} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Multi-sell' }));
+    await pick('AAPL', 'NVDA');
+    fireEvent.click(within(screen.getByRole('group', { name: 'Share of AAPL to sell' })).getByRole('button', { name: '25%' }));
+    expect(screen.getAllByText('≈ $31.05').length).toBeGreaterThan(0);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Sell 2 tokens for USDG' }));
+    });
+    expect(bodyOf('/api/wallet/sweep-quote').tokens).toEqual([
+      { address: AAPL, amountRaw: '125000000000000000' },
+      { address: NVDA, amountRaw: '10000000000000000' },
+    ]);
+  });
+
+  it('Multi-buy: sliders split the spend and keep 100%; a 0% share blocks the quote', async () => {
+    render(<SwapCard walletAddress={WALLET} />);
+    await pick('AAPL', 'NVDA');
+    fireEvent.change(screen.getByLabelText('Amount in ETH'), { target: { value: '0.01' } });
+    fireEvent.change(screen.getByLabelText('AAPL share of the spend'), { target: { value: '7000' } });
+    expect(screen.getByText('70% of the spend')).toBeTruthy();
+    expect(screen.getByText('30% of the spend')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Buy 2 tokens with ETH' }));
+    });
+    expect(bodyOf('/api/wallet/buy-quote').buys).toEqual([
+      { address: AAPL, weightBps: 7000 },
+      { address: NVDA, weightBps: 3000 },
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.change(screen.getByLabelText('AAPL share of the spend'), { target: { value: '10000' } });
+    expect((screen.getByRole('button', { name: 'Each token needs a share above 0%' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

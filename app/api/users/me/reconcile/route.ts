@@ -17,13 +17,14 @@ import {
 // Nothing in the request is trusted: the wallet is the session's, the balances come from the chain.
 // -----------------------------------------------------------------------------
 
-export async function POST(req?: Request) {
+export async function POST(req: Request) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ error: 'Supabase is not configured on this deployment yet.' }, { status: 503 });
   }
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
-  const body = req ? ((await req.json().catch(() => null)) as { reason?: unknown } | null) : null;
+  // The on-connect call sends no body; that is the default interval.
+  const body = (await req.json().catch(() => null)) as { reason?: unknown } | null;
   const minIntervalMs = body?.reason === 'trade' ? RECONCILE_AFTER_TRADE_MIN_INTERVAL_MS : RECONCILE_ON_CONNECT_MIN_INTERVAL_MS;
   try {
     const outcome = await reconcileWalletOnConnect(

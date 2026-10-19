@@ -10,6 +10,7 @@ import { NotificationBell } from './NotificationBell';
 import { WalletMenu } from './WalletMenu';
 import { APP_NAV, isActiveLink } from './app-nav';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { DensityControl } from '@/components/ui/DensityControl';
 
 // Top bar: brand, the app's pages (app-nav.ts), search, chain, theme, alerts and wallet.
 // Below 1101px the page links move into the menu button's panel.
@@ -80,6 +81,7 @@ export function AppHeader() {
             {chainName ?? 'Robinhood Chain'}
           </span>
 
+          <DensityControl />
           <ThemeToggle />
           <NotificationBell />
 
