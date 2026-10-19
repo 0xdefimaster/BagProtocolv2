@@ -128,6 +128,10 @@ describe('SwapCard — Multi-buy', () => {
     expect(cta().disabled).toBe(true);
     fireEvent.click(screen.getByRole('radio', { name: 'USDG' }));
     expect(screen.queryByRole('button', { name: 'Remove USDG' })).toBeNull();
+    // Paying with USDG: the wallet's USDG balance is shown, with MAX.
+    expect(screen.getByText(/Balance 2\.5 USDG/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+    expect((screen.getByLabelText('Amount in USDG') as HTMLInputElement).value).toBe('2.5');
     fireEvent.change(screen.getByLabelText('Amount in USDG'), { target: { value: '5' } });
     expect(cta().disabled).toBe(false);
     expect(cta().textContent).toBe('Buy 1 token with USDG');
