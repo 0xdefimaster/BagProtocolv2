@@ -292,7 +292,7 @@ export async function compileBag(bag: BagDocument, req: PurchaseRequest, options
   return checked(plan, options.provider.name, await options.provider.compile(requestFor(plan)), trusted);
 }
 
-/** Anything with viem's `readContract` and `call` (a viem PublicClient on the strategy's chain); `getBalance` for a native purchase. */
+/** An EVM public client on the strategy's chain: `getChainId`, `getCode`, `readContract`, `call`, and `getBalance` for native purchases. */
 export interface SimulationClient {
   getChainId(): Promise<number>;
   /** Required for refusing EOAs or empty addresses as execution/approval contracts. */
