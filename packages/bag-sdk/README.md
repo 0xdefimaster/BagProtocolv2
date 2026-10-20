@@ -16,7 +16,7 @@ It needs no BAG frontend, server or database.
   - `@bagprotocol/sdk/lifi`: `lifiComposer({ apiKey, baseUrl })`, a routing provider for quote/compile (optional peer `@lifi/composer-sdk` `>=0.11.0 <0.12.0`, tested with 0.11.3: `COMPOSER_SDK_COMPAT`).
   - Other sources (a local file, IPFS, wallet storage, a registry `uri`) end in the same `parseBag(text)`.
 - Network access only through what you pass in (a `fetch`, a viem client).
-- Published on npm: [`@bagprotocol/sdk@0.2.0`](https://www.npmjs.com/package/@bagprotocol/sdk). The package is MIT-licensed; `bag.json` v1 semantics are frozen.
+- Published on npm: [`@bagprotocol/sdk@0.2.1`](https://www.npmjs.com/package/@bagprotocol/sdk). The package is MIT-licensed; `bag.json` v1 semantics are frozen.
 
 ## Quick start
 
@@ -213,6 +213,12 @@ Consequences:
 - A token is `chain + address`. The address is 20-byte hex, compared lowercase; the EIP-55 checksum is display only.
 - `0x0000000000000000000000000000000000000000` is the native asset.
 - `decimals` is hashed. `validateBag` compares it with the token when you pass `tokens`, for example from `readTokenDecimals(definition, clientFor)`. Without `tokens` it warns `DECIMALS_NOT_CHECKED`; it never claims a check it did not do.
+
+## JSON Schema
+
+The public Draft 7 schema is served at [`https://bagprotocol.com/schemas/bag.v1.json`](https://bagprotocol.com/schemas/bag.v1.json) and maintained at `docs/schemas/bag.v1.schema.json`. It supports both a minimal document (`bagJson` + `definition`) and documents with optional BAG-serving fields. Use it for editor autocomplete and early structural feedback; it also covers per-field bounds and formats.
+
+The schema cannot express every v1 rule. It does not prove that weights sum to exactly 10000, that every asset uses the definition chain, that a stated hash matches the definition, or that metadata names only defined assets. It also cannot detect duplicate JSON keys or distinguish the lexical number forms `1` and `1.0` once JSON has been parsed. For executable inputs, pass the original text to `parseBag(text)`, then run `validateBag(parsed.bag)`; do not rely on JSON Schema alone.
 
 ## Strict parsing
 
@@ -474,7 +480,7 @@ npm pack --dry-run  # what a tarball would contain: dist/, README.md, package.js
 npm run smoke:consumer  # packs, installs the tarball in a fresh temp project, imports every entry point, typechecks a TS consumer
 ```
 
-No build dependency beyond TypeScript. The package is configured for public npm distribution under the MIT license; it has not yet been published to npm.
+No build dependency beyond TypeScript. `@bagprotocol/sdk@0.2.1` is published publicly on npm under the MIT license.
 
 ## v1 freeze
 
