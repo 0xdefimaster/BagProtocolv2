@@ -1,6 +1,7 @@
 import { createComposeSdk, materialisers, resources } from '@lifi/composer-sdk';
 import type { Bindable } from '@lifi/composer-sdk';
 import type { ComposerCompileRequest, ComposerCompileResult, ComposerProvider } from '../execution';
+import { isNativeToken } from '../chains';
 import { planPartition } from '../partition';
 
 // -----------------------------------------------------------------------------
@@ -32,6 +33,16 @@ import { planPartition } from '../partition';
  * `major.minor.0` up to the server's own version, so a minor bump on either side needs a new adapter release.
  */
 export const COMPOSER_SDK_COMPAT = Object.freeze({ range: '>=0.11.0 <0.12.0', testedWith: '0.11.3' });
+
+/** Capability error raised before any network call when a plan asks Composer to deliver a native asset. */
+export class LifiComposerCapabilityError extends Error {
+  readonly code = 'UNSUPPORTED_NATIVE_OUTPUT' as const;
+
+  constructor() {
+    super('lifiComposer: native-asset output legs are not supported by this adapter; use an ERC-20-only strategy or a provider that explicitly supports native outputs.');
+    this.name = 'LifiComposerCapabilityError';
+  }
+}
 
 type PartitionBuilder = {
   core: { partition: (id: string, args: { bind: { source: Bindable<'resource'> }; config: { bps: number[] } }) => { parts: readonly Bindable<'resource'>[] } };
@@ -68,6 +79,9 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
   return {
     name: 'lifi-composer',
     async compile(req: ComposerCompileRequest): Promise<ComposerCompileResult> {
+      // The Composer flow below uses `resources.erc20` for every output. Refuse a native-asset target explicitly
+      // before the API call; never encode the zero-address native sentinel as if it were an ERC-20.
+      if (req.legs.some((leg) => isNativeToken(leg.token))) throw new LifiComposerCapabilityError();
       const base = options.fetch ?? fetch;
       const timeoutMs = options.timeoutMs ?? 15_000;
       const sdk = createComposeSdk({
