@@ -161,6 +161,7 @@ describe('compileBag / quoteBag', () => {
       ['negative price impact', (r) => ({ ...r, priceImpactBps: -1 })],
       ['fractional price impact', (r) => ({ ...r, priceImpactBps: 1.5 })],
       ['missing output token', (r) => ({ ...r, legs: [{ ...r.legs[0], token: null }, r.legs[1]] })],
+      ['wrong output chain', (r) => ({ ...r, legs: [{ ...r.legs[0], chainId: 1 }, r.legs[1]] })],
       ['missing output recipient', (r) => ({ ...r, legs: [{ ...r.legs[0], recipient: null }, r.legs[1]] })],
       ['wrong output recipient', (r) => ({ ...r, legs: [{ ...r.legs[0], recipient: '0x' + '9'.repeat(40) }, r.legs[1]] })],
       ['delayed output delivery', (r) => ({ ...r, legs: [{ ...r.legs[0], deliveryWhen: 'later' }, r.legs[1]] })],
