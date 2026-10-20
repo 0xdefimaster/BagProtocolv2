@@ -316,7 +316,12 @@ export async function simulateBag(compiled: CompiledPurchase, options: { client:
   } else {
     balance = BigInt((await client.readContract({ address: plan.inputToken as Hex, abi: ERC20_READ_ABI, functionName: 'balanceOf', args: [signer] })) as bigint);
   }
-  if (balance < plan.swapAmountRaw) return { status: 'INSUFFICIENT_BALANCE', balanceRaw: balance, requiredRaw: plan.swapAmountRaw };
+  // If the payment token is itself a basket asset, its target share is deliberately not
+  // spent by this transaction. The wallet must still hold that share after spending the swap leg.
+  const requiredBalanceRaw = plan.kept !== null ? plan.amountRaw : plan.swapAmountRaw;
+  if (balance < requiredBalanceRaw) {
+    return { status: 'INSUFFICIENT_BALANCE', balanceRaw: balance, requiredRaw: requiredBalanceRaw };
+  }
 
   const missing: CompiledPurchase['approvals'] = [];
   for (const a of compiled.approvals) {
