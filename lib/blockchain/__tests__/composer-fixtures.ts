@@ -6,7 +6,7 @@ import type { Output, Outputs } from '@lifi/compose-spec';
 export function out(expected: bigint | number | string | null, min?: bigint | number | string | null, token = '0x0', chainId = 4663, owner = '0xSigner'): Output {
   return {
     role: 'terminal',
-    owner,,
+    owner,
     delivery: { when: 'now' },
     resource: { kind: 'erc20', token, chainId },
     amount: {
@@ -20,7 +20,7 @@ export function out(expected: bigint | number | string | null, min?: bigint | nu
 export function wireOut(expected: bigint | number | string | null, min?: bigint | number | string | null, token = '0x0', chainId = 4663, owner = '0xSigner') {
   return {
     role: 'terminal',
-    owner,,
+    owner,
     delivery: { when: 'now' },
     resource: { kind: 'erc20', token, chainId },
     amount: {
