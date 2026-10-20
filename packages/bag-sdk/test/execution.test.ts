@@ -217,8 +217,8 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
   }
   const compileData = {
     outputs: {
-      'swap_0.amountOut': { role: 'terminal', resource: { kind: 'erc20', token: A, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '4000' }, minimum: { basis: 'op', value: '3960' } } },
-      'swap_1.amountOut': { role: 'terminal', resource: { kind: 'erc20', token: B, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '6000' }, minimum: { basis: 'op', value: '5940' } } },
+      'swap_0.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: A, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '4000' }, minimum: { basis: 'op', value: '3960' } } },
+      'swap_1.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: B, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '6000' }, minimum: { basis: 'op', value: '5940' } } },
     },
     transactionRequest: { to: ROUTER, chainId: 4663, data: '0xdeadbeef', value: '0', gasLimit: '500000' },
     userProxy: '0x' + '8'.repeat(40),
@@ -304,6 +304,44 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     const body = JSON.parse(String(calls.find(([url]) => String(url).endsWith('/compose'))![1].body));
     expect(body.run.sweepTo).toEqual({ $ref: 'context.sender' });
     expect(body.run.signer.toLowerCase()).toBe(SIGNER);
+  });
+
+  it('requires terminal outputs delivered now to the requested signer', async () => {
+    const cases = [
+      {
+        label: 'wrong output owner',
+        mutate: (data: any) => { data.outputs['swap_0.amountOut'].owner = '0x' + '9'.repeat(40); },
+        expected: /not owned by the requested signer/,
+      },
+      {
+        label: 'deferred output',
+        mutate: (data: any) => { data.outputs['swap_0.amountOut'].delivery.when = 'later'; },
+        expected: /not delivered immediately/,
+      },
+      {
+        label: 'consumed output',
+        mutate: (data: any) => { data.outputs['swap_0.amountOut'].role = 'consumed'; },
+        expected: /is not terminal/,
+      },
+      {
+        label: 'missing output owner',
+        mutate: (data: any) => { delete data.outputs['swap_0.amountOut'].owner; },
+        expected: /not owned by the requested signer/,
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      const data = JSON.parse(JSON.stringify(compileData));
+      testCase.mutate(data);
+      const fetchImpl = composeFetch(data);
+      await expect(
+        compileBag(doc(), req(), {
+          provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }),
+          trust: TRUST,
+        }),
+        testCase.label,
+      ).rejects.toThrow(testCase.expected);
+    }
   });
 
   it('refuses unexpected output ports and impact values for unpriced assets', async () => {
@@ -457,8 +495,8 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
     const wire = JSON.stringify({
       data: {
         outputs: {
-          'swap_0.amountOut': { role: 'terminal', resource: { kind: 'erc20', token: A, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '4000' }, minimum: { basis: 'op', value: '3960' } } },
-          'swap_1.amountOut': { role: 'terminal', resource: { kind: 'erc20', token: B, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '6000' }, minimum: { basis: 'op', value: '5940' } } },
+          'swap_0.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: A, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '4000' }, minimum: { basis: 'op', value: '3960' } } },
+          'swap_1.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: B, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '6000' }, minimum: { basis: 'op', value: '5940' } } },
         },
         transactionRequest: { to: ROUTER, chainId: 4663, data: '0xdeadbeef', value: '1000000000000000' },
         userProxy: '0x' + '8'.repeat(40),
