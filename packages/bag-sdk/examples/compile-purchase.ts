@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// A third-party script. It uses ONLY @bag-protocol/sdk (imported by path inside
+// A third-party script. It uses ONLY @bagprotocol/sdk (imported by path inside
 // this repository): no BAG frontend, server, database or app code.
 //
 //   bag.json (file or URL) → parse → validate → normalize → hash → [verify]
