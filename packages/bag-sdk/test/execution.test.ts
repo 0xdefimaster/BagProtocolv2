@@ -224,7 +224,7 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     userProxy: '0x' + '8'.repeat(40),
     priceImpact: { inputValueUsd: 10, outputValueUsd: 9.99, impactBps: 10, unpricedInputs: [], unpricedOutputs: [] },
     approvals: [{ token: USDG, spender: SPENDER, amount: '10000000', transactionRequest: { to: USDG, data: '0x', value: '0' } }],
-    fees: [],
+    fees: [{ token: USDG, recipient: 'integrator', bps: 25, amount: '2500' }],
   };
 
   it('requires the caller’s own API key', () => {
@@ -238,6 +238,7 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     expect(compiled.transaction).toEqual({ to: ROUTER, data: '0xdeadbeef', value: BigInt(0), chainId: 4663 });
     expect(compiled.quote.legs.map((l) => [l.expectedOutRaw, l.minOutRaw])).toEqual([['4000', '3960'], ['6000', '5940']]);
     expect(compiled.quote.priceImpactBps).toBe(10);
+    expect(compiled.quote.fees).toEqual([{ token: USDG, recipient: 'integrator', bps: 25, amountRaw: '2500' }]);
 
     const calls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls as [string, RequestInit][];
     const compose = calls.find(([url]) => String(url).endsWith('/compose'))!;
