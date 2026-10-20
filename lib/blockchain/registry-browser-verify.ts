@@ -26,7 +26,7 @@ export interface BrowserVerifyInput {
   /** BAG's configured registry: only compared with the SDK's, never used for the read. */
   serverRegistryAddress: string | null;
   versions: number[];
-  client: ContractReader & { getChainId(): Promise<number> };
+  client: ContractReader & { getChainId(): Promise<number>; getCode(args: { address: `0x${string}` }): Promise<`0x${string}` | undefined> };
   fetchFn?: typeof fetch;
 }
 
@@ -70,7 +70,11 @@ export async function verifyRegistrationsInBrowser(input: BrowserVerifyInput): P
       }
       const v = await verifyRegistryCommitment({ bag: parsed.bag, expectedCreator: input.creatorWallet, registry: deployment.address, client: input.client });
       if (v.verified) checks.push({ version, state: 'VERIFIED' });
-      else checks.push({ version, state: 'MISMATCH', detail: v.checks.filter((c) => !c.ok).map((c) => c.detail).join('; ') });
+      else {
+        const preflightFailures = v.preflightChecks?.filter((c) => !c.ok).map((c) => c.detail) ?? [];
+        const verificationFailures = v.checks.filter((c) => !c.ok).map((c) => c.detail);
+        checks.push({ version, state: 'MISMATCH', detail: [...preflightFailures, ...verificationFailures].join('; ') });
+      }
     } catch {
       checks.push({ version, state: 'UNAVAILABLE', detail: `v${version} could not be checked from your browser.` });
     }
