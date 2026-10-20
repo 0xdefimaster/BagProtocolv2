@@ -25,10 +25,10 @@ try {
     join(dir, 'consumer.mjs'),
     `import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { parseBag, validateBag, hashBag, compileBag, NATIVE_TOKEN, registryStrategyId, STRATEGY_REGISTRY_DEPLOYMENTS } from '@bag-protocol/sdk';
-import { lifiComposer } from '@bag-protocol/sdk/lifi';
-import { fetchBag } from '@bag-protocol/sdk/http';
-import { readTokenDecimals } from '@bag-protocol/sdk/evm';
+import { parseBag, validateBag, hashBag, compileBag, NATIVE_TOKEN, registryStrategyId, STRATEGY_REGISTRY_DEPLOYMENTS } from '@bagprotocol/sdk';
+import { lifiComposer } from '@bagprotocol/sdk/lifi';
+import { fetchBag } from '@bagprotocol/sdk/http';
+import { readTokenDecimals } from '@bagprotocol/sdk/evm';
 
 const parsed = parseBag(readFileSync('./feetest.bag.json', 'utf8'));
 assert.ok(parsed.ok, JSON.stringify(parsed.issues));
@@ -54,10 +54,10 @@ console.log('consumer.mjs: OK');
   );
   writeFileSync(
     join(dir, 'consumer.ts'),
-    `import { hashBag, parseBag, STRATEGY_REGISTRY_DEPLOYMENTS, type PurchasePlan, type StrategyRegistryDeployment } from '@bag-protocol/sdk';
-import { lifiComposer } from '@bag-protocol/sdk/lifi';
-import { fetchBag } from '@bag-protocol/sdk/http';
-import { readTokenDecimals } from '@bag-protocol/sdk/evm';
+    `import { hashBag, parseBag, STRATEGY_REGISTRY_DEPLOYMENTS, type PurchasePlan, type StrategyRegistryDeployment } from '@bagprotocol/sdk';
+import { lifiComposer } from '@bagprotocol/sdk/lifi';
+import { fetchBag } from '@bagprotocol/sdk/http';
+import { readTokenDecimals } from '@bagprotocol/sdk/evm';
 const d: StrategyRegistryDeployment | undefined = STRATEGY_REGISTRY_DEPLOYMENTS.robinhood;
 const kind: PurchasePlan['inputKind'] = 'native';
 const r = parseBag('{}');
