@@ -10,6 +10,7 @@ import {
   verifyRegistryCommitment,
   type BagDocument,
   type ContractReader,
+  type RegistryVerificationClient,
 } from '../src';
 import { fetchBag } from '../src/adapters/http';
 import { readTokenDecimals } from '../src/adapters/evm';
@@ -30,11 +31,25 @@ const REGISTRY = '0x4444444444444444444444444444444444444444' as Hex;
 const ZERO = '0x0000000000000000000000000000000000000000';
 const ZERO32 = `0x${'0'.repeat(64)}` as Hex;
 
-/** In-memory StrategyRegistry: strategyOf + definitionHashOf, as the contract answers them. */
-function fakeRegistry(entries: { creator: string; uuid: string; hashes: Hex[] }[]): ContractReader {
+/** In-memory StrategyRegistry: chain id, code existence and the view results it exposes. */
+function fakeRegistry(
+  entries: { creator: string; uuid: string; hashes: Hex[] }[],
+  options: { chainId?: number; code?: Hex } = {},
+): RegistryVerificationClient & { readCount(): number } {
   const byId = new Map(entries.map((e) => [registryStrategyId(e.creator, e.uuid).toLowerCase(), e] as const));
+  let reads = 0;
   return {
+    async getChainId() {
+      return options.chainId ?? 4663;
+    },
+    async getCode() {
+      return options.code ?? ('0x60006000' as Hex);
+    },
+    readCount() {
+      return reads;
+    },
     async readContract({ functionName, args }) {
+      reads++;
       const e = byId.get(String(args![0]).toLowerCase());
       if (functionName === 'strategyOf') return { creator: e?.creator ?? ZERO, latestVersion: e?.hashes.length ?? 0, forkOfStrategyId: ZERO32, forkOfVersion: 0 };
       if (functionName === 'definitionHashOf') return e?.hashes[Number(args![1]) - 1] ?? ZERO32;
@@ -100,6 +115,26 @@ describe('bag.json + registry commitment → independent verification', () => {
     const v = await verifyRegistryCommitment({ bag: servedDoc(), expectedCreator: CREATOR, registry: REGISTRY, client: registered });
     expect(v.verified).toBe(true);
     expect(v.checks.map((c) => c.ok)).toEqual([true, true, true, true]);
+  });
+
+  it('fails closed before registry reads on a wrong RPC chain or an address without contract code', async () => {
+    const entries = [{ creator: CREATOR, uuid: STRATEGY, hashes: [EXTERNAL_DEFINITION_HASH as Hex] }];
+    const wrongChain = fakeRegistry(entries, { chainId: 1 });
+    const wrongChainResult = await verifyRegistryCommitment({ bag: servedDoc(), expectedCreator: CREATOR, registry: REGISTRY, client: wrongChain });
+    expect(wrongChainResult.verified).toBe(false);
+    expect(wrongChainResult.preflightChecks).toEqual([
+      expect.objectContaining({ name: 'RPC_CHAIN_ID', ok: false }),
+    ]);
+    expect(wrongChain.readCount()).toBe(0);
+
+    const noCode = fakeRegistry(entries, { code: '0x' as Hex });
+    const noCodeResult = await verifyRegistryCommitment({ bag: servedDoc(), expectedCreator: CREATOR, registry: REGISTRY, client: noCode });
+    expect(noCodeResult.verified).toBe(false);
+    expect(noCodeResult.preflightChecks).toEqual([
+      expect.objectContaining({ name: 'RPC_CHAIN_ID', ok: true }),
+      expect.objectContaining({ name: 'REGISTRY_HAS_CODE', ok: false }),
+    ]);
+    expect(noCode.readCount()).toBe(0);
   });
 
   it('the creator is a verification input: the JSON’s own registry claim is never authority', async () => {
