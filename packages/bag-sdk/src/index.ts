@@ -67,6 +67,7 @@ export {
   type CompiledPurchase,
   type ComposerCompileRequest,
   type ComposerCompileResult,
+  type ComposerFeeRecipient,
   type ComposerProvider,
   type ExecutionTrustPolicy,
   type PurchaseQuote,
