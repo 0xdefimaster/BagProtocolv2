@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 // Read-only check of a live StrategyRegistry commitment, using ONLY
-// @bag-protocol/sdk (imported by path inside this repository) and viem.
+// @bagprotocol/sdk (imported by path inside this repository) and viem.
 //
 //   1. the RPC is on the registry's chain          (eth_chainId)
 //   2. the registry contract exists there          (eth_getCode, non-empty)
