@@ -1,7 +1,7 @@
 import { createComposeSdk, materialisers, resources } from '@lifi/composer-sdk';
 import type { Bindable } from '@lifi/composer-sdk';
 import type { ComposerCompileRequest, ComposerCompileResult, ComposerProvider } from '../execution';
-import { isNativeToken } from '../chains';
+import { isNativeToken, normalizeAddress } from '../chains';
 import { planPartition } from '../partition';
 
 // -----------------------------------------------------------------------------
@@ -72,6 +72,7 @@ export interface LifiComposerOptions {
 }
 
 const legNode = (i: number) => `swap_${i}`;
+const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
 export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
   if (!options.apiKey) throw new Error('lifiComposer: apiKey is required (your own LI.FI API key).');
@@ -154,17 +155,51 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
         approvals: (result.approvals ?? []).map((a) => ({ token: a.token, spender: a.spender, amountRaw: String(a.amount) })),
         legs: req.legs.map((_, i) => {
           const outputKey = `${legNode(i)}.amountOut`;
-          const o = outputs[outputKey];
+          const candidate = outputs[outputKey] as unknown;
+          if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+            throw new Error(`LI.FI Composer output ${outputKey} is missing or malformed.`);
+          }
+          const output = candidate as Record<string, unknown>;
+          if (output.role !== 'terminal') {
+            throw new Error(`LI.FI Composer output ${outputKey} is not terminal; refusing an output that may be consumed by another operation.`);
+          }
+
+          const owner = output.owner;
+          if (typeof owner !== 'string' || !EVM_ADDRESS_RE.test(owner) || normalizeAddress(owner) !== normalizeAddress(req.signer)) {
+            throw new Error(`LI.FI Composer output ${outputKey} is not owned by the requested signer.`);
+          }
+
+          const delivery = output.delivery;
+          if (!delivery || typeof delivery !== 'object' || Array.isArray(delivery) || (delivery as Record<string, unknown>).when !== 'now') {
+            throw new Error(`LI.FI Composer output ${outputKey} is not delivered immediately.`);
+          }
+
+          const resource = output.resource;
+          if (!resource || typeof resource !== 'object' || Array.isArray(resource)) {
+            throw new Error(`LI.FI Composer output ${outputKey} has no valid resource.`);
+          }
+          const resourceRecord = resource as Record<string, unknown>;
+          if (resourceRecord.kind !== 'erc20' || typeof resourceRecord.token !== 'string' || typeof resourceRecord.chainId !== 'number') {
+            throw new Error(`LI.FI Composer output ${outputKey} is not a valid ERC-20 output.`);
+          }
+
+          const amount = output.amount && typeof output.amount === 'object' && !Array.isArray(output.amount)
+            ? output.amount as Record<string, unknown>
+            : {};
+          const estimate = amount.estimate && typeof amount.estimate === 'object' && !Array.isArray(amount.estimate)
+            ? amount.estimate as Record<string, unknown>
+            : null;
+          const minimum = amount.minimum && typeof amount.minimum === 'object' && !Array.isArray(amount.minimum)
+            ? amount.minimum as Record<string, unknown>
+            : null;
+
           return {
-            token: o && o.resource.kind === 'erc20' ? o.resource.token : null,
-            chainId: o?.resource?.chainId ?? null,
-            // Composer's typed per-port Output has no owner/delivery fields. The adapter fixes
-            // the terminal sink at compile time with sweepTo: context.sender and passes req.signer
-            // to compile(), so the final output recipient/delivery are derived from our own flow config.
-            recipient: req.signer,
+            token: resourceRecord.token,
+            chainId: resourceRecord.chainId,
+            recipient: normalizeAddress(owner),
             deliveryWhen: 'now',
-            expectedOutRaw: o?.amount.estimate ? o.amount.estimate.value.toString() : null,
-            minOutRaw: o?.amount.minimum ? o.amount.minimum.value.toString() : null,
+            expectedOutRaw: typeof estimate?.value === 'bigint' || typeof estimate?.value === 'string' || typeof estimate?.value === 'number' ? String(estimate.value) : null,
+            minOutRaw: typeof minimum?.value === 'bigint' || typeof minimum?.value === 'string' || typeof minimum?.value === 'number' ? String(minimum.value) : null,
           };
         }),
         priceImpactBps,
