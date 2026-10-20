@@ -1,5 +1,5 @@
 {
-  "name": "@bag-protocol/sdk",
+  "name": "@bagprotocol/sdk",
   "version": "0.2.0",
   "description": "bag.json v1: parse, validate, normalize, hash and verify BAG strategies, and compile unsigned purchases, without the BAG app.",
   "type": "module",
@@ -24,9 +24,9 @@
     }
   },
   "files": [
-      "dist",
-      "README.md",
-      "LICENSE"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/fix-esm-imports.mjs",
