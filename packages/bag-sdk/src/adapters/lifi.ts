@@ -117,7 +117,8 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
         executor: result.userProxy ?? null,
         approvals: (result.approvals ?? []).map((a) => ({ token: a.token, spender: a.spender, amountRaw: String(a.amount) })),
         legs: req.legs.map((_, i) => {
-          // Composer keys outputs by output port (`swap_<i>.amountOut`). A missing minimum means no floor is enforced (never 0).
+          // Composer keys outputs by output port (`swap_<i>.amountOut`). A missing minimum means no floor is reported;
+          // the core execution boundary rejects that response instead of returning an apparently safe transaction.
           const o = outputs[`${legNode(i)}.amountOut`];
           return {
             token: o && o.resource.kind === 'erc20' ? o.resource.token : null,
