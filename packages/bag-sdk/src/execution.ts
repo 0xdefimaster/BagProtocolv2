@@ -151,7 +151,8 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
   if (!Array.isArray(r.legs)) fail('provider returned a malformed output-legs list.');
   if (!Array.isArray(r.fees)) fail('provider returned a malformed fees list.');
 
-  if (r.priceImpactBps === null || !Number.isSafeInteger(r.priceImpactBps) || r.priceImpactBps < 0) {
+  const priceImpactBps = r.priceImpactBps;
+  if (priceImpactBps === null || !Number.isSafeInteger(priceImpactBps) || priceImpactBps < 0) {
     fail('price impact is missing or malformed; refusing to compile an unpriced purchase.');
   }
   if (r.executor !== null && (typeof r.executor !== 'string' || !ADDRESS_RE.test(r.executor))) {
@@ -215,48 +216,53 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
   const legs: QuotedLeg[] = plan.legs.map((l, i) => {
     const got = r.legs[i];
     if (!got || typeof got !== 'object') fail(`leg ${i} is missing or malformed.`);
-    if (typeof got.token !== 'string' || !ADDRESS_RE.test(got.token)) {
+
+    // Keep the validated values in locals so TypeScript's narrowing matches
+    // the runtime checks on untrusted provider-owned object properties.
+    const outputToken = got.token;
+    if (typeof outputToken !== 'string' || !ADDRESS_RE.test(outputToken)) {
       fail(`leg ${i} output token was not reported as a valid address.`);
     }
-    if (normalizeAddress(got.token) !== l.token) {
-      fail(`leg ${i} delivers ${got.token}, planned ${l.token}.`);
+    if (normalizeAddress(outputToken) !== l.token) {
+      fail(`leg ${i} delivers ${outputToken}, planned ${l.token}.`);
     }
-    if (typeof got.recipient !== 'string' || !ADDRESS_RE.test(got.recipient)) {
+
+    const recipient = got.recipient;
+    if (typeof recipient !== 'string' || !ADDRESS_RE.test(recipient)) {
       fail(`leg ${i} output recipient is missing or malformed.`);
     }
-    if (normalizeAddress(got.recipient) !== plan.signer) {
-      fail(`leg ${i} output recipient ${got.recipient} does not match requested signer ${plan.signer}.`);
+    if (normalizeAddress(recipient) !== plan.signer) {
+      fail(`leg ${i} output recipient ${recipient} does not match requested signer ${plan.signer}.`);
     }
     if (got.deliveryWhen !== 'now') {
       fail(`leg ${i} output is not reported as delivered now.`);
     }
-    for (const amount of [got.expectedOutRaw, got.minOutRaw]) {
-      if (amount !== null && (typeof amount !== 'string' || !UINT_RE.test(amount))) {
-        fail(`leg ${i} has a malformed amount.`);
-      }
+
+    const expectedOutRaw = got.expectedOutRaw;
+    if (expectedOutRaw !== null && (typeof expectedOutRaw !== 'string' || !UINT_RE.test(expectedOutRaw))) {
+      fail(`leg ${i} has a malformed expected output amount.`);
     }
-    // An unsigned transaction without a verifiable positive on-chain minOut is
-    // not safe to surface as a compiled purchase, even if the provider says success.
-    if (got.minOutRaw === null) {
-      fail(`leg ${i} has no reported on-chain minimum output; refusing to return an unprotected transaction.`);
+    const minOutRaw = got.minOutRaw;
+    if (typeof minOutRaw !== 'string' || !UINT_RE.test(minOutRaw)) {
+      fail(`leg ${i} has no valid on-chain minimum output; refusing to return an unprotected transaction.`);
     }
-    const minimum = BigInt(got.minOutRaw);
+    const minimum = BigInt(minOutRaw);
     if (minimum <= BigInt(0)) fail(`leg ${i} minimum output must be positive.`);
-    if (got.expectedOutRaw !== null && minimum > BigInt(got.expectedOutRaw)) {
+    if (expectedOutRaw !== null && minimum > BigInt(expectedOutRaw)) {
       fail(`leg ${i} minimum output is above its expected output.`);
     }
     return {
       token: l.token,
-      recipient: normalizeAddress(got.recipient),
+      recipient: normalizeAddress(recipient),
       deliveryWhen: 'now',
       targetInputRaw: l.targetInputRaw,
-      expectedOutRaw: got.expectedOutRaw,
-      minOutRaw: got.minOutRaw,
+      expectedOutRaw,
+      minOutRaw,
     };
   });
 
-  if (r.priceImpactBps > plan.maxPriceImpactBps) {
-    fail(`price impact ${r.priceImpactBps} bps is above the limit ${plan.maxPriceImpactBps} bps.`);
+  if (priceImpactBps > plan.maxPriceImpactBps) {
+    fail(`price impact ${priceImpactBps} bps is above the limit ${plan.maxPriceImpactBps} bps.`);
   }
 
   const fees = r.fees.map((fee, i) => {
@@ -271,7 +277,7 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
   });
 
   return {
-    quote: { plan, provider, legs, priceImpactBps: r.priceImpactBps, fees, gasLimit: r.gasLimit },
+    quote: { plan, provider, legs, priceImpactBps, fees, gasLimit: r.gasLimit },
     transaction: { to: tx.to as Hex, data: tx.data as Hex, value, chainId: plan.chainId },
     approvals,
     executor: r.executor,
