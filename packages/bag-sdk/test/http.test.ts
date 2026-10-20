@@ -66,6 +66,7 @@ describe('fetchBag HTTP boundary', () => {
     expect(thrown).toMatchObject({ name: 'BagFetchError', code: 'NETWORK_ERROR' });
     expect((thrown as Error).message).not.toContain('apiKey');
     expect((thrown as Error).message).not.toContain('rpc.example');
+    expect((thrown as Error & { cause?: unknown }).cause).toBeUndefined();
   });
 
   it('rejects malformed UTF-8 rather than silently replacing invalid bytes', async () => {
