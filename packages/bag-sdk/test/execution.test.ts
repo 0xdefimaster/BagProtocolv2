@@ -278,6 +278,20 @@ describe('simulateBag', () => {
     expect(c.calls).toBe(0);
   });
 
+  it('requires enough balance to preserve the retained input-token allocation', async () => {
+    const bag = doc((d) => {
+      d.definition.assets[1].address = USDG;
+      delete d.metadata;
+    });
+    const purchase = await compileBag(bag, req(), { provider: fakeProvider(), trust: TRUST });
+    // 7m covers the 6m swap amount, but not the 4m share that is supposed to remain in the wallet.
+    expect(await simulateBag(purchase, { client: client({ balance: BigInt(7_000_000) }) })).toEqual({
+      status: 'INSUFFICIENT_BALANCE',
+      balanceRaw: BigInt(7_000_000),
+      requiredRaw: BigInt(10_000_000),
+    });
+  });
+
   it('a revert is reported with its first line only; a wrong-chain client is refused', async () => {
     expect(await simulateBag(await compiled(), { client: client({ revert: 'execution reverted: TOO_LITTLE_RECEIVED' }) })).toEqual({ status: 'REVERTED', reason: 'execution reverted: TOO_LITTLE_RECEIVED' });
     await expect(simulateBag(await compiled(), { client: client({ chainId: 1 }) })).rejects.toThrow(/chain 1/);
