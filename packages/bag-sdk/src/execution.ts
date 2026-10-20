@@ -31,6 +31,9 @@ export interface ComposerCompileRequest {
 }
 
 /** A provider's compiled purchase, normalized. `null` = the provider did not report it (never guessed). */
+/** Fee destination as reported by Composer or as a concrete provider fee address. */
+export type ComposerFeeRecipient = 'lifi' | 'integrator' | Hex;
+
 export interface ComposerCompileResult {
   transaction: { to: string; data: string; value: string; chainId: number | null };
   /** Contract that executes the program on the signer's behalf (informational). */
@@ -39,7 +42,7 @@ export interface ComposerCompileResult {
   legs: { token: string | null; chainId: number | null; recipient: string | null; deliveryWhen: 'now' | 'later' | null; expectedOutRaw: string | null; minOutRaw: string | null }[];
   priceImpactBps: number | null;
   gasLimit: string | null;
-  fees: { token: string; recipient: string; bps: number; amountRaw: string | null }[];
+  fees: { token: string; recipient: ComposerFeeRecipient; bps: number; amountRaw: string | null }[];
 }
 
 export interface ComposerProvider {
@@ -274,7 +277,8 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
     if (
       !fee || typeof fee !== 'object' ||
       typeof fee.token !== 'string' || !ADDRESS_RE.test(fee.token) ||
-      typeof fee.recipient !== 'string' || !ADDRESS_RE.test(fee.recipient) ||
+      typeof fee.recipient !== 'string' ||
+      !(fee.recipient === 'lifi' || fee.recipient === 'integrator' || ADDRESS_RE.test(fee.recipient)) ||
       !Number.isSafeInteger(fee.bps) || fee.bps < 0 || fee.bps > 10000 ||
       (fee.amountRaw !== null && (typeof fee.amountRaw !== 'string' || !UINT_RE.test(fee.amountRaw)))
     ) fail(`malformed fee entry at index ${i}.`);
