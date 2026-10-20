@@ -29,8 +29,8 @@ function composerFetch() {
   const wire = JSON.stringify({
     data: {
       outputs: {
-        'swap_0.amountOut': { role: 'terminal', resource: { kind: 'erc20', token: A, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '400' }, minimum: { basis: 'op', value: '396' } } },
-        'swap_1.amountOut': { role: 'terminal', resource: { kind: 'erc20', token: B, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '600' }, minimum: { basis: 'op', value: '594' } } },
+        'swap_0.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: A, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '400' }, minimum: { basis: 'op', value: '396' } } },
+        'swap_1.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: B, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '600' }, minimum: { basis: 'op', value: '594' } } },
       },
       transactionRequest: { to: '0x' + '7'.repeat(40), chainId: 4663, data: '0xdeadbeef', value: '0' },
       userProxy: '0x' + '8'.repeat(40),
