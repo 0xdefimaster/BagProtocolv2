@@ -215,8 +215,8 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
   }
   const compileData = {
     outputs: {
-      'swap_0.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: A, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '4000' }, minimum: { basis: 'op', value: '3960' } } },
-      'swap_1.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: B, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '6000' }, minimum: { basis: 'op', value: '5940' } } },
+      'swap_0.amountOut': { role: 'terminal', resource: { kind: 'erc20', token: A, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '4000' }, minimum: { basis: 'op', value: '3960' } } },
+      'swap_1.amountOut': { role: 'terminal', resource: { kind: 'erc20', token: B, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '6000' }, minimum: { basis: 'op', value: '5940' } } },
     },
     transactionRequest: { to: ROUTER, chainId: 4663, data: '0xdeadbeef', value: '0', gasLimit: '500000' },
     userProxy: '0x' + '8'.repeat(40),
@@ -252,20 +252,22 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     await expect(compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST })).rejects.toThrow(/735 bps is above the limit 500/);
   });
 
-  it('refuses Composer output delivered to another recipient or deferred for later', async () => {
-    const redirected = JSON.parse(JSON.stringify(compileData));
-    redirected.outputs['swap_0.amountOut'].owner = '0x' + '9'.repeat(40);
-    const wrongRecipientFetch = composeFetch(redirected);
-    await expect(
-      compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: wrongRecipientFetch }), trust: TRUST }),
-    ).rejects.toThrow(/output recipient .* does not match requested signer/);
+  it('binds Composer outputs to the requested signer and immediate sweep configuration', async () => {
+    const fetchImpl = composeFetch(compileData);
+    const compiled = await compileBag(
+      doc(),
+      req(),
+      { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST },
+    );
+    expect(compiled.quote.legs.map((l) => [l.recipient, l.deliveryWhen])).toEqual([
+      [SIGNER, 'now'],
+      [SIGNER, 'now'],
+    ]);
 
-    const deferred = JSON.parse(JSON.stringify(compileData));
-    deferred.outputs['swap_0.amountOut'].delivery.when = 'later';
-    const deferredFetch = composeFetch(deferred);
-    await expect(
-      compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: deferredFetch }), trust: TRUST }),
-    ).rejects.toThrow(/output is not reported as delivered now/);
+    const calls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls as [string, RequestInit][];
+    const body = JSON.parse(String(calls.find(([url]) => String(url).endsWith('/compose'))![1].body));
+    expect(body.run.sweepTo).toEqual({ $ref: 'context.sender' });
+    expect(body.run.signer.toLowerCase()).toBe(SIGNER);
   });
 
   it('refuses unexpected output ports and impact values for unpriced assets', async () => {
@@ -419,8 +421,8 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
     const wire = JSON.stringify({
       data: {
         outputs: {
-          'swap_0.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: A, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '4000' }, minimum: { basis: 'op', value: '3960' } } },
-          'swap_1.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: B, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '6000' }, minimum: { basis: 'op', value: '5940' } } },
+          'swap_0.amountOut': { role: 'terminal', resource: { kind: 'erc20', token: A, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '4000' }, minimum: { basis: 'op', value: '3960' } } },
+          'swap_1.amountOut': { role: 'terminal', resource: { kind: 'erc20', token: B, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '6000' }, minimum: { basis: 'op', value: '5940' } } },
         },
         transactionRequest: { to: ROUTER, chainId: 4663, data: '0xdeadbeef', value: '1000000000000000' },
         userProxy: '0x' + '8'.repeat(40),
