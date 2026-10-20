@@ -462,7 +462,7 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
     expect(callValue).toBe(BigInt('1000000000000000'));
     expect(readContractCalls).toBe(0);
     expect(await simulateBag(compiled, { client: client(BigInt(1)) })).toEqual({ status: 'INSUFFICIENT_BALANCE', balanceRaw: BigInt(1), requiredRaw: BigInt('1000000000000000') });
-    const noBalance = { getChainId: async () => 4663, readContract: async () => BigInt(0), call: async () => ({}) } as SimulationClient;
+    const noBalance = { getChainId: async () => 4663, getCode: async () => '0x60006000' as Hex, readContract: async () => BigInt(0), call: async () => ({}) } as SimulationClient;
     await expect(simulateBag(compiled, { client: noBalance })).rejects.toThrow(/getBalance/);
   });
 });
