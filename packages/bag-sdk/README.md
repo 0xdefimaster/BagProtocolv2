@@ -16,7 +16,104 @@ It needs no BAG frontend, server or database.
   - `@bagprotocol/sdk/lifi`: `lifiComposer({ apiKey, baseUrl })`, a routing provider for quote/compile (optional peer `@lifi/composer-sdk` `>=0.11.0 <0.12.0`, tested with 0.11.3: `COMPOSER_SDK_COMPAT`).
   - Other sources (a local file, IPFS, wallet storage, a registry `uri`) end in the same `parseBag(text)`.
 - Network access only through what you pass in (a `fetch`, a viem client).
-- Status: configured for public npm distribution under the MIT license; not yet published.
+- Published on npm: [`@bagprotocol/sdk@0.2.0`](https://www.npmjs.com/package/@bagprotocol/sdk). The package is MIT-licensed; `bag.json` v1 semantics are frozen.
+
+## Quick start
+
+Install the SDK and its required peer dependency in your app:
+
+```bash
+npm install @bagprotocol/sdk viem
+```
+
+Create a `bag.json` file. This is a **validation-only example**: the two addresses are placeholders, not recommended or executable assets.
+
+```json
+{
+  "bagJson": 1,
+  "definition": {
+    "kind": "STATIC_BASKET",
+    "chain": "ethereum",
+    "mutability": "MUTABLE",
+    "assets": [
+      {
+        "chain": "ethereum",
+        "address": "0x0000000000000000000000000000000000000001",
+        "decimals": 18,
+        "weightBps": 5000
+      },
+      {
+        "chain": "ethereum",
+        "address": "0x0000000000000000000000000000000000000002",
+        "decimals": 18,
+        "weightBps": 5000
+      }
+    ],
+    "rules": {
+      "weightBounds": {
+        "minBps": 100,
+        "maxBps": 7000
+      },
+      "maxAssets": 10,
+      "minInvestment": {
+        "amount": "0",
+        "measuredAs": "PAYMENT_TOKEN_AMOUNT"
+      },
+      "swapSlippageBps": 100,
+      "rebalance": {
+        "frequency": "MANUAL",
+        "driftThresholdBps": 500
+      },
+      "performanceFeeBps": 0,
+      "noRouteAssetPolicy": "BLOCK"
+    }
+  }
+}
+```
+
+Create `index.mjs` next to `bag.json`:
+
+```js
+import { readFile } from 'node:fs/promises';
+import {
+  parseBag,
+  validateBag,
+  normalizeBag,
+  hashBag
+} from '@bagprotocol/sdk';
+
+const text = await readFile('./bag.json', 'utf8');
+const parsed = parseBag(text);
+
+if (!parsed.ok) {
+  console.error('Invalid bag.json syntax or shape:', parsed.issues);
+  process.exit(1);
+}
+
+const validation = validateBag(parsed.bag);
+
+if (!validation.valid) {
+  console.error('Invalid strategy definition:', validation.errors);
+  process.exit(1);
+}
+
+const canonical = normalizeBag(parsed.bag);
+const definitionHash = hashBag(canonical);
+
+console.log('bag.json: valid');
+console.log('definitionHash:', definitionHash);
+console.log('warnings:', validation.warnings.map(({ code, path }) => ({ code, path })));
+```
+
+Run it:
+
+```bash
+node index.mjs
+```
+
+The `DECIMALS_NOT_CHECKED` warning is expected in this minimal example because no on-chain token metadata was supplied. Before using a strategy for execution, replace the placeholder addresses and verify the assets and decimals against the target chain. Successful parsing, validation and hashing do **not** prove that assets have liquidity or that a trade can execute safely.
+
+## API overview
 
 ```ts
 import { parseBag, validateBag, normalizeBag, hashBag, resolveV1Rules, verifyRegistryCommitment } from '@bagprotocol/sdk';
