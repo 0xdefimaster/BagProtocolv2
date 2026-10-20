@@ -36,7 +36,7 @@ export interface ComposerCompileResult {
   /** Contract that executes the program on the signer's behalf (informational). */
   executor: string | null;
   approvals: { token: string; spender: string; amountRaw: string }[];
-  legs: { token: string | null; expectedOutRaw: string | null; minOutRaw: string | null }[];
+  legs: { token: string | null; recipient: string | null; deliveryWhen: 'now' | 'later' | null; expectedOutRaw: string | null; minOutRaw: string | null }[];
   priceImpactBps: number | null;
   gasLimit: string | null;
   fees: { token: string; recipient: string; bps: number; amountRaw: string | null }[];
@@ -59,6 +59,10 @@ export interface ExecutionTrustPolicy {
 
 export interface QuotedLeg {
   token: string;
+  /** Output recipient reported by the provider and checked against the requested signer. */
+  recipient: string;
+  /** This adapter only returns a compiled purchase when the recipient receives it now, not later. */
+  deliveryWhen: 'now';
   /** Exact target input for this leg (the on-chain split stays within the v1 execution bound of it). */
   targetInputRaw: bigint;
   /** Simulated output: an estimate, not a guarantee. */
@@ -217,6 +221,15 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
     if (normalizeAddress(got.token) !== l.token) {
       fail(`leg ${i} delivers ${got.token}, planned ${l.token}.`);
     }
+    if (typeof got.recipient !== 'string' || !ADDRESS_RE.test(got.recipient)) {
+      fail(`leg ${i} output recipient is missing or malformed.`);
+    }
+    if (normalizeAddress(got.recipient) !== plan.signer) {
+      fail(`leg ${i} output recipient ${got.recipient} does not match requested signer ${plan.signer}.`);
+    }
+    if (got.deliveryWhen !== 'now') {
+      fail(`leg ${i} output is not reported as delivered now.`);
+    }
     for (const amount of [got.expectedOutRaw, got.minOutRaw]) {
       if (amount !== null && (typeof amount !== 'string' || !UINT_RE.test(amount))) {
         fail(`leg ${i} has a malformed amount.`);
@@ -234,6 +247,8 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
     }
     return {
       token: l.token,
+      recipient: normalizeAddress(got.recipient),
+      deliveryWhen: 'now',
       targetInputRaw: l.targetInputRaw,
       expectedOutRaw: got.expectedOutRaw,
       minOutRaw: got.minOutRaw,
@@ -280,6 +295,8 @@ export async function compileBag(bag: BagDocument, req: PurchaseRequest, options
 /** Anything with viem's `readContract` and `call` (a viem PublicClient on the strategy's chain); `getBalance` for a native purchase. */
 export interface SimulationClient {
   getChainId(): Promise<number>;
+  /** Required for refusing EOAs or empty addresses as execution/approval contracts. */
+  getCode(args: { address: Hex }): Promise<Hex | undefined>;
   getBalance?(args: { address: Hex }): Promise<bigint>;
   readContract(args: { address: Hex; abi: readonly unknown[]; functionName: string; args?: readonly unknown[] }): Promise<unknown>;
   call(args: { account: Hex; to: Hex; data: Hex; value?: bigint }): Promise<unknown>;
@@ -289,6 +306,8 @@ export type SimulationResult =
   | { status: 'OK' }
   | { status: 'NEEDS_APPROVAL'; missing: CompiledPurchase['approvals'] }
   | { status: 'INSUFFICIENT_BALANCE'; balanceRaw: bigint; requiredRaw: bigint }
+  | { status: 'INVALID_TARGET'; address: Hex }
+  | { status: 'INVALID_APPROVAL_SPENDER'; spender: Hex }
   | { status: 'REVERTED'; reason: string };
 
 const ERC20_READ_ABI = [
@@ -306,6 +325,8 @@ export async function simulateBag(compiled: CompiledPurchase, options: { client:
   const plan = compiled.quote.plan;
   const chainId = await client.getChainId();
   if (chainId !== plan.chainId) throw new Error(`simulateBag: client is on chain ${chainId}, the purchase is for ${plan.chainId}.`);
+  const targetCode = await client.getCode({ address: compiled.transaction.to });
+  if (!targetCode || targetCode === '0x') return { status: 'INVALID_TARGET', address: compiled.transaction.to };
   const signer = plan.signer as Hex;
 
   let balance: bigint;
@@ -325,6 +346,8 @@ export async function simulateBag(compiled: CompiledPurchase, options: { client:
 
   const missing: CompiledPurchase['approvals'] = [];
   for (const a of compiled.approvals) {
+    const spenderCode = await client.getCode({ address: a.spender });
+    if (!spenderCode || spenderCode === '0x') return { status: 'INVALID_APPROVAL_SPENDER', spender: a.spender };
     const allowance = BigInt((await client.readContract({ address: a.token, abi: ERC20_READ_ABI, functionName: 'allowance', args: [signer, a.spender] })) as bigint);
     if (allowance < a.amountRaw) missing.push(a);
   }
