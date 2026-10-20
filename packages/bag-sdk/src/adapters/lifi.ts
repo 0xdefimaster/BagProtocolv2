@@ -144,8 +144,11 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
           return {
             token: o && o.resource.kind === 'erc20' ? o.resource.token : null,
             chainId: o?.resource?.chainId ?? null,
-            recipient: o && typeof o.owner === 'string' ? o.owner : null,
-            deliveryWhen: o?.delivery?.when === 'now' ? 'now' : o?.delivery?.when === 'later' ? 'later' : null,
+            // Composer's typed per-port Output has no owner/delivery fields. The adapter fixes
+            // the terminal sink at compile time with sweepTo: context.sender and passes req.signer
+            // to compile(), so the final output recipient/delivery are derived from our own flow config.
+            recipient: req.signer,
+            deliveryWhen: 'now',
             expectedOutRaw: o?.amount.estimate ? o.amount.estimate.value.toString() : null,
             minOutRaw: o?.amount.minimum ? o.amount.minimum.value.toString() : null,
           };
