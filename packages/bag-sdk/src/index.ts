@@ -1,7 +1,7 @@
-// @bag-protocol/sdk — the bag.json v1 strategy core.
+// @bagprotocol/sdk — the bag.json v1 strategy core.
 // parse → validate → normalize → hash → verify (StrategyRegistry). No transport: getting the bytes is an
-// adapter's job (@bag-protocol/sdk/http, @bag-protocol/sdk/evm); routing is a ComposerProvider
-// (@bag-protocol/sdk/lifi). The core depends on viem only. Spec: ../README.md.
+// adapter's job (@bagprotocol/sdk/http, @bagprotocol/sdk/evm); routing is a ComposerProvider
+// (@bagprotocol/sdk/lifi). The core depends on viem only. Spec: ../README.md.
 
 export { BAG_V1_CHAINS, BAG_V1_CHAIN_SLUGS, chainIdOf, isBagChain, isNativeToken, NATIVE_TOKEN, normalizeAddress, type BagChain } from './chains';
 export {
