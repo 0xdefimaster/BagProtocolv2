@@ -214,6 +214,23 @@ Consequences:
 - `0x0000000000000000000000000000000000000000` is the native asset.
 - `decimals` is hashed. `validateBag` compares it with the token when you pass `tokens`, for example from `readTokenDecimals(definition, clientFor)`. Without `tokens` it warns `DECIMALS_NOT_CHECKED`; it never claims a check it did not do.
 
+## Current SDK support matrix
+
+The chain table is the format's accepted vocabulary, **not** a promise that every operation is deployed or routable on every chain. Integrators must check each layer independently.
+
+| Capability | Status in this release candidate | Boundary |
+|---|---|---|
+| Parse, validate, normalize and hash bag.json v1 | Supported for all four v1 EVM chain slugs above | Offline and deterministic; does not prove token authenticity, liquidity or execution safety. |
+| Read ERC-20 decimals | Supported through the caller-supplied viem client | Reads the token contract at runtime; the caller chooses and must trust the RPC. |
+| Verify a StrategyRegistry commitment | Built-in deployment for Robinhood Chain; caller-supplied registry for other deployments | Requires an independently expected creator, the correct chain/RPC and a trusted registry address. No registry deployment is implied by the chain being accepted by v1. |
+| Quote and compile a purchase | Supported through a caller-supplied ComposerProvider; the LI.FI adapter is optional | Requires provider/API availability, routable assets, a chain-matched contract allowlist and complete quote outputs. Unroutable or unsafe responses fail closed. |
+| Simulate a compiled purchase | Supported for EVM through the caller-supplied viem-compatible client | Point-in-time eth_call, code, balance and allowance checks; not a guarantee that a later transaction will succeed. Native transaction gas costs must still be available to the wallet. |
+| Sell, rebalance and post-transaction receipt verification | Not yet exposed by this SDK | Do not infer support from corresponding functionality in the BAG web app. These require explicit SDK APIs and separate tests. |
+| Discover all strategies without a BAG-hosted endpoint | Not provided by the core | fetchBag(url) retrieves a URL the caller already knows. Discovery requires an external index/source; a registry hash alone does not provide the full bag.json document. |
+| Solana | Not supported by bag.json v1 | v1's chain table, addresses and execution code are EVM-specific. Solana support needs a separately designed spec/execution adapter, not a silent addition to v1. |
+
+The SDK deliberately has no implicit BAG API dependency. The core can validate a local document, and transport adapters only access sources explicitly supplied by the caller. That is different from decentralized discovery: a portable file and a registry commitment do not by themselves give a new app a way to enumerate strategies or retrieve every document.
+
 ## JSON Schema
 
 The public Draft 7 schema is served at [`https://bagprotocol.com/schemas/bag.v1.json`](https://bagprotocol.com/schemas/bag.v1.json), maintained at `docs/schemas/bag.v1.schema.json`, and included in the npm tarball through the `@bagprotocol/sdk/schema.json` subpath. The copy in `dist/` is generated from that single canonical source during the package build. It supports both a minimal document (`bagJson` + `definition`) and documents with optional BAG-serving fields. Use it for editor autocomplete and early structural feedback; it also covers per-field bounds and formats.
