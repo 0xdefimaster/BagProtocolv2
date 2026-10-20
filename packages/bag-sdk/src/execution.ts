@@ -163,11 +163,14 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
   const legs: QuotedLeg[] = plan.legs.map((l, i) => {
     const got = r.legs[i];
     if (got.token === null) fail(`leg ${i} has no output token identity.`);
-    if (normalizeAddress(got.token) !== l.token) fail(`leg ${i} delivers ${got.token}, planned ${l.token}.`);
+    const outputToken = got.token as string;
+    if (normalizeAddress(outputToken) !== l.token) fail(`leg ${i} delivers ${outputToken}, planned ${l.token}.`);
     for (const v of [got.expectedOutRaw, got.minOutRaw]) if (v !== null && !UINT_RE.test(v)) fail(`leg ${i} has a malformed amount.`);
-    if (got.minOutRaw === null || BigInt(got.minOutRaw) === BigInt(0)) fail(`leg ${i} has no positive on-chain minimum output; refusing an unbounded swap.`);
-    if (got.expectedOutRaw !== null && BigInt(got.minOutRaw) > BigInt(got.expectedOutRaw)) fail(`leg ${i} minimum output is above its expected output.`);
-    return { token: l.token, targetInputRaw: l.targetInputRaw, expectedOutRaw: got.expectedOutRaw, minOutRaw: got.minOutRaw };
+    if (got.minOutRaw === null) fail(`leg ${i} has no positive on-chain minimum output; refusing an unbounded swap.`);
+    const minOutRaw = got.minOutRaw as string;
+    if (BigInt(minOutRaw) === BigInt(0)) fail(`leg ${i} has no positive on-chain minimum output; refusing an unbounded swap.`);
+    if (got.expectedOutRaw !== null && BigInt(minOutRaw) > BigInt(got.expectedOutRaw)) fail(`leg ${i} minimum output is above its expected output.`);
+    return { token: l.token, targetInputRaw: l.targetInputRaw, expectedOutRaw: got.expectedOutRaw, minOutRaw };
   });
 
   if (r.priceImpactBps !== null && r.priceImpactBps > plan.maxPriceImpactBps) {
