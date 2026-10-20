@@ -4,9 +4,10 @@ A BAG strategy as a portable object. This package reads, checks, canonicalizes
 and hashes a **bag.json v1** document, and verifies it against StrategyRegistry.
 It needs no BAG frontend, server or database.
 
-- Dependencies: `viem` (peer) only. No framework, database, environment
-  variable, endpoint or key in the source. A boundary test
-  (`test/boundary.test.ts`) enforces this.
+- Required peer dependency: `viem` (`^2.0.0`). Optional peer dependency:
+  `@lifi/composer-sdk` (`>=0.11.0 <0.12.0`) for the LI.FI adapter. No framework,
+  database, environment variable, endpoint or key is required. A boundary test
+  (`test/boundary.test.ts`) enforces the core boundary.
 - **Strategy core ≠ transport.** The core (`@bag-protocol/sdk`) is
   parse → validate → normalize → hash → verify and never fetches anything.
   Getting the bytes is an adapter's job:
@@ -15,7 +16,7 @@ It needs no BAG frontend, server or database.
   - `@bag-protocol/sdk/lifi`: `lifiComposer({ apiKey, baseUrl })`, a routing provider for quote/compile (optional peer `@lifi/composer-sdk` `>=0.11.0 <0.12.0`, tested with 0.11.3: `COMPOSER_SDK_COMPAT`).
   - Other sources (a local file, IPFS, wallet storage, a registry `uri`) end in the same `parseBag(text)`.
 - Network access only through what you pass in (a `fetch`, a viem client).
-- Status: in-repo package (`private`), not published to npm yet.
+- Status: configured for public npm distribution under the MIT license; not yet published.
 
 ```ts
 import { parseBag, validateBag, normalizeBag, hashBag, resolveV1Rules, verifyRegistryCommitment } from '@bag-protocol/sdk';
@@ -376,7 +377,7 @@ npm pack --dry-run  # what a tarball would contain: dist/, README.md, package.js
 npm run smoke:consumer  # packs, installs the tarball in a fresh temp project, imports every entry point, typechecks a TS consumer
 ```
 
-No build dependency beyond TypeScript. The package stays `private` and `UNLICENSED`: it is not published.
+No build dependency beyond TypeScript. The package is configured for public npm distribution under the MIT license; it has not yet been published to npm.
 
 ## v1 freeze
 
