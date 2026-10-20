@@ -1,6 +1,6 @@
 {
   "name": "@bagprotocol/sdk",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "bag.json v1: parse, validate, normalize, hash and verify BAG strategies, and compile unsigned purchases, without the BAG app.",
   "type": "module",
   "main": "./dist/index.js",
