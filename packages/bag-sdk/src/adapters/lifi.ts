@@ -107,6 +107,28 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
       if (!result.transactionRequest) throw new Error('LI.FI Composer reported success without a transaction.');
 
       const outputs = result.outputs;
+      if (!outputs || typeof outputs !== 'object' || Array.isArray(outputs)) {
+        throw new Error('LI.FI Composer success response has no valid outputs object.');
+      }
+      const expectedOutputKeys = req.legs.map((_, i) => `${legNode(i)}.amountOut`).sort();
+      const actualOutputKeys = Object.keys(outputs).sort();
+      const missingOutputKeys = expectedOutputKeys.filter((key) => !actualOutputKeys.includes(key));
+      const unexpectedOutputKeys = actualOutputKeys.filter((key) => !expectedOutputKeys.includes(key));
+      if (missingOutputKeys.length > 0 || unexpectedOutputKeys.length > 0) {
+        throw new Error(
+          `LI.FI Composer output ports do not match the purchase plan (missing: ${missingOutputKeys.join(', ') || 'none'}; unexpected: ${unexpectedOutputKeys.join(', ') || 'none'}).`,
+        );
+      }
+
+      const impact = result.priceImpact;
+      const priceImpactBps =
+        impact &&
+        Array.isArray(impact.unpricedInputs) && impact.unpricedInputs.length === 0 &&
+        Array.isArray(impact.unpricedOutputs) && impact.unpricedOutputs.length === 0 &&
+        Number.isSafeInteger(impact.impactBps)
+          ? impact.impactBps
+          : null;
+
       return {
         transaction: {
           to: result.transactionRequest.to,
@@ -117,18 +139,18 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
         executor: result.userProxy ?? null,
         approvals: (result.approvals ?? []).map((a) => ({ token: a.token, spender: a.spender, amountRaw: String(a.amount) })),
         legs: req.legs.map((_, i) => {
-          // Composer keys outputs by output port (`swap_<i>.amountOut`). A missing minimum means no floor is reported;
-          // the core execution boundary rejects that response instead of returning an apparently safe transaction.
-          const o = outputs[`${legNode(i)}.amountOut`];
+          const outputKey = `${legNode(i)}.amountOut`;
+          const o = outputs[outputKey];
           return {
             token: o && o.resource.kind === 'erc20' ? o.resource.token : null,
+            chainId: o?.resource?.chainId ?? null,
             recipient: o && typeof o.owner === 'string' ? o.owner : null,
             deliveryWhen: o?.delivery?.when === 'now' ? 'now' : o?.delivery?.when === 'later' ? 'later' : null,
             expectedOutRaw: o?.amount.estimate ? o.amount.estimate.value.toString() : null,
             minOutRaw: o?.amount.minimum ? o.amount.minimum.value.toString() : null,
           };
         }),
-        priceImpactBps: result.priceImpact?.impactBps ?? null,
+        priceImpactBps,
         gasLimit: result.transactionRequest.gasLimit ?? null,
         fees: (result.fees ?? []).map((f) => ({ token: f.token, recipient: f.recipient, bps: f.bps, amountRaw: f.amount ?? null })),
       };
