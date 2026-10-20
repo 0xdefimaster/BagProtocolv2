@@ -151,10 +151,10 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
   if (!Array.isArray(r.legs)) fail('provider returned a malformed output-legs list.');
   if (!Array.isArray(r.fees)) fail('provider returned a malformed fees list.');
 
-  const priceImpactBps = r.priceImpactBps;
-  if (priceImpactBps === null || !Number.isSafeInteger(priceImpactBps) || priceImpactBps < 0) {
-    fail('price impact is missing or malformed; refusing to compile an unpriced purchase.');
-  }
+  const priceImpactBps =
+    typeof r.priceImpactBps === 'number' && Number.isSafeInteger(r.priceImpactBps) && r.priceImpactBps >= 0
+      ? r.priceImpactBps
+      : fail('price impact is missing or malformed; refusing to compile an unpriced purchase.');
   if (r.executor !== null && (typeof r.executor !== 'string' || !ADDRESS_RE.test(r.executor))) {
     fail('malformed executor address.');
   }
@@ -219,21 +219,21 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
 
     // Keep the validated values in locals so TypeScript's narrowing matches
     // the runtime checks on untrusted provider-owned object properties.
-    const outputToken = got.token;
-    if (typeof outputToken !== 'string' || !ADDRESS_RE.test(outputToken)) {
-      fail(`leg ${i} output token was not reported as a valid address.`);
-    }
+    const outputToken =
+      typeof got.token === 'string' && ADDRESS_RE.test(got.token)
+        ? got.token
+        : fail(`leg ${i} output token was not reported as a valid address.`);
     if (normalizeAddress(outputToken) !== l.token) {
       fail(`leg ${i} delivers ${outputToken}, planned ${l.token}.`);
     }
-    if (!Number.isSafeInteger(got.chainId) || got.chainId !== plan.chainId) {
+    if (typeof got.chainId !== 'number' || !Number.isSafeInteger(got.chainId) || got.chainId !== plan.chainId) {
       fail(`leg ${i} output chain ${got.chainId ?? 'missing'} does not match plan chain ${plan.chainId}.`);
     }
 
-    const recipient = got.recipient;
-    if (typeof recipient !== 'string' || !ADDRESS_RE.test(recipient)) {
-      fail(`leg ${i} output recipient is missing or malformed.`);
-    }
+    const recipient =
+      typeof got.recipient === 'string' && ADDRESS_RE.test(got.recipient)
+        ? got.recipient
+        : fail(`leg ${i} output recipient is missing or malformed.`);
     if (normalizeAddress(recipient) !== plan.signer) {
       fail(`leg ${i} output recipient ${recipient} does not match requested signer ${plan.signer}.`);
     }
@@ -241,14 +241,16 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
       fail(`leg ${i} output is not reported as delivered now.`);
     }
 
-    const expectedOutRaw = got.expectedOutRaw;
-    if (expectedOutRaw !== null && (typeof expectedOutRaw !== 'string' || !UINT_RE.test(expectedOutRaw))) {
-      fail(`leg ${i} has a malformed expected output amount.`);
-    }
-    const minOutRaw = got.minOutRaw;
-    if (typeof minOutRaw !== 'string' || !UINT_RE.test(minOutRaw)) {
-      fail(`leg ${i} has no valid on-chain minimum output; refusing to return an unprotected transaction.`);
-    }
+    const expectedOutRaw =
+      got.expectedOutRaw === null
+        ? null
+        : typeof got.expectedOutRaw === 'string' && UINT_RE.test(got.expectedOutRaw)
+          ? got.expectedOutRaw
+          : fail(`leg ${i} has a malformed expected output amount.`);
+    const minOutRaw =
+      typeof got.minOutRaw === 'string' && UINT_RE.test(got.minOutRaw)
+        ? got.minOutRaw
+        : fail(`leg ${i} has no valid on-chain minimum output; refusing to return an unprotected transaction.`);
     const minimum = BigInt(minOutRaw);
     if (minimum <= BigInt(0)) fail(`leg ${i} minimum output must be positive.`);
     if (expectedOutRaw !== null && minimum > BigInt(expectedOutRaw)) {
