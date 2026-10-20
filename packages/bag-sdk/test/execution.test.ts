@@ -173,7 +173,7 @@ describe('compileBag / quoteBag', () => {
       ['odd-length transaction calldata', (r) => ({ ...r, transaction: { ...r.transaction, data: '0x123456789' } })],
       ['malformed executor', (r) => ({ ...r, executor: 'not-an-address' })],
       ['malformed gas limit', (r) => ({ ...r, gasLimit: '-1' })],
-      ['malformed fee', (r) => ({ ...r, fees: [{ token: 'not-an-address', recipient: SIGNER, bps: 1, amountRaw: '1' }] })],
+      ['malformed fee', (r) => ({ ...r, fees: [{ token: 'not-an-address', recipient: SIGNER as Hex, bps: 1, amountRaw: '1' }] })],
       ['malformed tx', (r) => ({ ...r, transaction: { ...r.transaction, to: 'nope' } })],
     ];
     for (const [name, mutate] of bad) {
