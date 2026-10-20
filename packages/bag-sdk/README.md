@@ -418,7 +418,7 @@ A looser value is refused (`LOOSER_THAN_POLICY`). An optional `allowedTokens` re
 **Validation happens on both sides of the provider call:**
 
 - **Before calling the provider:** the SDK validates the strategy and purchase inputs, builds the plan, checks its slippage and price-impact policy, and requires a caller trust policy whose chain matches the plan. The target/spender allowlist contents are also checked for valid addresses.
-- **After the provider responds:** the SDK checks the returned transaction's chain and target, native value, approval token/spender/amount, planned output tokens on every leg, and reported price impact. A target or spender that is not allowlisted is rejected here, before the unsigned transaction is returned to the caller.
+- **After the provider responds:** the SDK validates the runtime response shape, transaction chain/target/calldata encoding/value, approval addresses and amounts, output token identity, a positive on-chain minimum output for every leg, reported non-negative integer price impact, gas limit, and fee metadata. Missing/invalid minimum outputs or missing/malformed price impact fail closed; the provider's success status alone is not enough. Targets and spenders outside the caller's chain-specific allowlists are rejected before an unsigned transaction is returned.
 
 Anything else throws `ProviderResponseError`.
 
