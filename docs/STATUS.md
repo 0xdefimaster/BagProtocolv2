@@ -108,7 +108,7 @@ prove behavior against a local chain, never against Robinhood Chain.
 | `docs/STATUS.md` | CURRENT | This page |
 | `docs/ACCOUNTING_V2_DESIGN.md` | CURRENT | A1–A4 implemented (0048–0051) |
 | `docs/BAG_JSON_V1_DESIGN.md` | CURRENT | bag.json v1, `definitionHash` |
-| `packages/bag-sdk/README.md` | CURRENT | Standalone `@bagprotocol/sdk` v0.2.1 is published on npm. PR #107 prepares v0.2.2 with a public and packaged v1 JSON Schema plus stricter fail-closed validation of unsigned execution results. Hash/normalization semantics stay frozen. Mocked Composer consumer checks are separate from live LI.FI verification |
+| `packages/bag-sdk/README.md` | CURRENT | Standalone `@bagprotocol/sdk` v0.2.1 is published on npm. PR #107 prepares v0.3.0: public and npm-packaged v1 JSON Schema, strict fail-closed output/fee/transaction validation, signer-bound immediate outputs, and contract-code checks in simulation. Hash/normalization semantics stay frozen. Mocked Composer consumer checks are separate from live LI.FI verification |
 | `docs/STRATEGY_API_SEMANTICS.md` | CURRENT | Strategy API, passport, execution receipts |
 | `docs/STRATEGY_REGISTRY_DESIGN.md` | CURRENT | Contract + verifier + registration flow; not deployed |
 | `docs/MCP.md` | CURRENT | Read-only MCP server |
