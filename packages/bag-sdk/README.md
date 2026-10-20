@@ -1,4 +1,4 @@
-# @bag-protocol/sdk — bag.json v1
+# @bagprotocol/sdk — bag.json v1
 
 A BAG strategy as a portable object. This package reads, checks, canonicalizes
 and hashes a **bag.json v1** document, and verifies it against StrategyRegistry.
@@ -8,19 +8,19 @@ It needs no BAG frontend, server or database.
   `@lifi/composer-sdk` (`>=0.11.0 <0.12.0`) for the LI.FI adapter. No framework,
   database, environment variable, endpoint or key is required. A boundary test
   (`test/boundary.test.ts`) enforces the core boundary.
-- **Strategy core ≠ transport.** The core (`@bag-protocol/sdk`) is
+- **Strategy core ≠ transport.** The core (`@bagprotocol/sdk`) is
   parse → validate → normalize → hash → verify and never fetches anything.
   Getting the bytes is an adapter's job:
-  - `@bag-protocol/sdk/http`: `fetchBag(url, { fetch })`.
-  - `@bag-protocol/sdk/evm`: `readTokenDecimals(definition, clientFor)`.
-  - `@bag-protocol/sdk/lifi`: `lifiComposer({ apiKey, baseUrl })`, a routing provider for quote/compile (optional peer `@lifi/composer-sdk` `>=0.11.0 <0.12.0`, tested with 0.11.3: `COMPOSER_SDK_COMPAT`).
+  - `@bagprotocol/sdk/http`: `fetchBag(url, { fetch })`.
+  - `@bagprotocol/sdk/evm`: `readTokenDecimals(definition, clientFor)`.
+  - `@bagprotocol/sdk/lifi`: `lifiComposer({ apiKey, baseUrl })`, a routing provider for quote/compile (optional peer `@lifi/composer-sdk` `>=0.11.0 <0.12.0`, tested with 0.11.3: `COMPOSER_SDK_COMPAT`).
   - Other sources (a local file, IPFS, wallet storage, a registry `uri`) end in the same `parseBag(text)`.
 - Network access only through what you pass in (a `fetch`, a viem client).
 - Status: configured for public npm distribution under the MIT license; not yet published.
 
 ```ts
-import { parseBag, validateBag, normalizeBag, hashBag, resolveV1Rules, verifyRegistryCommitment } from '@bag-protocol/sdk';
-import { fetchBag } from '@bag-protocol/sdk/http';   // optional transport adapter
+import { parseBag, validateBag, normalizeBag, hashBag, resolveV1Rules, verifyRegistryCommitment } from '@bagprotocol/sdk';
+import { fetchBag } from '@bagprotocol/sdk/http';   // optional transport adapter
 
 const parsed = parseBag(fileText);            // or: await fetchBag(url)
 if (!parsed.ok) throw new Error(parsed.issues.map((i) => `${i.code} ${i.path}`).join('\n'));
@@ -267,8 +267,8 @@ the URL could not be reached; nothing was checked). The RPC URL is never printed
 ## Execution: quote, simulate, compile
 
 ```ts
-import { compileBag, simulateBag } from '@bag-protocol/sdk';
-import { lifiComposer } from '@bag-protocol/sdk/lifi';
+import { compileBag, simulateBag } from '@bagprotocol/sdk';
+import { lifiComposer } from '@bagprotocol/sdk/lifi';
 
 const provider = lifiComposer({ apiKey: process.env.LIFI_API_KEY!, baseUrl: 'https://composer.li.quest' });  // your own key
 const trust = {
