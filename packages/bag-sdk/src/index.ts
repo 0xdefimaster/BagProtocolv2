@@ -40,7 +40,10 @@ export {
   verifyRegistryCommitment,
   type ContractReader,
   type RegistryRecord,
+  type RegistryPreflightCheck,
+  type RegistryPreflightCheckName,
   type RegistryVerification,
+  type RegistryVerificationClient,
   type StrategyRegistryDeployment,
 } from './registry';
 export {
