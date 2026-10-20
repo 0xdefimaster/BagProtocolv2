@@ -23,6 +23,7 @@ function chain(o: { chainId?: number; hash?: string; down?: boolean } = {}) {
       if (o.down) throw new Error('HTTP request failed.');
       return o.chainId ?? 4663;
     },
+    getCode: async () => '0x60006000' as `0x${string}`,
     readContract: async ({ address, functionName, args }: { address: string; functionName: string; args?: readonly unknown[] }) => {
       reads.push(address.toLowerCase());
       if (functionName === 'strategyOf') {
