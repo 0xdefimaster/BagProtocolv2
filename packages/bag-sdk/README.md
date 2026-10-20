@@ -11,7 +11,7 @@ It needs no BAG frontend, server or database.
 - **Strategy core ≠ transport.** The core (`@bagprotocol/sdk`) is
   parse → validate → normalize → hash → verify and never fetches anything.
   Getting the bytes is an adapter's job:
-  - `@bagprotocol/sdk/http`: `fetchBag(url, { fetch })`.
+  - `@bagprotocol/sdk/http`: `fetchBag(url, { fetch })`. It enforces a 1,000,000-byte UTF-8 limit while streaming and throws typed, URL-safe `BagFetchError`s (`NETWORK_ERROR`, `HTTP_STATUS`, `BODY_TOO_LARGE`, `INVALID_UTF8`).
   - `@bagprotocol/sdk/evm`: `readTokenDecimals(definition, clientFor)`.
   - `@bagprotocol/sdk/lifi`: `lifiComposer({ apiKey, baseUrl })`, a routing provider for quote/compile (optional peer `@lifi/composer-sdk` `>=0.11.0 <0.12.0`, tested with 0.11.3: `COMPOSER_SDK_COMPAT`).
   - Other sources (a local file, IPFS, wallet storage, a registry `uri`) end in the same `parseBag(text)`.
@@ -365,12 +365,15 @@ The definition states what the creator allows. An executor may enforce a rule **
 
 **`creator` is a verification input, not an attested field from the JSON.** The
 creator is not in `definitionHash`. `verifyRegistryCommitment` takes the creator
-*you expect* and does the following:
+*you expect* and a caller-owned client. Before it reads any registry entry, it:
 
-1. Derive the strategy id from it.
-2. Read the registry.
-3. Require that the entry was registered by that creator.
-4. Require that `definitionHashOf(id, ref.version)` equals the hash recomputed from `definition`.
+1. Derives the strategy id from the expected creator.
+2. Checks that the client's RPC chain ID equals the chain declared by `definition.chain`.
+3. Checks that the supplied registry address contains contract bytecode on that chain.
+4. Reads the registry entry and requires that it was registered by that creator.
+5. Requires that `definitionHashOf(id, ref.version)` equals the hash recomputed from `definition`.
+
+The result includes `preflightChecks` for the RPC-chain and contract-code checks. An offline draft (without `ref`) is still hashable, but cannot be registry-verified. Bytecode presence is only a deployment check, not an audit of the registry implementation: for a caller-supplied address, the caller must independently trust that it is the intended StrategyRegistry.
 
 `commitments.registry` in a served bag.json, including its `creator`, and the
 stated `definitionHash` are never used as authority. If you copy the creator
