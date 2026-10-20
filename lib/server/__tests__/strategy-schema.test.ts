@@ -6,7 +6,7 @@ import { RebalanceFrequency, STRATEGY_TYPES, SUPPORTED_CHAINS, UNROUTABLE_POLICI
 // (An exhaustive Record makes the compiler list every RebalanceFrequency.)
 const FREQUENCIES: Record<RebalanceFrequency, true> = { MANUAL: true, DAILY: true, WEEKLY: true, MONTHLY: true, THRESHOLD_ONLY: true };
 const d = bagSchema.definitions;
-const rules = d.definition.properties.rules.properties;
+const rules = d.rules.properties;
 const sorted = (xs: readonly (string | null)[]) => [...xs].sort((a, b) => String(a).localeCompare(String(b)));
 
 describe('bag.json v1 schema ↔ TypeScript', () => {
@@ -19,7 +19,7 @@ describe('bag.json v1 schema ↔ TypeScript', () => {
 
   it('every definition field is required (null, never absent, means "not set")', () => {
     expect(sorted(d.definition.required)).toEqual(sorted(Object.keys(d.definition.properties)));
-    expect(sorted(d.definition.properties.rules.required)).toEqual(sorted(Object.keys(rules)));
+    expect(sorted(d.rules.required)).toEqual(sorted(Object.keys(rules)));
     expect(sorted(d.asset.required)).toEqual(sorted(Object.keys(d.asset.properties)));
   });
 });
