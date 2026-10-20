@@ -220,6 +220,21 @@ The public Draft 7 schema is served at [`https://bagprotocol.com/schemas/bag.v1.
 
 The schema cannot express every v1 rule. It does not prove that weights sum to exactly 10000, that every asset uses the definition chain, that a stated hash matches the definition, or that metadata names only defined assets. It also cannot detect duplicate JSON keys or distinguish the lexical number forms `1` and `1.0` once JSON has been parsed. For executable inputs, pass the original text to `parseBag(text)`, then run `validateBag(parsed.bag)`; do not rely on JSON Schema alone.
 
+For VS Code, associate your `*.bag.json` files with the hosted schema in workspace settings:
+
+```json
+{
+  "json.schemas": [
+    {
+      "fileMatch": ["*.bag.json"],
+      "url": "https://bagprotocol.com/schemas/bag.v1.json"
+    }
+  ]
+}
+```
+
+This enables structural validation and autocomplete while editing. It does not replace the SDK validation pipeline before execution.
+
 ## Strict parsing
 
 `parseBag` rejects each of these instead of guessing:
