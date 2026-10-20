@@ -58,7 +58,7 @@ function fakeProvider(override: (r: ComposerCompileResult, q: ComposerCompileReq
           transaction: { to: ROUTER, data: '0x12345678abcdef', value: '0', chainId: q.chainId },
           executor: '0x' + '8'.repeat(40),
           approvals: [{ token: q.inputToken, spender: SPENDER, amountRaw: String(q.amountRaw) }],
-          legs: q.legs.map((l) => ({ token: l.token, expectedOutRaw: '1000', minOutRaw: '990' })),
+          legs: q.legs.map((l) => ({ token: l.token, recipient: q.signer, deliveryWhen: 'now', expectedOutRaw: '1000', minOutRaw: '990' })),
           priceImpactBps: 12,
           gasLimit: '400000',
           fees: [],
@@ -160,6 +160,9 @@ describe('compileBag / quoteBag', () => {
       ['negative price impact', (r) => ({ ...r, priceImpactBps: -1 })],
       ['fractional price impact', (r) => ({ ...r, priceImpactBps: 1.5 })],
       ['missing output token', (r) => ({ ...r, legs: [{ ...r.legs[0], token: null }, r.legs[1]] })],
+      ['missing output recipient', (r) => ({ ...r, legs: [{ ...r.legs[0], recipient: null }, r.legs[1]] })],
+      ['wrong output recipient', (r) => ({ ...r, legs: [{ ...r.legs[0], recipient: '0x' + '9'.repeat(40) }, r.legs[1]] })],
+      ['delayed output delivery', (r) => ({ ...r, legs: [{ ...r.legs[0], deliveryWhen: 'later' }, r.legs[1]] })],
       ['missing output minimum', (r) => ({ ...r, legs: [{ ...r.legs[0], minOutRaw: null }, r.legs[1]] })],
       ['zero output minimum', (r) => ({ ...r, legs: [{ ...r.legs[0], minOutRaw: '0' }, r.legs[1]] })],
       ['minimum above expected output', (r) => ({ ...r, legs: [{ ...r.legs[0], minOutRaw: '1001' }, r.legs[1]] })],
@@ -251,10 +254,15 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
 });
 
 describe('simulateBag', () => {
-  const client = (o: { chainId?: number; balance?: bigint; allowance?: bigint; revert?: string } = {}): SimulationClient & { calls: number } => {
+  const client = (o: { chainId?: number; balance?: bigint; allowance?: bigint; revert?: string; targetNoCode?: boolean; spenderNoCode?: boolean } = {}): SimulationClient & { calls: number } => {
     const c = {
       calls: 0,
       getChainId: async () => o.chainId ?? 4663,
+      getCode: async ({ address }: { address: `0x${string}` }) => {
+        if (o.targetNoCode && address.toLowerCase() === ROUTER.toLowerCase()) return '0x' as `0x${string}`;
+        if (o.spenderNoCode && address.toLowerCase() === SPENDER.toLowerCase()) return '0x' as `0x${string}`;
+        return '0x60006000' as `0x${string}`;
+      },
       readContract: async ({ functionName }: { functionName: string }) => (functionName === 'balanceOf' ? o.balance ?? BigInt(10_000_000) : o.allowance ?? BigInt(10_000_000)),
       call: async () => {
         c.calls++;
