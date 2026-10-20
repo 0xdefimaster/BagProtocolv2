@@ -63,15 +63,16 @@ export interface QuotedLeg {
   targetInputRaw: bigint;
   /** Simulated output: an estimate, not a guarantee. */
   expectedOutRaw: string | null;
-  /** The provider's on-chain minimum at the swap: the transaction reverts below it. */
-  minOutRaw: string | null;
+  /** Required on-chain minimum output. A missing or zero floor is rejected before a transaction is returned. */
+  minOutRaw: string;
 }
 
 export interface PurchaseQuote {
   plan: PurchasePlan;
   provider: string;
   legs: QuotedLeg[];
-  priceImpactBps: number | null;
+  /** Required, validated non-negative integer bps reported by the routing provider. */
+  priceImpactBps: number;
   fees: ComposerCompileResult['fees'];
   gasLimit: string | null;
 }
@@ -137,43 +138,125 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
   const fail = (m: string): never => {
     throw new ProviderResponseError(`${provider}: ${m}`);
   };
+
+  // ComposerProvider is a runtime trust boundary. TypeScript types do not validate
+  // an HTTP response, third-party adapter, malformed fixture or compromised provider.
+  if (!r || typeof r !== 'object') fail('provider returned a non-object response.');
+  if (!r.transaction || typeof r.transaction !== 'object') fail('provider returned no transaction object.');
+  if (!Array.isArray(r.approvals)) fail('provider returned a malformed approvals list.');
+  if (!Array.isArray(r.legs)) fail('provider returned a malformed output-legs list.');
+  if (!Array.isArray(r.fees)) fail('provider returned a malformed fees list.');
+
+  if (r.priceImpactBps === null || !Number.isSafeInteger(r.priceImpactBps) || r.priceImpactBps < 0) {
+    fail('price impact is missing or malformed; refusing to compile an unpriced purchase.');
+  }
+  if (r.executor !== null && (typeof r.executor !== 'string' || !ADDRESS_RE.test(r.executor))) {
+    fail('malformed executor address.');
+  }
+  if (r.gasLimit !== null && (typeof r.gasLimit !== 'string' || !VALUE_RE.test(r.gasLimit) || BigInt(r.gasLimit) <= BigInt(0))) {
+    fail('malformed gas limit.');
+  }
+
   const tx = r.transaction;
-  if (!ADDRESS_RE.test(tx.to) || !HEX_RE.test(tx.data) || tx.data.length < 10 || !VALUE_RE.test(tx.value)) fail('malformed transaction.');
-  if (tx.chainId === null || tx.chainId !== plan.chainId) fail(`transaction chain ${tx.chainId ?? 'missing'} does not match plan chain ${plan.chainId}.`);
-  if (!trusted.targets.has(tx.to.toLowerCase())) fail(`transaction target ${tx.to} is not in the caller's trusted target allowlist.`);
+  if (
+    typeof tx.to !== 'string' || !ADDRESS_RE.test(tx.to) ||
+    typeof tx.data !== 'string' || !HEX_RE.test(tx.data) || tx.data.length < 10 || tx.data.length % 2 !== 0 ||
+    typeof tx.value !== 'string' || !VALUE_RE.test(tx.value)
+  ) fail('malformed transaction.');
+  if (!Number.isSafeInteger(tx.chainId) || tx.chainId !== plan.chainId) {
+    fail(`transaction chain ${tx.chainId ?? 'missing'} does not match plan chain ${plan.chainId}.`);
+  }
+  if (!trusted.targets.has(tx.to.toLowerCase())) {
+    fail(`transaction target ${tx.to} is not in the caller's trusted target allowlist.`);
+  }
+
   const value = BigInt(tx.value);
   if (plan.inputKind === 'native') {
-    // The purchase's ETH travels as msg.value: exactly the swapped amount, never more (it would be spent or swept
-    // elsewhere), never less (the program would revert or under-buy). Nothing to approve.
-    if (value !== plan.swapAmountRaw) fail(`a native purchase must send exactly ${plan.swapAmountRaw} wei, the transaction sends ${value}.`);
+    // Native value must be exact; no surprise value and no approval request.
+    if (value !== plan.swapAmountRaw) {
+      fail(`a native purchase must send exactly ${plan.swapAmountRaw} wei, the transaction sends ${value}.`);
+    }
     if (r.approvals.length > 0) fail('a native purchase needs no approval, the provider requested one.');
   } else if (value !== BigInt(0)) {
     fail('an ERC-20 purchase must not send native value.');
   }
 
-  const approvals = r.approvals.map((a) => {
-    if (normalizeAddress(a.token) !== plan.inputToken) fail(`approval requested for ${a.token}, not the input token.`);
-    if (!ADDRESS_RE.test(a.spender) || !UINT_RE.test(a.amountRaw)) fail('malformed approval.');
-    if (!trusted.spenders.has(a.spender.toLowerCase())) fail(`approval spender ${a.spender} is not in the caller's trusted spender allowlist.`);
-    if (BigInt(a.amountRaw) > plan.swapAmountRaw) fail('approval above the swapped amount.');
-    return { token: plan.inputToken as Hex, spender: a.spender as Hex, amountRaw: BigInt(a.amountRaw) };
+  const seenSpenders = new Set<string>();
+  const approvals = r.approvals.map((a, i) => {
+    if (
+      !a || typeof a !== 'object' ||
+      typeof a.token !== 'string' || !ADDRESS_RE.test(a.token) ||
+      typeof a.spender !== 'string' || !ADDRESS_RE.test(a.spender) ||
+      typeof a.amountRaw !== 'string' || !UINT_RE.test(a.amountRaw)
+    ) fail(`malformed approval at index ${i}.`);
+    if (normalizeAddress(a.token) !== plan.inputToken) {
+      fail(`approval requested for ${a.token}, not the input token.`);
+    }
+    const spender = a.spender.toLowerCase();
+    if (!trusted.spenders.has(spender)) {
+      fail(`approval spender ${a.spender} is not in the caller's trusted spender allowlist.`);
+    }
+    if (seenSpenders.has(spender)) fail(`duplicate approval spender ${a.spender}.`);
+    seenSpenders.add(spender);
+
+    const amount = BigInt(a.amountRaw);
+    if (amount <= BigInt(0)) fail('approval amount must be positive.');
+    if (amount > plan.swapAmountRaw) fail('approval above the swapped amount.');
+    return { token: plan.inputToken as Hex, spender: a.spender as Hex, amountRaw: amount };
   });
 
-  if (r.legs.length !== plan.legs.length) fail(`returned ${r.legs.length} legs, planned ${plan.legs.length}.`);
+  if (r.legs.length !== plan.legs.length) {
+    fail(`returned ${r.legs.length} legs, planned ${plan.legs.length}.`);
+  }
   const legs: QuotedLeg[] = plan.legs.map((l, i) => {
     const got = r.legs[i];
-    if (got.token !== null && normalizeAddress(got.token) !== l.token) fail(`leg ${i} delivers ${got.token}, planned ${l.token}.`);
-    for (const v of [got.expectedOutRaw, got.minOutRaw]) if (v !== null && !UINT_RE.test(v)) fail(`leg ${i} has a malformed amount.`);
-    if (got.expectedOutRaw !== null && got.minOutRaw !== null && BigInt(got.minOutRaw) > BigInt(got.expectedOutRaw)) fail(`leg ${i} minimum output is above its expected output.`);
-    return { token: l.token, targetInputRaw: l.targetInputRaw, expectedOutRaw: got.expectedOutRaw, minOutRaw: got.minOutRaw };
+    if (!got || typeof got !== 'object') fail(`leg ${i} is missing or malformed.`);
+    if (typeof got.token !== 'string' || !ADDRESS_RE.test(got.token)) {
+      fail(`leg ${i} output token was not reported as a valid address.`);
+    }
+    if (normalizeAddress(got.token) !== l.token) {
+      fail(`leg ${i} delivers ${got.token}, planned ${l.token}.`);
+    }
+    for (const amount of [got.expectedOutRaw, got.minOutRaw]) {
+      if (amount !== null && (typeof amount !== 'string' || !UINT_RE.test(amount))) {
+        fail(`leg ${i} has a malformed amount.`);
+      }
+    }
+    // An unsigned transaction without a verifiable positive on-chain minOut is
+    // not safe to surface as a compiled purchase, even if the provider says success.
+    if (got.minOutRaw === null) {
+      fail(`leg ${i} has no reported on-chain minimum output; refusing to return an unprotected transaction.`);
+    }
+    const minimum = BigInt(got.minOutRaw);
+    if (minimum <= BigInt(0)) fail(`leg ${i} minimum output must be positive.`);
+    if (got.expectedOutRaw !== null && minimum > BigInt(got.expectedOutRaw)) {
+      fail(`leg ${i} minimum output is above its expected output.`);
+    }
+    return {
+      token: l.token,
+      targetInputRaw: l.targetInputRaw,
+      expectedOutRaw: got.expectedOutRaw,
+      minOutRaw: got.minOutRaw,
+    };
   });
 
-  if (r.priceImpactBps !== null && r.priceImpactBps > plan.maxPriceImpactBps) {
+  if (r.priceImpactBps > plan.maxPriceImpactBps) {
     fail(`price impact ${r.priceImpactBps} bps is above the limit ${plan.maxPriceImpactBps} bps.`);
   }
 
+  const fees = r.fees.map((fee, i) => {
+    if (
+      !fee || typeof fee !== 'object' ||
+      typeof fee.token !== 'string' || !ADDRESS_RE.test(fee.token) ||
+      typeof fee.recipient !== 'string' || !ADDRESS_RE.test(fee.recipient) ||
+      !Number.isSafeInteger(fee.bps) || fee.bps < 0 || fee.bps > 10000 ||
+      (fee.amountRaw !== null && (typeof fee.amountRaw !== 'string' || !UINT_RE.test(fee.amountRaw)))
+    ) fail(`malformed fee entry at index ${i}.`);
+    return fee;
+  });
+
   return {
-    quote: { plan, provider, legs, priceImpactBps: r.priceImpactBps, fees: r.fees, gasLimit: r.gasLimit },
+    quote: { plan, provider, legs, priceImpactBps: r.priceImpactBps, fees, gasLimit: r.gasLimit },
     transaction: { to: tx.to as Hex, data: tx.data as Hex, value, chainId: plan.chainId },
     approvals,
     executor: r.executor,
