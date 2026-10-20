@@ -17,7 +17,7 @@ import {
   type ComposerProvider,
   type SimulationClient,
 } from '../src';
-import { lifiComposer } from '../src/adapters/lifi';
+import { lifiComposer, LifiComposerCapabilityError } from '../src/adapters/lifi';
 import { externalBag } from './helpers';
 
 const A = '0xa0000000000000000000000000000000000000aa';
@@ -247,6 +247,23 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     expect(body).toContain('"maxPriceImpactBps":500');
     expect(body.toLowerCase()).toContain(SIGNER);
     expect(JSON.stringify(compose[1].headers)).toContain('test-key');
+  });
+
+  it('refuses native-asset output legs before making a Composer network call', async () => {
+    const bag = doc((d) => {
+      d.definition.assets[1].address = NATIVE_TOKEN;
+      delete d.metadata;
+    });
+    const fetchImpl = composeFetch(compileData);
+
+    await expect(
+      compileBag(bag, req(), {
+        provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }),
+        trust: TRUST,
+      }),
+    ).rejects.toMatchObject({ name: 'LifiComposerCapabilityError', code: 'UNSUPPORTED_NATIVE_OUTPUT' });
+
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('a price impact above the limit from the real adapter is refused', async () => {
