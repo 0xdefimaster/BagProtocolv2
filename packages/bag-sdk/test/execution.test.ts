@@ -266,6 +266,23 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it('accepts Composer fee recipient labels and still rejects unknown destinations', async () => {
+    for (const recipient of ['lifi', 'integrator'] as const) {
+      const provider = fakeProvider((r) => ({
+        ...r,
+        fees: [{ token: USDG, recipient, bps: 25, amountRaw: '2500' }],
+      }));
+      const compiled = await compileBag(doc(), req(), { provider, trust: TRUST });
+      expect(compiled.quote.fees[0].recipient).toBe(recipient);
+    }
+
+    const provider = fakeProvider((r) => ({
+      ...r,
+      fees: [{ token: USDG, recipient: 'unknown-destination' as never, bps: 25, amountRaw: '2500' }],
+    }));
+    await expect(compileBag(doc(), req(), { provider, trust: TRUST })).rejects.toBeInstanceOf(ProviderResponseError);
+  });
+
   it('a price impact above the limit from the real adapter is refused', async () => {
     const fetchImpl = composeFetch({ ...compileData, priceImpact: { ...compileData.priceImpact, impactBps: 735 } });
     await expect(compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST })).rejects.toThrow(/735 bps is above the limit 500/);
