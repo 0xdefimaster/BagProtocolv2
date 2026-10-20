@@ -33,7 +33,7 @@ function bag(weights: number[]): BagDocument {
 function recordingFetch(tokens: string[], bodies: unknown[]) {
   return (async (_url: string, init: RequestInit) => {
     bodies.push(JSON.parse(String(init.body)));
-    const outputs = Object.fromEntries(tokens.map((t, i) => [`swap_${i}.amountOut`, wireOut(1000, 990, t)]));
+    const outputs = Object.fromEntries(tokens.map((t, i) => [`swap_${i}.amountOut`, wireOut(1000, 990, t, 4663, SIGNER)]));
     return composeResponse({ data: { outputs, transactionRequest: { to: ROUTER, chainId: 4663, data: '0xdeadbeef', value: '0' }, userProxy: '0x' + '8'.repeat(40), approvals: [], priceImpact: { inputValueUsd: 10, outputValueUsd: 9.99, impactBps: 10, unpricedInputs: [], unpricedOutputs: [] }, fees: [] } });
   }) as unknown as typeof fetch;
 }
