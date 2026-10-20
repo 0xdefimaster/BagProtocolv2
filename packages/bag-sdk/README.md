@@ -402,7 +402,7 @@ A provider answer that breaks any row is refused with `ProviderResponseError`.
 |---|---|
 | `planPurchase` | Pure plan: exact target allocation (`splitByWeight`), the asset that is the input token is kept (never swapped), whole-bp legs (largest remainder) and the `core.partition` that divides the swap between them, slippage and price-impact limits |
 | `quoteBag` / `compileBag` | Ask the provider for the route and return the quote, or the quote plus the **unsigned** transaction and the approvals it needs |
-| `simulateBag` | Dry run with `eth_call` from the signer on your client: input balance, then approvals, then the call. A point-in-time check, not a guarantee |
+| `simulateBag` | Confirms the client chain, contract code at the transaction target and approval spenders, input balance, allowance status, then performs `eth_call` from the signer. A point-in-time check, not a guarantee |
 
 **Never signs, never sends.**
 - The SDK holds no key. It has no signing or sending call (a boundary test checks this).
