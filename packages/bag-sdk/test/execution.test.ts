@@ -251,6 +251,22 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     const fetchImpl = composeFetch({ ...compileData, priceImpact: { ...compileData.priceImpact, impactBps: 735 } });
     await expect(compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST })).rejects.toThrow(/735 bps is above the limit 500/);
   });
+
+  it('refuses Composer output delivered to another recipient or deferred for later', async () => {
+    const redirected = JSON.parse(JSON.stringify(compileData));
+    redirected.outputs['swap_0.amountOut'].owner = '0x' + '9'.repeat(40);
+    const wrongRecipientFetch = composeFetch(redirected);
+    await expect(
+      compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: wrongRecipientFetch }), trust: TRUST }),
+    ).rejects.toThrow(/output recipient .* does not match requested signer/);
+
+    const deferred = JSON.parse(JSON.stringify(compileData));
+    deferred.outputs['swap_0.amountOut'].delivery.when = 'later';
+    const deferredFetch = composeFetch(deferred);
+    await expect(
+      compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: deferredFetch }), trust: TRUST }),
+    ).rejects.toThrow(/output is not reported as delivered now/);
+  });
 });
 
 describe('simulateBag', () => {
@@ -276,6 +292,17 @@ describe('simulateBag', () => {
 
   it('OK when balance and approvals are in place and the call succeeds', async () => {
     expect(await simulateBag(await compiled(), { client: client() })).toEqual({ status: 'OK' });
+  });
+
+  it('does not report OK if the transaction target or approval spender has no contract code', async () => {
+    expect(await simulateBag(await compiled(), { client: client({ targetNoCode: true }) })).toEqual({
+      status: 'INVALID_TARGET',
+      address: ROUTER,
+    });
+    expect(await simulateBag(await compiled(), { client: client({ spenderNoCode: true }) })).toEqual({
+      status: 'INVALID_APPROVAL_SPENDER',
+      spender: SPENDER,
+    });
   });
 
   it('reports what is missing instead of a meaningless revert', async () => {
