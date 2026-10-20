@@ -36,7 +36,7 @@ export interface ComposerCompileResult {
   /** Contract that executes the program on the signer's behalf (informational). */
   executor: string | null;
   approvals: { token: string; spender: string; amountRaw: string }[];
-  legs: { token: string | null; recipient: string | null; deliveryWhen: 'now' | 'later' | null; expectedOutRaw: string | null; minOutRaw: string | null }[];
+  legs: { token: string | null; chainId: number | null; recipient: string | null; deliveryWhen: 'now' | 'later' | null; expectedOutRaw: string | null; minOutRaw: string | null }[];
   priceImpactBps: number | null;
   gasLimit: string | null;
   fees: { token: string; recipient: string; bps: number; amountRaw: string | null }[];
@@ -225,6 +225,9 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
     }
     if (normalizeAddress(outputToken) !== l.token) {
       fail(`leg ${i} delivers ${outputToken}, planned ${l.token}.`);
+    }
+    if (!Number.isSafeInteger(got.chainId) || got.chainId !== plan.chainId) {
+      fail(`leg ${i} output chain ${got.chainId ?? 'missing'} does not match plan chain ${plan.chainId}.`);
     }
 
     const recipient = got.recipient;
