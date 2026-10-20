@@ -46,7 +46,7 @@ assert.deepEqual(STRATEGY_REGISTRY_DEPLOYMENTS.robinhood, { chainId: 4663, addre
 const ROUTER = '0x' + '7'.repeat(40);
 const stub = { name: 'stub', async compile(q) {
   return { transaction: { to: ROUTER, data: '0x12345678', value: String(q.amountRaw), chainId: q.chainId }, executor: null, approvals: [],
-    legs: q.legs.map((l) => ({ token: l.token, recipient: q.signer, deliveryWhen: 'now', expectedOutRaw: '10', minOutRaw: '9' })), priceImpactBps: 5, gasLimit: null, fees: [] };
+    legs: q.legs.map((l) => ({ token: l.token, chainId: q.chainId, recipient: q.signer, deliveryWhen: 'now', expectedOutRaw: '10', minOutRaw: '9' })), priceImpactBps: 5, gasLimit: null, fees: [] };
 } };
 const amountRaw = 1000000000000000n;
 const compiled = await compileBag(parsed.bag, { inputToken: NATIVE_TOKEN, amountRaw, signer: '0x' + '5'.repeat(40) },
