@@ -16,7 +16,7 @@ It needs no BAG frontend, server or database.
   - `@bagprotocol/sdk/lifi`: `lifiComposer({ apiKey, baseUrl })`, a routing provider for quote/compile (optional peer `@lifi/composer-sdk` `>=0.11.0 <0.12.0`, tested with 0.11.3: `COMPOSER_SDK_COMPAT`).
   - Other sources (a local file, IPFS, wallet storage, a registry `uri`) end in the same `parseBag(text)`.
 - Network access only through what you pass in (a `fetch`, a viem client).
-- Published on npm: [`@bagprotocol/sdk@0.2.1`](https://www.npmjs.com/package/@bagprotocol/sdk). The package is MIT-licensed; `bag.json` v1 semantics are frozen.
+- Published on npm: [`@bagprotocol/sdk@0.2.1`](https://www.npmjs.com/package/@bagprotocol/sdk). This branch prepares v0.3.0; it is not published until its review and release checks are complete. The package is MIT-licensed; `bag.json` v1 semantics are frozen.
 
 ## Quick start
 
@@ -216,7 +216,7 @@ Consequences:
 
 ## JSON Schema
 
-The public Draft 7 schema is served at [`https://bagprotocol.com/schemas/bag.v1.json`](https://bagprotocol.com/schemas/bag.v1.json) and maintained at `docs/schemas/bag.v1.schema.json`. It supports both a minimal document (`bagJson` + `definition`) and documents with optional BAG-serving fields. Use it for editor autocomplete and early structural feedback; it also covers per-field bounds and formats.
+The public Draft 7 schema is served at [`https://bagprotocol.com/schemas/bag.v1.json`](https://bagprotocol.com/schemas/bag.v1.json), maintained at `docs/schemas/bag.v1.schema.json`, and included in the npm tarball through the `@bagprotocol/sdk/schema.json` subpath. The copy in `dist/` is generated from that single canonical source during the package build. It supports both a minimal document (`bagJson` + `definition`) and documents with optional BAG-serving fields. Use it for editor autocomplete and early structural feedback; it also covers per-field bounds and formats.
 
 The schema cannot express every v1 rule. It does not prove that weights sum to exactly 10000, that every asset uses the definition chain, that a stated hash matches the definition, or that metadata names only defined assets. It also cannot detect duplicate JSON keys or distinguish the lexical number forms `1` and `1.0` once JSON has been parsed. For executable inputs, pass the original text to `parseBag(text)`, then run `validateBag(parsed.bag)`; do not rely on JSON Schema alone.
 
@@ -380,7 +380,7 @@ const trust = {
   allowedApprovalSpenders: ['0x…'],   // contracts you have verified for this chain
 };
 const compiled = await compileBag(bag, { inputToken, amountRaw, signer }, { provider, trust });
-const check = await simulateBag(compiled, { client });   // your viem client: OK | NEEDS_APPROVAL | INSUFFICIENT_BALANCE | REVERTED
+const check = await simulateBag(compiled, { client });   // OK | NEEDS_APPROVAL | INSUFFICIENT_BALANCE | INVALID_TARGET | INVALID_APPROVAL_SPENDER | REVERTED
 // your wallet sends compiled.approvals, then signs and sends compiled.transaction
 ```
 
@@ -418,7 +418,7 @@ A looser value is refused (`LOOSER_THAN_POLICY`). An optional `allowedTokens` re
 **Validation happens on both sides of the provider call:**
 
 - **Before calling the provider:** the SDK validates the strategy and purchase inputs, builds the plan, checks its slippage and price-impact policy, and requires a caller trust policy whose chain matches the plan. The target/spender allowlist contents are also checked for valid addresses.
-- **After the provider responds:** the SDK validates the runtime response shape, transaction chain/target/calldata encoding/value, approval addresses and amounts, output token identity, a positive on-chain minimum output for every leg, reported non-negative integer price impact, gas limit, and fee metadata. Missing/invalid minimum outputs or missing/malformed price impact fail closed; the provider's success status alone is not enough. Targets and spenders outside the caller's chain-specific allowlists are rejected before an unsigned transaction is returned.
+- **After the provider responds:** the SDK validates the runtime response shape, transaction chain/target/calldata encoding/value, approval addresses and amounts, output token identity, a positive on-chain minimum output for every leg, immediate delivery to the requested signer, reported non-negative integer price impact, gas limit, and fee metadata. Missing/invalid minimum outputs, outputs directed elsewhere or deferred, and missing/malformed price impact fail closed; the provider's success status alone is not enough. Targets and spenders outside the caller's chain-specific allowlists are rejected before an unsigned transaction is returned.
 
 Anything else throws `ProviderResponseError`.
 
@@ -476,11 +476,11 @@ Nothing was signed or sent.
 cd packages/bag-sdk
 npm run typecheck   # tsc, no output
 npm run build       # dist/: ES2022 ESM .js + .d.ts for ".", "./http", "./evm", "./lifi"
-npm pack --dry-run  # what a tarball would contain: dist/, README.md, package.json
+npm pack --dry-run  # dist/ (including schema/bag.v1.schema.json), README.md, LICENSE, package.json
 npm run smoke:consumer  # packs, installs the tarball in a fresh temp project, imports every entry point, typechecks a TS consumer
 ```
 
-No build dependency beyond TypeScript. `@bagprotocol/sdk@0.2.1` is published publicly on npm under the MIT license.
+No build dependency beyond TypeScript. `@bagprotocol/sdk@0.2.1` is the currently published npm release. This branch prepares `0.3.0` and includes the schema in the package tarball; do not install or advertise `0.3.0` until release checks pass. The package is MIT-licensed.
 
 ## v1 freeze
 
