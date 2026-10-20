@@ -24,11 +24,17 @@ try {
   writeFileSync(
     join(dir, 'consumer.mjs'),
     `import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { parseBag, validateBag, hashBag, compileBag, NATIVE_TOKEN, registryStrategyId, STRATEGY_REGISTRY_DEPLOYMENTS } from '@bagprotocol/sdk';
 import { lifiComposer } from '@bagprotocol/sdk/lifi';
 import { fetchBag } from '@bagprotocol/sdk/http';
 import { readTokenDecimals } from '@bagprotocol/sdk/evm';
+
+const schemaPath = fileURLToPath(import.meta.resolve('@bagprotocol/sdk/schema.json'));
+const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
+assert.equal(schema.$id, 'https://bagprotocol.com/schemas/bag.v1.json');
+assert.deepEqual(schema.required, ['bagJson', 'definition']);
 
 const parsed = parseBag(readFileSync('./feetest.bag.json', 'utf8'));
 assert.ok(parsed.ok, JSON.stringify(parsed.issues));
