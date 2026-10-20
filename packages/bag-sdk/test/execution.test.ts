@@ -429,6 +429,7 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
         transactionRequest: { to: ROUTER, chainId: 4663, data: '0xdeadbeef', value: '1000000000000000' },
         userProxy: '0x' + '8'.repeat(40),
         approvals: [],
+        priceImpact: { inputValueUsd: 10, outputValueUsd: 9.99, impactBps: 10, unpricedInputs: [], unpricedOutputs: [] },
         fees: [],
       },
     });
