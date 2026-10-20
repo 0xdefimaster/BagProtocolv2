@@ -18,8 +18,9 @@ export class BagFetchError extends Error {
   readonly code: BagFetchErrorCode;
   readonly status?: number;
 
-  constructor(code: BagFetchErrorCode, message: string, options: { status?: number; cause?: unknown } = {}) {
-    super(message, options.cause === undefined ? undefined : { cause: options.cause });
+  constructor(code: BagFetchErrorCode, message: string, options: { status?: number } = {}) {
+    // Do not attach raw transport errors as Error.cause: fetch implementations can include secret-bearing URLs.
+    super(message);
     this.name = 'BagFetchError';
     this.code = code;
     if (options.status !== undefined) this.status = options.status;
@@ -66,7 +67,7 @@ async function readBoundedUtf8(response: Response): Promise<string> {
       // Ignore cancellation failures and preserve the primary error.
     }
     if (error instanceof BagFetchError) throw error;
-    throw new BagFetchError('NETWORK_ERROR', 'fetchBag: failed while reading the response body.', { cause: error });
+    throw new BagFetchError('NETWORK_ERROR', 'fetchBag: failed while reading the response body.');
   } finally {
     reader.releaseLock();
   }
@@ -81,7 +82,7 @@ async function readBoundedUtf8(response: Response): Promise<string> {
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch (error) {
-    throw new BagFetchError('INVALID_UTF8', 'fetchBag: response body is not valid UTF-8.', { cause: error });
+    throw new BagFetchError('INVALID_UTF8', 'fetchBag: response body is not valid UTF-8.');
   }
 }
 
@@ -96,12 +97,12 @@ export async function fetchBag(url: string, options: { fetch?: typeof fetch } = 
   try {
     response = await doFetch(url, { headers: { accept: 'application/json' }, redirect: 'follow' });
   } catch (error) {
-    throw new BagFetchError('NETWORK_ERROR', 'fetchBag: request failed.', { cause: error });
+    throw new BagFetchError('NETWORK_ERROR', 'fetchBag: request failed.');
   }
 
   if (!response.ok) {
     await cancelBody(response);
-    throw new BagFetchError('HTTP_STATUS', `fetchBag: server answered HTTP ${response.status}.`, { status: response.status });
+    throw new BagFetchError('HTTP_STATUS', `fetchBag: server answered ${response.status}.`, { status: response.status });
   }
 
   const text = await readBoundedUtf8(response);
