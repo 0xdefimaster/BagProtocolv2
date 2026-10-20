@@ -123,7 +123,7 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
           return {
             token: o && o.resource.kind === 'erc20' ? o.resource.token : null,
             recipient: o && typeof o.owner === 'string' ? o.owner : null,
-            deliveryWhen: o?.delivery?.when === 'now' || o?.delivery?.when === 'later' ? o.delivery.when : null,
+            deliveryWhen: o?.delivery?.when === 'now' ? 'now' : o?.delivery?.when === 'later' ? 'later' : null,
             expectedOutRaw: o?.amount.estimate ? o.amount.estimate.value.toString() : null,
             minOutRaw: o?.amount.minimum ? o.amount.minimum.value.toString() : null,
           };
