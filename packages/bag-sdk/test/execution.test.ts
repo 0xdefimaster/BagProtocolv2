@@ -267,6 +267,22 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
       compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: deferredFetch }), trust: TRUST }),
     ).rejects.toThrow(/output is not reported as delivered now/);
   });
+
+  it('refuses unexpected output ports and impact values for unpriced assets', async () => {
+    const extraPort = JSON.parse(JSON.stringify(compileData));
+    extraPort.outputs['unexpected.amountOut'] = extraPort.outputs['swap_0.amountOut'];
+    const extraFetch = composeFetch(extraPort);
+    await expect(
+      compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: extraFetch }), trust: TRUST }),
+    ).rejects.toThrow(/output ports do not match the purchase plan/);
+
+    const unpriced = JSON.parse(JSON.stringify(compileData));
+    unpriced.priceImpact.unpricedOutputs = [{ chainId: 4663, token: A }];
+    const unpricedFetch = composeFetch(unpriced);
+    await expect(
+      compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: unpricedFetch }), trust: TRUST }),
+    ).rejects.toThrow(/price impact is missing or malformed/);
+  });
 });
 
 describe('simulateBag', () => {
