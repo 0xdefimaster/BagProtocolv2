@@ -7,17 +7,18 @@
 // comes only with a controlled spec version, never as a silent addition.
 // -----------------------------------------------------------------------------
 
+/** bag.json v1's closed chain enum. Exported as a tuple for runtimes (e.g. Zod) to reuse without widening it. */
+export const BAG_V1_CHAIN_SLUGS = Object.freeze(['ethereum', 'base', 'arbitrum', 'robinhood'] as const);
+
+export type BagChain = (typeof BAG_V1_CHAIN_SLUGS)[number];
+
 /** bag.json v1 chain slug → EIP-155 chain id. Closed; frozen with v1. */
 export const BAG_V1_CHAINS = {
   ethereum: 1,
   base: 8453,
   arbitrum: 42161,
   robinhood: 4663,
-} as const;
-
-export type BagChain = keyof typeof BAG_V1_CHAINS;
-
-export const BAG_V1_CHAIN_SLUGS = Object.freeze(Object.keys(BAG_V1_CHAINS) as BagChain[]);
+} as const satisfies Record<BagChain, number>;
 
 export function isBagChain(value: unknown): value is BagChain {
   return typeof value === 'string' && Object.prototype.hasOwnProperty.call(BAG_V1_CHAINS, value);

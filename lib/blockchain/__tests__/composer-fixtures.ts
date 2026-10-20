@@ -3,10 +3,10 @@ import type { Output, Outputs } from '@lifi/compose-spec';
 // Shapes of the Compose API as @lifi/composer-sdk 0.6 reads them, for tests.
 
 /** One `outputs` entry as the SDK returns it (amounts as bigint). `min` absent = no floor enforced. */
-export function out(expected: bigint | number | string | null, min?: bigint | number | string | null, token = '0x0', chainId = 4663): Output {
+export function out(expected: bigint | number | string | null, min?: bigint | number | string | null, token = '0x0', chainId = 4663, owner = '0xSigner'): Output {
   return {
     role: 'terminal',
-    owner: '0xSigner',
+    owner,
     delivery: { when: 'now' },
     resource: { kind: 'erc20', token, chainId },
     amount: {
@@ -17,10 +17,10 @@ export function out(expected: bigint | number | string | null, min?: bigint | nu
 }
 
 /** The same entry as it travels on the wire (amounts as decimal strings), for HTTP-level mocks. */
-export function wireOut(expected: bigint | number | string | null, min?: bigint | number | string | null, token = '0x0', chainId = 4663) {
+export function wireOut(expected: bigint | number | string | null, min?: bigint | number | string | null, token = '0x0', chainId = 4663, owner = '0xSigner') {
   return {
     role: 'terminal',
-    owner: '0xSigner',
+    owner,
     delivery: { when: 'now' },
     resource: { kind: 'erc20', token, chainId },
     amount: {

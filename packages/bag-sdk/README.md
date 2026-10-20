@@ -11,12 +11,12 @@ It needs no BAG frontend, server or database.
 - **Strategy core ≠ transport.** The core (`@bagprotocol/sdk`) is
   parse → validate → normalize → hash → verify and never fetches anything.
   Getting the bytes is an adapter's job:
-  - `@bagprotocol/sdk/http`: `fetchBag(url, { fetch })`.
+  - `@bagprotocol/sdk/http`: `fetchBag(url, { fetch })`. It enforces a 1,000,000-byte UTF-8 limit while streaming and throws typed, URL-safe `BagFetchError`s (`NETWORK_ERROR`, `HTTP_STATUS`, `BODY_TOO_LARGE`, `INVALID_UTF8`).
   - `@bagprotocol/sdk/evm`: `readTokenDecimals(definition, clientFor)`.
   - `@bagprotocol/sdk/lifi`: `lifiComposer({ apiKey, baseUrl })`, a routing provider for quote/compile (optional peer `@lifi/composer-sdk` `>=0.11.0 <0.12.0`, tested with 0.11.3: `COMPOSER_SDK_COMPAT`).
   - Other sources (a local file, IPFS, wallet storage, a registry `uri`) end in the same `parseBag(text)`.
 - Network access only through what you pass in (a `fetch`, a viem client).
-- Published on npm: [`@bagprotocol/sdk@0.2.0`](https://www.npmjs.com/package/@bagprotocol/sdk). The package is MIT-licensed; `bag.json` v1 semantics are frozen.
+- Published on npm: [`@bagprotocol/sdk@0.2.1`](https://www.npmjs.com/package/@bagprotocol/sdk). This branch prepares v0.3.0; it is not published until its review and release checks are complete. The package is MIT-licensed; `bag.json` v1 semantics are frozen.
 
 ## Quick start
 
@@ -214,6 +214,44 @@ Consequences:
 - `0x0000000000000000000000000000000000000000` is the native asset.
 - `decimals` is hashed. `validateBag` compares it with the token when you pass `tokens`, for example from `readTokenDecimals(definition, clientFor)`. Without `tokens` it warns `DECIMALS_NOT_CHECKED`; it never claims a check it did not do.
 
+## Current SDK support matrix
+
+The chain table is the format's accepted vocabulary, **not** a promise that every operation is deployed or routable on every chain. Integrators must check each layer independently.
+
+| Capability | Status in this release candidate | Boundary |
+|---|---|---|
+| Parse, validate, normalize and hash bag.json v1 | Supported for all four v1 EVM chain slugs above | Offline and deterministic; does not prove token authenticity, liquidity or execution safety. |
+| Read ERC-20 decimals | Supported through the caller-supplied viem client | Reads the token contract at runtime; the caller chooses and must trust the RPC. |
+| Verify a StrategyRegistry commitment | Built-in deployment for Robinhood Chain; caller-supplied registry for other deployments | Requires an independently expected creator, the correct chain/RPC and a trusted registry address. No registry deployment is implied by the chain being accepted by v1. |
+| Quote and compile a purchase | Supported through a caller-supplied ComposerProvider; the LI.FI adapter is optional | Current Composer output legs are ERC-20 only. Native ETH is supported as a payment token, but a strategy containing the zero-address native asset is not executable through this adapter; it fails before any network call with `LifiComposerCapabilityError` (`UNSUPPORTED_NATIVE_OUTPUT`). Requires routable assets, a chain-matched contract allowlist and complete quote outputs; unsafe responses fail closed. |
+| Simulate a compiled purchase | Supported for EVM through the caller-supplied viem-compatible client | Point-in-time eth_call, code, balance and allowance checks; not a guarantee that a later transaction will succeed. Native transaction gas costs must still be available to the wallet. |
+| Sell, rebalance and post-transaction receipt verification | Not yet exposed by this SDK | Do not infer support from corresponding functionality in the BAG web app. These require explicit SDK APIs and separate tests. |
+| Discover all strategies without a BAG-hosted endpoint | Not provided by the core | fetchBag(url) retrieves a URL the caller already knows. Discovery requires an external index/source; a registry hash alone does not provide the full bag.json document. |
+| Solana | Not supported by bag.json v1 | v1's chain table, addresses and execution code are EVM-specific. Solana support needs a separately designed spec/execution adapter, not a silent addition to v1. |
+
+The SDK deliberately has no implicit BAG API dependency. The core can validate a local document, and transport adapters only access sources explicitly supplied by the caller. That is different from decentralized discovery: a portable file and a registry commitment do not by themselves give a new app a way to enumerate strategies or retrieve every document.
+
+## JSON Schema
+
+The public Draft 7 schema is served at [`https://bagprotocol.com/schemas/bag.v1.json`](https://bagprotocol.com/schemas/bag.v1.json), maintained at `docs/schemas/bag.v1.schema.json`, and included in the npm tarball through the `@bagprotocol/sdk/schema.json` subpath. The copy in `dist/` is generated from that single canonical source during the package build. It supports both a minimal document (`bagJson` + `definition`) and documents with optional BAG-serving fields. Use it for editor autocomplete and early structural feedback; it also covers per-field bounds and formats.
+
+The schema cannot express every v1 rule. It does not prove that weights sum to exactly 10000, that every asset uses the definition chain, that a stated hash matches the definition, or that metadata names only defined assets. It also cannot detect duplicate JSON keys or distinguish the lexical number forms `1` and `1.0` once JSON has been parsed. For executable inputs, pass the original text to `parseBag(text)`, then run `validateBag(parsed.bag)`; do not rely on JSON Schema alone.
+
+For VS Code, associate your `*.bag.json` files with the hosted schema in workspace settings:
+
+```json
+{
+  "json.schemas": [
+    {
+      "fileMatch": ["*.bag.json"],
+      "url": "https://bagprotocol.com/schemas/bag.v1.json"
+    }
+  ]
+}
+```
+
+This enables structural validation and autocomplete while editing. It does not replace the SDK validation pipeline before execution.
+
 ## Strict parsing
 
 `parseBag` rejects each of these instead of guessing:
@@ -327,12 +365,15 @@ The definition states what the creator allows. An executor may enforce a rule **
 
 **`creator` is a verification input, not an attested field from the JSON.** The
 creator is not in `definitionHash`. `verifyRegistryCommitment` takes the creator
-*you expect* and does the following:
+*you expect* and a caller-owned client. Before it reads any registry entry, it:
 
-1. Derive the strategy id from it.
-2. Read the registry.
-3. Require that the entry was registered by that creator.
-4. Require that `definitionHashOf(id, ref.version)` equals the hash recomputed from `definition`.
+1. Derives the strategy id from the expected creator.
+2. Checks that the client's RPC chain ID equals the chain declared by `definition.chain`.
+3. Checks that the supplied registry address contains contract bytecode on that chain.
+4. Reads the registry entry and requires that it was registered by that creator.
+5. Requires that `definitionHashOf(id, ref.version)` equals the hash recomputed from `definition`.
+
+The result includes `preflightChecks` for the RPC-chain and contract-code checks. An offline draft (without `ref`) is still hashable, but cannot be registry-verified. Bytecode presence is only a deployment check, not an audit of the registry implementation: for a caller-supplied address, the caller must independently trust that it is the intended StrategyRegistry.
 
 `commitments.registry` in a served bag.json, including its `creator`, and the
 stated `definitionHash` are never used as authority. If you copy the creator
@@ -374,7 +415,7 @@ const trust = {
   allowedApprovalSpenders: ['0x…'],   // contracts you have verified for this chain
 };
 const compiled = await compileBag(bag, { inputToken, amountRaw, signer }, { provider, trust });
-const check = await simulateBag(compiled, { client });   // your viem client: OK | NEEDS_APPROVAL | INSUFFICIENT_BALANCE | REVERTED
+const check = await simulateBag(compiled, { client });   // OK | NEEDS_APPROVAL | INSUFFICIENT_BALANCE | INVALID_TARGET | INVALID_APPROVAL_SPENDER | REVERTED
 // your wallet sends compiled.approvals, then signs and sends compiled.transaction
 ```
 
@@ -396,7 +437,7 @@ A provider answer that breaks any row is refused with `ProviderResponseError`.
 |---|---|
 | `planPurchase` | Pure plan: exact target allocation (`splitByWeight`), the asset that is the input token is kept (never swapped), whole-bp legs (largest remainder) and the `core.partition` that divides the swap between them, slippage and price-impact limits |
 | `quoteBag` / `compileBag` | Ask the provider for the route and return the quote, or the quote plus the **unsigned** transaction and the approvals it needs |
-| `simulateBag` | Dry run with `eth_call` from the signer on your client: input balance, then approvals, then the call. A point-in-time check, not a guarantee |
+| `simulateBag` | Confirms the client chain, contract code at the transaction target and approval spenders, input balance, allowance status, then performs `eth_call` from the signer. A point-in-time check, not a guarantee |
 
 **Never signs, never sends.**
 - The SDK holds no key. It has no signing or sending call (a boundary test checks this).
@@ -412,7 +453,9 @@ A looser value is refused (`LOOSER_THAN_POLICY`). An optional `allowedTokens` re
 **Validation happens on both sides of the provider call:**
 
 - **Before calling the provider:** the SDK validates the strategy and purchase inputs, builds the plan, checks its slippage and price-impact policy, and requires a caller trust policy whose chain matches the plan. The target/spender allowlist contents are also checked for valid addresses.
-- **After the provider responds:** the SDK checks the returned transaction's chain and target, native value, approval token/spender/amount, planned output tokens on every leg, and reported price impact. A target or spender that is not allowlisted is rejected here, before the unsigned transaction is returned to the caller.
+- **After the provider responds:** the SDK validates the runtime response shape, transaction chain/target/calldata encoding/value, approval addresses and amounts, output token identity, terminal-output role, actual output owner, immediate delivery (`delivery.when: now`), a positive operation-level minimum output for every leg, reported non-negative integer price impact, gas limit, and fee metadata. Missing/invalid minimum outputs, outputs that are not terminal, outputs owned by another address or delivered later, and missing/malformed price impact fail closed; the provider's success status alone is not enough. Targets and spenders outside the caller's chain-specific allowlists are rejected before an unsigned transaction is returned.
+
+Composer fee destinations may be role labels (`lifi` or `integrator`) rather than EVM addresses. The SDK preserves those exact labels in quote metadata and rejects unknown destination shapes; do not treat a role label as an address.
 
 Anything else throws `ProviderResponseError`.
 
@@ -470,11 +513,11 @@ Nothing was signed or sent.
 cd packages/bag-sdk
 npm run typecheck   # tsc, no output
 npm run build       # dist/: ES2022 ESM .js + .d.ts for ".", "./http", "./evm", "./lifi"
-npm pack --dry-run  # what a tarball would contain: dist/, README.md, package.json
+npm pack --dry-run  # dist/ (including schema/bag.v1.schema.json), README.md, LICENSE, package.json
 npm run smoke:consumer  # packs, installs the tarball in a fresh temp project, imports every entry point, typechecks a TS consumer
 ```
 
-No build dependency beyond TypeScript. The package is configured for public npm distribution under the MIT license; it has not yet been published to npm.
+No build dependency beyond TypeScript. `@bagprotocol/sdk@0.2.1` is the currently published npm release. This branch prepares `0.3.0` and includes the schema in the package tarball; do not install or advertise `0.3.0` until release checks pass. The package is MIT-licensed.
 
 ## v1 freeze
 

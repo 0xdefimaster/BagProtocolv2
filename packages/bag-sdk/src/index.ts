@@ -40,7 +40,10 @@ export {
   verifyRegistryCommitment,
   type ContractReader,
   type RegistryRecord,
+  type RegistryPreflightCheck,
+  type RegistryPreflightCheckName,
   type RegistryVerification,
+  type RegistryVerificationClient,
   type StrategyRegistryDeployment,
 } from './registry';
 export {
@@ -64,6 +67,7 @@ export {
   type CompiledPurchase,
   type ComposerCompileRequest,
   type ComposerCompileResult,
+  type ComposerFeeRecipient,
   type ComposerProvider,
   type ExecutionTrustPolicy,
   type PurchaseQuote,

@@ -1,6 +1,7 @@
 import { createComposeSdk, materialisers, resources } from '@lifi/composer-sdk';
 import type { Bindable } from '@lifi/composer-sdk';
 import type { ComposerCompileRequest, ComposerCompileResult, ComposerProvider } from '../execution';
+import { isNativeToken, normalizeAddress } from '../chains';
 import { planPartition } from '../partition';
 
 // -----------------------------------------------------------------------------
@@ -33,6 +34,16 @@ import { planPartition } from '../partition';
  */
 export const COMPOSER_SDK_COMPAT = Object.freeze({ range: '>=0.11.0 <0.12.0', testedWith: '0.11.3' });
 
+/** Capability error raised before any network call when a plan asks Composer to deliver a native asset. */
+export class LifiComposerCapabilityError extends Error {
+  readonly code = 'UNSUPPORTED_NATIVE_OUTPUT' as const;
+
+  constructor() {
+    super('lifiComposer: native-asset output legs are not supported by this adapter; use an ERC-20-only strategy or a provider that explicitly supports native outputs.');
+    this.name = 'LifiComposerCapabilityError';
+  }
+}
+
 type PartitionBuilder = {
   core: { partition: (id: string, args: { bind: { source: Bindable<'resource'> }; config: { bps: number[] } }) => { parts: readonly Bindable<'resource'>[] } };
 };
@@ -61,6 +72,7 @@ export interface LifiComposerOptions {
 }
 
 const legNode = (i: number) => `swap_${i}`;
+const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
 export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
   if (!options.apiKey) throw new Error('lifiComposer: apiKey is required (your own LI.FI API key).');
@@ -68,6 +80,9 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
   return {
     name: 'lifi-composer',
     async compile(req: ComposerCompileRequest): Promise<ComposerCompileResult> {
+      // The Composer flow below uses `resources.erc20` for every output. Refuse a native-asset target explicitly
+      // before the API call; never encode the zero-address native sentinel as if it were an ERC-20.
+      if (req.legs.some((leg) => isNativeToken(leg.token))) throw new LifiComposerCapabilityError();
       const base = options.fetch ?? fetch;
       const timeoutMs = options.timeoutMs ?? 15_000;
       const sdk = createComposeSdk({
@@ -107,6 +122,28 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
       if (!result.transactionRequest) throw new Error('LI.FI Composer reported success without a transaction.');
 
       const outputs = result.outputs;
+      if (!outputs || typeof outputs !== 'object' || Array.isArray(outputs)) {
+        throw new Error('LI.FI Composer success response has no valid outputs object.');
+      }
+      const expectedOutputKeys = req.legs.map((_, i) => `${legNode(i)}.amountOut`).sort();
+      const actualOutputKeys = Object.keys(outputs).sort();
+      const missingOutputKeys = expectedOutputKeys.filter((key) => !actualOutputKeys.includes(key));
+      const unexpectedOutputKeys = actualOutputKeys.filter((key) => !expectedOutputKeys.includes(key));
+      if (missingOutputKeys.length > 0 || unexpectedOutputKeys.length > 0) {
+        throw new Error(
+          `LI.FI Composer output ports do not match the purchase plan (missing: ${missingOutputKeys.join(', ') || 'none'}; unexpected: ${unexpectedOutputKeys.join(', ') || 'none'}).`,
+        );
+      }
+
+      const impact = result.priceImpact;
+      const priceImpactBps =
+        impact &&
+        Array.isArray(impact.unpricedInputs) && impact.unpricedInputs.length === 0 &&
+        Array.isArray(impact.unpricedOutputs) && impact.unpricedOutputs.length === 0 &&
+        Number.isSafeInteger(impact.impactBps)
+          ? impact.impactBps
+          : null;
+
       return {
         transaction: {
           to: result.transactionRequest.to,
@@ -117,15 +154,55 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
         executor: result.userProxy ?? null,
         approvals: (result.approvals ?? []).map((a) => ({ token: a.token, spender: a.spender, amountRaw: String(a.amount) })),
         legs: req.legs.map((_, i) => {
-          // Composer keys outputs by output port (`swap_<i>.amountOut`). A missing minimum means no floor is enforced (never 0).
-          const o = outputs[`${legNode(i)}.amountOut`];
+          const outputKey = `${legNode(i)}.amountOut`;
+          const candidate = outputs[outputKey] as unknown;
+          if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+            throw new Error(`LI.FI Composer output ${outputKey} is missing or malformed.`);
+          }
+          const output = candidate as Record<string, unknown>;
+          if (output.role !== 'terminal') {
+            throw new Error(`LI.FI Composer output ${outputKey} is not terminal; refusing an output that may be consumed by another operation.`);
+          }
+
+          const owner = output.owner;
+          if (typeof owner !== 'string' || !EVM_ADDRESS_RE.test(owner) || normalizeAddress(owner) !== normalizeAddress(req.signer)) {
+            throw new Error(`LI.FI Composer output ${outputKey} is not owned by the requested signer.`);
+          }
+
+          const delivery = output.delivery;
+          if (!delivery || typeof delivery !== 'object' || Array.isArray(delivery) || (delivery as Record<string, unknown>).when !== 'now') {
+            throw new Error(`LI.FI Composer output ${outputKey} is not delivered immediately.`);
+          }
+
+          const resource = output.resource;
+          if (!resource || typeof resource !== 'object' || Array.isArray(resource)) {
+            throw new Error(`LI.FI Composer output ${outputKey} has no valid resource.`);
+          }
+          const resourceRecord = resource as Record<string, unknown>;
+          if (resourceRecord.kind !== 'erc20' || typeof resourceRecord.token !== 'string' || typeof resourceRecord.chainId !== 'number') {
+            throw new Error(`LI.FI Composer output ${outputKey} is not a valid ERC-20 output.`);
+          }
+
+          const amount = output.amount && typeof output.amount === 'object' && !Array.isArray(output.amount)
+            ? output.amount as Record<string, unknown>
+            : {};
+          const estimate = amount.estimate && typeof amount.estimate === 'object' && !Array.isArray(amount.estimate)
+            ? amount.estimate as Record<string, unknown>
+            : null;
+          const minimum = amount.minimum && typeof amount.minimum === 'object' && !Array.isArray(amount.minimum)
+            ? amount.minimum as Record<string, unknown>
+            : null;
+
           return {
-            token: o && o.resource.kind === 'erc20' ? o.resource.token : null,
-            expectedOutRaw: o?.amount.estimate ? o.amount.estimate.value.toString() : null,
-            minOutRaw: o?.amount.minimum ? o.amount.minimum.value.toString() : null,
+            token: resourceRecord.token,
+            chainId: resourceRecord.chainId,
+            recipient: normalizeAddress(owner),
+            deliveryWhen: 'now',
+            expectedOutRaw: typeof estimate?.value === 'bigint' || typeof estimate?.value === 'string' || typeof estimate?.value === 'number' ? String(estimate.value) : null,
+            minOutRaw: typeof minimum?.value === 'bigint' || typeof minimum?.value === 'string' || typeof minimum?.value === 'number' ? String(minimum.value) : null,
           };
         }),
-        priceImpactBps: result.priceImpact?.impactBps ?? null,
+        priceImpactBps,
         gasLimit: result.transactionRequest.gasLimit ?? null,
         fees: (result.fees ?? []).map((f) => ({ token: f.token, recipient: f.recipient, bps: f.bps, amountRaw: f.amount ?? null })),
       };

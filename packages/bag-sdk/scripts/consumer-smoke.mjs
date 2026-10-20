@@ -24,11 +24,17 @@ try {
   writeFileSync(
     join(dir, 'consumer.mjs'),
     `import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { parseBag, validateBag, hashBag, compileBag, NATIVE_TOKEN, registryStrategyId, STRATEGY_REGISTRY_DEPLOYMENTS } from '@bagprotocol/sdk';
 import { lifiComposer } from '@bagprotocol/sdk/lifi';
 import { fetchBag } from '@bagprotocol/sdk/http';
 import { readTokenDecimals } from '@bagprotocol/sdk/evm';
+
+const schemaPath = fileURLToPath(import.meta.resolve('@bagprotocol/sdk/schema.json'));
+const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
+assert.equal(schema.$id, 'https://bagprotocol.com/schemas/bag.v1.json');
+assert.deepEqual(schema.required, ['bagJson', 'definition']);
 
 const parsed = parseBag(readFileSync('./feetest.bag.json', 'utf8'));
 assert.ok(parsed.ok, JSON.stringify(parsed.issues));
@@ -40,7 +46,7 @@ assert.deepEqual(STRATEGY_REGISTRY_DEPLOYMENTS.robinhood, { chainId: 4663, addre
 const ROUTER = '0x' + '7'.repeat(40);
 const stub = { name: 'stub', async compile(q) {
   return { transaction: { to: ROUTER, data: '0x12345678', value: String(q.amountRaw), chainId: q.chainId }, executor: null, approvals: [],
-    legs: q.legs.map((l) => ({ token: l.token, expectedOutRaw: '10', minOutRaw: '9' })), priceImpactBps: 5, gasLimit: null, fees: [] };
+    legs: q.legs.map((l) => ({ token: l.token, chainId: q.chainId, recipient: q.signer, deliveryWhen: 'now', expectedOutRaw: '10', minOutRaw: '9' })), priceImpactBps: 5, gasLimit: null, fees: [] };
 } };
 const amountRaw = 1000000000000000n;
 const compiled = await compileBag(parsed.bag, { inputToken: NATIVE_TOKEN, amountRaw, signer: '0x' + '5'.repeat(40) },

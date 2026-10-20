@@ -31,15 +31,18 @@ export interface ComposerCompileRequest {
 }
 
 /** A provider's compiled purchase, normalized. `null` = the provider did not report it (never guessed). */
+/** Fee destination as reported by Composer or as a concrete provider fee address. */
+export type ComposerFeeRecipient = 'lifi' | 'integrator' | Hex;
+
 export interface ComposerCompileResult {
   transaction: { to: string; data: string; value: string; chainId: number | null };
   /** Contract that executes the program on the signer's behalf (informational). */
   executor: string | null;
   approvals: { token: string; spender: string; amountRaw: string }[];
-  legs: { token: string | null; expectedOutRaw: string | null; minOutRaw: string | null }[];
+  legs: { token: string | null; chainId: number | null; recipient: string | null; deliveryWhen: 'now' | 'later' | null; expectedOutRaw: string | null; minOutRaw: string | null }[];
   priceImpactBps: number | null;
   gasLimit: string | null;
-  fees: { token: string; recipient: string; bps: number; amountRaw: string | null }[];
+  fees: { token: string; recipient: ComposerFeeRecipient; bps: number; amountRaw: string | null }[];
 }
 
 export interface ComposerProvider {
@@ -59,19 +62,24 @@ export interface ExecutionTrustPolicy {
 
 export interface QuotedLeg {
   token: string;
+  /** Output recipient reported by the provider and checked against the requested signer. */
+  recipient: string;
+  /** This adapter only returns a compiled purchase when the recipient receives it now, not later. */
+  deliveryWhen: 'now';
   /** Exact target input for this leg (the on-chain split stays within the v1 execution bound of it). */
   targetInputRaw: bigint;
   /** Simulated output: an estimate, not a guarantee. */
   expectedOutRaw: string | null;
-  /** The provider's on-chain minimum at the swap: the transaction reverts below it. */
-  minOutRaw: string | null;
+  /** Required on-chain minimum output. A missing or zero floor is rejected before a transaction is returned. */
+  minOutRaw: string;
 }
 
 export interface PurchaseQuote {
   plan: PurchasePlan;
   provider: string;
   legs: QuotedLeg[];
-  priceImpactBps: number | null;
+  /** Required, validated non-negative integer bps reported by the routing provider. */
+  priceImpactBps: number;
   fees: ComposerCompileResult['fees'];
   gasLimit: string | null;
 }
@@ -137,43 +145,148 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
   const fail = (m: string): never => {
     throw new ProviderResponseError(`${provider}: ${m}`);
   };
+
+  // ComposerProvider is a runtime trust boundary. TypeScript types do not validate
+  // an HTTP response, third-party adapter, malformed fixture or compromised provider.
+  if (!r || typeof r !== 'object') fail('provider returned a non-object response.');
+  if (!r.transaction || typeof r.transaction !== 'object') fail('provider returned no transaction object.');
+  if (!Array.isArray(r.approvals)) fail('provider returned a malformed approvals list.');
+  if (!Array.isArray(r.legs)) fail('provider returned a malformed output-legs list.');
+  if (!Array.isArray(r.fees)) fail('provider returned a malformed fees list.');
+
+  const priceImpactBps =
+    typeof r.priceImpactBps === 'number' && Number.isSafeInteger(r.priceImpactBps) && r.priceImpactBps >= 0
+      ? r.priceImpactBps
+      : fail('price impact is missing or malformed; refusing to compile an unpriced purchase.');
+  if (r.executor !== null && (typeof r.executor !== 'string' || !ADDRESS_RE.test(r.executor))) {
+    fail('malformed executor address.');
+  }
+  if (r.gasLimit !== null && (typeof r.gasLimit !== 'string' || !VALUE_RE.test(r.gasLimit) || BigInt(r.gasLimit) <= BigInt(0))) {
+    fail('malformed gas limit.');
+  }
+
   const tx = r.transaction;
-  if (!ADDRESS_RE.test(tx.to) || !HEX_RE.test(tx.data) || tx.data.length < 10 || !VALUE_RE.test(tx.value)) fail('malformed transaction.');
-  if (tx.chainId === null || tx.chainId !== plan.chainId) fail(`transaction chain ${tx.chainId ?? 'missing'} does not match plan chain ${plan.chainId}.`);
-  if (!trusted.targets.has(tx.to.toLowerCase())) fail(`transaction target ${tx.to} is not in the caller's trusted target allowlist.`);
+  if (
+    typeof tx.to !== 'string' || !ADDRESS_RE.test(tx.to) ||
+    typeof tx.data !== 'string' || !HEX_RE.test(tx.data) || tx.data.length < 10 || tx.data.length % 2 !== 0 ||
+    typeof tx.value !== 'string' || !VALUE_RE.test(tx.value)
+  ) fail('malformed transaction.');
+  if (!Number.isSafeInteger(tx.chainId) || tx.chainId !== plan.chainId) {
+    fail(`transaction chain ${tx.chainId ?? 'missing'} does not match plan chain ${plan.chainId}.`);
+  }
+  if (!trusted.targets.has(tx.to.toLowerCase())) {
+    fail(`transaction target ${tx.to} is not in the caller's trusted target allowlist.`);
+  }
+
   const value = BigInt(tx.value);
   if (plan.inputKind === 'native') {
-    // The purchase's ETH travels as msg.value: exactly the swapped amount, never more (it would be spent or swept
-    // elsewhere), never less (the program would revert or under-buy). Nothing to approve.
-    if (value !== plan.swapAmountRaw) fail(`a native purchase must send exactly ${plan.swapAmountRaw} wei, the transaction sends ${value}.`);
+    // Native value must be exact; no surprise value and no approval request.
+    if (value !== plan.swapAmountRaw) {
+      fail(`a native purchase must send exactly ${plan.swapAmountRaw} wei, the transaction sends ${value}.`);
+    }
     if (r.approvals.length > 0) fail('a native purchase needs no approval, the provider requested one.');
   } else if (value !== BigInt(0)) {
     fail('an ERC-20 purchase must not send native value.');
   }
 
-  const approvals = r.approvals.map((a) => {
-    if (normalizeAddress(a.token) !== plan.inputToken) fail(`approval requested for ${a.token}, not the input token.`);
-    if (!ADDRESS_RE.test(a.spender) || !UINT_RE.test(a.amountRaw)) fail('malformed approval.');
-    if (!trusted.spenders.has(a.spender.toLowerCase())) fail(`approval spender ${a.spender} is not in the caller's trusted spender allowlist.`);
-    if (BigInt(a.amountRaw) > plan.swapAmountRaw) fail('approval above the swapped amount.');
-    return { token: plan.inputToken as Hex, spender: a.spender as Hex, amountRaw: BigInt(a.amountRaw) };
+  const seenSpenders = new Set<string>();
+  const approvals = r.approvals.map((a, i) => {
+    if (
+      !a || typeof a !== 'object' ||
+      typeof a.token !== 'string' || !ADDRESS_RE.test(a.token) ||
+      typeof a.spender !== 'string' || !ADDRESS_RE.test(a.spender) ||
+      typeof a.amountRaw !== 'string' || !UINT_RE.test(a.amountRaw)
+    ) fail(`malformed approval at index ${i}.`);
+    if (normalizeAddress(a.token) !== plan.inputToken) {
+      fail(`approval requested for ${a.token}, not the input token.`);
+    }
+    const spender = a.spender.toLowerCase();
+    if (!trusted.spenders.has(spender)) {
+      fail(`approval spender ${a.spender} is not in the caller's trusted spender allowlist.`);
+    }
+    if (seenSpenders.has(spender)) fail(`duplicate approval spender ${a.spender}.`);
+    seenSpenders.add(spender);
+
+    const amount = BigInt(a.amountRaw);
+    if (amount <= BigInt(0)) fail('approval amount must be positive.');
+    if (amount > plan.swapAmountRaw) fail('approval above the swapped amount.');
+    return { token: plan.inputToken as Hex, spender: a.spender as Hex, amountRaw: amount };
   });
 
-  if (r.legs.length !== plan.legs.length) fail(`returned ${r.legs.length} legs, planned ${plan.legs.length}.`);
+  if (r.legs.length !== plan.legs.length) {
+    fail(`returned ${r.legs.length} legs, planned ${plan.legs.length}.`);
+  }
   const legs: QuotedLeg[] = plan.legs.map((l, i) => {
     const got = r.legs[i];
-    if (got.token !== null && normalizeAddress(got.token) !== l.token) fail(`leg ${i} delivers ${got.token}, planned ${l.token}.`);
-    for (const v of [got.expectedOutRaw, got.minOutRaw]) if (v !== null && !UINT_RE.test(v)) fail(`leg ${i} has a malformed amount.`);
-    if (got.expectedOutRaw !== null && got.minOutRaw !== null && BigInt(got.minOutRaw) > BigInt(got.expectedOutRaw)) fail(`leg ${i} minimum output is above its expected output.`);
-    return { token: l.token, targetInputRaw: l.targetInputRaw, expectedOutRaw: got.expectedOutRaw, minOutRaw: got.minOutRaw };
+    if (!got || typeof got !== 'object') fail(`leg ${i} is missing or malformed.`);
+
+    // Keep the validated values in locals so TypeScript's narrowing matches
+    // the runtime checks on untrusted provider-owned object properties.
+    const outputToken =
+      typeof got.token === 'string' && ADDRESS_RE.test(got.token)
+        ? got.token
+        : fail(`leg ${i} output token was not reported as a valid address.`);
+    if (normalizeAddress(outputToken) !== l.token) {
+      fail(`leg ${i} delivers ${outputToken}, planned ${l.token}.`);
+    }
+    if (typeof got.chainId !== 'number' || !Number.isSafeInteger(got.chainId) || got.chainId !== plan.chainId) {
+      fail(`leg ${i} output chain ${got.chainId ?? 'missing'} does not match plan chain ${plan.chainId}.`);
+    }
+
+    const recipient =
+      typeof got.recipient === 'string' && ADDRESS_RE.test(got.recipient)
+        ? got.recipient
+        : fail(`leg ${i} output recipient is missing or malformed.`);
+    if (normalizeAddress(recipient) !== plan.signer) {
+      fail(`leg ${i} output recipient ${recipient} does not match requested signer ${plan.signer}.`);
+    }
+    if (got.deliveryWhen !== 'now') {
+      fail(`leg ${i} output is not reported as delivered now.`);
+    }
+
+    const expectedOutRaw =
+      got.expectedOutRaw === null
+        ? null
+        : typeof got.expectedOutRaw === 'string' && UINT_RE.test(got.expectedOutRaw)
+          ? got.expectedOutRaw
+          : fail(`leg ${i} has a malformed expected output amount.`);
+    const minOutRaw =
+      typeof got.minOutRaw === 'string' && UINT_RE.test(got.minOutRaw)
+        ? got.minOutRaw
+        : fail(`leg ${i} has no valid on-chain minimum output; refusing to return an unprotected transaction.`);
+    const minimum = BigInt(minOutRaw);
+    if (minimum <= BigInt(0)) fail(`leg ${i} minimum output must be positive.`);
+    if (expectedOutRaw !== null && minimum > BigInt(expectedOutRaw)) {
+      fail(`leg ${i} minimum output is above its expected output.`);
+    }
+    return {
+      token: l.token,
+      recipient: normalizeAddress(recipient),
+      deliveryWhen: 'now',
+      targetInputRaw: l.targetInputRaw,
+      expectedOutRaw,
+      minOutRaw,
+    };
   });
 
-  if (r.priceImpactBps !== null && r.priceImpactBps > plan.maxPriceImpactBps) {
-    fail(`price impact ${r.priceImpactBps} bps is above the limit ${plan.maxPriceImpactBps} bps.`);
+  if (priceImpactBps > plan.maxPriceImpactBps) {
+    fail(`price impact ${priceImpactBps} bps is above the limit ${plan.maxPriceImpactBps} bps.`);
   }
 
+  const fees = r.fees.map((fee, i) => {
+    if (
+      !fee || typeof fee !== 'object' ||
+      typeof fee.token !== 'string' || !ADDRESS_RE.test(fee.token) ||
+      typeof fee.recipient !== 'string' ||
+      !(fee.recipient === 'lifi' || fee.recipient === 'integrator' || ADDRESS_RE.test(fee.recipient)) ||
+      !Number.isSafeInteger(fee.bps) || fee.bps < 0 || fee.bps > 10000 ||
+      (fee.amountRaw !== null && (typeof fee.amountRaw !== 'string' || !UINT_RE.test(fee.amountRaw)))
+    ) fail(`malformed fee entry at index ${i}.`);
+    return fee;
+  });
+
   return {
-    quote: { plan, provider, legs, priceImpactBps: r.priceImpactBps, fees: r.fees, gasLimit: r.gasLimit },
+    quote: { plan, provider, legs, priceImpactBps, fees, gasLimit: r.gasLimit },
     transaction: { to: tx.to as Hex, data: tx.data as Hex, value, chainId: plan.chainId },
     approvals,
     executor: r.executor,
@@ -194,9 +307,11 @@ export async function compileBag(bag: BagDocument, req: PurchaseRequest, options
   return checked(plan, options.provider.name, await options.provider.compile(requestFor(plan)), trusted);
 }
 
-/** Anything with viem's `readContract` and `call` (a viem PublicClient on the strategy's chain); `getBalance` for a native purchase. */
+/** An EVM public client on the strategy's chain: `getChainId`, `getCode`, `readContract`, `call`, and `getBalance` for native purchases. */
 export interface SimulationClient {
   getChainId(): Promise<number>;
+  /** Required for refusing EOAs or empty addresses as execution/approval contracts. */
+  getCode(args: { address: Hex }): Promise<Hex | undefined>;
   getBalance?(args: { address: Hex }): Promise<bigint>;
   readContract(args: { address: Hex; abi: readonly unknown[]; functionName: string; args?: readonly unknown[] }): Promise<unknown>;
   call(args: { account: Hex; to: Hex; data: Hex; value?: bigint }): Promise<unknown>;
@@ -206,6 +321,8 @@ export type SimulationResult =
   | { status: 'OK' }
   | { status: 'NEEDS_APPROVAL'; missing: CompiledPurchase['approvals'] }
   | { status: 'INSUFFICIENT_BALANCE'; balanceRaw: bigint; requiredRaw: bigint }
+  | { status: 'INVALID_TARGET'; address: Hex }
+  | { status: 'INVALID_APPROVAL_SPENDER'; spender: Hex }
   | { status: 'REVERTED'; reason: string };
 
 const ERC20_READ_ABI = [
@@ -223,6 +340,8 @@ export async function simulateBag(compiled: CompiledPurchase, options: { client:
   const plan = compiled.quote.plan;
   const chainId = await client.getChainId();
   if (chainId !== plan.chainId) throw new Error(`simulateBag: client is on chain ${chainId}, the purchase is for ${plan.chainId}.`);
+  const targetCode = await client.getCode({ address: compiled.transaction.to });
+  if (!targetCode || targetCode === '0x') return { status: 'INVALID_TARGET', address: compiled.transaction.to };
   const signer = plan.signer as Hex;
 
   let balance: bigint;
@@ -233,10 +352,17 @@ export async function simulateBag(compiled: CompiledPurchase, options: { client:
   } else {
     balance = BigInt((await client.readContract({ address: plan.inputToken as Hex, abi: ERC20_READ_ABI, functionName: 'balanceOf', args: [signer] })) as bigint);
   }
-  if (balance < plan.swapAmountRaw) return { status: 'INSUFFICIENT_BALANCE', balanceRaw: balance, requiredRaw: plan.swapAmountRaw };
+  // If the payment token is itself a basket asset, its target share is deliberately not
+  // spent by this transaction. The wallet must still hold that share after spending the swap leg.
+  const requiredBalanceRaw = plan.kept !== null ? plan.amountRaw : plan.swapAmountRaw;
+  if (balance < requiredBalanceRaw) {
+    return { status: 'INSUFFICIENT_BALANCE', balanceRaw: balance, requiredRaw: requiredBalanceRaw };
+  }
 
   const missing: CompiledPurchase['approvals'] = [];
   for (const a of compiled.approvals) {
+    const spenderCode = await client.getCode({ address: a.spender });
+    if (!spenderCode || spenderCode === '0x') return { status: 'INVALID_APPROVAL_SPENDER', spender: a.spender };
     const allowance = BigInt((await client.readContract({ address: a.token, abi: ERC20_READ_ABI, functionName: 'allowance', args: [signer, a.spender] })) as bigint);
     if (allowance < a.amountRaw) missing.push(a);
   }

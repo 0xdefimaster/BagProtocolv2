@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { Hex } from 'viem';
 import {
   NATIVE_TOKEN,
   compileBag,
@@ -16,7 +17,7 @@ import {
   type ComposerProvider,
   type SimulationClient,
 } from '../src';
-import { lifiComposer } from '../src/adapters/lifi';
+import { lifiComposer, LifiComposerCapabilityError } from '../src/adapters/lifi';
 import { externalBag } from './helpers';
 
 const A = '0xa0000000000000000000000000000000000000aa';
@@ -58,7 +59,7 @@ function fakeProvider(override: (r: ComposerCompileResult, q: ComposerCompileReq
           transaction: { to: ROUTER, data: '0x12345678abcdef', value: '0', chainId: q.chainId },
           executor: '0x' + '8'.repeat(40),
           approvals: [{ token: q.inputToken, spender: SPENDER, amountRaw: String(q.amountRaw) }],
-          legs: q.legs.map((l) => ({ token: l.token, expectedOutRaw: '1000', minOutRaw: '990' })),
+          legs: q.legs.map((l) => ({ token: l.token, chainId: q.chainId, recipient: q.signer, deliveryWhen: 'now', expectedOutRaw: '1000', minOutRaw: '990' })),
           priceImpactBps: 12,
           gasLimit: '400000',
           fees: [],
@@ -154,7 +155,25 @@ describe('compileBag / quoteBag', () => {
       ['untrusted approval spender (checked after provider response)', (r) => ({ ...r, approvals: [{ token: USDG, spender: '0x' + '9'.repeat(40), amountRaw: '10000000' }] })],
       ['leg token', (r) => ({ ...r, legs: [r.legs[1], r.legs[0]] })],
       ['leg count', (r) => ({ ...r, legs: [r.legs[0]] })],
-      ['price impact', (r) => ({ ...r, priceImpactBps: 501 })],
+      ['price impact above policy', (r) => ({ ...r, priceImpactBps: 501 })],
+      ['missing price impact', (r) => ({ ...r, priceImpactBps: null })],
+      ['non-finite price impact', (r) => ({ ...r, priceImpactBps: Number.NaN })],
+      ['negative price impact', (r) => ({ ...r, priceImpactBps: -1 })],
+      ['fractional price impact', (r) => ({ ...r, priceImpactBps: 1.5 })],
+      ['missing output token', (r) => ({ ...r, legs: [{ ...r.legs[0], token: null }, r.legs[1]] })],
+      ['wrong output chain', (r) => ({ ...r, legs: [{ ...r.legs[0], chainId: 1 }, r.legs[1]] })],
+      ['missing output recipient', (r) => ({ ...r, legs: [{ ...r.legs[0], recipient: null }, r.legs[1]] })],
+      ['wrong output recipient', (r) => ({ ...r, legs: [{ ...r.legs[0], recipient: '0x' + '9'.repeat(40) }, r.legs[1]] })],
+      ['delayed output delivery', (r) => ({ ...r, legs: [{ ...r.legs[0], deliveryWhen: 'later' }, r.legs[1]] })],
+      ['missing output minimum', (r) => ({ ...r, legs: [{ ...r.legs[0], minOutRaw: null }, r.legs[1]] })],
+      ['zero output minimum', (r) => ({ ...r, legs: [{ ...r.legs[0], minOutRaw: '0' }, r.legs[1]] })],
+      ['minimum above expected output', (r) => ({ ...r, legs: [{ ...r.legs[0], minOutRaw: '1001' }, r.legs[1]] })],
+      ['zero approval amount', (r) => ({ ...r, approvals: [{ ...r.approvals[0], amountRaw: '0' }] })],
+      ['duplicate approval spender', (r) => ({ ...r, approvals: [r.approvals[0], r.approvals[0]] })],
+      ['odd-length transaction calldata', (r) => ({ ...r, transaction: { ...r.transaction, data: '0x123456789' } })],
+      ['malformed executor', (r) => ({ ...r, executor: 'not-an-address' })],
+      ['malformed gas limit', (r) => ({ ...r, gasLimit: '-1' })],
+      ['malformed fee', (r) => ({ ...r, fees: [{ token: 'not-an-address', recipient: SIGNER as Hex, bps: 1, amountRaw: '1' }] })],
       ['malformed tx', (r) => ({ ...r, transaction: { ...r.transaction, to: 'nope' } })],
     ];
     for (const [name, mutate] of bad) {
@@ -205,7 +224,7 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     userProxy: '0x' + '8'.repeat(40),
     priceImpact: { inputValueUsd: 10, outputValueUsd: 9.99, impactBps: 10, unpricedInputs: [], unpricedOutputs: [] },
     approvals: [{ token: USDG, spender: SPENDER, amount: '10000000', transactionRequest: { to: USDG, data: '0x', value: '0' } }],
-    fees: [],
+    fees: [{ token: USDG, recipient: 'integrator', bps: 25, amount: '2500' }],
   };
 
   it('requires the caller’s own API key', () => {
@@ -219,6 +238,7 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     expect(compiled.transaction).toEqual({ to: ROUTER, data: '0xdeadbeef', value: BigInt(0), chainId: 4663 });
     expect(compiled.quote.legs.map((l) => [l.expectedOutRaw, l.minOutRaw])).toEqual([['4000', '3960'], ['6000', '5940']]);
     expect(compiled.quote.priceImpactBps).toBe(10);
+    expect(compiled.quote.fees).toEqual([{ token: USDG, recipient: 'integrator', bps: 25, amountRaw: '2500' }]);
 
     const calls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls as [string, RequestInit][];
     const compose = calls.find(([url]) => String(url).endsWith('/compose'))!;
@@ -230,17 +250,128 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     expect(JSON.stringify(compose[1].headers)).toContain('test-key');
   });
 
+  it('refuses native-asset output legs before making a Composer network call', async () => {
+    const bag = doc((d) => {
+      d.definition.assets[1].address = NATIVE_TOKEN;
+      delete d.metadata;
+    });
+    const fetchImpl = composeFetch(compileData);
+
+    await expect(
+      compileBag(bag, req(), {
+        provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }),
+        trust: TRUST,
+      }),
+    ).rejects.toMatchObject({ name: 'LifiComposerCapabilityError', code: 'UNSUPPORTED_NATIVE_OUTPUT' });
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('accepts Composer fee recipient labels and still rejects unknown destinations', async () => {
+    for (const recipient of ['lifi', 'integrator'] as const) {
+      const provider = fakeProvider((r) => ({
+        ...r,
+        fees: [{ token: USDG, recipient, bps: 25, amountRaw: '2500' }],
+      }));
+      const compiled = await compileBag(doc(), req(), { provider, trust: TRUST });
+      expect(compiled.quote.fees[0].recipient).toBe(recipient);
+    }
+
+    const provider = fakeProvider((r) => ({
+      ...r,
+      fees: [{ token: USDG, recipient: 'unknown-destination' as never, bps: 25, amountRaw: '2500' }],
+    }));
+    await expect(compileBag(doc(), req(), { provider, trust: TRUST })).rejects.toBeInstanceOf(ProviderResponseError);
+  });
+
   it('a price impact above the limit from the real adapter is refused', async () => {
     const fetchImpl = composeFetch({ ...compileData, priceImpact: { ...compileData.priceImpact, impactBps: 735 } });
     await expect(compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST })).rejects.toThrow(/735 bps is above the limit 500/);
   });
+
+  it('binds Composer outputs to the requested signer and immediate sweep configuration', async () => {
+    const fetchImpl = composeFetch(compileData);
+    const compiled = await compileBag(
+      doc(),
+      req(),
+      { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST },
+    );
+    expect(compiled.quote.legs.map((l) => [l.recipient, l.deliveryWhen])).toEqual([
+      [SIGNER, 'now'],
+      [SIGNER, 'now'],
+    ]);
+
+    const calls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls as [string, RequestInit][];
+    const body = JSON.parse(String(calls.find(([url]) => String(url).endsWith('/compose'))![1].body));
+    expect(body.run.sweepTo).toEqual({ $ref: 'context.sender' });
+    expect(body.run.signer.toLowerCase()).toBe(SIGNER);
+  });
+
+  it('requires terminal outputs delivered now to the requested signer', async () => {
+    const cases = [
+      {
+        label: 'wrong output owner',
+        mutate: (data: any) => { data.outputs['swap_0.amountOut'].owner = '0x' + '9'.repeat(40); },
+        expected: /not owned by the requested signer/,
+      },
+      {
+        label: 'deferred output',
+        mutate: (data: any) => { data.outputs['swap_0.amountOut'].delivery.when = 'later'; },
+        expected: /not delivered immediately/,
+      },
+      {
+        label: 'consumed output',
+        mutate: (data: any) => { data.outputs['swap_0.amountOut'].role = 'consumed'; },
+        expected: /is not terminal/,
+      },
+      {
+        label: 'missing output owner',
+        mutate: (data: any) => { delete data.outputs['swap_0.amountOut'].owner; },
+        expected: /not owned by the requested signer/,
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      const data = JSON.parse(JSON.stringify(compileData));
+      testCase.mutate(data);
+      const fetchImpl = composeFetch(data);
+      await expect(
+        compileBag(doc(), req(), {
+          provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }),
+          trust: TRUST,
+        }),
+        testCase.label,
+      ).rejects.toThrow(testCase.expected);
+    }
+  });
+
+  it('refuses unexpected output ports and impact values for unpriced assets', async () => {
+    const extraPort = JSON.parse(JSON.stringify(compileData));
+    extraPort.outputs['unexpected.amountOut'] = extraPort.outputs['swap_0.amountOut'];
+    const extraFetch = composeFetch(extraPort);
+    await expect(
+      compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: extraFetch }), trust: TRUST }),
+    ).rejects.toThrow(/output ports do not match the purchase plan/);
+
+    const unpriced = JSON.parse(JSON.stringify(compileData));
+    unpriced.priceImpact.unpricedOutputs = [{ chainId: 4663, token: A }];
+    const unpricedFetch = composeFetch(unpriced);
+    await expect(
+      compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: unpricedFetch }), trust: TRUST }),
+    ).rejects.toThrow(/price impact is missing or malformed/);
+  });
 });
 
 describe('simulateBag', () => {
-  const client = (o: { chainId?: number; balance?: bigint; allowance?: bigint; revert?: string } = {}): SimulationClient & { calls: number } => {
+  const client = (o: { chainId?: number; balance?: bigint; allowance?: bigint; revert?: string; targetNoCode?: boolean; spenderNoCode?: boolean } = {}): SimulationClient & { calls: number } => {
     const c = {
       calls: 0,
       getChainId: async () => o.chainId ?? 4663,
+      getCode: async ({ address }: { address: `0x${string}` }) => {
+        if (o.targetNoCode && address.toLowerCase() === ROUTER.toLowerCase()) return '0x' as `0x${string}`;
+        if (o.spenderNoCode && address.toLowerCase() === SPENDER.toLowerCase()) return '0x' as `0x${string}`;
+        return '0x60006000' as `0x${string}`;
+      },
       readContract: async ({ functionName }: { functionName: string }) => (functionName === 'balanceOf' ? o.balance ?? BigInt(10_000_000) : o.allowance ?? BigInt(10_000_000)),
       call: async () => {
         c.calls++;
@@ -256,12 +387,37 @@ describe('simulateBag', () => {
     expect(await simulateBag(await compiled(), { client: client() })).toEqual({ status: 'OK' });
   });
 
+  it('does not report OK if the transaction target or approval spender has no contract code', async () => {
+    expect(await simulateBag(await compiled(), { client: client({ targetNoCode: true }) })).toEqual({
+      status: 'INVALID_TARGET',
+      address: ROUTER,
+    });
+    expect(await simulateBag(await compiled(), { client: client({ spenderNoCode: true }) })).toEqual({
+      status: 'INVALID_APPROVAL_SPENDER',
+      spender: SPENDER,
+    });
+  });
+
   it('reports what is missing instead of a meaningless revert', async () => {
     expect(await simulateBag(await compiled(), { client: client({ balance: BigInt(1) }) })).toEqual({ status: 'INSUFFICIENT_BALANCE', balanceRaw: BigInt(1), requiredRaw: BigInt(10_000_000) });
     const c = client({ allowance: BigInt(0) });
     const r = await simulateBag(await compiled(), { client: c });
     expect(r.status).toBe('NEEDS_APPROVAL');
     expect(c.calls).toBe(0);
+  });
+
+  it('requires enough balance to preserve the retained input-token allocation', async () => {
+    const bag = doc((d) => {
+      d.definition.assets[1].address = USDG;
+      delete d.metadata;
+    });
+    const purchase = await compileBag(bag, req(), { provider: fakeProvider(), trust: TRUST });
+    // 7m covers the 6m swap amount, but not the 4m share that is supposed to remain in the wallet.
+    expect(await simulateBag(purchase, { client: client({ balance: BigInt(7_000_000) }) })).toEqual({
+      status: 'INSUFFICIENT_BALANCE',
+      balanceRaw: BigInt(7_000_000),
+      requiredRaw: BigInt(10_000_000),
+    });
   });
 
   it('a revert is reported with its first line only; a wrong-chain client is refused', async () => {
@@ -346,6 +502,7 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
         transactionRequest: { to: ROUTER, chainId: 4663, data: '0xdeadbeef', value: '1000000000000000' },
         userProxy: '0x' + '8'.repeat(40),
         approvals: [],
+        priceImpact: { inputValueUsd: 10, outputValueUsd: 9.99, impactBps: 10, unpricedInputs: [], unpricedOutputs: [] },
         fees: [],
       },
     });
@@ -366,6 +523,7 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
     let callValue: bigint | undefined;
     const client = (balance: bigint): SimulationClient => ({
       getChainId: async () => 4663,
+      getCode: async () => '0x60006000' as Hex,
       getBalance: async () => balance,
       readContract: async () => {
         readContractCalls++;
@@ -380,7 +538,7 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
     expect(callValue).toBe(BigInt('1000000000000000'));
     expect(readContractCalls).toBe(0);
     expect(await simulateBag(compiled, { client: client(BigInt(1)) })).toEqual({ status: 'INSUFFICIENT_BALANCE', balanceRaw: BigInt(1), requiredRaw: BigInt('1000000000000000') });
-    const noBalance = { getChainId: async () => 4663, readContract: async () => BigInt(0), call: async () => ({}) } as SimulationClient;
+    const noBalance = { getChainId: async () => 4663, getCode: async () => '0x60006000' as Hex, readContract: async () => BigInt(0), call: async () => ({}) } as SimulationClient;
     await expect(simulateBag(compiled, { client: noBalance })).rejects.toThrow(/getBalance/);
   });
 });

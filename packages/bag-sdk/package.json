@@ -1,6 +1,6 @@
 {
   "name": "@bagprotocol/sdk",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "bag.json v1: parse, validate, normalize, hash and verify BAG strategies, and compile unsigned purchases, without the BAG app.",
   "type": "module",
   "main": "./dist/index.js",
@@ -21,7 +21,8 @@
     "./lifi": {
       "types": "./dist/adapters/lifi.d.ts",
       "import": "./dist/adapters/lifi.js"
-    }
+    },
+    "./schema.json": "./dist/schema/bag.v1.schema.json"
   },
   "files": [
     "dist",
@@ -29,7 +30,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node scripts/fix-esm-imports.mjs",
+    "build": "tsc -p tsconfig.build.json && node scripts/fix-esm-imports.mjs && node scripts/copy-schema.mjs",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "smoke:consumer": "node scripts/consumer-smoke.mjs"

@@ -1,5 +1,5 @@
 import { encodeAbiParameters, keccak256 } from 'viem';
-import { BAG_V1_CHAINS, type BagChain } from './chains';
+import { BAG_V1_CHAINS, chainIdOf, type BagChain } from './chains';
 import { computeDefinitionHash } from './definition';
 import type { BagDocument, Hex } from './types';
 
@@ -65,6 +65,8 @@ export interface RegistryRecord {
 }
 
 export type RegistryCheckName = 'REF_PRESENT' | 'STRATEGY_REGISTERED_BY_EXPECTED_CREATOR' | 'VERSION_REGISTERED' | 'DEFINITION_MATCHES_REGISTRY';
+export type RegistryPreflightCheckName = 'REGISTRY_ADDRESS_VALID' | 'RPC_CHAIN_ID' | 'REGISTRY_HAS_CODE';
+export interface RegistryPreflightCheck { name: RegistryPreflightCheckName; ok: boolean; detail: string }
 
 export interface RegistryVerification {
   verified: boolean;
@@ -73,6 +75,8 @@ export interface RegistryVerification {
   recomputedDefinitionHash: Hex;
   fork: RegistryRecord['fork'];
   checks: { name: RegistryCheckName; ok: boolean; detail: string }[];
+  /** Environment checks performed by verifyRegistryCommitment before any registry reads. */
+  preflightChecks?: RegistryPreflightCheck[];
 }
 
 /** Pure half of the check: compares a document with a record already read for `registryStrategyId(expectedCreator, ref.strategyId)`. */
@@ -150,7 +154,11 @@ export interface ContractReader {
   readContract(args: { address: Hex; abi: readonly unknown[]; functionName: string; args?: readonly unknown[] }): Promise<unknown>;
 }
 
-/** Reads one (strategyId, version). An unregistered version is `definitionHash: null`, never a guess. */
+/**
+ * Low-level view reader. It does not verify the RPC chain or registry bytecode; callers should use
+ * verifyRegistryCommitment for a user-facing trust decision, and must independently trust the registry address.
+ * An unregistered version is `definitionHash: null`, never a guess.
+ */
 export async function readRegistryRecord(client: ContractReader, registry: Hex, strategyId: Hex, version: number): Promise<RegistryRecord> {
   const s = (await client.readContract({ address: registry, abi: STRATEGY_REGISTRY_READ_ABI, functionName: 'strategyOf', args: [strategyId] })) as {
     creator: string;
@@ -177,9 +185,57 @@ export async function readRegistryRecord(client: ContractReader, registry: Hex, 
  * Verifies a bag.json against a deployed StrategyRegistry with no BAG server involved: the caller supplies
  * the expected creator, the registry address and a client for the registry's chain. Read-only.
  */
-export async function verifyRegistryCommitment(params: { bag: BagDocument; expectedCreator: string; registry: Hex; client: ContractReader }): Promise<RegistryVerification> {
+export interface RegistryVerificationClient extends ContractReader {
+  /** The actual RPC chain id. It must match bag.definition.chain. */
+  getChainId(): Promise<number>;
+  /** Reads bytecode at an address on the selected chain. */
+  getCode(args: { address: Hex }): Promise<Hex | undefined>;
+}
+
+const BYTECODE_RE = /^0x(?:[0-9a-fA-F]{2})+$/;
+
+/**
+ * Verifies a bag.json against a StrategyRegistry without a BAG server. The caller supplies the expected creator,
+ * registry address and an RPC client. The SDK checks the RPC chain and that the registry address has bytecode
+ * before reading it. Bytecode presence is not a registry audit: the caller must still trust the registry address.
+ */
+export async function verifyRegistryCommitment(params: { bag: BagDocument; expectedCreator: string; registry: Hex; client: RegistryVerificationClient }): Promise<RegistryVerification> {
   const { bag, expectedCreator, registry, client } = params;
   if (!bag.ref) return checkRegistryCommitment(bag, expectedCreator, null);
+
+  if (!ADDRESS_RE.test(registry)) {
+    return {
+      ...checkRegistryCommitment(bag, expectedCreator, null),
+      verified: false,
+      preflightChecks: [{ name: 'REGISTRY_ADDRESS_VALID', ok: false, detail: 'Registry address must be a 20-byte hex address.' }],
+    };
+  }
+
+  // Validate the creator and strategy UUID before spending RPC calls.
   const id = registryStrategyId(expectedCreator, bag.ref.strategyId);
-  return checkRegistryCommitment(bag, expectedCreator, await readRegistryRecord(client, registry, id, bag.ref.version));
+  const expectedChainId = chainIdOf(bag.definition.chain);
+  const rpcChainId = await client.getChainId();
+  const preflightChecks: RegistryPreflightCheck[] = [{
+    name: 'RPC_CHAIN_ID',
+    ok: rpcChainId === expectedChainId,
+    detail: `rpc ${rpcChainId}, expected ${expectedChainId} for ${bag.definition.chain}`,
+  }];
+  if (rpcChainId !== expectedChainId) {
+    return { ...checkRegistryCommitment(bag, expectedCreator, null), verified: false, preflightChecks };
+  }
+
+  const code = await client.getCode({ address: registry });
+  const hasCode = typeof code === 'string' && BYTECODE_RE.test(code);
+  preflightChecks.push({
+    name: 'REGISTRY_HAS_CODE',
+    ok: hasCode,
+    detail: hasCode ? `${registry} has contract bytecode` : `${registry} has no contract bytecode on chain ${expectedChainId}`,
+  });
+  if (!hasCode) {
+    return { ...checkRegistryCommitment(bag, expectedCreator, null), verified: false, preflightChecks };
+  }
+
+  const record = await readRegistryRecord(client, registry, id, bag.ref.version);
+  const checked = checkRegistryCommitment(bag, expectedCreator, record);
+  return { ...checked, verified: checked.verified && preflightChecks.every((check) => check.ok), preflightChecks };
 }

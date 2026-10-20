@@ -5,7 +5,8 @@ import { z } from 'zod';
 import bagSchema from '@/docs/schemas/bag.v1.schema.json';
 import strategySchema from '@/docs/schemas/strategy.v1.schema.json';
 import vectors from '@/docs/schemas/bag-json.v1.vectors.json';
-import { RebalanceFrequency, STRATEGY_TYPES, SUPPORTED_CHAINS, UNROUTABLE_POLICIES } from '@/types/basket-protocol';
+import { RebalanceFrequency, STRATEGY_TYPES, UNROUTABLE_POLICIES } from '@/types/basket-protocol';
+import { BAG_V1_CHAIN_SLUGS } from '@/packages/bag-sdk/src/chains';
 import { getAssetsByIdentities } from '@/lib/server/asset-repo';
 import {
   MAX_STRATEGY_LIST,
@@ -58,12 +59,12 @@ const nullableNumber = z.number().nullable();
 export const definitionInputSchema = z
   .object({
     kind: z.enum(STRATEGY_TYPES).nullable(),
-    chain: z.enum(SUPPORTED_CHAINS),
+    chain: z.enum(BAG_V1_CHAIN_SLUGS),
     mutability: z.enum(['MUTABLE', 'IMMUTABLE']).nullable(),
     assets: z
       .array(
         z
-          .object({ chain: z.enum(SUPPORTED_CHAINS), address: z.string(), decimals: z.number(), weightBps: z.number() })
+          .object({ chain: z.enum(BAG_V1_CHAIN_SLUGS), address: z.string(), decimals: z.number(), weightBps: z.number() })
           .strict()
       )
       .max(100),
