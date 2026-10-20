@@ -447,6 +447,7 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
     let callValue: bigint | undefined;
     const client = (balance: bigint): SimulationClient => ({
       getChainId: async () => 4663,
+      getCode: async () => '0x60006000' as Hex,
       getBalance: async () => balance,
       readContract: async () => {
         readContractCalls++;
