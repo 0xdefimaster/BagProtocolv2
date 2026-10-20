@@ -108,7 +108,7 @@ prove behavior against a local chain, never against Robinhood Chain.
 | `docs/STATUS.md` | CURRENT | This page |
 | `docs/ACCOUNTING_V2_DESIGN.md` | CURRENT | A1–A4 implemented (0048–0051) |
 | `docs/BAG_JSON_V1_DESIGN.md` | CURRENT | bag.json v1, `definitionHash` |
-| `packages/bag-sdk/README.md` | CURRENT | Standalone SDK: frozen bag.json v1 spec (parse/validate/normalize/hash, registry verification) and unsigned purchase compilation via a LI.FI Composer adapter. Not on npm; no live LI.FI run from CI |
+| `packages/bag-sdk/README.md` | CURRENT | Standalone `@bagprotocol/sdk`: frozen bag.json v1 spec (parse/validate/normalize/hash, registry verification) and unsigned purchase compilation via a LI.FI Composer adapter. Configured for public npm distribution but not yet published; no live LI.FI run from CI |
 | `docs/STRATEGY_API_SEMANTICS.md` | CURRENT | Strategy API, passport, execution receipts |
 | `docs/STRATEGY_REGISTRY_DESIGN.md` | CURRENT | Contract + verifier + registration flow; not deployed |
 | `docs/MCP.md` | CURRENT | Read-only MCP server |
