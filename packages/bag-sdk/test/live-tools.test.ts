@@ -71,9 +71,10 @@ describe('verify-registry (mocked network: logic only, not live)', () => {
     expect(r.registry).toEqual({ chainId: 4663, address: REGISTRY });
     expect(r.checks.map((c) => c.name)).toEqual([
       'BAG_JSON_PARSES',
-      'RPC_CHAIN_ID',
-      'REGISTRY_HAS_CODE',
       'STATED_HASH_MATCHES',
+      'RPC_CHAIN_MATCHES_STRATEGY',
+      'REGISTRY_ADDRESS_MATCHES_KNOWN_DEPLOYMENT',
+      'REGISTRY_HAS_CODE',
       'REF_PRESENT',
       'STRATEGY_REGISTERED_BY_EXPECTED_CREATOR',
       'VERSION_REGISTERED',
@@ -95,7 +96,7 @@ describe('verify-registry (mocked network: logic only, not live)', () => {
     const httpError = Object.assign(new Error('HTTP request failed.\n\nStatus: 403\nURL: https://rpc.example/secret-key'), { name: 'HttpRequestError' });
     const r = await verifyRegistry({ source: 'f', expectedCreator: FEETEST_CREATOR, client: chain({ fail: httpError }), readText });
     expect(r.verdict).toBe('BLOCKED');
-    expect(r.blockedReason).toBe('RPC unreachable: HTTP request failed.');
+    expect(r.blockedReason).toBe('RPC unreachable: registry preflight request failed');
     const refused = (async () => {
       throw new TypeError('fetch failed');
     }) as unknown as typeof fetch;
