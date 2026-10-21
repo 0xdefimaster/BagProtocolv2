@@ -476,6 +476,35 @@ How LI.FI derives the proxy address is not documented, so the SDK cannot yet che
 `live-compile.ts`, 0.001 ETH into `feetest` for a wallet with its proxy as the trusted target: 8/8 PASS, simulation OK.
 Nothing was signed or sent.
 
+## Verify a submitted purchase
+
+After the wallet has submitted the compiled **direct call**, the SDK can read its result through the caller's public client:
+
+```ts
+import { verifyPurchaseReceipt } from '@bagprotocol/sdk';
+
+const verification = await verifyPurchaseReceipt(compiled, {
+  client,
+  transactionHash: walletReportedHash,
+  // Explicit reviewed wallet amounts, one for every swapped-into ERC-20.
+  minimumReceived: reviewedWalletMinimums, // { token: string; amountRaw: bigint }[]
+  confirmations: 3,
+});
+console.log(verification.status, verification.outputs, verification.issues);
+```
+
+The helper binds the mined hash, sender, chain, target, calldata and native value to the compiled purchase. It checks receipt/transaction block identity, the block's current canonical hash and a fresh confirmation depth. It then reports inbound, outbound and **net** ERC-20 Transfer-event amounts for each planned swap output. Duplicate, removed, differently bound and malformed Transfer logs cannot produce a verified result.
+
+- `VERIFIED`: the direct transaction matches and every observed net Transfer amount meets the caller's wallet minimum. The evidence scope is `TRANSACTION_AND_TRANSFER_LOGS`.
+- `FAILED`: a binding check failed, the confirmed transaction reverted, or a planned output's observed net delivery is below its minimum.
+- `INDETERMINATE`: RPC evidence is unavailable/incomplete, confirmation depth is insufficient, the receipt is noncanonical, or the wallet used a batch or delegated transaction envelope. Retry with fresh evidence where appropriate.
+
+**Wallet minimums are required.** The provider's `minOutRaw` applies at the swap boundary, and `expectedOutRaw` is an estimate. Neither is silently treated as a guaranteed amount in the wallet. Supply a positive uint256 minimum for every planned swap output; missing, extra or duplicate tokens are rejected before RPC access.
+
+**Evidence limits:** Transfer logs are assertions by token contracts, not independent balance-delta proofs. Use conventional ERC-20 tokens you trust; nonstandard or rebasing-token balances require additional verification. Incoming transfers later sent away in the same transaction are subtracted; self-transfers contribute zero. The planned retained input share is returned as `kept`, with `keptBalanceVerified: false`; no balance claim is made for it. Native coin is supported as payment, not as a basket output. This helper does not verify arbitrary calldata semantics, fees, registry identity, or a smart-account batch merely because it contains the compiled bytes.
+
+This is a single read-only observation, with no polling, signing or submission. One confirmation means mined, not economic finality. Select confirmation depth for the chain and recheck if needed. The result remains `NOT_BAG_ACCOUNTED`; it does not create a BAG position, cost basis or fee eligibility.
+
 ## Package
 
 ```
