@@ -234,6 +234,14 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     const fetchImpl = composeFetch({ ...compileData, priceImpact: { ...compileData.priceImpact, impactBps: 735 } });
     await expect(compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST })).rejects.toThrow(/735 bps is above the limit 500/);
   });
+
+  it('refuses an unavailable or malformed price impact instead of bypassing the limit', async () => {
+    for (const impactBps of [null, -1, 1.5, Number.NaN]) {
+      const fetchImpl = composeFetch({ ...compileData, priceImpact: { ...compileData.priceImpact, impactBps } });
+      await expect(compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST }))
+        .rejects.toThrow(impactBps === null ? /did not report price impact/ : /malformed price impact/);
+    }
+  });
 });
 
 describe('simulateBag', () => {
