@@ -6,13 +6,13 @@ import { parseBag } from '../src';
 import { externalBag } from './helpers';
 
 const schemaText = readFileSync(fileURLToPath(new URL('../schema/bag.v1.schema.json', import.meta.url)), 'utf8');
-const docsSchemaText = readFileSync(fileURLToPath(new URL('../../../docs/schemas/bag.v1.schema.json', import.meta.url)), 'utf8');
 const schema = JSON.parse(schemaText);
 const validateSchema = new Ajv({ allErrors: true, strict: false }).compile(schema);
 
 describe('published bag.json JSON Schema', () => {
-  it('keeps the packaged schema identical to the repository schema', () => {
-    expect(JSON.parse(schemaText)).toEqual(JSON.parse(docsSchemaText));
+  it('declares exactly the EVM chain subset implemented by the SDK', () => {
+    expect(schema.$id).toBe('https://bagprotocol.com/schemas/bag-sdk.v1.json');
+    expect(schema.definitions.chain.enum).toEqual(['ethereum', 'base', 'arbitrum', 'robinhood']);
   });
 
   it('accepts the SDK minimum document and a BAG-served document', () => {
