@@ -142,6 +142,8 @@ export function planPurchase(bag: BagDocument, req: PurchaseRequest): PurchasePl
     const inputTokenDecimals = req.inputTokenDecimals ?? (isNativeToken(req.inputToken) ? 18 : undefined);
     if (inputTokenDecimals === undefined) {
       err('INPUT_TOKEN_DECIMALS_REQUIRED', 'request.inputTokenDecimals', 'Provide the input token decimals to enforce this strategy’s minimum investment.');
+    } else if (!Number.isInteger(inputTokenDecimals) || inputTokenDecimals < 0 || inputTokenDecimals > 255) {
+      // The request already carries INVALID_INPUT_TOKEN_DECIMALS; avoid using an invalid exponent.
     } else if (typeof req.amountRaw === 'bigint' && req.amountRaw > 0n && compareRawToDecimal(req.amountRaw, inputTokenDecimals, minInvestmentAmount) < 0) {
       err('BELOW_MIN_INVESTMENT', 'request.amountRaw', `Deposit is below the strategy minimum of ${minInvestmentAmount} payment-token units.`);
     }
