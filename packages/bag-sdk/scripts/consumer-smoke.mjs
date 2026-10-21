@@ -3,6 +3,7 @@
 // typechecks a TypeScript consumer (NodeNext, skipLibCheck off). Run `npm run build` first.
 // The provider is a local stub: this checks the PACKAGE, not LI.FI (see examples/live-compile.ts).
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { copyFileSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,6 +19,10 @@ try {
   const tarball = readdirSync(dir).find((f) => f.endsWith('.tgz'));
   if (!tarball) throw new Error('npm pack produced no tarball');
   copyFileSync(fixture, join(dir, 'feetest.bag.json'));
+  const require = createRequire(import.meta.url);
+  const schemaPath = require.resolve('@bagprotocol/sdk/schema');
+  const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
+  if (schema.$id !== 'https://bagprotocol.com/schemas/bag.v1.json') throw new Error('SDK JSON Schema export is missing or invalid');
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'consumer', private: true, type: 'module' }));
   sh('npm', ['install', '--no-audit', '--no-fund', `./${tarball}`, 'viem@^2', '@lifi/composer-sdk@0.11.3', 'typescript@5'], dir);
 
