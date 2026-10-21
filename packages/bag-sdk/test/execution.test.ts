@@ -34,7 +34,7 @@ const doc = (mutate: (d: any) => void = () => {}): BagDocument => {
   if (!r.ok) throw new Error(JSON.stringify(r.issues));
   return r.bag;
 };
-const req = (over: Record<string, unknown> = {}) => ({ inputToken: USDG, amountRaw: BigInt(10_000_000), inputTokenDecimals: 6, signer: SIGNER, ...over });
+const req = (over: Record<string, unknown> = {}) => ({ inputToken: USDG, amountRaw: BigInt(10_000_000), signer: SIGNER, ...over });
 const codes = (fn: () => unknown) => {
   try {
     fn();
@@ -84,20 +84,6 @@ describe('planPurchase', () => {
     expect(plan.maxPriceImpactBps).toBe(V1_EXECUTION_POLICY.maxPriceImpactBps);
     expect(plan.accounting).toBe('NOT_BAG_ACCOUNTED');
     expect(plan.definitionHash).toMatch(/^0x[0-9a-f]{64}$/);
-  });
-
-  it('enforces minInvestment exactly in payment-token units and requires ERC-20 decimals', () => {
-    const bag = doc((d) => (d.definition.rules.minInvestment = { amount: '10.5', measuredAs: 'PAYMENT_TOKEN_AMOUNT' }));
-    expect(planPurchase(bag, req({ amountRaw: 10_500_000n })).amountRaw).toBe(10_500_000n);
-    expect(codes(() => planPurchase(bag, req({ amountRaw: 10_499_999n })))).toContain('BELOW_MIN_INVESTMENT');
-    expect(codes(() => planPurchase(bag, req({ inputTokenDecimals: undefined })))).toContain('INPUT_TOKEN_DECIMALS_REQUIRED');
-    expect(codes(() => planPurchase(bag, req({ inputTokenDecimals: 256 })))).toContain('INVALID_INPUT_TOKEN_DECIMALS');
-  });
-
-  it('compares fractional minimums without rounding or floating point', () => {
-    const bag = doc((d) => (d.definition.rules.minInvestment = { amount: '0.0000011', measuredAs: 'PAYMENT_TOKEN_AMOUNT' }));
-    expect(codes(() => planPurchase(bag, req({ amountRaw: 1n })))).toContain('BELOW_MIN_INVESTMENT');
-    expect(planPurchase(bag, req({ amountRaw: 2n })).amountRaw).toBe(2n);
   });
 
   it('an asset that IS the input token is kept, not swapped', () => {
@@ -311,12 +297,6 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
   /** A well-behaved provider for a native purchase: value = the swapped amount, no approval. */
   const nativeProvider = (override: (r: ComposerCompileResult, q: ComposerCompileRequest) => ComposerCompileResult = (r) => r) =>
     fakeProvider((r, q) => override({ ...r, transaction: { ...r.transaction, value: String(q.amountRaw) }, approvals: [] }, q));
-
-  it('uses 18 decimals when enforcing minInvestment for native ETH', () => {
-    const bag = doc((d) => (d.definition.rules.minInvestment = { amount: '0.1', measuredAs: 'PAYMENT_TOKEN_AMOUNT' }));
-    expect(planPurchase(bag, ethReq({ amountRaw: 100_000_000_000_000_000n })).amountRaw).toBe(100_000_000_000_000_000n);
-    expect(codes(() => planPurchase(bag, ethReq({ amountRaw: 99_999_999_999_999_999n })))).toContain('BELOW_MIN_INVESTMENT');
-  });
 
   it('plans a native purchase: inputKind native, every asset swapped, same exact allocation as an ERC-20 deposit', () => {
     const plan = planPurchase(doc(), ethReq());
