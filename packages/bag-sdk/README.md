@@ -513,6 +513,35 @@ const evidenceClient = withReceiptEvidence(publicClient, {
 
 This mode requires `web3_clientVersion` to identify Geth 1.16. It uses `debug_traceCall` with `callTracer` and `txIndex` to read the pre-state of the target transaction and of the next transaction; the last transaction's post-state comes from the canonical block. Other clients may silently ignore `txIndex`, so unknown implementations are refused. Client version is a compatibility check, not protection against a dishonest RPC. Trust your reader. A custom `PurchaseReceiptClient.getPurchaseBalanceChanges` can supply transaction-scoped evidence from another qualified backend; it must bind the exact hash, block, owner and token set. Arbitrary wallet snapshots are not evidence.
 
+#### Robinhood Chain / Nitro
+
+For a trusted Robinhood mainnet reader qualified for historical traces, use the explicit Nitro mode:
+
+```ts
+const evidenceClient = withReceiptEvidence(publicClient, {
+  balanceState: 'ROBINHOOD_NITRO_TRANSACTION_INDEX',
+});
+const result = await verifyPurchaseReceipt(compiled, {
+  client: evidenceClient,
+  transactionHash: walletReportedHash,
+  minimumReceived: reviewedWalletMinimums,
+  confirmations: 3,
+});
+```
+
+This mode requires Robinhood mainnet and the qualified `nitro/v3.12.1+70fa99a` build. It uses the same pre-transaction index reconstruction, with canonical block-hash reads for the final transaction's post-state. Receipt transaction index must agree with block membership. The mode is opt-in: the SDK never assumes that Nitro is Geth, selects a provider, embeds an endpoint, or falls back to event-only verification. Unknown builds are refused until separately qualified. The version check assumes an honest, correctly configured reader; it is not an independent cryptographic proof.
+
+On 2026-10-21, read-only qualification against a caller-supplied QuickNode Robinhood mainnet endpoint succeeded for historical transaction `0x7550ac9d15cbab5947c96f6eca4c10d2d3c15ef1c027f3a8587b499606ad9d3d`, block 81204116 (8 transactions, target index 5). `callTracer`, `prestateTracer` diff mode, historical `eth_call` and transaction-indexed `debug_traceCall` were available. Before/after deltas for all three transferred tokens matched their net Transfer amounts, and an out-of-range transaction index was rejected. This qualifies the observed reader/build; it does not establish support on every QuickNode plan or Nitro installation, and it does not verify that historical sale against an original SDK purchase intent.
+
+To repeat the read-only evidence observation with your own endpoint in `RPC_URL`:
+
+```
+npm run build --prefix packages/bag-sdk
+node packages/bag-sdk/examples/live-receipt-evidence.mjs <transactionHash> <owner> <token> [token...]
+```
+
+It reports `OBSERVED_RECEIPT_EVIDENCE` and `purchaseVerification: NOT_PERFORMED`; no original compiled purchase is available to that CLI. Applications must keep the original `compiled` purchase and explicit reviewed minima and call `verifyPurchaseReceipt` as above. Keep private endpoint tokens in environment configuration, outside committed files and output. No signing or submission occurs.
+
 Smart-account batches and relayed calls additionally require `debug_traceTransaction` with the full `callTracer` tree (or `tracePurchaseCall` on a custom trusted reader). The trace must match the actual outer transaction and prove exactly one successful `CALL` from the planned signer to the compiled target with exact calldata/value. Reverted calls, descendants of reverted calls, delegatecalls and duplicate matches do not qualify. A public endpoint without tracing/historical state returns `INDETERMINATE` for unsupported evidence; use a qualified reader rather than weakening the check.
 
 ### Minimums, retained input and evidence limits

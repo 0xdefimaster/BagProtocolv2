@@ -1,9 +1,10 @@
 import type { PurchaseReceiptClient, PurchaseEvidenceContext, PurchaseBalanceEvidence } from '../receipt';
 import type { Hex } from '../types';
+import { BAG_V1_CHAINS } from '../chains';
 
 export interface ReceiptEvidenceOptions {
-  /** Safe default refuses busy blocks. Geth mode requires RPC support for BEFORE-transaction txIndex semantics. */
-  balanceState?: 'SINGLE_TRANSACTION_BLOCK' | 'GETH_TRANSACTION_INDEX';
+  /** Indexed modes require a qualified reader with BEFORE-transaction txIndex semantics. No automatic detection/fallback. */
+  balanceState?: 'SINGLE_TRANSACTION_BLOCK' | 'GETH_TRANSACTION_INDEX' | 'ROBINHOOD_NITRO_TRANSACTION_INDEX';
 }
 
 type Rpc = (args: { method: string; params: readonly unknown[] }) => Promise<unknown>;
@@ -19,12 +20,15 @@ const record = (value: unknown): Record<string, unknown> => {
 export function withReceiptEvidence(client: PurchaseReceiptClient & { request: unknown }, options: ReceiptEvidenceOptions = {}): PurchaseReceiptClient {
   if (typeof client.request !== 'function') throw new Error('withReceiptEvidence requires a JSON-RPC request method.');
   const mode = options.balanceState ?? 'SINGLE_TRANSACTION_BLOCK';
-  if (mode !== 'SINGLE_TRANSACTION_BLOCK' && mode !== 'GETH_TRANSACTION_INDEX') throw new Error('Unknown balance-state mode.');
+  if (!['SINGLE_TRANSACTION_BLOCK', 'GETH_TRANSACTION_INDEX', 'ROBINHOOD_NITRO_TRANSACTION_INDEX'].includes(mode)) throw new Error('Unknown balance-state mode.');
+  const indexed = mode !== 'SINGLE_TRANSACTION_BLOCK';
   const rpc: Rpc = args => (client.request as Rpc).call(client, args);
-  const assertInclusion = async (context: PurchaseEvidenceContext) => {
+  const assertInclusion = async (context: PurchaseEvidenceContext, index?: number) => {
     const receipt = record(await rpc({ method: 'eth_getTransactionReceipt', params: [context.transactionHash] }));
     if (!same(receipt.transactionHash, context.transactionHash) || !same(receipt.blockHash, context.blockHash) ||
-        typeof receipt.blockNumber !== 'string' || BigInt(receipt.blockNumber) !== context.blockNumber) {
+        typeof receipt.blockNumber !== 'string' || BigInt(receipt.blockNumber) !== context.blockNumber ||
+        (index !== undefined && (typeof receipt.transactionIndex !== 'string' ||
+          !/^0x[0-9a-fA-F]+$/.test(receipt.transactionIndex) || BigInt(receipt.transactionIndex) !== BigInt(index)))) {
       throw new Error('Receipt inclusion changed during evidence collection.');
     }
   };
@@ -47,6 +51,17 @@ export function withReceiptEvidence(client: PurchaseReceiptClient & { request: u
           throw new Error('Transaction-indexed balance adapter requires confirmed Geth 1.16 semantics.');
         }
       }
+      if (mode === 'ROBINHOOD_NITRO_TRANSACTION_INDEX') {
+        if (await client.getChainId() !== BAG_V1_CHAINS.robinhood) {
+          throw new Error('Robinhood Nitro balance adapter requires the Robinhood mainnet chain.');
+        }
+        const version = await rpc({ method: 'web3_clientVersion', params: [] });
+        // Qualified with real historical state reads on this Nitro build. A newer
+        // build requires qualification; sharing an RPC method name is insufficient.
+        if (typeof version !== 'string' || !/^nitro\/v3\.12\.1\+70fa99a(?:-|\/)/.test(version)) {
+          throw new Error('Robinhood transaction-indexed balance adapter requires the qualified Nitro build.');
+        }
+      }
       const block = record(await rpc({ method: 'eth_getBlockByHash', params: [context.blockHash, false] }));
       if (!same(block.hash, context.blockHash) || typeof block.number !== 'string' || BigInt(block.number) !== context.blockNumber ||
           !Array.isArray(block.transactions) || !block.transactions.every(hash => typeof hash === 'string' && HASH.test(hash)) ||
@@ -58,8 +73,8 @@ export function withReceiptEvidence(client: PurchaseReceiptClient & { request: u
       const balanceAt = async (token: string, after: boolean): Promise<bigint> => {
         const call = { from: context.owner, to: token, data: '0x70a08231' + context.owner.slice(2).padStart(64, '0'), gas: '0xf4240' };
         let output: unknown;
-        if (mode === 'GETH_TRANSACTION_INDEX' && (!after || index + 1 < transactions.length)) {
-          // Geth StateAtTransaction reconstructs the state BEFORE the indexed transaction.
+        if (indexed && (!after || index + 1 < transactions.length)) {
+          // Qualified Geth/Nitro readers reconstruct state BEFORE the indexed transaction.
           // The following transaction's pre-state is the current one's post-state.
           const trace = record(await rpc({ method: 'debug_traceCall', params: [call, context.blockHash, {
             tracer: 'callTracer', txIndex: '0x' + (index + (after ? 1 : 0)).toString(16),
@@ -79,7 +94,7 @@ export function withReceiptEvidence(client: PurchaseReceiptClient & { request: u
         const [beforeRaw, afterRaw] = await Promise.all([balanceAt(token, false), balanceAt(token, true)]);
         balances.push({ token, beforeRaw, afterRaw });
       }
-      await assertInclusion(context);
+      await assertInclusion(context, index);
       return { ...context, scope: mode === 'SINGLE_TRANSACTION_BLOCK' ? 'SINGLE_TRANSACTION_BLOCK' : 'TRANSACTION', balances };
     },
   };
