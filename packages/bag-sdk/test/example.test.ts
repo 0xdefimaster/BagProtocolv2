@@ -21,7 +21,7 @@ const B = '0xb0000000000000000000000000000000000000bb';
 const USDG = '0x' + 'c'.repeat(40);
 const SIGNER = '0x' + '5'.repeat(40);
 const CREATOR = '0x' + '1'.repeat(40);
-const REGISTRY = ('0x' + '4'.repeat(40)) as Hex;
+const REGISTRY = '0x907cc27d644c8ea1c24b8320ad09ecf2819209a8' as Hex;
 const STRATEGY = '33333333-3333-4333-8333-333333333333';
 const ZERO32 = `0x${'0'.repeat(64)}`;
 
@@ -46,6 +46,7 @@ function composerFetch() {
 function rpc(hash: string) {
   return {
     getChainId: async () => 4663,
+    getCode: async (): Promise<Hex> => '0x6000',
     readContract: async ({ functionName, args, address }: { functionName: string; args?: readonly unknown[]; address?: string }) => {
       if (functionName === 'decimals') return address?.toLowerCase() === USDG ? 6 : 18;
       if (functionName === 'balanceOf') return BigInt(10_000_000);

@@ -11,6 +11,7 @@ import {
   verifyRegistryCommitment,
   type BagDocument,
   type ContractReader,
+  type RegistryClient,
 } from '../src';
 import { fetchBag, MAX_BAG_JSON_BYTES } from '../src/adapters/http';
 import { readTokenDecimals } from '../src/adapters/evm';
@@ -27,14 +28,16 @@ import { EXTERNAL_DEFINITION_HASH, externalBag, externalBagText } from './helper
 const CREATOR = '0x1111111111111111111111111111111111111111';
 const IMPOSTOR = '0x2222222222222222222222222222222222222222';
 const STRATEGY = '33333333-3333-4333-8333-333333333333';
-const REGISTRY = '0x4444444444444444444444444444444444444444' as Hex;
+const REGISTRY = '0x907cc27d644c8ea1c24b8320ad09ecf2819209a8' as Hex;
 const ZERO = '0x0000000000000000000000000000000000000000';
 const ZERO32 = `0x${'0'.repeat(64)}` as Hex;
 
 /** In-memory StrategyRegistry: strategyOf + definitionHashOf, as the contract answers them. */
-function fakeRegistry(entries: { creator: string; uuid: string; hashes: Hex[] }[]): ContractReader {
+function fakeRegistry(entries: { creator: string; uuid: string; hashes: Hex[] }[]): RegistryClient {
   const byId = new Map(entries.map((e) => [registryStrategyId(e.creator, e.uuid).toLowerCase(), e] as const));
   return {
+    getChainId: async () => 4663,
+    getCode: async () => '0x6000',
     async readContract({ functionName, args }) {
       const e = byId.get(String(args![0]).toLowerCase());
       if (functionName === 'strategyOf') return { creator: e?.creator ?? ZERO, latestVersion: e?.hashes.length ?? 0, forkOfStrategyId: ZERO32, forkOfVersion: 0 };
@@ -139,7 +142,8 @@ describe('bag.json + registry commitment → independent verification', () => {
   it('verified with the expected creator', async () => {
     const v = await verifyRegistryCommitment({ bag: servedDoc(), expectedCreator: CREATOR, registry: REGISTRY, client: registered });
     expect(v.verified).toBe(true);
-    expect(v.checks.map((c) => c.ok)).toEqual([true, true, true, true]);
+    expect(v.checks.every((c) => c.ok)).toBe(true);
+    expect(v.checks.map((c) => c.name)).toEqual(['RPC_CHAIN_MATCHES_STRATEGY', 'REGISTRY_ADDRESS_MATCHES_KNOWN_DEPLOYMENT', 'REGISTRY_HAS_CODE', 'REF_PRESENT', 'STRATEGY_REGISTERED_BY_EXPECTED_CREATOR', 'VERSION_REGISTERED', 'DEFINITION_MATCHES_REGISTRY']);
   });
 
   it('the creator is a verification input: the JSON’s own registry claim is never authority', async () => {
@@ -167,6 +171,37 @@ describe('bag.json + registry commitment → independent verification', () => {
     const v = await verifyRegistryCommitment({ bag: servedDoc(2), expectedCreator: CREATOR, registry: REGISTRY, client: registered });
     expect(v.verified).toBe(false);
     expect(v.checks.find((c) => c.name === 'VERSION_REGISTERED')!.ok).toBe(false);
+  });
+
+  it('fails closed before registry reads when the RPC chain, known address, or code is wrong', async () => {
+    let registryReads = 0;
+    const base = fakeRegistry([{ creator: CREATOR, uuid: STRATEGY, hashes: [EXTERNAL_DEFINITION_HASH as Hex] }]);
+    const tracked: RegistryClient = {
+      ...base,
+      async readContract(args) { registryReads++; return base.readContract(args); },
+    };
+
+    const wrongChain = await verifyRegistryCommitment({
+      bag: servedDoc(), expectedCreator: CREATOR, registry: REGISTRY,
+      client: { ...tracked, getChainId: async () => 1 },
+    });
+    expect(wrongChain.verified).toBe(false);
+    expect(wrongChain.checks.find((c) => c.name === 'RPC_CHAIN_MATCHES_STRATEGY')?.ok).toBe(false);
+    expect(registryReads).toBe(0);
+
+    const wrongAddress = await verifyRegistryCommitment({
+      bag: servedDoc(), expectedCreator: CREATOR, registry: '0x4444444444444444444444444444444444444444' as Hex, client: tracked,
+    });
+    expect(wrongAddress.checks.find((c) => c.name === 'REGISTRY_ADDRESS_MATCHES_KNOWN_DEPLOYMENT')?.ok).toBe(false);
+    expect(registryReads).toBe(0);
+
+    const noCode = await verifyRegistryCommitment({
+      bag: servedDoc(), expectedCreator: CREATOR, registry: REGISTRY,
+      client: { ...tracked, getCode: async () => '0x' },
+    });
+    expect(noCode.verified).toBe(false);
+    expect(noCode.checks.find((c) => c.name === 'REGISTRY_HAS_CODE')?.ok).toBe(false);
+    expect(registryReads).toBe(0);
   });
 
   it('a draft bag.json (no ref) can be hashed but not registry-verified, and says why', () => {

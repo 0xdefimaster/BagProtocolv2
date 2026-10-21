@@ -334,6 +334,8 @@ creator is not in `definitionHash`. `verifyRegistryCommitment` takes the creator
 3. Require that the entry was registered by that creator.
 4. Require that `definitionHashOf(id, ref.version)` equals the hash recomputed from `definition`.
 
+Before reading the record, the SDK also requires the caller's RPC chain to match `definition.chain`, checks the supplied address against BAG's known deployment when one is recorded, and requires non-empty contract code. A wrong chain/address or empty-code address fails closed without reading registry records. The caller still supplies its own read-only client; the SDK has no RPC credentials.
+
 `commitments.registry` in a served bag.json, including its `creator`, and the
 stated `definitionHash` are never used as authority. If you copy the creator
 from the JSON, you only verify what the JSON claims.

@@ -18,14 +18,11 @@
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { createPublicClient, http, type Hex } from 'viem';
-import { chainIdOf, hashBag, normalizeBag, parseBag, STRATEGY_REGISTRY_DEPLOYMENTS, verifyRegistryCommitment, type ContractReader } from '../src/index';
+import { chainIdOf, hashBag, normalizeBag, parseBag, STRATEGY_REGISTRY_DEPLOYMENTS, verifyRegistryCommitment, type RegistryClient } from '../src/index';
 import { fetchBag } from '../src/adapters/http';
 
 /** The reads this check makes: chain id, contract code, and the registry views. No wallet methods. */
-export interface RegistryReadClient extends ContractReader {
-  getChainId(): Promise<number>;
-  getCode(args: { address: Hex }): Promise<Hex | undefined>;
-}
+export type RegistryReadClient = RegistryClient;
 
 export interface VerifyRegistryOptions {
   source: string;
@@ -87,25 +84,6 @@ export async function verifyRegistry(o: VerifyRegistryOptions): Promise<VerifyRe
   }
   const registry = { chainId, address };
 
-  let rpcChainId: number;
-  let code: Hex | undefined;
-  try {
-    rpcChainId = await o.client.getChainId();
-  } catch (e) {
-    return finish(registry, `RPC unreachable: ${safeError(e)}`);
-  }
-  checks.push({ name: 'RPC_CHAIN_ID', ok: rpcChainId === chainId, detail: `rpc ${rpcChainId}, registry chain ${chainId}` });
-  if (rpcChainId !== chainId) return finish(registry);
-
-  try {
-    code = await o.client.getCode({ address });
-  } catch (e) {
-    return finish(registry, `RPC unreachable: ${safeError(e)}`);
-  }
-  const deployed = typeof code === 'string' && code !== '0x' && code.length > 2;
-  checks.push({ name: 'REGISTRY_HAS_CODE', ok: deployed, detail: deployed ? `${address}: ${(code!.length - 2) / 2} bytes` : `${address}: no contract code` });
-  if (!deployed) return finish(registry);
-
   const recomputed = hashBag(bag);
   if (bag.definitionHash) {
     // Informational: the stated hash is the document's claim; the registry check below is what counts.
@@ -119,7 +97,8 @@ export async function verifyRegistry(o: VerifyRegistryOptions): Promise<VerifyRe
     return finish(registry, `registry read failed: ${safeError(e)}`);
   }
   checks.push(...v.checks);
-  return finish(registry);
+  const rpcUnavailable = v.checks.some((c) => !c.ok && (c.detail.includes('could not read RPC chain id') || c.detail.includes('could not read contract code')));
+  return rpcUnavailable ? finish(registry, 'RPC unreachable: registry preflight request failed') : finish(registry);
 }
 
 async function main() {
