@@ -44,7 +44,7 @@ const SHIPPED: Day[] = [
       },
       {
         t: 'bag.json schema included in the SDK package',
-        b: 'The npm package now exports a JSON Schema profile aligned with the SDK’s supported EVM chains, so consumers can validate document shape in editors and tooling.',
+        b: 'The SDK package includes an EVM-aligned JSON Schema export, so consumers can validate document shape in editors and tooling.',
         prs: [113],
       },
     ],
