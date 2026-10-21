@@ -216,9 +216,12 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     fees: [],
   };
 
-  it('requires the caller’s own API key', () => {
+  it('requires the caller’s own API key and a secure Composer endpoint', () => {
     expect(() => lifiComposer({ apiKey: '', baseUrl: 'https://composer.test' })).toThrow(/apiKey/);
     expect(() => lifiComposer({ apiKey: 'k', baseUrl: '' })).toThrow(/baseUrl/);
+    for (const baseUrl of ['http://composer.test', 'https://user:pass@composer.test', 'not-a-url']) {
+      expect(() => lifiComposer({ apiKey: 'k', baseUrl })).toThrow(/baseUrl/);
+    }
   });
 
   it('builds the partition/swap flow from the plan and maps the compile response', async () => {
