@@ -16,7 +16,7 @@
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { createPublicClient, http, type Hex } from 'viem';
-import { chainIdOf, compileBag, hashBag, isNativeToken, normalizeBag, parseBag, simulateBag, validateBag, verifyRegistryCommitment, type ComposerProvider, type ContractReader, type RegistryClient, type SimulationClient } from '../src/index';
+import { chainIdOf, compileBag, hashBag, isNativeToken, normalizeBag, parseBag, simulateBag, validateBag, verifyRegistryCommitment, type ComposerProvider, type RegistryClient, type SimulationClient } from '../src/index';
 import { fetchBag } from '../src/adapters/http';
 import { readTokenDecimals } from '../src/adapters/evm';
 import { lifiComposer } from '../src/adapters/lifi';
@@ -31,7 +31,7 @@ export interface RunOptions {
   provider: ComposerProvider;
   allowedTransactionTargets: string[];
   allowedApprovalSpenders: string[];
-  client: SimulationClient & ContractReader & RegistryClient;
+  client: SimulationClient & RegistryClient;
   registry?: { address: Hex; expectedCreator: string };
   readText?: (path: string) => Promise<string>;
   fetch?: typeof fetch;
