@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import Ajv from 'ajv';
 import { describe, expect, it } from 'vitest';
 import { parseBag } from '../src';
-import { EXTERNAL_BAG_PATH, externalBag } from './helpers';
+import { externalBag } from './helpers';
 
 const schemaText = readFileSync(fileURLToPath(new URL('../schema/bag.v1.schema.json', import.meta.url)), 'utf8');
 const docsSchemaText = readFileSync(fileURLToPath(new URL('../../../docs/schemas/bag.v1.schema.json', import.meta.url)), 'utf8');
