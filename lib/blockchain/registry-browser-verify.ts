@@ -62,7 +62,7 @@ export async function verifyRegistrationsInBrowser(input: BrowserVerifyInput): P
       if (v.verified) checks.push({ version, state: 'VERIFIED' });
       else {
         const failed = v.checks.filter((c) => !c.ok);
-        const rpcUnavailable = failed.some((c) => c.name === 'RPC_CHAIN_MATCHES_STRATEGY' && c.detail.includes('could not read'));
+        const rpcUnavailable = failed.some((c) => c.name === 'RPC_CHAIN_MATCHES_STRATEGY');
         checks.push({ version, state: rpcUnavailable ? 'UNAVAILABLE' : 'MISMATCH', detail: failed.map((c) => c.detail).join('; ') });
       }
     } catch {
