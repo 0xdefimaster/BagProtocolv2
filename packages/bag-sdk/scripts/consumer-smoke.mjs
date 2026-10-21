@@ -22,7 +22,7 @@ try {
   const require = createRequire(import.meta.url);
   const schemaPath = require.resolve('@bagprotocol/sdk/schema');
   const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
-  if (schema.$id !== 'https://bagprotocol.com/schemas/bag.v1.json') throw new Error('SDK JSON Schema export is missing or invalid');
+  if (schema.$id !== 'https://bagprotocol.com/schemas/bag-sdk.v1.json') throw new Error('SDK JSON Schema export is missing or invalid');
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'consumer', private: true, type: 'module' }));
   sh('npm', ['install', '--no-audit', '--no-fund', `./${tarball}`, 'viem@^2', '@lifi/composer-sdk@0.11.3', 'typescript@5'], dir);
 
