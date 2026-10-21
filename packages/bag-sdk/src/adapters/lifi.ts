@@ -65,6 +65,15 @@ const legNode = (i: number) => `swap_${i}`;
 export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
   if (!options.apiKey) throw new Error('lifiComposer: apiKey is required (your own LI.FI API key).');
   if (!options.baseUrl) throw new Error('lifiComposer: baseUrl is required (the Composer API to call).');
+  let endpoint: URL;
+  try {
+    endpoint = new URL(options.baseUrl);
+  } catch {
+    throw new Error('lifiComposer: baseUrl must be a valid HTTPS URL.');
+  }
+  if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
+    throw new Error('lifiComposer: baseUrl must use HTTPS and cannot contain credentials, a query, or a fragment.');
+  }
   return {
     name: 'lifi-composer',
     async compile(req: ComposerCompileRequest): Promise<ComposerCompileResult> {
