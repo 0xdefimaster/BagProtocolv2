@@ -97,7 +97,8 @@ export async function verifyRegistry(o: VerifyRegistryOptions): Promise<VerifyRe
     return finish(registry, `registry read failed: ${safeError(e)}`);
   }
   checks.push(...v.checks);
-  return finish(registry);
+  const rpcUnavailable = v.checks.some((c) => !c.ok && (c.detail.includes('could not read RPC chain id') || c.detail.includes('could not read contract code')));
+  return rpcUnavailable ? finish(registry, 'RPC unreachable: registry preflight request failed') : finish(registry);
 }
 
 async function main() {
