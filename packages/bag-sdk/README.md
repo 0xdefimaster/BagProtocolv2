@@ -476,6 +476,66 @@ How LI.FI derives the proxy address is not documented, so the SDK cannot yet che
 `live-compile.ts`, 0.001 ETH into `feetest` for a wallet with its proxy as the trusted target: 8/8 PASS, simulation OK.
 Nothing was signed or sent.
 
+## Verify a submitted purchase
+
+Keep the original compiled purchase and the wallet-reviewed output minimums. After submission, use your trusted public client:
+
+```ts
+import { verifyPurchaseReceipt } from '@bagprotocol/sdk';
+import { withReceiptEvidence } from '@bagprotocol/sdk/evm';
+
+const verification = await verifyPurchaseReceipt(compiled, {
+  client: withReceiptEvidence(publicClient),
+  transactionHash: walletReportedHash,
+  minimumReceived: reviewedWalletMinimums, // { token: string; amountRaw: bigint }[]
+  confirmations: 3,
+});
+console.log(verification.status, verification.outputs, verification.issues);
+```
+
+The default `BALANCE_DELTA` mode checks actual ERC-20 `balanceOf` changes, never silently falling back to events. It binds the transaction hash, chain, target, calldata and native value to the compiled purchase, checks canonical inclusion and confirmations, and rechecks inclusion after collecting evidence. Each output reports event totals separately from `balanceBeforeRaw`, `balanceAfterRaw` and `balanceDeltaRaw`.
+
+- `VERIFIED`: the compiled call executed successfully and every wallet balance delta meets its explicit minimum.
+- `FAILED`: a transaction binding failed, execution reverted, an output is below minimum, or input spending violates the plan.
+- `INDETERMINATE`: evidence is unavailable, malformed, ambiguous, noncanonical or insufficiently confirmed. This is never success.
+
+### Historical state and RPC capabilities
+
+`withReceiptEvidence` uses only the supplied client's read methods and JSON-RPC transport. Its default `SINGLE_TRANSACTION_BLOCK` mode reads balances at canonical parent/current block hashes using EIP-1898. It refuses blocks containing multiple transactions: a block-wide balance change cannot be attributed to one transaction.
+
+For a trusted **Geth 1.16** reader with historical state and debug APIs, explicitly enable transaction-indexed reconstruction:
+
+```ts
+const evidenceClient = withReceiptEvidence(publicClient, {
+  balanceState: 'GETH_TRANSACTION_INDEX',
+});
+```
+
+This mode requires `web3_clientVersion` to identify Geth 1.16. It uses `debug_traceCall` with `callTracer` and `txIndex` to read the pre-state of the target transaction and of the next transaction; the last transaction's post-state comes from the canonical block. Other clients may silently ignore `txIndex`, so unknown implementations are refused. Client version is a compatibility check, not protection against a dishonest RPC. Trust your reader. A custom `PurchaseReceiptClient.getPurchaseBalanceChanges` can supply transaction-scoped evidence from another qualified backend; it must bind the exact hash, block, owner and token set. Arbitrary wallet snapshots are not evidence.
+
+Smart-account batches and relayed calls additionally require `debug_traceTransaction` with the full `callTracer` tree (or `tracePurchaseCall` on a custom trusted reader). The trace must match the actual outer transaction and prove exactly one successful `CALL` from the planned signer to the compiled target with exact calldata/value. Reverted calls, descendants of reverted calls, delegatecalls and duplicate matches do not qualify. A public endpoint without tracing/historical state returns `INDETERMINATE` for unsupported evidence; use a qualified reader rather than weakening the check.
+
+### Minimums, retained input and evidence limits
+
+Supply a positive uint256 wallet minimum for every planned swap output. Missing, extra or duplicate tokens are rejected before RPC access. Provider `minOutRaw` applies at the swap boundary; `expectedOutRaw` is an estimate. Neither is silently reused as a wallet guarantee.
+
+For ERC-20 payment, balance mode checks that the pre-state covers the planned deposit, the net input debit does not exceed `swapAmountRaw`, and any planned retained input is present in the post-state. Only then is `keptBalanceVerified` true. These are net balance checks, not a gross allowance/spending audit. Native payment is bound by the compiled call value; native gas balance and native basket outputs are outside this verifier.
+
+An explicit `verification: 'TRANSFER_LOGS'` selects weaker event-only verification (`TRANSACTION_AND_TRANSFER_LOGS`). It subtracts outbound transfers and ignores self-transfer net amounts, validates log identities and rejects malformed/duplicate logs. Token events can disagree with actual balances, so event-only success does not prove wallet balances or retained input (`keptBalanceVerified` stays false).
+
+Use ERC-20 contracts and RPC readers you trust. Even actual `balanceOf` calls depend on token semantics; rebases or other side effects within the same transaction cannot be attributed uniquely to the compiled subcall. Verification does not prove arbitrary calldata semantics, fees or registry identity. It remains `NOT_BAG_ACCOUNTED`: no BAG position, cost basis or fee eligibility is created. This is one read-only observation without polling, signing or submission; choose confirmation depth for the chain and recheck as needed.
+
+### Reproducible checks
+
+The unit suite includes real local EVM execution: direct purchases, dishonest Transfer amounts, smart-wallet relays, reverted inner calls and busy-block refusal. After building, an optional integration check can exercise an independently started disposable Geth 1.16 dev node:
+
+```
+geth --dev --dev.period 2 --http --http.addr 127.0.0.1 --http.port 8547 --http.api eth,net,web3,debug --datadir <temporary-directory> --nodiscover --maxpeers 0 --ipcdisable
+node packages/bag-sdk/scripts/receipt-geth-smoke.mjs
+```
+
+This local-only script deploys a fixture and submits three local transactions in one block, then checks each isolated delta and default busy-block refusal. It never submits transactions to a public chain. No Geth binary is bundled. The deployed chain's live RPC capabilities must still be checked independently; local execution is not a live purchase claim.
+
 ## Package
 
 ```

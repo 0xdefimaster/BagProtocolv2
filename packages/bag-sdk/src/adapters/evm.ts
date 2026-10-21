@@ -3,6 +3,7 @@ import type { BagChain } from '../chains';
 import type { ContractReader } from '../registry';
 import type { BagDefinition } from '../types';
 import type { TokenInfo } from '../validate';
+export { withReceiptEvidence, type ReceiptEvidenceOptions } from './receipt-rpc';
 
 // -----------------------------------------------------------------------------
 // Chain adapter: token facts for `validateBag(bag, { tokens })`. The caller

@@ -30,10 +30,10 @@ try {
     join(dir, 'consumer.mjs'),
     `import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { parseBag, validateBag, hashBag, compileBag, NATIVE_TOKEN, registryStrategyId, STRATEGY_REGISTRY_DEPLOYMENTS } from '@bagprotocol/sdk';
+import { parseBag, validateBag, hashBag, compileBag, verifyPurchaseReceipt, NATIVE_TOKEN, registryStrategyId, STRATEGY_REGISTRY_DEPLOYMENTS } from '@bagprotocol/sdk';
 import { lifiComposer } from '@bagprotocol/sdk/lifi';
 import { fetchBag } from '@bagprotocol/sdk/http';
-import { readTokenDecimals } from '@bagprotocol/sdk/evm';
+import { readTokenDecimals, withReceiptEvidence } from '@bagprotocol/sdk/evm';
 
 const parsed = parseBag(readFileSync('./feetest.bag.json', 'utf8'));
 assert.ok(parsed.ok, JSON.stringify(parsed.issues));
@@ -53,16 +53,58 @@ const compiled = await compileBag(parsed.bag, { inputToken: NATIVE_TOKEN, amount
 assert.equal(compiled.quote.plan.inputKind, 'native');
 assert.equal(compiled.transaction.value, amountRaw);
 assert.deepEqual(compiled.approvals, []);
-for (const f of [lifiComposer, fetchBag, readTokenDecimals]) assert.equal(typeof f, 'function');
+const receiptHash = '0x' + '1'.repeat(64);
+const blockHash = '0x' + '2'.repeat(64);
+const { keccak256 } = await import('viem');
+const transferEvent = keccak256(new TextEncoder().encode('Transfer(address,address,uint256)'));
+const addressWord = (address) => '0x' + address.slice(2).padStart(64, '0');
+const receiptClient = {
+  async getChainId() { return compiled.transaction.chainId; },
+  async getTransaction() {
+    return { hash: receiptHash, from: compiled.quote.plan.signer, to: compiled.transaction.to,
+      input: compiled.transaction.data, value: compiled.transaction.value, chainId: compiled.transaction.chainId,
+      blockHash, blockNumber: 10n };
+  },
+  async getTransactionReceipt() {
+    return { transactionHash: receiptHash, blockHash, blockNumber: 10n, from: compiled.quote.plan.signer,
+      to: compiled.transaction.to, status: 'success', logs: compiled.quote.plan.legs.map((leg, i) => ({
+        address: leg.token, topics: [transferEvent, addressWord(ROUTER), addressWord(compiled.quote.plan.signer)],
+        data: '0x' + (10n).toString(16).padStart(64, '0'), logIndex: i,
+        transactionHash: receiptHash, blockHash, blockNumber: 10n, removed: false,
+      })) };
+  },
+  async getBlock() { return { hash: blockHash }; },
+  async getBlockNumber() { return 12n; },
+  async getPurchaseBalanceChanges(context) {
+    return { ...context, scope: 'TRANSACTION', balances: context.tokens.map(token => ({ token, beforeRaw: 0n, afterRaw: 10n })) };
+  },
+};
+const verified = await verifyPurchaseReceipt(compiled, {
+  client: receiptClient, transactionHash: receiptHash, confirmations: 3,
+  minimumReceived: compiled.quote.plan.legs.map(leg => ({ token: leg.token, amountRaw: 9n })),
+});
+assert.equal(verified.status, 'VERIFIED');
+assert.equal(verified.confirmations, 3n);
+assert.equal(verified.keptBalanceVerified, false);
+assert.equal(verified.evidence, 'TRANSACTION_AND_BALANCE_DELTAS');
+assert.equal(verified.outputs[0].balanceDeltaRaw, 10n);
+
+for (const f of [lifiComposer, fetchBag, readTokenDecimals, withReceiptEvidence]) assert.equal(typeof f, 'function');
 console.log('consumer.mjs: OK');
 `
   );
   writeFileSync(
     join(dir, 'consumer.ts'),
-    `import { hashBag, parseBag, STRATEGY_REGISTRY_DEPLOYMENTS, type PurchasePlan, type StrategyRegistryDeployment } from '@bagprotocol/sdk';
+    `import { hashBag, parseBag, STRATEGY_REGISTRY_DEPLOYMENTS, type PurchasePlan, type StrategyRegistryDeployment, type PurchaseReceiptClient, verifyPurchaseReceipt } from '@bagprotocol/sdk';
 import { lifiComposer } from '@bagprotocol/sdk/lifi';
 import { fetchBag } from '@bagprotocol/sdk/http';
-import { readTokenDecimals } from '@bagprotocol/sdk/evm';
+import { readTokenDecimals, withReceiptEvidence } from '@bagprotocol/sdk/evm';
+import { createPublicClient, http } from 'viem';
+const publicClient = createPublicClient({ transport: http('http://127.0.0.1:8545') });
+const receiptClient: PurchaseReceiptClient = publicClient;
+const evidenceClient: PurchaseReceiptClient = withReceiptEvidence(publicClient);
+const verifyReceipt = verifyPurchaseReceipt;
+void [receiptClient, evidenceClient, verifyReceipt];
 const d: StrategyRegistryDeployment | undefined = STRATEGY_REGISTRY_DEPLOYMENTS.robinhood;
 const kind: PurchasePlan['inputKind'] = 'native';
 const r = parseBag('{}');

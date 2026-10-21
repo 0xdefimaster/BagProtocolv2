@@ -72,3 +72,17 @@ export {
   type SimulationClient,
   type SimulationResult,
 } from './execution';
+
+export {
+  verifyPurchaseReceipt,
+  type PurchaseReceiptClient,
+  type PurchaseReceiptLog,
+  type PurchaseReceiptTransaction,
+  type PurchaseTransactionReceipt,
+  type PurchaseReceiptIssueCode,
+  type PurchaseReceiptVerification,
+  type VerifyPurchaseReceiptOptions,
+  type PurchaseEvidenceContext,
+  type PurchaseBalanceEvidence,
+  type PurchaseCallEvidence,
+} from './receipt';
