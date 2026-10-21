@@ -71,7 +71,7 @@ export interface PurchaseQuote {
   plan: PurchasePlan;
   provider: string;
   legs: QuotedLeg[];
-  priceImpactBps: number | null;
+  priceImpactBps: number;
   fees: ComposerCompileResult['fees'];
   gasLimit: string | null;
 }
@@ -185,7 +185,7 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
   }
 
   return {
-    quote: { plan, provider, legs, priceImpactBps: r.priceImpactBps, fees: r.fees, gasLimit: r.gasLimit },
+    quote: { plan, provider, legs, priceImpactBps, fees: r.fees, gasLimit: r.gasLimit },
     transaction: { to: tx.to as Hex, data: tx.data as Hex, value, chainId: plan.chainId },
     approvals,
     executor: r.executor,
