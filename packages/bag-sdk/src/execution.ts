@@ -173,7 +173,13 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
     return { token: l.token, targetInputRaw: l.targetInputRaw, expectedOutRaw: got.expectedOutRaw, minOutRaw };
   });
 
-  if (r.priceImpactBps !== null && r.priceImpactBps > plan.maxPriceImpactBps) {
+  if (r.priceImpactBps === null) {
+    fail('provider did not report price impact; cannot enforce the configured limit.');
+  }
+  if (!Number.isSafeInteger(r.priceImpactBps) || r.priceImpactBps < 0) {
+    fail(`malformed price impact ${r.priceImpactBps} bps.`);
+  }
+  if (r.priceImpactBps > plan.maxPriceImpactBps) {
     fail(`price impact ${r.priceImpactBps} bps is above the limit ${plan.maxPriceImpactBps} bps.`);
   }
 
