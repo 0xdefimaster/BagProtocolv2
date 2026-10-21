@@ -34,7 +34,7 @@ const doc = (mutate: (d: any) => void = () => {}): BagDocument => {
   if (!r.ok) throw new Error(JSON.stringify(r.issues));
   return r.bag;
 };
-const req = (over: Record<string, unknown> = {}) => ({ inputToken: USDG, amountRaw: BigInt(10_000_000), signer: SIGNER, ...over });
+const req = (over: Record<string, unknown> = {}) => ({ inputToken: USDG, amountRaw: BigInt(10_000_000), inputTokenDecimals: 6, signer: SIGNER, ...over });
 const codes = (fn: () => unknown) => {
   try {
     fn();
@@ -122,7 +122,7 @@ describe('planPurchase', () => {
     expect(codes(() => planPurchase(doc((d) => (d.definition.assets[0].weightBps = 3000)), req()))).toEqual(['WEIGHTS_NOT_100']);
     expect(codes(() => planPurchase(doc(), req({ inputToken: 'USDG', signer: '0x1', amountRaw: BigInt(0) })))).toEqual(['INVALID_INPUT_TOKEN', 'INVALID_SIGNER', 'INVALID_AMOUNT']);
     expect(codes(() => planPurchase(doc(), req({ allowedTokens: [A] })))).toEqual(['TOKEN_NOT_ALLOWED']);
-    expect(codes(() => planPurchase(doc(), req({ amountRaw: BigInt(1) })))).toContain('AMOUNT_TOO_SMALL');
+    expect(codes(() => planPurchase(doc((d) => (d.definition.rules.minInvestment = { amount: '0', measuredAs: 'PAYMENT_TOKEN_AMOUNT' })), req({ amountRaw: BigInt(1) })))).toContain('AMOUNT_TOO_SMALL');
   });
 
   it('legs follow the exact target (cross-checked with splitByWeight)', () => {
@@ -293,13 +293,17 @@ describe('simulateBag', () => {
 
 describe('native ETH input (the chain\'s native coin, paid as the transaction value)', () => {
   const ETH = NATIVE_TOKEN;
-  const ethReq = (over: Record<string, unknown> = {}) => req({ inputToken: ETH, amountRaw: BigInt('1000000000000000'), ...over });
+  const ethReq = (over: Record<string, unknown> = {}) => req({ inputToken: ETH, amountRaw: BigInt('1000000000000000'), inputTokenDecimals: 18, ...over });
+  const ethDoc = (mutate: (d: any) => void = () => {}) => doc((d) => {
+    d.definition.rules.minInvestment = { amount: '0', measuredAs: 'PAYMENT_TOKEN_AMOUNT' };
+    mutate(d);
+  });
   /** A well-behaved provider for a native purchase: value = the swapped amount, no approval. */
   const nativeProvider = (override: (r: ComposerCompileResult, q: ComposerCompileRequest) => ComposerCompileResult = (r) => r) =>
     fakeProvider((r, q) => override({ ...r, transaction: { ...r.transaction, value: String(q.amountRaw) }, approvals: [] }, q));
 
   it('plans a native purchase: inputKind native, every asset swapped, same exact allocation as an ERC-20 deposit', () => {
-    const plan = planPurchase(doc(), ethReq());
+    const plan = planPurchase(ethDoc(), ethReq());
     expect(plan.inputKind).toBe('native');
     expect(plan.inputToken).toBe(ETH);
     expect(plan.kept).toBeNull();
@@ -309,7 +313,7 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
   });
 
   it('rejects strategies that include the native coin as a basket asset', () => {
-    const bag = doc((d) => {
+    const bag = ethDoc((d) => {
       d.definition.assets[1].address = ETH;
       delete d.metadata;
     });
@@ -318,7 +322,7 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
 
   it('compiles: the provider is asked for a native input, and the unsigned transaction carries exactly the ETH as msg.value, no approval', async () => {
     const provider = nativeProvider();
-    const compiled = await compileBag(doc(), ethReq(), { provider, trust: TRUST });
+    const compiled = await compileBag(ethDoc(), ethReq(), { provider, trust: TRUST });
     expect(provider.requests[0]).toMatchObject({ inputToken: ETH, inputKind: 'native', amountRaw: BigInt('1000000000000000'), signer: SIGNER, chainId: 4663 });
     expect(compiled.transaction).toEqual({ to: ROUTER, data: '0x12345678abcdef', value: BigInt('1000000000000000'), chainId: 4663 });
     expect(compiled.approvals).toEqual([]);
@@ -327,33 +331,33 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
   it('msg.value must be exactly the swapped amount: more, less, or none is refused', async () => {
     for (const value of ['1000000000000001', '999999999999999', '0']) {
       const provider = nativeProvider((r) => ({ ...r, transaction: { ...r.transaction, value } }));
-      await expect(compileBag(doc(), ethReq(), { provider, trust: TRUST })).rejects.toThrow(/must send exactly 1000000000000000 wei/);
+      await expect(compileBag(ethDoc(), ethReq(), { provider, trust: TRUST })).rejects.toThrow(/must send exactly 1000000000000000 wei/);
     }
     // 0x-hex is accepted when it is the exact amount
     const hex = nativeProvider((r) => ({ ...r, transaction: { ...r.transaction, value: '0x38d7ea4c68000' } }));
-    expect((await compileBag(doc(), ethReq(), { provider: hex, trust: TRUST })).transaction.value).toBe(BigInt('1000000000000000'));
+    expect((await compileBag(ethDoc(), ethReq(), { provider: hex, trust: TRUST })).transaction.value).toBe(BigInt('1000000000000000'));
   });
 
   it('a native purchase with any approval request is refused; an ERC-20 purchase that sends ETH still is', async () => {
     const withApproval = nativeProvider((r, q) => ({ ...r, approvals: [{ token: q.inputToken, spender: SPENDER, amountRaw: '1' }] }));
-    await expect(compileBag(doc(), ethReq(), { provider: withApproval, trust: TRUST })).rejects.toThrow(/needs no approval/);
+    await expect(compileBag(ethDoc(), ethReq(), { provider: withApproval, trust: TRUST })).rejects.toThrow(/needs no approval/);
     const erc20WithValue = fakeProvider((r) => ({ ...r, transaction: { ...r.transaction, value: '5' } }));
     await expect(compileBag(doc(), req(), { provider: erc20WithValue, trust: TRUST })).rejects.toThrow(/must not send native value/);
   });
 
   it('chain, target, legs, slippage and minimum output stay checked for a native purchase', async () => {
     const wrongChain = nativeProvider((r) => ({ ...r, transaction: { ...r.transaction, chainId: 1 } }));
-    await expect(compileBag(doc(), ethReq(), { provider: wrongChain, trust: TRUST })).rejects.toThrow(/chain 1 does not match plan chain 4663/);
+    await expect(compileBag(ethDoc(), ethReq(), { provider: wrongChain, trust: TRUST })).rejects.toThrow(/chain 1 does not match plan chain 4663/);
     const wrongTarget = nativeProvider((r) => ({ ...r, transaction: { ...r.transaction, to: '0x' + '9'.repeat(40) } }));
-    await expect(compileBag(doc(), ethReq(), { provider: wrongTarget, trust: TRUST })).rejects.toThrow(/not in the caller's trusted target allowlist/);
+    await expect(compileBag(ethDoc(), ethReq(), { provider: wrongTarget, trust: TRUST })).rejects.toThrow(/not in the caller's trusted target allowlist/);
     const wrongLeg = nativeProvider((r) => ({ ...r, legs: [{ ...r.legs[0], token: '0x' + 'd'.repeat(40) }, r.legs[1]] }));
-    await expect(compileBag(doc(), ethReq(), { provider: wrongLeg, trust: TRUST })).rejects.toThrow(/leg 0 delivers/);
+    await expect(compileBag(ethDoc(), ethReq(), { provider: wrongLeg, trust: TRUST })).rejects.toThrow(/leg 0 delivers/);
     const badMin = nativeProvider((r) => ({ ...r, legs: r.legs.map((l) => ({ ...l, expectedOutRaw: '1000', minOutRaw: '1001' })) }));
-    await expect(compileBag(doc(), ethReq(), { provider: badMin, trust: TRUST })).rejects.toThrow(/minimum output is above its expected output/);
+    await expect(compileBag(ethDoc(), ethReq(), { provider: badMin, trust: TRUST })).rejects.toThrow(/minimum output is above its expected output/);
     // slippage: the caller can only tighten, for native as for ERC-20
-    expect(codes(() => planPurchase(doc(), ethReq({ slippageBps: 301 })))).toContain('LOOSER_THAN_POLICY');
+    expect(codes(() => planPurchase(ethDoc(), ethReq({ slippageBps: 301 })))).toContain('LOOSER_THAN_POLICY');
     const tight = nativeProvider();
-    await compileBag(doc(), ethReq({ slippageBps: 50 }), { provider: tight, trust: TRUST });
+    await compileBag(ethDoc(), ethReq({ slippageBps: 50 }), { provider: tight, trust: TRUST });
     expect(tight.requests[0].slippageBps).toBe(50);
   });
 
@@ -372,7 +376,7 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
       },
     });
     const fetchImpl = vi.fn(async () => ({ ok: true, status: 200, headers: new Headers(), json: async () => JSON.parse(wire), text: async () => wire })) as unknown as typeof fetch;
-    const compiled = await compileBag(doc(), ethReq(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST });
+    const compiled = await compileBag(ethDoc(), ethReq(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST });
     expect(compiled.transaction.value).toBe(BigInt('1000000000000000'));
     const calls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls as [string, RequestInit][];
     const body = JSON.parse(String(calls.find(([url]) => String(url).endsWith('/compose'))![1].body));
@@ -383,7 +387,7 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
   });
 
   it('simulateBag reads the native balance (getBalance), never an ERC-20 allowance', async () => {
-    const compiled = await compileBag(doc(), ethReq(), { provider: nativeProvider(), trust: TRUST });
+    const compiled = await compileBag(ethDoc(), ethReq(), { provider: nativeProvider(), trust: TRUST });
     let readContractCalls = 0;
     let callValue: bigint | undefined;
     const client = (balance: bigint): SimulationClient => ({

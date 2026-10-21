@@ -44,6 +44,8 @@ export interface PurchaseRequest {
   inputToken: string;
   /** Deposit, in the input token's smallest unit. */
   amountRaw: bigint;
+  /** Input token precision. Required to enforce a positive minInvestment for ERC-20 payments; native ETH defaults to 18. */
+  inputTokenDecimals?: number;
   /** The wallet that will sign; the assets are delivered to it. */
   signer: string;
   /** Tighter per-swap slippage than the definition's (never looser). */
@@ -95,6 +97,25 @@ export class PurchasePlanError extends Error {
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
+/** Compare raw token units to a canonical human-readable decimal without floating point. */
+function compareRawToDecimal(amountRaw: bigint, decimals: number, amount: string): number {
+  const unit = BigInt(10) ** BigInt(decimals);
+  const whole = (amountRaw / unit).toString();
+  const fraction = decimals === 0 ? '' : (amountRaw % unit).toString().padStart(decimals, '0');
+  const [minimumWhole, minimumFraction = ''] = amount.split('.');
+
+  if (whole.length !== minimumWhole.length) return whole.length < minimumWhole.length ? -1 : 1;
+  if (whole !== minimumWhole) return whole < minimumWhole ? -1 : 1;
+
+  const fractionLength = Math.max(fraction.length, minimumFraction.length);
+  for (let i = 0; i < fractionLength; i += 1) {
+    const actualDigit = fraction[i] ?? '0';
+    const minimumDigit = minimumFraction[i] ?? '0';
+    if (actualDigit !== minimumDigit) return actualDigit < minimumDigit ? -1 : 1;
+  }
+  return 0;
+}
+
 /** Plans a purchase of a valid bag.json. Throws PurchasePlanError with every reason it cannot. */
 export function planPurchase(bag: BagDocument, req: PurchaseRequest): PurchasePlan {
   const issues: BagIssue[] = [];
@@ -106,11 +127,27 @@ export function planPurchase(bag: BagDocument, req: PurchaseRequest): PurchasePl
   if (!ADDRESS_RE.test(req.inputToken)) err('INVALID_INPUT_TOKEN', 'request.inputToken', 'inputToken must be an ERC-20 address or NATIVE_TOKEN.');
   if (!ADDRESS_RE.test(req.signer)) err('INVALID_SIGNER', 'request.signer', 'signer must be an address.');
   if (typeof req.amountRaw !== 'bigint' || req.amountRaw <= BigInt(0)) err('INVALID_AMOUNT', 'request.amountRaw', 'amountRaw must be a positive bigint.');
+  if (req.inputTokenDecimals !== undefined && (!Number.isInteger(req.inputTokenDecimals) || req.inputTokenDecimals < 0 || req.inputTokenDecimals > 255)) {
+    err('INVALID_INPUT_TOKEN_DECIMALS', 'request.inputTokenDecimals', 'inputTokenDecimals must be an integer from 0 to 255.');
+  }
   if (bag.definition.assets.some((asset) => isNativeToken(asset.address))) {
     err('UNSUPPORTED_NATIVE_ASSET', 'definition.assets', 'The v1 purchase executor supports ERC-20 basket assets; the native token is supported as a payment token only.');
   }
 
   const rules = resolveV1Rules(bag.definition);
+  const minInvestmentAmount = rules.minInvestmentAmount.value;
+  if (!/^(?:0|[1-9]\d*)(?:\.\d*[1-9])?$/.test(minInvestmentAmount)) {
+    err('INVALID_MIN_INVESTMENT', 'definition.rules.minInvestment.amount', 'minInvestment.amount must be a canonical non-negative decimal string.');
+  } else if (minInvestmentAmount !== '0') {
+    const inputTokenDecimals = req.inputTokenDecimals ?? (isNativeToken(req.inputToken) ? 18 : undefined);
+    if (inputTokenDecimals === undefined) {
+      err('INPUT_TOKEN_DECIMALS_REQUIRED', 'request.inputTokenDecimals', 'Provide the input token decimals to enforce this strategy’s minimum investment.');
+    } else if (!Number.isInteger(inputTokenDecimals) || inputTokenDecimals < 0 || inputTokenDecimals > 255) {
+      // The request already carries INVALID_INPUT_TOKEN_DECIMALS; avoid using an invalid exponent.
+    } else if (typeof req.amountRaw === 'bigint' && req.amountRaw > BigInt(0) && compareRawToDecimal(req.amountRaw, inputTokenDecimals, minInvestmentAmount) < 0) {
+      err('BELOW_MIN_INVESTMENT', 'request.amountRaw', `Deposit is below the strategy minimum of ${minInvestmentAmount} payment-token units.`);
+    }
+  }
   const policyCap = V1_EXECUTION_POLICY.maxSlippageBps;
   let slippageBps = Math.min(rules.swapSlippageBps.value, policyCap);
   if (req.slippageBps !== undefined) {

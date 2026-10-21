@@ -16,10 +16,12 @@
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { createPublicClient, http, type Hex } from 'viem';
-import { chainIdOf, compileBag, hashBag, normalizeBag, parseBag, simulateBag, validateBag, verifyRegistryCommitment, type ComposerProvider, type ContractReader, type SimulationClient } from '../src/index';
+import { chainIdOf, compileBag, hashBag, isNativeToken, normalizeBag, parseBag, simulateBag, validateBag, verifyRegistryCommitment, type ComposerProvider, type ContractReader, type SimulationClient } from '../src/index';
 import { fetchBag } from '../src/adapters/http';
 import { readTokenDecimals } from '../src/adapters/evm';
 import { lifiComposer } from '../src/adapters/lifi';
+
+const ERC20_DECIMALS_ABI = [{ type: 'function', name: 'decimals', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] }] as const;
 
 export interface RunOptions {
   source: string;
@@ -55,9 +57,12 @@ export async function run(o: RunOptions) {
     report.verify = v.verified ? 'verified' : v.checks.filter((c) => !c.ok);
   }
 
+  const inputTokenDecimals = isNativeToken(o.inputToken)
+    ? 18
+    : Number(await o.client.readContract({ address: o.inputToken as Hex, abi: ERC20_DECIMALS_ABI, functionName: 'decimals' }));
   const compiled = await compileBag(
     bag,
-    { inputToken: o.inputToken, amountRaw: o.amountRaw, signer: o.signer, tokens },
+    { inputToken: o.inputToken, amountRaw: o.amountRaw, inputTokenDecimals, signer: o.signer, tokens },
     {
       provider: o.provider,
       trust: {

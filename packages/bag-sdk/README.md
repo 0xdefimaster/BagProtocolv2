@@ -373,14 +373,14 @@ const trust = {
   allowedTransactionTargets: ['0x…'], // contracts you have verified for this chain
   allowedApprovalSpenders: ['0x…'],   // contracts you have verified for this chain
 };
-const compiled = await compileBag(bag, { inputToken, amountRaw, signer }, { provider, trust });
+const compiled = await compileBag(bag, { inputToken, amountRaw, inputTokenDecimals, signer }, { provider, trust });
 const check = await simulateBag(compiled, { client });   // your viem client: OK | NEEDS_APPROVAL | INSUFFICIENT_BALANCE | REVERTED
 // your wallet sends compiled.approvals, then signs and sends compiled.transaction
 ```
 
 **Native ETH or an ERC-20.** `inputToken` is either an ERC-20 address or `NATIVE_TOKEN`
 (`0x0000000000000000000000000000000000000000`, the chain's ETH). The plan says which: `plan.inputKind` is
-`'native'` or `'erc20'`.
+`'native'` or `'erc20'`. If `minInvestment` is positive, pass the payment token's `inputTokenDecimals` for an ERC-20; native ETH uses 18 decimals automatically. The minimum is compared exactly against `amountRaw` without floating-point arithmetic.
 
 | | ERC-20 (e.g. USDG) | Native ETH |
 |---|---|---|
@@ -394,7 +394,7 @@ A provider answer that breaks any row is refused with `ProviderResponseError`.
 
 | Function | What it does |
 |---|---|
-| `planPurchase` | Pure plan: exact target allocation (`splitByWeight`), the asset that is the input token is kept (never swapped), whole-bp legs (largest remainder) and the `core.partition` that divides the swap between them, slippage and price-impact limits |
+| `planPurchase` | Pure plan: enforces `minInvestment` in payment-token units, then computes exact target allocation (`splitByWeight`), keeps any matching input asset, builds whole-bp legs and the `core.partition`, and applies slippage and price-impact limits |
 | `quoteBag` / `compileBag` | Ask the provider for the route and return the quote, or the quote plus the **unsigned** transaction and the approvals it needs |
 | `simulateBag` | Dry run with `eth_call` from the signer on your client: input balance, then approvals, then the call. A point-in-time check, not a guarantee |
 
