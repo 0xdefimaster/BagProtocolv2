@@ -19,7 +19,7 @@
 // -----------------------------------------------------------------------------
 import { pathToFileURL } from 'node:url';
 import { createPublicClient, http } from 'viem';
-import { isNativeToken, normalizeAddress, type ContractReader, type SimulationClient } from '../src/index';
+import { isNativeToken, normalizeAddress, type RegistryClient, type SimulationClient } from '../src/index';
 import { lifiComposer } from '../src/adapters/lifi';
 import { run } from './compile-purchase';
 import { safeError, type Verdict } from './verify-registry';
@@ -80,7 +80,7 @@ async function main() {
   }
   // LI.FI's production Composer API (docs.li.fi quickstart; what BAG uses). Override with COMPOSER_URL.
   const baseUrl = process.env.COMPOSER_URL ?? 'https://composer.li.quest';
-  const client = createPublicClient({ transport: http(rpcUrl) }) as unknown as SimulationClient & ContractReader;
+  const client = createPublicClient({ transport: http(rpcUrl) }) as unknown as SimulationClient & RegistryClient;
 
   let verdict: Verdict;
   try {
