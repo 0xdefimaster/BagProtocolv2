@@ -1,0 +1,354 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bagprotocol.com/schemas/bag.v1.json",
+  "title": "bag.json v1",
+  "description": "Portable bag.json v1 document shape accepted by @bagprotocol/sdk. JSON Schema checks shape and primitive types; validateBag applies cross-field and execution rules. Only definition is hashed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "bagJson",
+    "definition"
+  ],
+  "properties": {
+    "bagJson": {
+      "const": 1
+    },
+    "definition": {
+      "$ref": "#/definitions/definition"
+    },
+    "definitionHash": {
+      "$ref": "#/definitions/bytes32"
+    },
+    "ref": {
+      "$ref": "#/definitions/ref"
+    },
+    "network": {
+      "$ref": "#/definitions/network"
+    },
+    "metadata": {
+      "$ref": "#/definitions/metadata"
+    },
+    "commitments": {
+      "type": "object",
+      "description": "Informational claims; never authority for SDK registry verification."
+    },
+    "forkedFrom": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/forkedFrom"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "bytes32": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{64}$"
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "chain": {
+      "enum": [
+        "ethereum",
+        "base",
+        "arbitrum",
+        "robinhood"
+      ]
+    },
+    "address": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{40}$"
+    },
+    "nullableInteger": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chain",
+        "address",
+        "decimals",
+        "weightBps"
+      ],
+      "properties": {
+        "chain": {
+          "$ref": "#/definitions/chain"
+        },
+        "address": {
+          "$ref": "#/definitions/address"
+        },
+        "decimals": {
+          "type": "integer"
+        },
+        "weightBps": {
+          "type": "integer"
+        }
+      }
+    },
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "chain",
+        "mutability",
+        "assets",
+        "rules"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "STATIC_BASKET",
+            null
+          ]
+        },
+        "chain": {
+          "$ref": "#/definitions/chain"
+        },
+        "mutability": {
+          "enum": [
+            "MUTABLE",
+            "IMMUTABLE",
+            null
+          ]
+        },
+        "assets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/asset"
+          }
+        },
+        "rules": {
+          "$ref": "#/definitions/rules"
+        }
+      }
+    },
+    "rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "weightBounds",
+        "maxAssets",
+        "minInvestment",
+        "swapSlippageBps",
+        "rebalance",
+        "performanceFeeBps",
+        "noRouteAssetPolicy"
+      ],
+      "properties": {
+        "weightBounds": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "minBps",
+            "maxBps"
+          ],
+          "properties": {
+            "minBps": {
+              "$ref": "#/definitions/nullableInteger"
+            },
+            "maxBps": {
+              "$ref": "#/definitions/nullableInteger"
+            }
+          }
+        },
+        "maxAssets": {
+          "$ref": "#/definitions/nullableInteger"
+        },
+        "minInvestment": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "amount",
+                "measuredAs"
+              ],
+              "properties": {
+                "amount": {
+                  "type": "string",
+                  "pattern": "^(?:0|[1-9]\\d*)(?:\\.\\d*[1-9])?$"
+                },
+                "measuredAs": {
+                  "const": "PAYMENT_TOKEN_AMOUNT"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "swapSlippageBps": {
+          "$ref": "#/definitions/nullableInteger"
+        },
+        "rebalance": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "frequency",
+                "driftThresholdBps"
+              ],
+              "properties": {
+                "frequency": {
+                  "enum": [
+                    "MANUAL",
+                    "DAILY",
+                    "WEEKLY",
+                    "MONTHLY",
+                    "THRESHOLD_ONLY",
+                    null
+                  ]
+                },
+                "driftThresholdBps": {
+                  "$ref": "#/definitions/nullableInteger"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "performanceFeeBps": {
+          "$ref": "#/definitions/nullableInteger"
+        },
+        "noRouteAssetPolicy": {
+          "enum": [
+            "BLOCK",
+            "HOLD_INPUT",
+            "REFUND",
+            null
+          ]
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "symbol",
+        "description",
+        "assets"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "assets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/assetDisplay"
+          }
+        }
+      }
+    },
+    "assetDisplay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chain",
+        "address",
+        "symbol"
+      ],
+      "properties": {
+        "chain": {
+          "$ref": "#/definitions/chain"
+        },
+        "address": {
+          "$ref": "#/definitions/address"
+        },
+        "symbol": {
+          "type": "string"
+        }
+      }
+    },
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategyId",
+        "version",
+        "parentVersion",
+        "createdAt"
+      ],
+      "properties": {
+        "strategyId": {
+          "$ref": "#/definitions/uuid"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "parentVersion": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chainId"
+      ],
+      "properties": {
+        "chainId": {
+          "$ref": "#/definitions/nullableInteger"
+        }
+      }
+    },
+    "forkedFrom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategyId",
+        "version"
+      ],
+      "properties": {
+        "strategyId": {
+          "$ref": "#/definitions/uuid"
+        },
+        "version": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
