@@ -13,7 +13,7 @@ export const MAX_BAG_JSON_BYTES = 1_000_000;
 
 async function readBoundedText(res: Response): Promise<string> {
   const declaredLength = res.headers.get('content-length');
-  if (declaredLength && /^\\d+$/.test(declaredLength) && Number(declaredLength) > MAX_BAG_JSON_BYTES) {
+  if (declaredLength && /^\d+$/.test(declaredLength) && Number(declaredLength) > MAX_BAG_JSON_BYTES) {
     throw new Error(`fetchBag: response is larger than ${MAX_BAG_JSON_BYTES} bytes.`);
   }
 
