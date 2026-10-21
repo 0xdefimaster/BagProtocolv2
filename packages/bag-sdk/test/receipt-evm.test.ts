@@ -15,7 +15,19 @@ const output = JSON.parse(solc.compile(JSON.stringify({
     pragma solidity ^0.8.24;
     contract ReceiptToken {
       mapping(address => uint256) public balanceOf;
+      mapping(address => mapping(address => uint256)) public allowance;
       event Transfer(address indexed from, address indexed to, uint256 value);
+      function mint(address owner, uint256 amount) external { balanceOf[owner] += amount; }
+      function approve(address spender, uint256 amount) external { allowance[msg.sender][spender] = amount; }
+      function transferFrom(address owner, address recipient, uint256 amount) external returns (bool) {
+        require(balanceOf[owner] >= amount && allowance[owner][msg.sender] >= amount);
+        balanceOf[owner] -= amount; balanceOf[recipient] += amount; allowance[owner][msg.sender] -= amount;
+        emit Transfer(owner, recipient, amount); return true;
+      }
+      function swapFrom(address input, address recipient, uint256 spent, uint256 actual) external {
+        require(ReceiptToken(input).transferFrom(msg.sender, address(this), spent));
+        balanceOf[recipient] += actual; emit Transfer(address(this), recipient, actual);
+      }
       function buy(address recipient, uint256 actual, uint256 reported) external payable {
         require(actual != 777, "deliberate revert");
         balanceOf[recipient] += actual;
@@ -83,6 +95,41 @@ async function purchase(actual: bigint, reported: bigint, recipient = wallet.acc
 }
 
 describe('SDK receipt verification against actual local EVM state', () => {
+  for (const spent of [5000, 6000]) {
+    it(`checks actual ERC-20 retained input and rejects overspending (${spent} units)`, async () => {
+      const deployment = await wallet.deployContract({ abi, bytecode: ('0x' + artifact.evm.bytecode.object) as Hex });
+      const input = (await client.waitForTransactionReceipt({ hash: deployment })).contractAddress!;
+      for (const data of [
+        encodeFunctionData({ abi, functionName: 'mint', args: [wallet.account.address, BigInt(10000)] }),
+        encodeFunctionData({ abi, functionName: 'approve', args: [token, BigInt(10000)] }),
+      ]) await client.waitForTransactionReceipt({ hash: await wallet.sendTransaction({ to: input, data }) });
+      const raw = externalBag();
+      raw.definition.assets = [
+        { chain: 'robinhood', address: input, decimals: 18, weightBps: 5000 },
+        { chain: 'robinhood', address: token, decimals: 18, weightBps: 5000 },
+      ];
+      raw.definition.rules.minInvestment = null;
+      delete raw.metadata; delete raw.definitionHash;
+      const parsed = parseBag(raw);
+      if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues));
+      const data = encodeFunctionData({ abi, functionName: 'swapFrom', args: [input, wallet.account.address, BigInt(spent), BigInt(1000)] });
+      const compiled = await compileBag(parsed.bag, { inputToken: input, amountRaw: BigInt(10000), signer: wallet.account.address }, {
+        provider: { name: 'local-input', async compile() { return {
+          transaction: { to: token, data, value: '0', chainId: 4663 }, executor: null,
+          approvals: [{ token: input, spender: token, amountRaw: '5000' }],
+          legs: [{ token, expectedOutRaw: '1000', minOutRaw: '900' }], priceImpactBps: 0, gasLimit: null, fees: [],
+        }; } }, trust: { chainId: 4663, allowedTransactionTargets: [token], allowedApprovalSpenders: [token] },
+      });
+      const hash = await wallet.sendTransaction({ to: token, data });
+      await client.waitForTransactionReceipt({ hash });
+      const result = await verifyPurchaseReceipt(compiled, { client: withReceiptEvidence(client), transactionHash: hash, minimumReceived: [{ token, amountRaw: BigInt(900) }] });
+      expect(result.spentInputRaw).toBe(BigInt(spent));
+      expect(result.keptBalanceVerified).toBe(spent === 5000);
+      expect(result.status).toBe(spent === 5000 ? 'VERIFIED' : 'FAILED');
+      if (spent === 6000) expect(result.issues[0].code).toBe('INPUT_SPEND_EXCEEDS_PLAN');
+    });
+  }
+
   it('verifies an actual signed local purchase using canonical historical balance reads', async () => {
     const f = await purchase(BigInt(1000), BigInt(1000));
     const hash = await wallet.sendTransaction({ to: token, data: f.data, value: f.compiled.transaction.value });
