@@ -22,7 +22,7 @@ import { chainIdOf, hashBag, normalizeBag, parseBag, STRATEGY_REGISTRY_DEPLOYMEN
 import { fetchBag } from '../src/adapters/http';
 
 /** The reads this check makes: chain id, contract code, and the registry views. No wallet methods. */
-export interface RegistryReadClient extends RegistryClient {}
+export type RegistryReadClient = RegistryClient;
 
 export interface VerifyRegistryOptions {
   source: string;
