@@ -46,8 +46,8 @@ function composerFetch() {
 function rpc(hash: string) {
   return {
     getChainId: async () => 4663,
-    readContract: async ({ functionName, args }: { functionName: string; args?: readonly unknown[] }) => {
-      if (functionName === 'decimals') return 18;
+    readContract: async ({ functionName, args, address }: { functionName: string; args?: readonly unknown[]; address?: string }) => {
+      if (functionName === 'decimals') return address?.toLowerCase() === USDG ? 6 : 18;
       if (functionName === 'balanceOf') return BigInt(10_000_000);
       if (functionName === 'allowance') return BigInt(10_000_000);
       if (functionName === 'strategyOf') {
