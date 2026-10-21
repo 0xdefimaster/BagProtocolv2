@@ -3,6 +3,7 @@ import { encodeAbiParameters, keccak256, type Hex } from 'viem';
 import {
   checkRegistryCommitment,
   hashBag,
+  NATIVE_TOKEN,
   normalizeBag,
   parseBag,
   registryStrategyId,
@@ -112,6 +113,18 @@ describe('third-party pipeline without any BAG record', () => {
     expect(validateBag(parsed.bag, { tokens }).valid).toBe(true);
     const six: ContractReader = { readContract: async () => 6 };
     expect(validateBag(parsed.bag, { tokens: await readTokenDecimals(parsed.bag.definition, () => six) }).errors.map((e) => e.code)).toEqual(['DECIMALS_MISMATCH', 'DECIMALS_MISMATCH']);
+  });
+
+  it('uses native ETH decimals without calling decimals() on the zero address', async () => {
+    const raw = externalBag();
+    raw.definition.assets[0].address = NATIVE_TOKEN;
+    const parsed = parseBag(raw);
+    if (!parsed.ok) throw new Error('parse');
+    let calls = 0;
+    const client: ContractReader = { readContract: async () => (calls++, 18) };
+    const tokens = await readTokenDecimals(parsed.bag.definition, () => client);
+    expect(tokens[0]).toMatchObject({ address: NATIVE_TOKEN, decimals: 18 });
+    expect(calls).toBe(1);
   });
 });
 
