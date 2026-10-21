@@ -101,7 +101,7 @@ function minimumsFor(compiled: CompiledPurchase, options: VerifyPurchaseReceiptO
   }
   if (!Number.isSafeInteger(plan.chainId) || plan.chainId < 1 || compiled.transaction.chainId !== plan.chainId ||
       !ADDRESS.test(plan.signer) || !ADDRESS.test(compiled.transaction.to) || !CALLDATA.test(compiled.transaction.data) ||
-      typeof compiled.transaction.value !== 'bigint' || compiled.transaction.value < 0n) {
+      typeof compiled.transaction.value !== 'bigint' || compiled.transaction.value < BigInt(0)) {
     throw new Error('verifyPurchaseReceipt: malformed compiled transaction.');
   }
   const expected = new Set(plan.legs.map((leg) => leg.token.toLowerCase()));
@@ -113,7 +113,7 @@ function minimumsFor(compiled: CompiledPurchase, options: VerifyPurchaseReceiptO
   if (!Array.isArray(options.minimumReceived)) throw new Error('verifyPurchaseReceipt: wallet output minimums are required.');
   for (const item of options.minimumReceived) {
     if (!item || typeof item.token !== 'string' || !ADDRESS.test(item.token) ||
-        typeof item.amountRaw !== 'bigint' || item.amountRaw <= 0n || item.amountRaw >= 2n ** 256n) {
+        typeof item.amountRaw !== 'bigint' || item.amountRaw <= BigInt(0) || item.amountRaw >= BigInt(2) ** BigInt(256)) {
       throw new Error('verifyPurchaseReceipt: each wallet output minimum must be a positive uint256.');
     }
     const token = item.token.toLowerCase();
@@ -139,7 +139,7 @@ export async function verifyPurchaseReceipt(
   const { client, transactionHash } = options;
   const result: PurchaseReceiptVerification = {
     status: 'INDETERMINATE', evidence: 'TRANSACTION_AND_TRANSFER_LOGS', transactionHash,
-    chainId: plan.chainId, blockNumber: null, confirmations: 0n, outputs: [],
+    chainId: plan.chainId, blockNumber: null, confirmations: BigInt(0), outputs: [],
     kept: plan.kept ? { ...plan.kept } : null, keptBalanceVerified: false,
     accounting: 'NOT_BAG_ACCOUNTED', issues: [],
   };
@@ -161,7 +161,7 @@ export async function verifyPurchaseReceipt(
     if (!same(tx.hash, transactionHash) || !same(receipt.transactionHash, transactionHash)) {
       return stop('FAILED', 'TRANSACTION_HASH_MISMATCH', 'RPC returned a different transaction or receipt.');
     }
-    if (typeof receipt.blockNumber !== 'bigint' || receipt.blockNumber < 0n || !HASH.test(receipt.blockHash) ||
+    if (typeof receipt.blockNumber !== 'bigint' || receipt.blockNumber < BigInt(0) || !HASH.test(receipt.blockHash) ||
         !Array.isArray(receipt.logs) || !ADDRESS.test(tx.from) || typeof tx.value !== 'bigint' ||
         !CALLDATA.test(tx.input)) {
       return stop('INDETERMINATE', 'MALFORMED_RPC_RESPONSE', 'RPC returned invalid mined transaction fields.');
@@ -187,14 +187,14 @@ export async function verifyPurchaseReceipt(
     if (!same(block?.hash, receipt.blockHash) || typeof head !== 'bigint' || head < receipt.blockNumber) {
       return stop('INDETERMINATE', 'NON_CANONICAL_RECEIPT', 'Receipt is not anchored to the observed canonical chain.');
     }
-    result.confirmations = head - receipt.blockNumber + 1n;
+    result.confirmations = head - receipt.blockNumber + BigInt(1);
     if (result.confirmations < BigInt(options.confirmations ?? 1)) {
       return stop('INDETERMINATE', 'INSUFFICIENT_CONFIRMATIONS', 'Required confirmation depth has not been reached.');
     }
     if (receipt.status === 'reverted') return stop('FAILED', 'TRANSACTION_REVERTED', 'Purchase reverted on-chain.');
     if (receipt.status !== 'success') return stop('INDETERMINATE', 'MALFORMED_RPC_RESPONSE', 'Unknown receipt status.');
 
-    const counts = new Map([...minimums].map(([token]) => [token, { received: 0n, sent: 0n }]));
+    const counts = new Map([...minimums].map(([token]) => [token, { received: BigInt(0), sent: BigInt(0) }]));
     const indices = new Set<number>();
     for (const log of receipt.logs) {
       if (!log || !Number.isSafeInteger(log.logIndex) || log.logIndex === null || log.logIndex < 0 ||
