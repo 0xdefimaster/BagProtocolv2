@@ -1,12 +1,10 @@
 // -----------------------------------------------------------------------------
 // Status — a dated changelog of what shipped, and what comes next.
 //
-// SHIPPED entries are merged pull requests of this repository, dated by their
-// merge day (UTC), each linked to its PR so anyone can check it. They are
-// implemented and tested (local chain + real PostgreSQL); "live on Robinhood
-// Chain" is said only where it is true. Nothing is deployed on Ethereum, Base or
-// Arbitrum. Tags are literal:
-//   AVAILABLE NOW merged and in the app
+// SHIPPED entries link to merged pull requests or commits on main. Dates are
+// merge days for PRs and commit days for direct changes (UTC). Code availability,
+// npm publication and live-chain validation are stated separately. Tags are literal:
+//   AVAILABLE NOW implemented on main (a published release is named explicitly)
 //   IN PROGRESS   being built or enabled now; not available to users yet
 //   COMING NEXT   not built
 // -----------------------------------------------------------------------------
@@ -17,6 +15,7 @@ interface Shipped {
   t: string;
   b: string;
   prs: number[];
+  commits?: string[];
 }
 
 interface Day {
@@ -27,6 +26,181 @@ interface Day {
 }
 
 const SHIPPED: Day[] = [
+  {
+    date: '2026-10-21',
+    title: 'Stronger SDK execution checks and developer integration',
+    summary: 'Purchase bounds, registry verification and transport safety are enforced before an unsigned transaction reaches a consumer.',
+    items: [
+      {
+        t: 'Every swap leg must have an execution bound',
+        b: 'The SDK rejects provider legs with a missing or different output token, a missing or non-positive minimum output, or missing or malformed price impact.',
+        prs: [108, 109],
+      },
+      {
+        t: 'Minimum investment enforced',
+        b: 'Purchase planning checks the strategy minimum in exact payment-token units before requesting a quote. Positive ERC-20 minimums require token decimals; native ETH uses 18.',
+        prs: [111],
+      },
+      {
+        t: 'Registry verification checks its chain and deployment',
+        b: 'The SDK rejects a wrong RPC chain, an address that differs from a known registry deployment, or an address without contract code before reading the commitment.',
+        prs: [112],
+      },
+      {
+        t: 'Safer document fetching and Composer endpoints',
+        b: 'Streamed bag.json downloads are bounded by actual UTF-8 bytes, signed URLs are kept out of fetch errors, and Composer endpoints must use HTTPS without embedded credentials or URL parameters. Unsupported native-coin basket outputs are rejected.',
+        prs: [109],
+      },
+      {
+        t: 'SDK JSON Schema and downstream package checks',
+        b: 'The SDK package exports its EVM-aligned bag.json schema for editor and tooling checks. CI also builds and installs the packed SDK in a clean consumer project; these main-branch changes do not announce a new npm release.',
+        prs: [109, 113],
+      },
+    ],
+  },
+  {
+    date: '2026-10-20',
+    title: 'Public SDK package and clearer onboarding',
+    summary: 'SDK 0.2.0 is recorded as published on npm under the MIT license; main prepares the next version.',
+    items: [
+      {
+        t: 'SDK 0.2.0 published',
+        b: 'The standalone @bagprotocol/sdk package is documented as published on npm. Its distribution includes an MIT license.',
+        prs: [],
+        commits: ['592891c83df7878815d4bf8c52b2c2e114524db4', '0a139b2ba6d20698a06e4e2e3360da220ffc0ee5'],
+      },
+      {
+        t: 'Copy-paste Quick Start and explicit release status',
+        b: 'Installation and local bag.json examples help developers start outside the BAG app. The repository distinguishes published 0.2.0 from prepared, unpublished 0.2.1.',
+        prs: [],
+        commits: ['c8456bace56db16c0a7d914c506a3a2fe9b90a4f', '9e4924cfc69bed010bc921111b048dd5f32aa202', '545dd77c073f8c5ac0df040a6fc0753097fc58ff'],
+      },
+    ],
+  },
+  {
+    date: '2026-10-19',
+    title: 'New app interface and shared Composer allocation',
+    summary: 'Create, edit and trade flows are easier to follow, while BAG and its SDK now use the same basket-splitting planner.',
+    items: [
+      {
+        t: 'Top navigation, search and screen density',
+        b: 'App navigation moves into the top bar, with search across strategies, creators and assets. Mobile keeps a menu, and desktop density can be adjusted and remembered.',
+        prs: [101],
+      },
+      {
+        t: 'Create, edit, publish and rebalance in a guided flow',
+        b: 'Create uses an assets, allocation and review layout. Weight sliders keep the total at 100%. Deployment and saved versions prompt registry publication, then a launch buy or the creator’s rebalance; each transaction still needs wallet confirmation.',
+        prs: [101],
+      },
+      {
+        t: 'Clearer Bag pages and current value held',
+        b: 'Bag cards, detail pages and Swap were refreshed; zero holdings are hidden. Wallet checks after an app swap or sweep refresh affected Bags’ value after an outflow is confirmed.',
+        prs: [101],
+      },
+      {
+        t: 'Composer 0.11.3 and one partition planner',
+        b: 'Purchase and rebalance allocation use core.partition instead of chained splits, with two levels for larger baskets. BAG and the SDK share deterministic bigint allocation and canonical leg ordering, including amounts kept in the input token. Covered by parity tests; not re-verified against the live Composer API.',
+        prs: [104, 106],
+      },
+      {
+        t: 'Balances and launch payments',
+        b: 'Fork launch buys can use USDG or ETH with the wallet balance shown. Swap adds the stablecoin balance and MAX; tiny balances are labelled instead of looking empty. Rebalances moving less than $1 explain why they cannot proceed.',
+        prs: [101, 103, 105],
+      },
+      {
+        t: 'Production builds and complete test discovery in CI',
+        b: 'CI now runs the Next.js production build and detects unit tests outside the configured folders or file patterns, so route and build failures are caught before release.',
+        prs: [102],
+      },
+    ],
+  },
+  {
+    date: '2026-10-18',
+    title: 'Editable strategy versions and flexible payments',
+    summary: 'Creators can update compositions, investors can choose verified payment tokens, and rebalances can route through USDG.',
+    items: [
+      {
+        t: 'Edit assets and weights, recover a saved version',
+        b: 'Creators of mutable deployed Bags can record a new composition version from their wallet. Pending proposals allow an on-chain update to be recovered after a lost browser state or failed database write. Names are unique; version updates keep the existing rules and performance fee.',
+        prs: [99],
+      },
+      {
+        t: 'Customize a fork before creating it',
+        b: 'The fork editor lets a creator choose the new name, assets and weights before the draft exists, using the same composition editor as strategy updates.',
+        prs: [99],
+      },
+      {
+        t: 'Pay or receive in verified tokens',
+        b: 'Bag purchases can use other registry-verified tokens with a valid USD price. Sales without a performance fee can receive a verified token or supported native ETH; fee-paying sales still settle in the settlement stablecoin.',
+        prs: [98],
+      },
+      {
+        t: 'USDG hub routes and explicit price-impact consent',
+        b: 'Multi-leg rebalances sell through USDG before buying the targets. The default impact ceiling stays at 5%; an investor can explicitly accept up to 10%, while higher impact is refused. The new route and consent retry have not been verified live.',
+        prs: [100],
+      },
+    ],
+  },
+  {
+    date: '2026-10-17',
+    title: 'Smart-account recovery, safer sales and clearer trade feedback',
+    summary: 'Deployment recovery, sale reconciliation and trade errors are improved, alongside launch balances and asset-import tooling.',
+    items: [
+      {
+        t: 'Smart-account deployment and registry support',
+        b: 'MetaMask smart-account transactions can be verified using the target’s events and wallet identity. A deployment that succeeded without app confirmation can be found and recovered without another deployment fee; rejected attempts can be retried.',
+        prs: [92],
+      },
+      {
+        t: 'Composer integration and actionable trade errors',
+        b: 'The integration follows Composer’s output and error responses, aborts requests after 15 seconds, and identifies failing token legs. Purchase review names every asset, and version mismatches produce a clear message. Composer was subsequently upgraded again on 19 October.',
+        prs: [92, 93],
+      },
+      {
+        t: 'Swap leaves unroutable tokens in the wallet',
+        b: 'Multi-sell can omit inputs with no route and clearly lists what was not sold. The buy picker excludes assets already marked as having no route.',
+        prs: [92],
+      },
+      {
+        t: 'One-transaction free sales and on-chain recovery',
+        b: 'Sales without a fee try one Composer transaction first. Missing per-asset submission reports are searched on-chain before closing a sale; abandoned or declined attempts are closed cleanly. Recovery is implemented but not verified live.',
+        prs: [94],
+      },
+      {
+        t: 'Recovered sales are counted once',
+        b: 'A verified recovered sale can explain an earlier wallet outflow, restore the matching accounting entries and book the sale without subtracting the same tokens twice.',
+        prs: [97],
+      },
+      {
+        t: 'Launch-buy balances and MAX',
+        b: 'Create shows the connected wallet’s USDG or ETH balance. MAX keeps an ETH gas reserve, and failed balance reads show a retry instead of a fabricated zero.',
+        prs: [96],
+      },
+      {
+        t: 'Reviewed stock imports and supported fee chains',
+        b: 'Import tooling recognizes verified tokenized stocks from known issuers, supports search and owner-selected imports, and excludes leveraged or inverse products. Performance fees are restricted to Robinhood Chain until settlement works elsewhere.',
+        prs: [92],
+      },
+      {
+        t: 'Current documentation and live-check evidence',
+        b: 'The README was rewritten around the current app, historical reports were archived, and status documentation records which smart-account flows were observed live and which checks remain open.',
+        prs: [95],
+      },
+    ],
+  },
+  {
+    date: '2026-10-16',
+    title: 'MIT license added',
+    summary: 'The repository now states its open-source license.',
+    items: [
+      {
+        t: 'Repository license',
+        b: 'An MIT license was added to the repository; the SDK package later included its own license file for distribution.',
+        prs: [],
+        commits: ['734afc7c8a2bcdc43d8aeabe742722fca4942490'],
+      },
+    ],
+  },
   {
     date: '2026-10-13',
     title: 'Multi-buy, multi-sell and on-chain fork royalties',
@@ -217,6 +391,11 @@ const SHIPPED: Day[] = [
 
 const NEXT = [
   {
+    tag: 'COMING NEXT',
+    t: 'SDK receipt and delivered-output verification',
+    b: 'Add a read-only SDK helper to check a submitted purchase’s receipt and observed token delivery, with explicit incomplete-evidence results. The BAG app already verifies receipts; this is the standalone SDK layer.',
+  },
+  {
     tag: 'IN PROGRESS',
     t: 'Bags on Ethereum, Arbitrum and Base',
     b: 'BagFactory is being deployed on the three networks so strategies can be created there too; performance fees stay on Robinhood Chain until settlement works elsewhere.',
@@ -259,7 +438,7 @@ const NEXT = [
   {
     tag: 'COMING NEXT',
     t: 'Open strategy network, AI and agents',
-    b: 'Portable strategy discovery, published bag.json URLs, a strategy marketplace, AI-to-bag.json workflows and authenticated agents.',
+    b: 'Broader strategy discovery, a strategy marketplace, AI-to-bag.json workflows and authenticated agents.',
   },
 ];
 
@@ -272,9 +451,9 @@ export default function Roadmap() {
         <span className="kicker">Status</span>
         <h2>Shipped, day by day. What comes next.</h2>
         <p>
-          Every shipped item is a merged pull request, dated and linked. BagFactory, StrategyRegistry and
-          RedeemSettlement are live on Robinhood Chain; no Bag Protocol contract is deployed on Ethereum, Base or
-          Arbitrum yet.
+          Every update links to a merged pull request or a commit on main, dated in UTC. Published SDK releases and
+          live-chain checks are identified separately. BagFactory, StrategyRegistry and RedeemSettlement are live on
+          Robinhood Chain; no Bag Protocol contract is deployed on Ethereum, Base or Arbitrum yet.
         </p>
       </div>
       <div className="status-grid roadmap-grid" data-reveal>
@@ -306,6 +485,11 @@ export default function Roadmap() {
                           {item.prs.map((n) => (
                             <a key={n} href={`${REPO}/pull/${n}`} target="_blank" rel="noopener noreferrer">
                               #{n}
+                            </a>
+                          ))}
+                          {(item.commits ?? []).map((sha) => (
+                            <a key={sha} href={`${REPO}/commit/${sha}`} target="_blank" rel="noopener noreferrer" aria-label={`View commit ${sha.slice(0, 7)}`}>
+                              {sha.slice(0, 7)}
                             </a>
                           ))}
                         </span>

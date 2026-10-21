@@ -113,7 +113,7 @@ describe('landing page — copy says only what the code does', () => {
     for (const item of shipped) expect(item).not.toMatch(/BagFactory on mainnet|BAG Router on Robinhood Chain|price pools/i);
   });
 
-  it('the changelog is dated, newest first, and every shipped item links to its merged pull request', async () => {
+  it('the changelog is dated, newest first, and every shipped item links to its merged pull request or main-branch commit', async () => {
     await renderLanding();
     const dates = Array.from(document.querySelectorAll('#roadmap .tl-day time')).map((t) => t.getAttribute('datetime') ?? '');
     expect(dates.length).toBeGreaterThan(0);
@@ -124,7 +124,7 @@ describe('landing page — copy says only what the code does', () => {
     for (const item of items) {
       const links = Array.from(item.querySelectorAll('a')).map((a) => a.getAttribute('href') ?? '');
       expect(links.length).toBeGreaterThan(0);
-      for (const href of links) expect(href).toMatch(/^https:\/\/github\.com\/0xdefimaster\/BagProtocolv2\/pull\/\d+$/);
+      for (const href of links) expect(href).toMatch(/^https:\/\/github\.com\/0xdefimaster\/BagProtocolv2\/(?:pull\/\d+|commit\/[0-9a-f]{40})$/);
     }
     // The newest day is open; the others can be expanded.
     const details = Array.from(document.querySelectorAll('#roadmap .tl-day details'));
