@@ -100,7 +100,7 @@ async function main() {
   }
   // LI.FI's production Composer API (docs.li.fi quickstart; what BAG uses). Override with COMPOSER_URL.
   const baseUrl = process.env.COMPOSER_URL ?? 'https://composer.li.quest';
-  const client = createPublicClient({ transport: http(rpcUrl) }) as unknown as SimulationClient & ContractReader & RegistryClient;
+  const client = createPublicClient({ transport: http(rpcUrl) }) as unknown as SimulationClient & RegistryClient;
   const report = await run({
     source,
     inputToken,
