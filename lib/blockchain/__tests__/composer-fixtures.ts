@@ -1,6 +1,6 @@
 import type { Output, Outputs } from '@lifi/compose-spec';
 
-// Shapes of the Compose API as @lifi/composer-sdk 0.6 reads them, for tests.
+// Shapes of the Compose API as @lifi/composer-sdk 0.11.3 reads them, for tests.
 
 /** One `outputs` entry as the SDK returns it (amounts as bigint). `min` absent = no floor enforced. */
 export function out(expected: bigint | number | string | null, min?: bigint | number | string | null, token = '0x0', chainId = 4663): Output {
