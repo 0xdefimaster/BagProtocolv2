@@ -62,7 +62,7 @@ async function setup(native = false, kept = false) {
     getBlockNumber: vi.fn(async () => BigInt(12)),
   } satisfies PurchaseReceiptClient;
   const run = (overrides: Partial<Parameters<typeof verifyPurchaseReceipt>[1]> = {}) =>
-    verifyPurchaseReceipt(compiled, { client, transactionHash: HASH, minimumReceived, ...overrides });
+    verifyPurchaseReceipt(compiled, { client, transactionHash: HASH, minimumReceived, verification: 'TRANSFER_LOGS', ...overrides });
   return { compiled, transaction, receipt, client, minimumReceived, run };
 }
 
@@ -213,5 +213,117 @@ describe('verifyPurchaseReceipt', () => {
     const f = await setup();
     const minimumReceived = f.minimumReceived.map(item => ({ ...item, token: '0x' + item.token.slice(2).toUpperCase() }));
     expect((await f.run({ minimumReceived })).status).toBe('VERIFIED');
+  });
+});
+
+describe('purchase balance evidence and smart-account calls', () => {
+  async function balances(kept = false) {
+    const f = await setup(false, kept);
+    const proof = {
+      transactionHash: HASH, blockHash: BLOCK, blockNumber: BigInt(10), owner: SIGNER,
+      scope: 'TRANSACTION' as const,
+      balances: [
+        ...f.minimumReceived.map(output => ({ token: output.token, beforeRaw: BigInt(25), afterRaw: BigInt(125) })),
+        { token: INPUT, beforeRaw: f.compiled.quote.plan.amountRaw, afterRaw: f.compiled.quote.plan.kept?.amountRaw ?? BigInt(0) },
+      ],
+    };
+    const client: PurchaseReceiptClient = { ...f.client, getPurchaseBalanceChanges: vi.fn(async () => proof) };
+    const run = () => f.run({ client, verification: 'BALANCE_DELTA' });
+    return { ...f, proof, client, run };
+  }
+
+  it('defaults to real balance evidence without silently downgrading to events', async () => {
+    const f = await setup();
+    const result = await f.run({ verification: undefined });
+    expect(result.status).toBe('INDETERMINATE');
+    expect(result.issues[0].code).toBe('BALANCE_EVIDENCE_UNAVAILABLE');
+  });
+
+  it('checks actual before/after balances and the retained input share', async () => {
+    const f = await balances(true);
+    const result = await f.run();
+    expect(result.status).toBe('VERIFIED');
+    expect(result.evidence).toBe('TRANSACTION_AND_BALANCE_DELTAS');
+    expect(result.outputs[0]).toMatchObject({ balanceBeforeRaw: BigInt(25), balanceAfterRaw: BigInt(125), balanceDeltaRaw: BigInt(100) });
+    expect(result.spentInputRaw).toBe(f.compiled.quote.plan.swapAmountRaw);
+    expect(result.keptBalanceVerified).toBe(true);
+  });
+
+  it('does not turn generous or missing Transfer events into fabricated wallet balances', async () => {
+    const f = await balances();
+    f.proof.balances[0].afterRaw = BigInt(26);
+    expect((await f.run()).issues[0].code).toBe('OUTPUT_BELOW_MINIMUM');
+    f.proof.balances[0].afterRaw = BigInt(125);
+    f.receipt.logs = [];
+    expect((await f.run()).status).toBe('VERIFIED');
+  });
+
+  it.each(['owner', 'blockHash', 'transactionHash', 'missing', 'duplicate', 'negative', 'overflow'] as const)('refuses %s balance evidence', async kind => {
+    const f = await balances();
+    if (kind === 'owner') f.proof.owner = OTHER;
+    if (kind === 'blockHash' || kind === 'transactionHash') f.proof[kind] = hex('f', 64);
+    if (kind === 'missing') f.proof.balances.pop();
+    if (kind === 'duplicate') f.proof.balances[1] = { ...f.proof.balances[0] };
+    if (kind === 'negative') f.proof.balances[0].beforeRaw = BigInt(-1);
+    if (kind === 'overflow') f.proof.balances[0].afterRaw = BigInt(2) ** BigInt(256);
+    expect((await f.run()).issues[0].code).toBe('INVALID_BALANCE_EVIDENCE');
+  });
+
+  it('refuses excessive input spending and insufficient starting input', async () => {
+    const f = await balances(true);
+    const input = f.proof.balances.find(entry => entry.token === INPUT)!;
+    input.afterRaw -= BigInt(1);
+    expect((await f.run()).issues[0].code).toBe('INPUT_SPEND_EXCEEDS_PLAN');
+    input.beforeRaw = BigInt(0); input.afterRaw = BigInt(0);
+    expect((await f.run()).issues[0].code).toBe('INPUT_BALANCE_BELOW_PLAN');
+  });
+
+  it('refuses changes in canonical inclusion during evidence reads', async () => {
+    const f = await balances();
+    f.client.getPurchaseBalanceChanges = async () => {
+      f.client.getBlock = async () => ({ hash: hex('f', 64) });
+      return f.proof;
+    };
+    expect((await f.run()).issues[0].code).toBe('NON_CANONICAL_RECEIPT');
+  });
+
+  async function batch() {
+    const f = await balances();
+    const call = { type: 'CALL', from: SIGNER, to: ROUTER, input: f.compiled.transaction.data, value: '0x0' };
+    f.transaction.to = OTHER; f.receipt.to = OTHER;
+    f.transaction.input = '0xabcdef12';
+    const root = { type: 'CALL', from: SIGNER, to: OTHER, input: '0xabcdef12', value: '0x0', calls: [call] };
+    const trace = { transactionHash: HASH, blockHash: BLOCK, call: root };
+    f.client.tracePurchaseCall = vi.fn(async () => trace);
+    return { ...f, call, root, trace };
+  }
+
+  it('verifies an exact successful wallet call inside a delegated/batched transaction', async () => {
+    const f = await batch();
+    const result = await f.run();
+    expect(result.status).toBe('VERIFIED');
+    expect(result.transactionBinding).toBe('CALL_TRACE');
+    expect(result.balanceScope).toBe('TRANSACTION');
+  });
+
+  it('supports a relayed outer transaction only when the proven inner CALL comes from the wallet', async () => {
+    const f = await batch();
+    f.transaction.from = INPUT; f.receipt.from = INPUT; f.root.from = INPUT;
+    expect((await f.run()).status).toBe('VERIFIED');
+    f.call.from = INPUT;
+    expect((await f.run()).issues[0].code).toBe('COMPILED_CALL_NOT_EXECUTED');
+  });
+
+  it.each(['reverted', 'ancestor reverted', 'delegatecall', 'different data', 'wrong value', 'duplicate', 'wrong block', 'wrong root'] as const)('refuses %s batch proof', async kind => {
+    const f = await batch();
+    if (kind === 'reverted') Object.assign(f.call, { error: 'execution reverted' });
+    if (kind === 'ancestor reverted') f.root.calls = [{ type: 'CALL', from: SIGNER, to: OTHER, input: '0x', value: '0x0', error: 'execution reverted', calls: [f.call] } as unknown as typeof f.call];
+    if (kind === 'delegatecall') f.call.type = 'DELEGATECALL';
+    if (kind === 'different data') f.call.input = '0x12345679';
+    if (kind === 'wrong value') f.call.value = '0x1';
+    if (kind === 'duplicate') f.root.calls.push({ ...f.call });
+    if (kind === 'wrong block') f.trace.blockHash = hex('f', 64);
+    if (kind === 'wrong root') f.root.input = '0x12345678';
+    expect((await f.run()).status).not.toBe('VERIFIED');
   });
 });

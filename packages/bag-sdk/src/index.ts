@@ -82,4 +82,7 @@ export {
   type PurchaseReceiptIssueCode,
   type PurchaseReceiptVerification,
   type VerifyPurchaseReceiptOptions,
+  type PurchaseEvidenceContext,
+  type PurchaseBalanceEvidence,
+  type PurchaseCallEvidence,
 } from './receipt';
