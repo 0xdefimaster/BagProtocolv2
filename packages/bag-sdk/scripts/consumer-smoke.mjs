@@ -88,6 +88,20 @@ assert.equal(verified.confirmations, 3n);
 assert.equal(verified.keptBalanceVerified, false);
 assert.equal(verified.evidence, 'TRANSACTION_AND_BALANCE_DELTAS');
 assert.equal(verified.outputs[0].balanceDeltaRaw, 10n);
+const nitroClient = withReceiptEvidence({ ...receiptClient, async request({ method, params }) {
+  if (method === 'web3_clientVersion') return 'nitro/v3.12.1+70fa99a-20260929T140226Z/linux-amd64/go1.25.12';
+  if (method === 'eth_getBlockByHash') return { hash: blockHash, number: '0xa', parentHash: '0x' + '3'.repeat(64), transactions: [receiptHash, '0x' + '4'.repeat(64)] };
+  if (method === 'eth_getTransactionReceipt') return { transactionHash: receiptHash, blockHash, blockNumber: '0xa', transactionIndex: '0x0' };
+  if (method === 'debug_traceCall') return { type: 'CALL', from: params[0].from, to: params[0].to, input: params[0].data, output: '0x' + (params[2].txIndex === '0x0' ? 0n : 10n).toString(16).padStart(64, '0') };
+  throw new Error('Unexpected receipt RPC method');
+} }, { balanceState: 'ROBINHOOD_NITRO_TRANSACTION_INDEX' });
+const nitroVerified = await verifyPurchaseReceipt(compiled, {
+  client: nitroClient, transactionHash: receiptHash,
+  minimumReceived: compiled.quote.plan.legs.map(leg => ({ token: leg.token, amountRaw: 9n })),
+});
+assert.equal(nitroVerified.status, 'VERIFIED');
+assert.equal(nitroVerified.balanceScope, 'TRANSACTION');
+assert.equal(nitroVerified.outputs[0].balanceDeltaRaw, 10n);
 
 for (const f of [lifiComposer, fetchBag, readTokenDecimals, withReceiptEvidence]) assert.equal(typeof f, 'function');
 console.log('consumer.mjs: OK');
@@ -103,8 +117,9 @@ import { createPublicClient, http } from 'viem';
 const publicClient = createPublicClient({ transport: http('http://127.0.0.1:8545') });
 const receiptClient: PurchaseReceiptClient = publicClient;
 const evidenceClient: PurchaseReceiptClient = withReceiptEvidence(publicClient);
+const nitroClient: PurchaseReceiptClient = withReceiptEvidence(publicClient, { balanceState: 'ROBINHOOD_NITRO_TRANSACTION_INDEX' });
 const verifyReceipt = verifyPurchaseReceipt;
-void [receiptClient, evidenceClient, verifyReceipt];
+void [receiptClient, evidenceClient, nitroClient, verifyReceipt];
 const d: StrategyRegistryDeployment | undefined = STRATEGY_REGISTRY_DEPLOYMENTS.robinhood;
 const kind: PurchasePlan['inputKind'] = 'native';
 const r = parseBag('{}');
