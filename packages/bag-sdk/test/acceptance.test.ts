@@ -173,6 +173,37 @@ describe('bag.json + registry commitment → independent verification', () => {
     expect(v.checks.find((c) => c.name === 'VERSION_REGISTERED')!.ok).toBe(false);
   });
 
+  it('fails closed before registry reads when the RPC chain, known address, or code is wrong', async () => {
+    let registryReads = 0;
+    const base = fakeRegistry([{ creator: CREATOR, uuid: STRATEGY, hashes: [EXTERNAL_DEFINITION_HASH as Hex] }]);
+    const tracked: RegistryClient = {
+      ...base,
+      async readContract(args) { registryReads++; return base.readContract(args); },
+    };
+
+    const wrongChain = await verifyRegistryCommitment({
+      bag: servedDoc(), expectedCreator: CREATOR, registry: REGISTRY,
+      client: { ...tracked, getChainId: async () => 1 },
+    });
+    expect(wrongChain.verified).toBe(false);
+    expect(wrongChain.checks.find((c) => c.name === 'RPC_CHAIN_MATCHES_STRATEGY')?.ok).toBe(false);
+    expect(registryReads).toBe(0);
+
+    const wrongAddress = await verifyRegistryCommitment({
+      bag: servedDoc(), expectedCreator: CREATOR, registry: '0x4444444444444444444444444444444444444444' as Hex, client: tracked,
+    });
+    expect(wrongAddress.checks.find((c) => c.name === 'REGISTRY_ADDRESS_MATCHES_KNOWN_DEPLOYMENT')?.ok).toBe(false);
+    expect(registryReads).toBe(0);
+
+    const noCode = await verifyRegistryCommitment({
+      bag: servedDoc(), expectedCreator: CREATOR, registry: REGISTRY,
+      client: { ...tracked, getCode: async () => '0x' },
+    });
+    expect(noCode.verified).toBe(false);
+    expect(noCode.checks.find((c) => c.name === 'REGISTRY_HAS_CODE')?.ok).toBe(false);
+    expect(registryReads).toBe(0);
+  });
+
   it('a draft bag.json (no ref) can be hashed but not registry-verified, and says why', () => {
     const parsed = parseBag(externalBagText());
     if (!parsed.ok) throw new Error('parse');
