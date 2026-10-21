@@ -20,11 +20,13 @@ It needs no BAG frontend, server or database.
 
 ## JSON Schema
 
-The package exports the portable v1 document schema at `@bagprotocol/sdk/schema`
-(the JSON file is `schema/bag.v1.schema.json`). Use it for editor completion
-and shape validation; then call `parseBag` and `validateBag` for the SDK's
-strict parsing and cross-field rules. The schema accepts both minimal
-`{ bagJson, definition }` files and BAG-enriched served documents.
+The package exports the SDK's EVM profile schema at `@bagprotocol/sdk/schema`
+(the JSON file is `schema/bag.v1.schema.json`). Its chain enum deliberately
+matches `BAG_V1_CHAINS`; BAG's wider API schema may include chains this SDK does
+not implement. Use the package schema for editor completion and shape
+validation, then call `parseBag` and `validateBag` for strict parsing and
+cross-field rules. It accepts minimal `{ bagJson, definition }` files and
+BAG-enriched served documents on supported EVM chains.
 
 ## Quick start
 
