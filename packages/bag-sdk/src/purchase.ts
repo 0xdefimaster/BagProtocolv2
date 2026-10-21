@@ -99,7 +99,7 @@ const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
 /** Compare raw token units to a canonical human-readable decimal without floating point. */
 function compareRawToDecimal(amountRaw: bigint, decimals: number, amount: string): number {
-  const unit = 10n ** BigInt(decimals);
+  const unit = BigInt(10) ** BigInt(decimals);
   const whole = (amountRaw / unit).toString();
   const fraction = decimals === 0 ? '' : (amountRaw % unit).toString().padStart(decimals, '0');
   const [minimumWhole, minimumFraction = ''] = amount.split('.');
@@ -144,7 +144,7 @@ export function planPurchase(bag: BagDocument, req: PurchaseRequest): PurchasePl
       err('INPUT_TOKEN_DECIMALS_REQUIRED', 'request.inputTokenDecimals', 'Provide the input token decimals to enforce this strategy’s minimum investment.');
     } else if (!Number.isInteger(inputTokenDecimals) || inputTokenDecimals < 0 || inputTokenDecimals > 255) {
       // The request already carries INVALID_INPUT_TOKEN_DECIMALS; avoid using an invalid exponent.
-    } else if (typeof req.amountRaw === 'bigint' && req.amountRaw > 0n && compareRawToDecimal(req.amountRaw, inputTokenDecimals, minInvestmentAmount) < 0) {
+    } else if (typeof req.amountRaw === 'bigint' && req.amountRaw > BigInt(0) && compareRawToDecimal(req.amountRaw, inputTokenDecimals, minInvestmentAmount) < 0) {
       err('BELOW_MIN_INVESTMENT', 'request.amountRaw', `Deposit is below the strategy minimum of ${minInvestmentAmount} payment-token units.`);
     }
   }
