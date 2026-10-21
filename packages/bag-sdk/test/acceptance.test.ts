@@ -99,7 +99,9 @@ describe('third-party pipeline without any BAG record', () => {
     const networkFailure = (async () => {
       throw new Error('https://example.org/secret?key=hidden');
     }) as unknown as typeof fetch;
-    await expect(fetchBag('https://example.org/secret?key=hidden', { fetch: networkFailure })).rejects.not.toThrow(/hidden/);
+    const error = await fetchBag('https://example.org/secret?key=hidden', { fetch: networkFailure }).then(() => null, (reason: unknown) => reason);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).not.toContain('hidden');
   });
 
   it('token decimals can be read with the caller’s own client', async () => {
