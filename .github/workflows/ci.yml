@@ -62,6 +62,11 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      # Exercise the packed SDK from a clean downstream project, including every export and TS consumer types.
+      - name: Build and smoke-test the published SDK package
+        run: |
+          npm run build --prefix packages/bag-sdk
+          npm run smoke:consumer --prefix packages/bag-sdk
       - run: npm test
       # Same job, same `npm ci`: catches what only Next's build checks (route
       # handler signatures, page exports, server/client boundaries).
