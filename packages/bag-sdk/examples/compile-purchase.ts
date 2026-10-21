@@ -16,7 +16,7 @@
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { createPublicClient, http, type Hex } from 'viem';
-import { chainIdOf, compileBag, hashBag, isNativeToken, normalizeBag, parseBag, simulateBag, validateBag, verifyRegistryCommitment, type ComposerProvider, type ContractReader, type SimulationClient } from '../src/index';
+import { chainIdOf, compileBag, hashBag, isNativeToken, normalizeBag, parseBag, simulateBag, validateBag, verifyRegistryCommitment, type ComposerProvider, type ContractReader, type RegistryClient, type SimulationClient } from '../src/index';
 import { fetchBag } from '../src/adapters/http';
 import { readTokenDecimals } from '../src/adapters/evm';
 import { lifiComposer } from '../src/adapters/lifi';
@@ -31,7 +31,7 @@ export interface RunOptions {
   provider: ComposerProvider;
   allowedTransactionTargets: string[];
   allowedApprovalSpenders: string[];
-  client: SimulationClient & ContractReader;
+  client: SimulationClient & ContractReader & RegistryClient;
   registry?: { address: Hex; expectedCreator: string };
   readText?: (path: string) => Promise<string>;
   fetch?: typeof fetch;
@@ -100,7 +100,7 @@ async function main() {
   }
   // LI.FI's production Composer API (docs.li.fi quickstart; what BAG uses). Override with COMPOSER_URL.
   const baseUrl = process.env.COMPOSER_URL ?? 'https://composer.li.quest';
-  const client = createPublicClient({ transport: http(rpcUrl) }) as unknown as SimulationClient & ContractReader;
+  const client = createPublicClient({ transport: http(rpcUrl) }) as unknown as SimulationClient & ContractReader & RegistryClient;
   const report = await run({
     source,
     inputToken,
