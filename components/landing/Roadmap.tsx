@@ -28,6 +28,28 @@ interface Day {
 
 const SHIPPED: Day[] = [
   {
+    date: '2026-10-21',
+    title: 'Developer SDK security and integration upgrades',
+    summary: 'The standalone SDK now enforces strategy minimums, checks registry deployments before verification, and ships its EVM-aligned bag.json schema.',
+    items: [
+      {
+        t: 'Minimum investment enforced',
+        b: 'Purchase planning compares the requested amount with the strategy minimum using exact token units, before quote or compilation. ERC-20 payments require token decimals; native ETH uses 18.',
+        prs: [111],
+      },
+      {
+        t: 'Registry checks fail closed',
+        b: 'Before reading a commitment, the SDK checks the RPC chain, the known registry address and deployed contract code. Mismatches are rejected before registry data is read.',
+        prs: [112],
+      },
+      {
+        t: 'bag.json schema included in the SDK package',
+        b: 'The npm package now exports a JSON Schema profile aligned with the SDK’s supported EVM chains, so consumers can validate document shape in editors and tooling.',
+        prs: [113],
+      },
+    ],
+  },
+  {
     date: '2026-10-13',
     title: 'Multi-buy, multi-sell and on-chain fork royalties',
     summary: 'Buy or sell many tokens in one transaction on four networks; forks pay their original creator on-chain.',
