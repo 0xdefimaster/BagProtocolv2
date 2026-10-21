@@ -98,6 +98,14 @@ describe('planPurchase', () => {
     expect(plan.partition).toEqual({ outerBps: [10000], groups: [{ legs: [0], innerBps: null }] });
   });
 
+  it('rejects a native coin basket asset before asking a provider to route it as ERC-20', () => {
+    const bag = doc((d) => {
+      d.definition.assets[0].address = NATIVE_TOKEN;
+      delete d.metadata;
+    });
+    expect(codes(() => planPurchase(bag, req()))).toContain('UNSUPPORTED_NATIVE_ASSET');
+  });
+
   it('slippage: declared, capped at 300, default 100 for null; a caller can only tighten', () => {
     expect(planPurchase(doc((d) => (d.definition.rules.swapSlippageBps = 500)), req()).slippageBps).toBe(300);
     expect(planPurchase(doc((d) => (d.definition.rules.swapSlippageBps = null)), req()).slippageBps).toBe(100);
