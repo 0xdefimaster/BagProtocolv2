@@ -1,4 +1,4 @@
-import { isBagChain, parseBag, STRATEGY_REGISTRY_DEPLOYMENTS, verifyRegistryCommitment, type ContractReader } from '@/packages/bag-sdk/src';
+import { isBagChain, parseBag, STRATEGY_REGISTRY_DEPLOYMENTS, verifyRegistryCommitment, type RegistryClient } from '@/packages/bag-sdk/src';
 
 // -----------------------------------------------------------------------------
 // Independent re-check of a Bag's StrategyRegistry commitments, run in the
@@ -26,7 +26,7 @@ export interface BrowserVerifyInput {
   /** BAG's configured registry: only compared with the SDK's, never used for the read. */
   serverRegistryAddress: string | null;
   versions: number[];
-  client: ContractReader & { getChainId(): Promise<number> };
+  client: RegistryClient;
   fetchFn?: typeof fetch;
 }
 
@@ -44,16 +44,6 @@ export async function verifyRegistrationsInBrowser(input: BrowserVerifyInput): P
   }
   const registryMismatch = !!input.serverRegistryAddress && input.serverRegistryAddress.toLowerCase() !== deployment.address.toLowerCase();
 
-  let chainId: number;
-  try {
-    chainId = await input.client.getChainId();
-  } catch {
-    return { registry: deployment.address, registryMismatch, checks: input.versions.map((version) => ({ version, state: 'UNAVAILABLE', detail: 'The chain could not be reached from your browser.' })) };
-  }
-  if (chainId !== deployment.chainId) {
-    return { registry: deployment.address, registryMismatch, checks: input.versions.map((version) => ({ version, state: 'UNAVAILABLE', detail: `Your browser's RPC is on chain ${chainId}, not ${deployment.chainId}.` })) };
-  }
-
   const doFetch = input.fetchFn ?? fetch;
   const checks: BrowserCheck[] = [];
   for (const version of input.versions) {
@@ -70,7 +60,11 @@ export async function verifyRegistrationsInBrowser(input: BrowserVerifyInput): P
       }
       const v = await verifyRegistryCommitment({ bag: parsed.bag, expectedCreator: input.creatorWallet, registry: deployment.address, client: input.client });
       if (v.verified) checks.push({ version, state: 'VERIFIED' });
-      else checks.push({ version, state: 'MISMATCH', detail: v.checks.filter((c) => !c.ok).map((c) => c.detail).join('; ') });
+      else {
+        const failed = v.checks.filter((c) => !c.ok);
+        const rpcUnavailable = failed.some((c) => c.name === 'RPC_CHAIN_MATCHES_STRATEGY' && c.detail.includes('could not read'));
+        checks.push({ version, state: rpcUnavailable ? 'UNAVAILABLE' : 'MISMATCH', detail: failed.map((c) => c.detail).join('; ') });
+      }
     } catch {
       checks.push({ version, state: 'UNAVAILABLE', detail: `v${version} could not be checked from your browser.` });
     }
