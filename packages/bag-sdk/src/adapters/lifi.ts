@@ -2,6 +2,8 @@ import { createComposeSdk, materialisers, resources } from '@lifi/composer-sdk';
 import type { Bindable } from '@lifi/composer-sdk';
 import type { ComposerCompileRequest, ComposerCompileResult, ComposerProvider } from '../execution';
 import { planPartition } from '../partition';
+import type { ComposerAccount } from './composer-account';
+export { resolveLifiComposerAccount, type ComposerAccount, type ComposerAccountClient, type ComposerDeployment } from './composer-account';
 
 // -----------------------------------------------------------------------------
 // Routing adapter: LI.FI Composer (@lifi/composer-sdk, optional peer
@@ -58,6 +60,8 @@ export interface LifiComposerOptions {
   fetch?: typeof fetch;
   /** Deadline on each Composer request, enforced by aborting it. Default 15000 ms. */
   timeoutMs?: number;
+  /** Independent chain observation from resolveLifiComposerAccount; never derive this from the compile response. */
+  account?: ComposerAccount;
 }
 
 const legNode = (i: number) => `swap_${i}`;
@@ -77,6 +81,10 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
   return {
     name: 'lifi-composer',
     async compile(req: ComposerCompileRequest): Promise<ComposerCompileResult> {
+      const account = options.account;
+      if (account && (account.chainId !== req.chainId || account.signer.toLowerCase() !== req.signer.toLowerCase())) {
+        throw new Error('LI.FI Composer account observation belongs to a different chain or signer.');
+      }
       const base = options.fetch ?? fetch;
       const timeoutMs = options.timeoutMs ?? 15_000;
       const sdk = createComposeSdk({
@@ -114,6 +122,15 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
       // Under the default 'strict' simulation a refusal is thrown, never returned; 'partial' needs 'allow-revert'.
       if (result.status !== 'success') throw new Error(`LI.FI Composer returned a partial result (${result.error.kind}) under strict simulation.`);
       if (!result.transactionRequest) throw new Error('LI.FI Composer reported success without a transaction.');
+      if (account) {
+        const target = account.proxyDeployed ? account.proxy : account.factory;
+        if (result.transactionRequest.to.toLowerCase() !== target.toLowerCase() || result.userProxy?.toLowerCase() !== account.proxy.toLowerCase()) {
+          throw new Error('LI.FI Composer target or user proxy differs from the independently resolved account.');
+        }
+        if ((result.approvals ?? []).some(a => a.spender.toLowerCase() !== account.proxy.toLowerCase())) {
+          throw new Error('LI.FI Composer approval spender differs from the independently resolved proxy.');
+        }
+      }
 
       const outputs = result.outputs;
       return {
@@ -128,6 +145,9 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
         legs: req.legs.map((_, i) => {
           // Composer keys outputs by output port (`swap_<i>.amountOut`). A missing minimum means no floor is enforced (never 0).
           const o = outputs[`${legNode(i)}.amountOut`];
+          if (o && (o.role !== 'terminal' || o.owner?.toLowerCase() !== req.signer.toLowerCase() || o.delivery.when !== 'now' || o.resource.chainId !== chainId)) {
+            throw new Error('LI.FI Composer output is not immediate terminal delivery on the requested chain to the signer.');
+          }
           return {
             token: o && o.resource.kind === 'erc20' ? o.resource.token : null,
             expectedOutRaw: o?.amount.estimate ? o.amount.estimate.value.toString() : null,

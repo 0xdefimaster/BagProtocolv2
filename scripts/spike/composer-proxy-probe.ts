@@ -1,10 +1,11 @@
 /**
  * LI.FI Composer user proxy — READ-ONLY probe. No key, no transaction.
  *
- * Compile returns a transaction whose target is the signer's own Composer proxy (`userProxy`), one per wallet
- * (docs/LIFI_COMPOSER_FEE_SETTLEMENT_FEASIBILITY.md §7.2). LI.FI does not document how that address is derived, so
- * neither BAG nor the SDK can check it independently yet. This probe collects the on-chain facts a check would need,
- * for known (wallet, proxy) pairs:
+ * HISTORICAL exploratory probe. Current documentation specifies CreateX CREATE3;
+ * the SDK now uses a pinned factory's predictProxyAddress plus owner/factory checks.
+ * See docs/SDK_COMPOSER_TRUST.md and resolveLifiComposerAccount. The CREATE2
+ * hypotheses below are diagnostic history, not the supported account resolver.
+ * This probe collects on-chain facts for known (wallet, proxy) pairs:
  *
  *   - the proxy's code: size, hash, EIP-1167 clone (and its implementation), ERC-1967 implementation slot, and
  *     whether the wallet's address is embedded in the code;
@@ -126,7 +127,7 @@ async function main() {
   }
   const all = [...matches].filter(([, n]) => n === deployed.length && n > 0).map(([k]) => k);
   console.log(`\nCREATE2 hypotheses matching every proxy: ${all.length > 0 ? all.join('; ') : 'NONE'}`);
-  if (all.length === 0) console.log('The derivation stays unknown: ask LI.FI how userProxy is derived before building a check on it.');
+  if (all.length === 0) console.log('No CREATE2 hypothesis matched. Composer documents CREATE3; use the pinned-factory SDK account resolver.');
 }
 
 main().catch((e) => {

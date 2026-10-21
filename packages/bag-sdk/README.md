@@ -462,15 +462,37 @@ LIFI_API_KEY=… RPC_URL=… COMPOSER_TRUSTED_TARGETS=0x… npx tsx packages/bag
   <bag.json|URL> 0x0000000000000000000000000000000000000000 1000000000000000 <your address>
 ```
 
-`COMPOSER_TRUSTED_TARGETS` is **your wallet's own LI.FI Composer proxy**, not one shared contract: Composer sends each
-signer's transaction to that signer's proxy, so the target differs per wallet (seen live: two wallets, two targets).
-Before a wallet's first Composer transaction the target is a Composer entry contract instead. Verify the address
-yourself, for example as the `to` of a Composer purchase this wallet already made, on the block explorer. Run with a
-placeholder such as `0x0000000000000000000000000000000000000001` and the refusal names the target Composer returned;
-trust it only after that check. Exit code 0 PASS, 1 FAIL, 3 BLOCKED (credentials not set, or the network unreachable).
+### Independently resolve the Composer account
 
-How LI.FI derives the proxy address is not documented, so the SDK cannot yet check it on its own.
-`scripts/spike/composer-proxy-probe.ts` (read-only) collects the on-chain facts such a check would need.
+The recommended path derives the wallet target from a caller-pinned deployment, before reading any Composer compile response:
+
+```ts
+import { lifiComposer, resolveLifiComposerAccount } from '@bagprotocol/sdk/lifi';
+
+const account = await resolveLifiComposerAccount({
+  chainId, signer, client: publicClient,
+  deployment: { chainId, factory: reviewedFactory, factoryCodeHash: reviewedRuntimeHash },
+});
+const compiled = await compileBag(bag, request, {
+  provider: lifiComposer({ apiKey, baseUrl, account }),
+  trust: account.trust,
+});
+```
+
+The helper checks the RPC chain and pinned factory runtime, calls `predictProxyAddress(signer)` on that factory, and checks `owner()` / `factory()` for a deployed proxy. Reads are bound to one block and canonical inclusion is rechecked. The resulting policy allows the proxy as target if deployed, or only the pinned factory on first use. Direct-deposit approvals remain limited to the predicted proxy in both cases. Passing `account` to the adapter also binds the request chain/signer, returned `userProxy`, target and approval spenders. Every swap output must describe immediate terminal delivery to the signer on the requested chain.
+
+Do not construct the deployment pin or account from `transactionRequest.to` / `userProxy`. Choose a reviewed deployment independently, and repeat resolution for every compile. An API rollout can change the factory: mismatches are refused, never automatically trusted. This verifies account routing against the selected deployment; it does not audit the VM program, internal calls, upgrade controls or fee economics.
+
+The [official account model](https://docs.li.fi/composer/composer-api/overview) now documents CreateX CREATE3, and [Addresses](https://docs.li.fi/composer/composer-api/reference/addresses) publishes a production factory snapshot. **Observed on 2026-10-21:** that snapshot names factory `0xe174d02351656a883f6626497c86684e849efb35`, while actual production compile responses on Robinhood used `0xaceb3bb6c75488b5b806b9de4dcf78814465bdae`. Both factories are deployed and return different proxies for the same signer. The new guard rejected the snapshot factory against the observed server response; it accepted the independently pinned observed deployment. See [deployment evidence and remaining release checks](https://github.com/0xdefimaster/BagProtocolv2/blob/main/docs/SDK_COMPOSER_TRUST.md). Never use one unqualified factory for every deployment just because it appears in documentation or a compile response.
+
+`examples/compile-verified-composer.mjs` runs this path from a local bag.json after the SDK build. Supply your own `LIFI_API_KEY`, `RPC_URL`, `COMPOSER_FACTORY` and `COMPOSER_FACTORY_CODE_HASH`; optional `COMPOSER_URL` chooses your Composer deployment:
+
+```
+npm run build --prefix packages/bag-sdk
+node packages/bag-sdk/examples/compile-verified-composer.mjs <bag.json> <inputToken> <amountRaw> <signer>
+```
+
+It prints an unsigned purchase and a separate wallet-state simulation result. A successful compile does not mean the signer has enough balance or approvals. No transaction is signed or submitted; credentials and transport errors are not printed. The older explicit `COMPOSER_TRUSTED_TARGETS` / `COMPOSER_TRUSTED_SPENDERS` examples remain available for callers managing their own complete trust policy, but they do not independently resolve the account.
 
 **Verified live (2026-10-10, Robinhood Chain):** `verify-registry.ts` on the served `feetest` v1 document: 7/7 PASS.
 `live-compile.ts`, 0.001 ETH into `feetest` for a wallet with its proxy as the trusted target: 8/8 PASS, simulation OK.

@@ -31,7 +31,7 @@ try {
     `import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { parseBag, validateBag, hashBag, compileBag, verifyPurchaseReceipt, NATIVE_TOKEN, registryStrategyId, STRATEGY_REGISTRY_DEPLOYMENTS } from '@bagprotocol/sdk';
-import { lifiComposer } from '@bagprotocol/sdk/lifi';
+import { lifiComposer, resolveLifiComposerAccount } from '@bagprotocol/sdk/lifi';
 import { fetchBag } from '@bagprotocol/sdk/http';
 import { readTokenDecimals, withReceiptEvidence } from '@bagprotocol/sdk/evm';
 
@@ -102,6 +102,16 @@ const nitroVerified = await verifyPurchaseReceipt(compiled, {
 assert.equal(nitroVerified.status, 'VERIFIED');
 assert.equal(nitroVerified.balanceScope, 'TRANSACTION');
 assert.equal(nitroVerified.outputs[0].balanceDeltaRaw, 10n);
+const account = await resolveLifiComposerAccount({ chainId: 4663, signer: compiled.quote.plan.signer,
+  deployment: { chainId: 4663, factory: ROUTER, factoryCodeHash: keccak256('0x6000') },
+  client: { getChainId: async () => 4663, getBlockNumber: async () => 10n, getBlock: async () => ({ hash: blockHash }),
+    getCode: async ({ address }) => address === ROUTER ? '0x6000' : undefined,
+    readContract: async () => '0x' + '8'.repeat(40),
+  },
+});
+assert.deepEqual(account.trust.allowedTransactionTargets, [ROUTER]);
+assert.deepEqual(account.trust.allowedApprovalSpenders, ['0x' + '8'.repeat(40)]);
+assert.equal(typeof lifiComposer({ apiKey: 'fixture-only', baseUrl: 'https://composer.test', account }).compile, 'function');
 
 for (const f of [lifiComposer, fetchBag, readTokenDecimals, withReceiptEvidence]) assert.equal(typeof f, 'function');
 console.log('consumer.mjs: OK');
@@ -110,7 +120,7 @@ console.log('consumer.mjs: OK');
   writeFileSync(
     join(dir, 'consumer.ts'),
     `import { hashBag, parseBag, STRATEGY_REGISTRY_DEPLOYMENTS, type PurchasePlan, type StrategyRegistryDeployment, type PurchaseReceiptClient, verifyPurchaseReceipt } from '@bagprotocol/sdk';
-import { lifiComposer } from '@bagprotocol/sdk/lifi';
+import { lifiComposer, resolveLifiComposerAccount } from '@bagprotocol/sdk/lifi';
 import { fetchBag } from '@bagprotocol/sdk/http';
 import { readTokenDecimals, withReceiptEvidence } from '@bagprotocol/sdk/evm';
 import { createPublicClient, http } from 'viem';
@@ -119,7 +129,8 @@ const receiptClient: PurchaseReceiptClient = publicClient;
 const evidenceClient: PurchaseReceiptClient = withReceiptEvidence(publicClient);
 const nitroClient: PurchaseReceiptClient = withReceiptEvidence(publicClient, { balanceState: 'ROBINHOOD_NITRO_TRANSACTION_INDEX' });
 const verifyReceipt = verifyPurchaseReceipt;
-void [receiptClient, evidenceClient, nitroClient, verifyReceipt];
+const resolveAccount = (deployment: Parameters<typeof resolveLifiComposerAccount>[0]['deployment'], signer: Parameters<typeof resolveLifiComposerAccount>[0]['signer']) => resolveLifiComposerAccount({ chainId: deployment.chainId, signer, deployment, client: publicClient });
+void [receiptClient, evidenceClient, nitroClient, verifyReceipt, resolveAccount];
 const d: StrategyRegistryDeployment | undefined = STRATEGY_REGISTRY_DEPLOYMENTS.robinhood;
 const kind: PurchasePlan['inputKind'] = 'native';
 const r = parseBag('{}');
