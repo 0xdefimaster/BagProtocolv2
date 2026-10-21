@@ -11,7 +11,7 @@ import {
   type BagDocument,
   type ContractReader,
 } from '../src';
-import { fetchBag } from '../src/adapters/http';
+import { fetchBag, MAX_BAG_JSON_BYTES } from '../src/adapters/http';
 import { readTokenDecimals } from '../src/adapters/evm';
 import { EXTERNAL_DEFINITION_HASH, externalBag, externalBagText } from './helpers';
 
@@ -75,6 +75,31 @@ describe('third-party pipeline without any BAG record', () => {
     expect(parsed.ok && hashBag(parsed.bag)).toBe(EXTERNAL_DEFINITION_HASH);
     const failing = (async () => new Response('nope', { status: 404 })) as unknown as typeof fetch;
     await expect(fetchBag('https://example.org/missing.json', { fetch: failing })).rejects.toThrow(/404/);
+  });
+
+  it('enforces the response byte limit while streaming and does not echo secret URLs', async () => {
+    const multibyte = `"${'é'.repeat(Math.ceil((MAX_BAG_JSON_BYTES + 1) / 2))}"`;
+    expect(multibyte.length).toBeLessThan(MAX_BAG_JSON_BYTES);
+    const tooLargeUtf8 = (async () => new Response(multibyte)) as unknown as typeof fetch;
+    await expect(fetchBag('https://example.org/secret?key=hidden', { fetch: tooLargeUtf8 })).rejects.toThrow(/larger than/);
+
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(' '.repeat(MAX_BAG_JSON_BYTES + 1)));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const tooLargeStream = (async () => new Response(body)) as unknown as typeof fetch;
+    await expect(fetchBag('https://example.org/large.json', { fetch: tooLargeStream })).rejects.toThrow(/larger than/);
+    expect(cancelled).toBe(true);
+
+    const networkFailure = (async () => {
+      throw new Error('https://example.org/secret?key=hidden');
+    }) as unknown as typeof fetch;
+    await expect(fetchBag('https://example.org/secret?key=hidden', { fetch: networkFailure })).rejects.not.toThrow(/hidden/);
   });
 
   it('token decimals can be read with the caller’s own client', async () => {
