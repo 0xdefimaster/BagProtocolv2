@@ -39,6 +39,7 @@ export {
   STRATEGY_REGISTRY_READ_ABI,
   verifyRegistryCommitment,
   type ContractReader,
+  type RegistryClient,
   type RegistryRecord,
   type RegistryVerification,
   type StrategyRegistryDeployment,
