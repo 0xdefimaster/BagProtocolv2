@@ -71,7 +71,7 @@ export interface PurchaseQuote {
   plan: PurchasePlan;
   provider: string;
   legs: QuotedLeg[];
-  priceImpactBps: number | null;
+  priceImpactBps: number;
   fees: ComposerCompileResult['fees'];
   gasLimit: string | null;
 }
@@ -173,12 +173,19 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
     return { token: l.token, targetInputRaw: l.targetInputRaw, expectedOutRaw: got.expectedOutRaw, minOutRaw };
   });
 
-  if (r.priceImpactBps !== null && r.priceImpactBps > plan.maxPriceImpactBps) {
-    fail(`price impact ${r.priceImpactBps} bps is above the limit ${plan.maxPriceImpactBps} bps.`);
+  const priceImpactBps = r.priceImpactBps;
+  if (priceImpactBps === null) {
+    throw new ProviderResponseError(`${provider}: provider did not report price impact; cannot enforce the configured limit.`);
+  }
+  if (!Number.isSafeInteger(priceImpactBps) || priceImpactBps < 0) {
+    fail(`malformed price impact ${priceImpactBps} bps.`);
+  }
+  if (priceImpactBps > plan.maxPriceImpactBps) {
+    fail(`price impact ${priceImpactBps} bps is above the limit ${plan.maxPriceImpactBps} bps.`);
   }
 
   return {
-    quote: { plan, provider, legs, priceImpactBps: r.priceImpactBps, fees: r.fees, gasLimit: r.gasLimit },
+    quote: { plan, provider, legs, priceImpactBps, fees: r.fees, gasLimit: r.gasLimit },
     transaction: { to: tx.to as Hex, data: tx.data as Hex, value, chainId: plan.chainId },
     approvals,
     executor: r.executor,

@@ -3,6 +3,7 @@ import { encodeAbiParameters, keccak256, type Hex } from 'viem';
 import {
   checkRegistryCommitment,
   hashBag,
+  NATIVE_TOKEN,
   normalizeBag,
   parseBag,
   registryStrategyId,
@@ -11,7 +12,7 @@ import {
   type BagDocument,
   type ContractReader,
 } from '../src';
-import { fetchBag } from '../src/adapters/http';
+import { fetchBag, MAX_BAG_JSON_BYTES } from '../src/adapters/http';
 import { readTokenDecimals } from '../src/adapters/evm';
 import { EXTERNAL_DEFINITION_HASH, externalBag, externalBagText } from './helpers';
 
@@ -77,6 +78,33 @@ describe('third-party pipeline without any BAG record', () => {
     await expect(fetchBag('https://example.org/missing.json', { fetch: failing })).rejects.toThrow(/404/);
   });
 
+  it('enforces the response byte limit while streaming and does not echo secret URLs', async () => {
+    const multibyte = `"${'é'.repeat(Math.ceil((MAX_BAG_JSON_BYTES + 1) / 2))}"`;
+    expect(multibyte.length).toBeLessThan(MAX_BAG_JSON_BYTES);
+    const tooLargeUtf8 = (async () => new Response(multibyte)) as unknown as typeof fetch;
+    await expect(fetchBag('https://example.org/secret?key=hidden', { fetch: tooLargeUtf8 })).rejects.toThrow(/larger than/);
+
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(' '.repeat(MAX_BAG_JSON_BYTES + 1)));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const tooLargeStream = (async () => new Response(body)) as unknown as typeof fetch;
+    await expect(fetchBag('https://example.org/large.json', { fetch: tooLargeStream })).rejects.toThrow(/larger than/);
+    expect(cancelled).toBe(true);
+
+    const networkFailure = (async () => {
+      throw new Error('https://example.org/secret?key=hidden');
+    }) as unknown as typeof fetch;
+    const error = await fetchBag('https://example.org/secret?key=hidden', { fetch: networkFailure }).then(() => null, (reason: unknown) => reason);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).not.toContain('hidden');
+  });
+
   it('token decimals can be read with the caller’s own client', async () => {
     const parsed = parseBag(externalBagText());
     if (!parsed.ok) throw new Error('parse');
@@ -85,6 +113,18 @@ describe('third-party pipeline without any BAG record', () => {
     expect(validateBag(parsed.bag, { tokens }).valid).toBe(true);
     const six: ContractReader = { readContract: async () => 6 };
     expect(validateBag(parsed.bag, { tokens: await readTokenDecimals(parsed.bag.definition, () => six) }).errors.map((e) => e.code)).toEqual(['DECIMALS_MISMATCH', 'DECIMALS_MISMATCH']);
+  });
+
+  it('uses native ETH decimals without calling decimals() on the zero address', async () => {
+    const raw = externalBag();
+    raw.definition.assets[0].address = NATIVE_TOKEN;
+    const parsed = parseBag(raw);
+    if (!parsed.ok) throw new Error('parse');
+    let calls = 0;
+    const client: ContractReader = { readContract: async () => (calls++, 18) };
+    const tokens = await readTokenDecimals(parsed.bag.definition, () => client);
+    expect(tokens[0]).toMatchObject({ address: NATIVE_TOKEN, decimals: 18 });
+    expect(calls).toBe(1);
   });
 });
 

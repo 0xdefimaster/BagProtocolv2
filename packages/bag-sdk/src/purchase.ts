@@ -106,6 +106,9 @@ export function planPurchase(bag: BagDocument, req: PurchaseRequest): PurchasePl
   if (!ADDRESS_RE.test(req.inputToken)) err('INVALID_INPUT_TOKEN', 'request.inputToken', 'inputToken must be an ERC-20 address or NATIVE_TOKEN.');
   if (!ADDRESS_RE.test(req.signer)) err('INVALID_SIGNER', 'request.signer', 'signer must be an address.');
   if (typeof req.amountRaw !== 'bigint' || req.amountRaw <= BigInt(0)) err('INVALID_AMOUNT', 'request.amountRaw', 'amountRaw must be a positive bigint.');
+  if (bag.definition.assets.some((asset) => isNativeToken(asset.address))) {
+    err('UNSUPPORTED_NATIVE_ASSET', 'definition.assets', 'The v1 purchase executor supports ERC-20 basket assets; the native token is supported as a payment token only.');
+  }
 
   const rules = resolveV1Rules(bag.definition);
   const policyCap = V1_EXECUTION_POLICY.maxSlippageBps;

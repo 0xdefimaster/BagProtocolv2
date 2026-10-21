@@ -98,6 +98,14 @@ describe('planPurchase', () => {
     expect(plan.partition).toEqual({ outerBps: [10000], groups: [{ legs: [0], innerBps: null }] });
   });
 
+  it('rejects a native coin basket asset before asking a provider to route it as ERC-20', () => {
+    const bag = doc((d) => {
+      d.definition.assets[0].address = NATIVE_TOKEN;
+      delete d.metadata;
+    });
+    expect(codes(() => planPurchase(bag, req()))).toContain('UNSUPPORTED_NATIVE_ASSET');
+  });
+
   it('slippage: declared, capped at 300, default 100 for null; a caller can only tighten', () => {
     expect(planPurchase(doc((d) => (d.definition.rules.swapSlippageBps = 500)), req()).slippageBps).toBe(300);
     expect(planPurchase(doc((d) => (d.definition.rules.swapSlippageBps = null)), req()).slippageBps).toBe(100);
@@ -208,9 +216,12 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     fees: [],
   };
 
-  it('requires the caller’s own API key', () => {
+  it('requires the caller’s own API key and a secure Composer endpoint', () => {
     expect(() => lifiComposer({ apiKey: '', baseUrl: 'https://composer.test' })).toThrow(/apiKey/);
     expect(() => lifiComposer({ apiKey: 'k', baseUrl: '' })).toThrow(/baseUrl/);
+    for (const baseUrl of ['http://composer.test', 'https://user:pass@composer.test', 'not-a-url']) {
+      expect(() => lifiComposer({ apiKey: 'k', baseUrl })).toThrow(/baseUrl/);
+    }
   });
 
   it('builds the partition/swap flow from the plan and maps the compile response', async () => {
@@ -233,6 +244,16 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
   it('a price impact above the limit from the real adapter is refused', async () => {
     const fetchImpl = composeFetch({ ...compileData, priceImpact: { ...compileData.priceImpact, impactBps: 735 } });
     await expect(compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST })).rejects.toThrow(/735 bps is above the limit 500/);
+  });
+
+  it('refuses unavailable and malformed price impact instead of bypassing the limit', async () => {
+    const missing = fakeProvider((r) => ({ ...r, priceImpactBps: null }));
+    await expect(compileBag(doc(), req(), { provider: missing, trust: TRUST })).rejects.toThrow(/did not report price impact/);
+
+    for (const impactBps of [-1, 1.5, Number.NaN]) {
+      const malformed = fakeProvider((r) => ({ ...r, priceImpactBps: impactBps }));
+      await expect(compileBag(doc(), req(), { provider: malformed, trust: TRUST })).rejects.toThrow(/malformed price impact/);
+    }
   });
 });
 
@@ -287,12 +308,12 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
     expect(planPurchase(doc(), req()).inputKind).toBe('erc20');
   });
 
-  it('a strategy holding the native coin itself cannot be paid in it (nothing native is ever kept)', () => {
+  it('rejects strategies that include the native coin as a basket asset', () => {
     const bag = doc((d) => {
       d.definition.assets[1].address = ETH;
       delete d.metadata;
     });
-    expect(codes(() => planPurchase(bag, ethReq()))).toContain('NATIVE_INPUT_KEPT');
+    expect(codes(() => planPurchase(bag, ethReq()))).toContain('UNSUPPORTED_NATIVE_ASSET');
   });
 
   it('compiles: the provider is asked for a native input, and the unsigned transaction carries exactly the ETH as msg.value, no approval', async () => {
@@ -346,6 +367,7 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
         transactionRequest: { to: ROUTER, chainId: 4663, data: '0xdeadbeef', value: '1000000000000000' },
         userProxy: '0x' + '8'.repeat(40),
         approvals: [],
+        priceImpact: { inputValueUsd: 1, outputValueUsd: 0.99, impactBps: 100, unpricedInputs: [], unpricedOutputs: [] },
         fees: [],
       },
     });
