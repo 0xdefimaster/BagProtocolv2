@@ -14,6 +14,7 @@ import {
   type ComposerCompileRequest,
   type ComposerCompileResult,
   type ComposerProvider,
+  type Hex,
   type SimulationClient,
 } from '../src';
 import { lifiComposer } from '../src/adapters/lifi';
@@ -244,6 +245,45 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
   it('a price impact above the limit from the real adapter is refused', async () => {
     const fetchImpl = composeFetch({ ...compileData, priceImpact: { ...compileData.priceImpact, impactBps: 735 } });
     await expect(compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST })).rejects.toThrow(/735 bps is above the limit 500/);
+  });
+
+  it.each(['owner', 'chain', 'delayed', 'intermediate'])('rejects Composer output with wrong %s before returning a transaction', async kind => {
+    const data = structuredClone(compileData);
+    const output = data.outputs['swap_0.amountOut'] as Record<string, any>;
+    if (kind === 'owner') output.owner = '0x' + '9'.repeat(40);
+    if (kind === 'chain') output.resource.chainId = 1;
+    if (kind === 'delayed') output.delivery = { when: 'later' };
+    if (kind === 'intermediate') output.role = 'intermediate';
+    const fetchImpl = composeFetch(data);
+    await expect(compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST })).rejects.toThrow();
+  });
+
+  it('binds the compile result to the independently resolved factory/proxy and handles first use', async () => {
+    const proxy = compileData.userProxy as Hex;
+    const account = { chainId: 4663, signer: SIGNER as Hex, factory: ROUTER as Hex, factoryCodeHash: ('0x' + '1'.repeat(64)) as Hex,
+      proxy, proxyDeployed: false, blockNumber: BigInt(100), blockHash: ('0x' + '2'.repeat(64)) as Hex, trust: TRUST };
+    const data = structuredClone(compileData); data.approvals[0].spender = proxy;
+    const trust = { ...TRUST, allowedApprovalSpenders: [proxy] };
+    const compiled = await compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: composeFetch(data), account }), trust });
+    expect(compiled.executor).toBe(proxy);
+    expect(compiled.transaction.to).toBe(ROUTER);
+    data.transactionRequest.to = proxy;
+    const deployed = await compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: composeFetch(data), account: { ...account, proxyDeployed: true } }), trust: { ...trust, allowedTransactionTargets: [proxy] } });
+    expect(deployed.transaction.to).toBe(proxy);
+  });
+
+  it.each(['chain', 'signer', 'target', 'proxy', 'spender'])('rejects an independently resolved account %s mismatch', async kind => {
+    const proxy = compileData.userProxy as Hex;
+    const account = { chainId: kind === 'chain' ? 1 : 4663, signer: (kind === 'signer' ? '0x' + '9'.repeat(40) : SIGNER) as Hex,
+      factory: ROUTER as Hex, factoryCodeHash: ('0x' + '1'.repeat(64)) as Hex, proxy, proxyDeployed: false,
+      blockNumber: BigInt(100), blockHash: ('0x' + '2'.repeat(64)) as Hex, trust: TRUST };
+    const data = structuredClone(compileData); data.approvals[0].spender = proxy;
+    if (kind === 'target') data.transactionRequest.to = proxy;
+    if (kind === 'proxy') data.userProxy = '0x' + '9'.repeat(40);
+    if (kind === 'spender') data.approvals[0].spender = SPENDER;
+    const fetchImpl = composeFetch(data);
+    await expect(compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl, account }), trust: { ...TRUST, allowedApprovalSpenders: [proxy] } })).rejects.toThrow(/independently|different chain or signer/);
+    if (kind === 'chain' || kind === 'signer') expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('refuses unavailable and malformed price impact instead of bypassing the limit', async () => {

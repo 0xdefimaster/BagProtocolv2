@@ -33,7 +33,9 @@ function bag(weights: number[]): BagDocument {
 function recordingFetch(tokens: string[], bodies: unknown[]) {
   return (async (_url: string, init: RequestInit) => {
     bodies.push(JSON.parse(String(init.body)));
-    const outputs = Object.fromEntries(tokens.map((t, i) => [`swap_${i}.amountOut`, wireOut(1000, 990, t)]));
+    // The SDK validates terminal ownership. This response must name the same
+    // signer as the request, rather than the shared fixture's placeholder.
+    const outputs = Object.fromEntries(tokens.map((t, i) => [`swap_${i}.amountOut`, { ...wireOut(1000, 990, t), owner: SIGNER }]));
     return composeResponse({ data: { outputs, transactionRequest: { to: ROUTER, chainId: 4663, data: '0xdeadbeef', value: '0' }, userProxy: '0x' + '8'.repeat(40), approvals: [], priceImpact: { inputValueUsd: 100, outputValueUsd: 99, impactBps: 100, unpricedInputs: [], unpricedOutputs: [] }, fees: [] } });
   }) as unknown as typeof fetch;
 }
