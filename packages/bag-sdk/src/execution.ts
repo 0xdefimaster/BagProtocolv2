@@ -175,7 +175,7 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
 
   const priceImpactBps = r.priceImpactBps;
   if (priceImpactBps === null) {
-    fail('provider did not report price impact; cannot enforce the configured limit.');
+    throw new ProviderResponseError(`${provider}: provider did not report price impact; cannot enforce the configured limit.`);
   }
   if (!Number.isSafeInteger(priceImpactBps) || priceImpactBps < 0) {
     fail(`malformed price impact ${priceImpactBps} bps.`);
