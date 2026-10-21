@@ -21,10 +21,12 @@
     "./lifi": {
       "types": "./dist/adapters/lifi.d.ts",
       "import": "./dist/adapters/lifi.js"
-    }
+    },
+    "./schema": "./schema/bag.v1.schema.json"
   },
   "files": [
     "dist",
+    "schema",
     "README.md",
     "LICENSE"
   ],

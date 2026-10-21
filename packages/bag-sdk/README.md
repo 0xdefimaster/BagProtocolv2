@@ -18,6 +18,16 @@ It needs no BAG frontend, server or database.
 - Network access only through what you pass in (a `fetch`, a viem client).
 - Published on npm: [`@bagprotocol/sdk@0.2.0`](https://www.npmjs.com/package/@bagprotocol/sdk). The package is MIT-licensed; `bag.json` v1 semantics are frozen.
 
+## JSON Schema
+
+The package exports the SDK's EVM profile schema at `@bagprotocol/sdk/schema`
+(the JSON file is `schema/bag.v1.schema.json`). Its chain enum deliberately
+matches `BAG_V1_CHAINS`; BAG's wider API schema may include chains this SDK does
+not implement. Use the package schema for editor completion and shape
+validation, then call `parseBag` and `validateBag` for strict parsing and
+cross-field rules. It accepts minimal `{ bagJson, definition }` files and
+BAG-enriched served documents on supported EVM chains.
+
 ## Quick start
 
 Install the SDK and its required peer dependency in your app:
