@@ -122,7 +122,7 @@ describe('planPurchase', () => {
     expect(codes(() => planPurchase(doc((d) => (d.definition.assets[0].weightBps = 3000)), req()))).toEqual(['WEIGHTS_NOT_100']);
     expect(codes(() => planPurchase(doc(), req({ inputToken: 'USDG', signer: '0x1', amountRaw: BigInt(0) })))).toEqual(['INVALID_INPUT_TOKEN', 'INVALID_SIGNER', 'INVALID_AMOUNT']);
     expect(codes(() => planPurchase(doc(), req({ allowedTokens: [A] })))).toEqual(['TOKEN_NOT_ALLOWED']);
-    expect(codes(() => planPurchase(doc(), req({ amountRaw: BigInt(1) })))).toContain('AMOUNT_TOO_SMALL');
+    expect(codes(() => planPurchase(doc((d) => (d.definition.rules.minInvestment = { amount: '0', measuredAs: 'PAYMENT_TOKEN_AMOUNT' })), req({ amountRaw: BigInt(1) })))).toContain('AMOUNT_TOO_SMALL');
   });
 
   it('legs follow the exact target (cross-checked with splitByWeight)', () => {
@@ -355,9 +355,9 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
     const badMin = nativeProvider((r) => ({ ...r, legs: r.legs.map((l) => ({ ...l, expectedOutRaw: '1000', minOutRaw: '1001' })) }));
     await expect(compileBag(ethDoc(), ethReq(), { provider: badMin, trust: TRUST })).rejects.toThrow(/minimum output is above its expected output/);
     // slippage: the caller can only tighten, for native as for ERC-20
-    expect(codes(() => planPurchase(doc(), ethReq({ slippageBps: 301 })))).toContain('LOOSER_THAN_POLICY');
+    expect(codes(() => planPurchase(ethDoc(), ethReq({ slippageBps: 301 })))).toContain('LOOSER_THAN_POLICY');
     const tight = nativeProvider();
-    await compileBag(doc(), ethReq({ slippageBps: 50 }), { provider: tight, trust: TRUST });
+    await compileBag(ethDoc(), ethReq({ slippageBps: 50 }), { provider: tight, trust: TRUST });
     expect(tight.requests[0].slippageBps).toBe(50);
   });
 
