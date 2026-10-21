@@ -21,7 +21,7 @@ function transfer(token: Hex, amount: bigint, index: number, from = ROUTER, to =
   return {
     address: token, topics: [EVENT, word(from), word(to)],
     data: ('0x' + amount.toString(16).padStart(64, '0')) as Hex,
-    logIndex: index, transactionHash: HASH, blockHash: BLOCK, blockNumber: 10n, removed: false,
+    logIndex: index, transactionHash: HASH, blockHash: BLOCK, blockNumber: BigInt(10), removed: false,
   };
 }
 
@@ -31,7 +31,7 @@ async function setup(native = false, kept = false) {
   const parsed = parseBag(raw);
   if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues));
   const compiled = await compileBag(parsed.bag, {
-    inputToken: native ? NATIVE_TOKEN : INPUT, amountRaw: 10_000_000n, inputTokenDecimals: 6, signer: SIGNER,
+    inputToken: native ? NATIVE_TOKEN : INPUT, amountRaw: BigInt(10_000_000), inputTokenDecimals: 6, signer: SIGNER,
   }, {
     provider: {
       name: 'fixture',
@@ -45,21 +45,21 @@ async function setup(native = false, kept = false) {
     },
     trust: { chainId: 4663, allowedTransactionTargets: [ROUTER], allowedApprovalSpenders: [] },
   });
-  const minimumReceived = compiled.quote.plan.legs.map(leg => ({ token: leg.token, amountRaw: 80n }));
+  const minimumReceived = compiled.quote.plan.legs.map(leg => ({ token: leg.token, amountRaw: BigInt(80) }));
   const transaction: PurchaseReceiptTransaction = {
     hash: HASH, from: SIGNER, to: ROUTER, input: compiled.transaction.data,
-    value: compiled.transaction.value, chainId: 4663, blockHash: BLOCK, blockNumber: 10n,
+    value: compiled.transaction.value, chainId: 4663, blockHash: BLOCK, blockNumber: BigInt(10),
   };
   const receipt: PurchaseTransactionReceipt = {
-    transactionHash: HASH, from: SIGNER, to: ROUTER, blockHash: BLOCK, blockNumber: 10n, status: 'success',
-    logs: minimumReceived.map((output, i) => transfer(output.token as Hex, 100n, i)),
+    transactionHash: HASH, from: SIGNER, to: ROUTER, blockHash: BLOCK, blockNumber: BigInt(10), status: 'success',
+    logs: minimumReceived.map((output, i) => transfer(output.token as Hex, BigInt(100), i)),
   };
   const client = {
     getChainId: vi.fn(async () => 4663),
     getTransaction: vi.fn(async () => transaction),
     getTransactionReceipt: vi.fn(async () => receipt),
     getBlock: vi.fn(async () => ({ hash: BLOCK })),
-    getBlockNumber: vi.fn(async () => 12n),
+    getBlockNumber: vi.fn(async () => BigInt(12)),
   } satisfies PurchaseReceiptClient;
   const run = (overrides: Partial<Parameters<typeof verifyPurchaseReceipt>[1]> = {}) =>
     verifyPurchaseReceipt(compiled, { client, transactionHash: HASH, minimumReceived, ...overrides });
@@ -71,9 +71,9 @@ describe('verifyPurchaseReceipt', () => {
     const f = await setup();
     const result = await f.run({ confirmations: 3 });
     expect(result.status).toBe('VERIFIED');
-    expect(result.confirmations).toBe(3n);
+    expect(result.confirmations).toBe(BigInt(3));
     expect(result.outputs).toHaveLength(2);
-    expect(result.outputs.every(output => output.netReceivedRaw === 100n && output.minimumRaw === 80n)).toBe(true);
+    expect(result.outputs.every(output => output.netReceivedRaw === BigInt(100) && output.minimumRaw === BigInt(80))).toBe(true);
     expect(result.evidence).toBe('TRANSACTION_AND_TRANSFER_LOGS');
     expect(result.accounting).toBe('NOT_BAG_ACCOUNTED');
     expect(f.compiled.quote.legs[0].minOutRaw).toBe('990');
@@ -84,21 +84,21 @@ describe('verifyPurchaseReceipt', () => {
     const f = await setup();
     const token = f.minimumReceived[0].token as Hex;
     f.receipt.logs = [
-      transfer(token, 60n, 0), transfer(token, 40n, 1), transfer(token, 20n, 2, SIGNER, OTHER),
-      transfer(token, 999n, 3, SIGNER, SIGNER), transfer(f.minimumReceived[1].token as Hex, 100n, 4),
+      transfer(token, BigInt(60), 0), transfer(token, BigInt(40), 1), transfer(token, BigInt(20), 2, SIGNER, OTHER),
+      transfer(token, BigInt(999), 3, SIGNER, SIGNER), transfer(f.minimumReceived[1].token as Hex, BigInt(100), 4),
     ];
     const result = await f.run();
     expect(result.status).toBe('VERIFIED');
-    expect(result.outputs[0]).toMatchObject({ receivedRaw: 1099n, sentRaw: 1019n, netReceivedRaw: 80n });
-    f.receipt.logs = [...f.receipt.logs, transfer(token, 1n, 5, SIGNER, OTHER)];
+    expect(result.outputs[0]).toMatchObject({ receivedRaw: BigInt(1099), sentRaw: BigInt(1019), netReceivedRaw: BigInt(80) });
+    f.receipt.logs = [...f.receipt.logs, transfer(token, BigInt(1), 5, SIGNER, OTHER)];
     expect((await f.run()).status).toBe('FAILED');
   });
 
   it.each(['missing', 'wrong recipient', 'wrong emitter', 'zero'] as const)('rejects %s delivery', async (kind) => {
     const f = await setup();
     const token = f.minimumReceived[0].token as Hex;
-    const first = transfer(kind === 'wrong emitter' ? OTHER : token, kind === 'zero' ? 0n : 100n, 0, ROUTER, kind === 'wrong recipient' ? OTHER : SIGNER);
-    f.receipt.logs = [...(kind === 'missing' ? [] : [first]), transfer(f.minimumReceived[1].token as Hex, 100n, 1)];
+    const first = transfer(kind === 'wrong emitter' ? OTHER : token, kind === 'zero' ? BigInt(0) : BigInt(100), 0, ROUTER, kind === 'wrong recipient' ? OTHER : SIGNER);
+    f.receipt.logs = [...(kind === 'missing' ? [] : [first]), transfer(f.minimumReceived[1].token as Hex, BigInt(100), 1)];
     const result = await f.run();
     expect(result.status).toBe('FAILED');
     expect(result.issues[0].code).toBe('OUTPUT_BELOW_MINIMUM');
@@ -113,7 +113,7 @@ describe('verifyPurchaseReceipt', () => {
 
   it.each(['hash', 'from', 'input', 'value', 'chainId'] as const)('rejects mismatched transaction %s', async (field) => {
     const f = await setup();
-    if (field === 'value') f.transaction[field] = 99n;
+    if (field === 'value') f.transaction[field] = BigInt(99);
     else if (field === 'chainId') f.transaction.chainId = 1;
     else f.transaction[field] = field === 'input' ? '0xabcdef12' : field === 'from' ? OTHER : hex('f', 64);
     expect((await f.run()).status).toBe('FAILED');
@@ -148,9 +148,9 @@ describe('verifyPurchaseReceipt', () => {
     expect((await f.run()).issues[0].code).toBe('NON_CANONICAL_RECEIPT');
     f.client.getBlock.mockResolvedValue({ hash: BLOCK });
     expect((await f.run({ confirmations: 4 })).issues[0].code).toBe('INSUFFICIENT_CONFIRMATIONS');
-    f.client.getBlockNumber.mockResolvedValue(9n);
+    f.client.getBlockNumber.mockResolvedValue(BigInt(9));
     expect((await f.run()).issues[0].code).toBe('NON_CANONICAL_RECEIPT');
-    f.client.getBlockNumber.mockResolvedValue(12n);
+    f.client.getBlockNumber.mockResolvedValue(BigInt(12));
     f.receipt.status = 'reverted';
     expect((await f.run()).issues[0].code).toBe('TRANSACTION_REVERTED');
   });
@@ -162,7 +162,7 @@ describe('verifyPurchaseReceipt', () => {
     else {
       if (kind === 'removed') log.removed = true;
       if (kind === 'transactionHash' || kind === 'blockHash') log[kind] = hex('f', 64);
-      if (kind === 'blockNumber') log.blockNumber = 99n;
+      if (kind === 'blockNumber') log.blockNumber = BigInt(99);
       if (kind === 'topic') log.topics[1] = hex('f', 64);
       if (kind === 'data') log.data = '0x01';
       if (kind === 'nft') log.topics.push(hex('0', 64));
@@ -175,14 +175,14 @@ describe('verifyPurchaseReceipt', () => {
 
   it('does not count unrelated-token donations as planned outputs', async () => {
     const f = await setup();
-    f.receipt.logs = [transfer(OTHER, 1000000n, 0)];
+    f.receipt.logs = [transfer(OTHER, BigInt(1000000), 0)];
     expect((await f.run()).status).toBe('FAILED');
   });
 
   it('checks native value and explicitly leaves the planned kept share unmeasured', async () => {
     const native = await setup(true);
     expect((await native.run()).status).toBe('VERIFIED');
-    native.transaction.value += 1n;
+    native.transaction.value += BigInt(1);
     expect((await native.run()).status).toBe('FAILED');
     const kept = await setup(false, true);
     const result = await kept.run();
@@ -196,10 +196,10 @@ describe('verifyPurchaseReceipt', () => {
     const f = await setup();
     const policies = [
       [], [f.minimumReceived[0]], [...f.minimumReceived, f.minimumReceived[0]],
-      [{ token: OTHER, amountRaw: 80n }, f.minimumReceived[1]],
-      f.minimumReceived.map(item => ({ ...item, amountRaw: 0n })),
-      f.minimumReceived.map(item => ({ ...item, amountRaw: -1n })),
-      f.minimumReceived.map(item => ({ ...item, amountRaw: 2n ** 256n })),
+      [{ token: OTHER, amountRaw: BigInt(80) }, f.minimumReceived[1]],
+      f.minimumReceived.map(item => ({ ...item, amountRaw: BigInt(0) })),
+      f.minimumReceived.map(item => ({ ...item, amountRaw: -BigInt(1) })),
+      f.minimumReceived.map(item => ({ ...item, amountRaw: BigInt(2) ** BigInt(256) })),
     ];
     for (const minimumReceived of policies) await expect(f.run({ minimumReceived })).rejects.toThrow();
     for (const confirmations of [0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1]) {
