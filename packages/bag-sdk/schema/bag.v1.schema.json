@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://bagprotocol.com/schemas/bag.v1.json",
-  "title": "bag.json v1",
-  "description": "Portable bag.json v1 document shape accepted by @bagprotocol/sdk. JSON Schema checks shape and primitive types; validateBag applies cross-field and execution rules. Only definition is hashed.",
+  "$id": "https://bagprotocol.com/schemas/bag-sdk.v1.json",
+  "title": "bag.json v1 — EVM SDK profile",
+  "description": "Portable bag.json v1 document shape accepted by @bagprotocol/sdk. This SDK profile supports the EVM chains in BAG_V1_CHAINS. JSON Schema checks shape and primitive types; validateBag applies cross-field and execution rules. Only definition is hashed.",
   "type": "object",
   "additionalProperties": false,
   "required": [
