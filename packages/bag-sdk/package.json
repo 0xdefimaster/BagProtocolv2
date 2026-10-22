@@ -34,7 +34,8 @@
     "build": "tsc -p tsconfig.build.json && node scripts/fix-esm-imports.mjs",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "smoke:consumer": "node scripts/consumer-smoke.mjs"
+    "smoke:consumer": "node scripts/consumer-smoke.mjs",
+    "smoke:starter": "node scripts/starter-smoke.mjs"
   },
   "peerDependencies": {
     "viem": "^2.0.0",

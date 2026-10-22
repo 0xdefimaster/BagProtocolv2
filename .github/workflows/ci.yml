@@ -67,6 +67,7 @@ jobs:
         run: |
           npm run build --prefix packages/bag-sdk
           npm run smoke:consumer --prefix packages/bag-sdk
+          npm run smoke:starter --prefix packages/bag-sdk
       - run: npm test
       # Same job, same `npm ci`: catches what only Next's build checks (route
       # handler signatures, page exports, server/client boundaries).
