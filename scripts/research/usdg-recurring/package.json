@@ -1,0 +1,6 @@
+{
+  "name": "bag-recurring-usdg-fork-research",
+  "private": true,
+  "type": "module",
+  "description": "Isolated recurring policy experiment; uses the repository's locked dependencies"
+}
