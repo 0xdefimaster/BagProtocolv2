@@ -24,7 +24,7 @@ export const SDK_ERROR_MESSAGES = Object.freeze({
   ACCOUNT_PROXY_MISMATCH: 'The observed or returned proxy does not match the planned wallet.',
   ACCOUNT_OBSERVATION_INVALID: 'The chain reader returned an invalid account observation.',
   ACCOUNT_OBSERVATION_CHANGED: 'Canonical inclusion changed. Repeat account verification.',
-  RPC_READ_FAILED: 'The caller-provided chain reader could not complete the required reads.',
+  RPC_READ_FAILED: 'The caller-provided chain reader is unavailable or could not complete the required reads.',
   HTTP_TIMEOUT: 'Strategy retrieval exceeded its deadline.',
   HTTP_ABORTED: 'Strategy retrieval was cancelled.',
   HTTP_NETWORK_ERROR: 'The strategy could not be retrieved.',
