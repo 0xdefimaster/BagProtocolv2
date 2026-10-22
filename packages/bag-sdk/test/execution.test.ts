@@ -59,7 +59,7 @@ function fakeProvider(override: (r: ComposerCompileResult, q: ComposerCompileReq
           transaction: { to: ROUTER, data: '0x12345678abcdef', value: '0', chainId: q.chainId },
           executor: '0x' + '8'.repeat(40),
           approvals: [{ token: q.inputToken, spender: SPENDER, amountRaw: String(q.amountRaw) }],
-          legs: q.legs.map((l) => ({ token: l.token, expectedOutRaw: '1000', minOutRaw: '990' })),
+          legs: q.legs.map((l) => ({ token: l.token, expectedOutRaw: '1000', minOutRaw: String(BigInt(1000) * BigInt(10_000 - q.slippageBps) / BigInt(10_000)) })),
           priceImpactBps: 12,
           gasLimit: '400000',
           fees: [],

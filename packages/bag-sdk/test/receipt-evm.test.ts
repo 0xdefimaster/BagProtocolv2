@@ -87,7 +87,7 @@ async function purchase(actual: bigint, reported: bigint, recipient = wallet.acc
   }, {
     provider: { name: 'local-evm', async compile(request) {
       return { transaction: { to: token, data, value: request.amountRaw.toString(), chainId: 4663 },
-        executor: null, approvals: [], legs: [{ token, expectedOutRaw: '1000', minOutRaw: '900' }], priceImpactBps: 0, gasLimit: null, fees: [] };
+        executor: null, approvals: [], legs: [{ token, expectedOutRaw: '900', minOutRaw: '900' }], priceImpactBps: 0, gasLimit: null, fees: [] };
     } },
     trust: { chainId: 4663, allowedTransactionTargets: [token], allowedApprovalSpenders: [] },
   });
@@ -117,7 +117,7 @@ describe('SDK receipt verification against actual local EVM state', () => {
         provider: { name: 'local-input', async compile() { return {
           transaction: { to: token, data, value: '0', chainId: 4663 }, executor: null,
           approvals: [{ token: input, spender: token, amountRaw: '5000' }],
-          legs: [{ token, expectedOutRaw: '1000', minOutRaw: '900' }], priceImpactBps: 0, gasLimit: null, fees: [],
+          legs: [{ token, expectedOutRaw: '900', minOutRaw: '900' }], priceImpactBps: 0, gasLimit: null, fees: [],
         }; } }, trust: { chainId: 4663, allowedTransactionTargets: [token], allowedApprovalSpenders: [token] },
       });
       const hash = await wallet.sendTransaction({ to: token, data });

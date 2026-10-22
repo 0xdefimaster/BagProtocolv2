@@ -55,6 +55,7 @@ export async function run(o: RunOptions) {
   if (o.registry) {
     const v = await verifyRegistryCommitment({ bag, expectedCreator: o.registry.expectedCreator, registry: o.registry.address, client: o.client });
     report.verify = v.verified ? 'verified' : v.checks.filter((c) => !c.ok);
+    if (!v.verified) return report;
   }
 
   const inputTokenDecimals = isNativeToken(o.inputToken)
