@@ -67,8 +67,12 @@ export {
   type ComposerCompileResult,
   type ComposerProvider,
   type ExecutionTrustPolicy,
+  type ProviderFee,
+  type ProviderWarning,
   type PurchaseQuote,
+  type QuotedFee,
   type QuotedLeg,
+  type SimulateBagOptions,
   type SimulationClient,
   type SimulationResult,
 } from './execution';

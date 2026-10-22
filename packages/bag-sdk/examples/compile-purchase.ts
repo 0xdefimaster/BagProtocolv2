@@ -80,10 +80,17 @@ export async function run(o: RunOptions) {
     slippageBps: q.plan.slippageBps,
     maxPriceImpactBps: q.plan.maxPriceImpactBps,
     priceImpactBps: q.priceImpactBps,
+    requestedAtMs: q.requestedAtMs,
+    receivedAtMs: q.receivedAtMs,
+    validUntilMs: q.validUntilMs,
+    fees: q.fees,
+    warnings: q.warnings,
     kept: q.plan.kept && { token: q.plan.kept.token, amountRaw: String(q.plan.kept.amountRaw) },
     legs: q.legs.map((l) => ({ token: l.token, targetInputRaw: String(l.targetInputRaw), expectedOutRaw: l.expectedOutRaw, minOutRaw: l.minOutRaw })),
   };
-  report.simulate = await simulateBag(compiled, { client: o.client });
+  const simulation = await simulateBag(compiled, { client: o.client });
+  report.simulate = simulation;
+  if (simulation.status === 'QUOTE_EXPIRED') return report;
   report.approvals = compiled.approvals.map((a) => ({ token: a.token, spender: a.spender, amountRaw: String(a.amountRaw) }));
   report.unsignedTransaction = { to: compiled.transaction.to, data: compiled.transaction.data, value: String(compiled.transaction.value), chainId: compiled.transaction.chainId };
   return report;

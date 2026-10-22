@@ -1,6 +1,7 @@
 import { createComposeSdk, materialisers, resources } from '@lifi/composer-sdk';
 import type { Bindable } from '@lifi/composer-sdk';
 import type { ComposerCompileRequest, ComposerCompileResult, ComposerProvider } from '../execution';
+import { ProviderResponseError } from '../execution';
 import { planPartition } from '../partition';
 import type { ComposerAccount } from './composer-account';
 export { resolveLifiComposerAccount, type ComposerAccount, type ComposerAccountClient, type ComposerDeployment } from './composer-account';
@@ -133,6 +134,11 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
       }
 
       const outputs = result.outputs;
+      const fees = result.fees ?? [];
+      const warnings = result.warnings ?? [];
+      if (!Array.isArray(fees) || fees.some(f => !f || typeof f !== 'object' || Array.isArray(f))) throw new ProviderResponseError('lifi-composer: malformed fee list.');
+      if (!Array.isArray(warnings) || warnings.some(w => !w || typeof w !== 'object' || Array.isArray(w))) throw new ProviderResponseError('lifi-composer: malformed warning list.');
+      if (result.fill != null && (typeof result.fill !== 'object' || Array.isArray(result.fill))) throw new ProviderResponseError('lifi-composer: malformed quote validity metadata.');
       return {
         transaction: {
           to: result.transactionRequest.to,
@@ -156,7 +162,13 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
         }),
         priceImpactBps: result.priceImpact?.impactBps ?? null,
         gasLimit: result.transactionRequest.gasLimit ?? null,
-        fees: (result.fees ?? []).map((f) => ({ token: f.token, recipient: f.recipient, bps: f.bps, amountRaw: f.amount ?? null })),
+        fees: fees.map((f) => ({ token: f.token, recipient: f.recipient, recipientAddress: f.recipientAddress, bps: f.bps, amountRaw: f.amount ?? null })),
+        validUntilMs: result.fill?.validUntilMs ?? null,
+        warnings: warnings.map((w) => ({ kind: w.kind, message: w.message,
+          ...(w.path !== undefined ? { path: w.path } : {}),
+          ...(w.port !== undefined ? { port: w.port } : {}),
+          ...(w.fix !== undefined ? { fix: w.fix } : {}),
+        })),
       };
     },
   };

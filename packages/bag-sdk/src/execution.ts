@@ -30,6 +30,31 @@ export interface ComposerCompileRequest {
   maxPriceImpactBps: number;
 }
 
+/** Provider-reported fee metadata; a role/tag is not a wallet address. */
+export interface ProviderFee {
+  token: string;
+  /** Provider role/tag (e.g. LI.FI's 'lifi' or 'integrator'), preserved for compatibility. */
+  recipient: string;
+  /** Actual recipient address, if reported. Optional for existing custom providers. */
+  recipientAddress?: string | null;
+  bps: number;
+  amountRaw: string | null;
+}
+
+/** A normalized quoted fee. An unreported address remains unknown, never inferred from the role. */
+export interface QuotedFee extends ProviderFee {
+  recipientAddress: string | null;
+}
+
+/** Untrusted provider text, copied as data. Render as text, not HTML or instructions. */
+export interface ProviderWarning {
+  kind: string;
+  message: string;
+  path?: string;
+  port?: string;
+  fix?: string;
+}
+
 /** A provider's compiled purchase, normalized. `null` = the provider did not report it (never guessed). */
 export interface ComposerCompileResult {
   transaction: { to: string; data: string; value: string; chainId: number | null };
@@ -40,7 +65,11 @@ export interface ComposerCompileResult {
   legs: { token: string | null; expectedOutRaw: string | null; minOutRaw: string | null }[];
   priceImpactBps: number | null;
   gasLimit: string | null;
-  fees: { token: string; recipient: string; bps: number; amountRaw: string | null }[];
+  fees: ProviderFee[];
+  /** Provider deadline as Unix milliseconds. Omitted/null means unknown, not unlimited validity. */
+  validUntilMs?: number | null;
+  /** Optional for existing custom providers; no provider-specific objects are passed through. */
+  warnings?: ProviderWarning[];
 }
 
 export interface ComposerProvider {
@@ -73,8 +102,15 @@ export interface PurchaseQuote {
   provider: string;
   legs: QuotedLeg[];
   priceImpactBps: number;
-  fees: ComposerCompileResult['fees'];
+  fees: QuotedFee[];
   gasLimit: string | null;
+  /** Local clock immediately before asking the provider. Not an upstream quote creation time. */
+  requestedAtMs: number;
+  /** Local clock immediately after the provider responds. */
+  receivedAtMs: number;
+  /** Provider deadline, or null if unknown. Neither local timestamp supplies a provider guarantee. */
+  validUntilMs: number | null;
+  warnings: ProviderWarning[];
 }
 
 export interface CompiledPurchase {
@@ -134,7 +170,7 @@ function requestFor(plan: PurchasePlan): ComposerCompileRequest {
 }
 
 /** Checks a provider answer against the plan. Throws ProviderResponseError on anything unexpected. */
-function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult, trusted: TrustedContracts): CompiledPurchase {
+function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult, trusted: TrustedContracts, requestedAtMs: number, receivedAtMs: number): CompiledPurchase {
   const fail = (m: string): never => {
     throw new ProviderResponseError(`${provider}: ${m}`);
   };
@@ -193,8 +229,36 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
     fail(`price impact ${priceImpactBps} bps is above the limit ${plan.maxPriceImpactBps} bps.`);
   }
 
+  const validUntilMs = r.validUntilMs ?? null;
+  if (validUntilMs !== null) {
+    if (!Number.isSafeInteger(validUntilMs) || validUntilMs <= 0) fail('malformed quote deadline; expected positive Unix milliseconds.');
+    if (validUntilMs <= receivedAtMs) fail('quote expired before the provider response was received; recompile before signing.');
+  }
+  if (!Array.isArray(r.fees)) fail('malformed fee list.');
+  const fees: QuotedFee[] = r.fees.map((f, i) => {
+    if (!f || typeof f !== 'object' || typeof f.token !== 'string' || !ADDRESS_RE.test(f.token) || typeof f.recipient !== 'string' || !f.recipient.trim()) fail(`fee ${i} has a malformed token or recipient role.`);
+    if (typeof f.bps !== 'number' || !Number.isFinite(f.bps) || f.bps < 0 || f.bps > 10_000) fail(`fee ${i} has malformed basis points.`);
+    if (f.amountRaw !== null && (typeof f.amountRaw !== 'string' || !UINT_RE.test(f.amountRaw))) fail(`fee ${i} has a malformed amount.`);
+    const recipientAddress = f.recipientAddress ?? null;
+    if (recipientAddress !== null && (typeof recipientAddress !== 'string' || !ADDRESS_RE.test(recipientAddress))) fail(`fee ${i} has a malformed recipient address.`);
+    return { token: f.token, recipient: f.recipient, recipientAddress, bps: f.bps, amountRaw: f.amountRaw };
+  });
+  const reportedWarnings = r.warnings === undefined ? [] : r.warnings;
+  if (!Array.isArray(reportedWarnings)) fail('malformed warning list.');
+  const warnings: ProviderWarning[] = reportedWarnings.map((w, i) => {
+    if (!w || typeof w !== 'object' || typeof w.kind !== 'string' || !w.kind.trim() || typeof w.message !== 'string') fail(`warning ${i} has a malformed kind or message.`);
+    const warning: ProviderWarning = { kind: w.kind, message: w.message };
+    for (const key of ['path', 'port', 'fix'] as const) {
+      if (w[key] !== undefined) {
+        if (typeof w[key] !== 'string') fail(`warning ${i} has a malformed ${key}.`);
+        warning[key] = w[key];
+      }
+    }
+    return warning;
+  });
+
   return {
-    quote: { plan, provider, legs, priceImpactBps, fees: r.fees, gasLimit: r.gasLimit },
+    quote: { plan, provider, legs, priceImpactBps, fees, gasLimit: r.gasLimit, requestedAtMs, receivedAtMs, validUntilMs, warnings },
     transaction: { to: tx.to as Hex, data: tx.data as Hex, value, chainId: plan.chainId },
     approvals,
     executor: r.executor,
@@ -212,7 +276,9 @@ export async function compileBag(bag: BagDocument, req: PurchaseRequest, options
   const trusted = trustedContracts(plan, options.provider.name, options.trust);
   // The provider response is the first point where the compiled target and
   // approval spenders are available to compare with the caller's allowlists.
-  return checked(plan, options.provider.name, await options.provider.compile(requestFor(plan)), trusted);
+  const requestedAtMs = Date.now();
+  const result = await options.provider.compile(requestFor(plan));
+  return checked(plan, options.provider.name, result, trusted, requestedAtMs, Date.now());
 }
 
 /** Anything with viem's `readContract` and `call` (a viem PublicClient on the strategy's chain); `getBalance` for a native purchase. */
@@ -225,9 +291,16 @@ export interface SimulationClient {
 
 export type SimulationResult =
   | { status: 'OK' }
+  | { status: 'QUOTE_EXPIRED'; source: 'PROVIDER' | 'LOCAL_MAX_AGE'; expiresAtMs: number; checkedAtMs: number }
   | { status: 'NEEDS_APPROVAL'; missing: CompiledPurchase['approvals'] }
   | { status: 'INSUFFICIENT_BALANCE'; balanceRaw: bigint; requiredRaw: bigint }
   | { status: 'REVERTED'; reason: string };
+
+export interface SimulateBagOptions {
+  client: SimulationClient;
+  /** Optional local age limit from quote.requestedAtMs, independent of the provider's deadline. */
+  maxQuoteAgeMs?: number;
+}
 
 const ERC20_READ_ABI = [
   { type: 'function', name: 'allowance', stateMutability: 'view', inputs: [{ type: 'address' }, { type: 'address' }], outputs: [{ type: 'uint256' }] },
@@ -237,10 +310,31 @@ const ERC20_READ_ABI = [
 /**
  * Dry-runs a compiled purchase from the signer with `eth_call` on the caller's client. Read-only. Checks, in
  * order: the client is on the plan's chain, the signer holds the full input budget (including any kept share), the approvals are in place, then the
- * call itself. A simulation is a point-in-time check, not a guarantee: prices and routes move.
+ * call itself. Known provider deadlines and an optional local maximum age are checked before reads, before
+ * eth_call and after it. A simulation is a point-in-time check, not a guarantee: prices and routes move.
  */
-export async function simulateBag(compiled: CompiledPurchase, options: { client: SimulationClient }): Promise<SimulationResult> {
+export async function simulateBag(compiled: CompiledPurchase, options: SimulateBagOptions): Promise<SimulationResult> {
   const { client } = options;
+  const quote = compiled.quote;
+  let expiresAtMs = quote.validUntilMs ?? null;
+  let expirySource: 'PROVIDER' | 'LOCAL_MAX_AGE' = 'PROVIDER';
+  if (expiresAtMs !== null && (!Number.isSafeInteger(expiresAtMs) || expiresAtMs <= 0)) throw new Error('simulateBag: malformed quote deadline; recompile before signing.');
+  if (options.maxQuoteAgeMs !== undefined) {
+    if (!Number.isSafeInteger(options.maxQuoteAgeMs) || options.maxQuoteAgeMs < 0) throw new Error('simulateBag: maxQuoteAgeMs must be a nonnegative safe integer.');
+    if (!Number.isSafeInteger(quote.requestedAtMs) || quote.requestedAtMs < 0) throw new Error('simulateBag: local quote age is unknown; recompile before applying maxQuoteAgeMs.');
+    const localDeadline = quote.requestedAtMs + options.maxQuoteAgeMs;
+    if (!Number.isSafeInteger(localDeadline)) throw new Error('simulateBag: local quote deadline exceeds the safe integer range.');
+    if (expiresAtMs === null || localDeadline < expiresAtMs) {
+      expiresAtMs = localDeadline;
+      expirySource = 'LOCAL_MAX_AGE';
+    }
+  }
+  const expired = (): Extract<SimulationResult, { status: 'QUOTE_EXPIRED' }> | null => {
+    const checkedAtMs = Date.now();
+    return expiresAtMs !== null && checkedAtMs >= expiresAtMs ? { status: 'QUOTE_EXPIRED', source: expirySource, expiresAtMs, checkedAtMs } : null;
+  };
+  const beforeReads = expired();
+  if (beforeReads) return beforeReads;
   const plan = compiled.quote.plan;
   const chainId = await client.getChainId();
   if (chainId !== plan.chainId) throw new Error(`simulateBag: client is on chain ${chainId}, the purchase is for ${plan.chainId}.`);
@@ -255,19 +349,21 @@ export async function simulateBag(compiled: CompiledPurchase, options: { client:
     balance = BigInt((await client.readContract({ address: plan.inputToken as Hex, abi: ERC20_READ_ABI, functionName: 'balanceOf', args: [signer] })) as bigint);
   }
   // The basket also needs the retained input share, even though it is never approved or swapped.
-  if (balance < plan.amountRaw) return { status: 'INSUFFICIENT_BALANCE', balanceRaw: balance, requiredRaw: plan.amountRaw };
+  if (balance < plan.amountRaw) return expired() ?? { status: 'INSUFFICIENT_BALANCE', balanceRaw: balance, requiredRaw: plan.amountRaw };
 
   const missing: CompiledPurchase['approvals'] = [];
   for (const a of compiled.approvals) {
     const allowance = BigInt((await client.readContract({ address: a.token, abi: ERC20_READ_ABI, functionName: 'allowance', args: [signer, a.spender] })) as bigint);
     if (allowance < a.amountRaw) missing.push(a);
   }
-  if (missing.length > 0) return { status: 'NEEDS_APPROVAL', missing };
+  if (missing.length > 0) return expired() ?? { status: 'NEEDS_APPROVAL', missing };
 
+  const beforeCall = expired();
+  if (beforeCall) return beforeCall;
   try {
     await client.call({ account: signer, to: compiled.transaction.to, data: compiled.transaction.data, value: compiled.transaction.value });
-    return { status: 'OK' };
+    return expired() ?? { status: 'OK' };
   } catch (e) {
-    return { status: 'REVERTED', reason: ((e as { shortMessage?: string }).shortMessage ?? (e as Error).message ?? String(e)).split('\n')[0] };
+    return expired() ?? { status: 'REVERTED', reason: ((e as { shortMessage?: string }).shortMessage ?? (e as Error).message ?? String(e)).split('\n')[0] };
   }
 }

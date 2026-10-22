@@ -386,7 +386,7 @@ const trust = {
   allowedApprovalSpenders: ['0x…'],   // contracts you have verified for this chain
 };
 const compiled = await compileBag(bag, { inputToken, amountRaw, inputTokenDecimals, signer }, { provider, trust });
-const check = await simulateBag(compiled, { client });   // your viem client: OK | NEEDS_APPROVAL | INSUFFICIENT_BALANCE | REVERTED
+const check = await simulateBag(compiled, { client });   // OK | QUOTE_EXPIRED | NEEDS_APPROVAL | INSUFFICIENT_BALANCE | REVERTED
 // your wallet sends compiled.approvals, then signs and sends compiled.transaction
 ```
 
@@ -431,6 +431,34 @@ Every swapped leg must report positive `expectedOutRaw` and `minOutRaw` in the s
 Anything else throws `ProviderResponseError`.
 
 The caller must provide a chain-scoped `ExecutionTrustPolicy`. A mismatched policy chain or malformed/empty target allowlist is rejected before the provider call. The SDK cannot know the provider's compiled target or approval spender until the provider responds, so disallowed returned targets/spenders are rejected after that call and before any unsigned transaction is returned. The SDK does not decode arbitrary transaction calldata to prove its full economic behavior; use a provider and endpoint you trust, simulate the compiled call, and let the wallet show the transaction before signing.
+
+### Quote timing, fees and provider warnings
+
+Both `quoteBag` and `compileBag(...).quote` include:
+
+| Field | Meaning |
+|---|---|
+| `requestedAtMs` / `receivedAtMs` | Local Unix millisecond timestamps around the provider call. These are observations, not the provider's quote creation time. |
+| `validUntilMs` | Provider-reported deadline, or `null` when unknown. The LI.FI adapter preserves `fill.validUntilMs`; it never invents a lifetime. |
+| `fees[].recipient` | Existing provider recipient role/tag, e.g. Composer's `lifi` or `integrator`. It is not a wallet address. |
+| `fees[].recipientAddress` | Actual fee recipient address, or `null` if the provider did not report it. |
+| `warnings` | Provider warning data: `kind`, `message`, and optional `path`, `port`, `fix`. Missing warnings normalize to `[]`. |
+
+Provider deadlines must be positive safe integers in Unix milliseconds. An already expired response is rejected during compilation. `simulateBag` returns `QUOTE_EXPIRED` for a known expired deadline before RPC reads; it rechecks before and after `eth_call` so a response that expires during simulation cannot become `OK`.
+
+Applications can additionally choose their own age limit:
+
+```ts
+const simulation = await simulateBag(compiled, { client, maxQuoteAgeMs: 30_000 });
+if (simulation.status === 'QUOTE_EXPIRED') {
+  // source is PROVIDER or LOCAL_MAX_AGE; obtain a fresh compile before signing.
+  console.log(simulation.source, simulation.expiresAtMs);
+}
+```
+
+`maxQuoteAgeMs` is an optional nonnegative safe integer, measured conservatively from `requestedAtMs` and including provider latency. The earlier of the local age limit and a known provider deadline wins; zero expires immediately. This is the application's local policy, not an upstream guarantee. Applying it to an older stored quote without timing metadata is refused: recompile first. Without a known deadline or a local age limit, simulation still checks the call but cannot establish quote freshness. These checks use the local clock and do not lock prices or authorize wallet submission; recompile/resimulate near signing. A deadline is not proof that calldata enforces it. Receipt verification still evaluates the original submitted purchase after its quote has expired.
+
+Existing custom providers may omit `validUntilMs`, `warnings` and fee `recipientAddress`; they normalize to `null`, `[]` and `null`. New metadata is validated and copied into the public quote. Malformed deadlines, warning fields, fee addresses, basis points or amounts are rejected with `ProviderResponseError`. Warning text remains untrusted provider content: display it as text and review it before logging. Reported fees are informational, not proof of total execution cost or an allowlist approval of their recipients.
 
 No partial purchases: if any asset cannot be routed, the compile fails and nothing is built. This is the strictest no-route behaviour (`BLOCK`).
 
