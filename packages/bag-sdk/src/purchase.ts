@@ -1,3 +1,4 @@
+import { BagSdkError } from './errors';
 import { chainIdOf, isNativeToken, normalizeAddress } from './chains';
 import { computeDefinitionHash } from './definition';
 import { resolveV1Rules } from './rules';
@@ -88,9 +89,9 @@ export interface PurchasePlan {
   accounting: typeof SDK_EXECUTION_ACCOUNTING;
 }
 
-export class PurchasePlanError extends Error {
+export class PurchasePlanError extends BagSdkError {
   constructor(readonly issues: BagIssue[]) {
-    super(`Cannot plan this purchase: ${issues.map((i) => `${i.code} (${i.path})`).join(', ')}`);
+    super('PURCHASE_PLAN_INVALID', `Cannot plan this purchase: ${issues.map((i) => `${i.code} (${i.path})`).join(', ')}`);
     this.name = 'PurchasePlanError';
   }
 }

@@ -1,3 +1,4 @@
+import { BagSdkError } from './errors';
 import { keccak256 } from 'viem';
 import type { CompiledPurchase } from './execution';
 import type { Hex } from './types';
@@ -170,34 +171,34 @@ function checkCallTrace(tx: PurchaseReceiptTransaction, compiled: CompiledPurcha
 function minimumsFor(compiled: CompiledPurchase, options: VerifyPurchaseReceiptOptions): Map<string, bigint> {
   const plan = compiled.quote.plan;
   if (options.verification !== undefined && options.verification !== 'BALANCE_DELTA' && options.verification !== 'TRANSFER_LOGS') {
-    throw new Error('verifyPurchaseReceipt: unknown verification mode.');
+    throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: unknown verification mode.');
   }
-  if (!HASH.test(options.transactionHash)) throw new Error('verifyPurchaseReceipt: invalid transaction hash.');
+  if (!HASH.test(options.transactionHash)) throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: invalid transaction hash.');
   if (!Number.isSafeInteger(options.confirmations ?? 1) || (options.confirmations ?? 1) < 1) {
-    throw new Error('verifyPurchaseReceipt: confirmations must be a positive safe integer.');
+    throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: confirmations must be a positive safe integer.');
   }
   if (!Number.isSafeInteger(plan.chainId) || plan.chainId < 1 || compiled.transaction.chainId !== plan.chainId ||
       !ADDRESS.test(plan.signer) || !ADDRESS.test(compiled.transaction.to) || !CALLDATA.test(compiled.transaction.data) ||
       typeof compiled.transaction.value !== 'bigint' || compiled.transaction.value < BigInt(0)) {
-    throw new Error('verifyPurchaseReceipt: malformed compiled transaction.');
+    throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: malformed compiled transaction.');
   }
   const expected = new Set(plan.legs.map((leg) => leg.token.toLowerCase()));
   if (expected.size === 0 || expected.size !== plan.legs.length ||
       [...expected].some((token) => !ADDRESS.test(token) || /^0x0{40}$/.test(token))) {
-    throw new Error('verifyPurchaseReceipt: expected outputs must be distinct ERC-20 addresses.');
+    throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: expected outputs must be distinct ERC-20 addresses.');
   }
   const minimums = new Map<string, bigint>();
-  if (!Array.isArray(options.minimumReceived)) throw new Error('verifyPurchaseReceipt: wallet output minimums are required.');
+  if (!Array.isArray(options.minimumReceived)) throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: wallet output minimums are required.');
   for (const item of options.minimumReceived) {
     if (!item || typeof item.token !== 'string' || !ADDRESS.test(item.token) ||
         typeof item.amountRaw !== 'bigint' || item.amountRaw <= BigInt(0) || item.amountRaw >= BigInt(2) ** BigInt(256)) {
-      throw new Error('verifyPurchaseReceipt: each wallet output minimum must be a positive uint256.');
+      throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: each wallet output minimum must be a positive uint256.');
     }
     const token = item.token.toLowerCase();
-    if (!expected.has(token) || minimums.has(token)) throw new Error('verifyPurchaseReceipt: unexpected or duplicate output minimum.');
+    if (!expected.has(token) || minimums.has(token)) throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: unexpected or duplicate output minimum.');
     minimums.set(token, item.amountRaw);
   }
-  if (minimums.size !== expected.size) throw new Error('verifyPurchaseReceipt: provide a wallet minimum for every planned swap output.');
+  if (minimums.size !== expected.size) throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: provide a wallet minimum for every planned swap output.');
   return minimums;
 }
 

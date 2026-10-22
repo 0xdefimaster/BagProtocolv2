@@ -1,3 +1,4 @@
+import { BagSdkError } from '../errors';
 import { createComposeSdk, materialisers, resources } from '@lifi/composer-sdk';
 import type { Bindable } from '@lifi/composer-sdk';
 import type { ComposerCompileRequest, ComposerCompileResult, ComposerProvider } from '../execution';
@@ -68,26 +69,27 @@ export interface LifiComposerOptions {
 const legNode = (i: number) => `swap_${i}`;
 
 export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
-  if (!options.apiKey) throw new Error('lifiComposer: apiKey is required (your own LI.FI API key).');
-  if (!options.baseUrl) throw new Error('lifiComposer: baseUrl is required (the Composer API to call).');
+  if (!options.apiKey) throw new BagSdkError('COMPOSER_CONFIGURATION_INVALID', 'lifiComposer: apiKey is required (your own LI.FI API key).');
+  if (!options.baseUrl) throw new BagSdkError('COMPOSER_CONFIGURATION_INVALID', 'lifiComposer: baseUrl is required (the Composer API to call).');
   let endpoint: URL;
   try {
     endpoint = new URL(options.baseUrl);
   } catch {
-    throw new Error('lifiComposer: baseUrl must be a valid HTTPS URL.');
+    throw new BagSdkError('COMPOSER_CONFIGURATION_INVALID', 'lifiComposer: baseUrl must be a valid HTTPS URL.');
   }
   if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
-    throw new Error('lifiComposer: baseUrl must use HTTPS and cannot contain credentials, a query, or a fragment.');
+    throw new BagSdkError('COMPOSER_CONFIGURATION_INVALID', 'lifiComposer: baseUrl must use HTTPS and cannot contain credentials, a query, or a fragment.');
   }
+  const timeoutMs = options.timeoutMs ?? 15_000;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647) throw new BagSdkError('COMPOSER_CONFIGURATION_INVALID', 'lifiComposer: invalid timeoutMs.');
   return {
     name: 'lifi-composer',
     async compile(req: ComposerCompileRequest): Promise<ComposerCompileResult> {
       const account = options.account;
       if (account && (account.chainId !== req.chainId || account.signer.toLowerCase() !== req.signer.toLowerCase())) {
-        throw new Error('LI.FI Composer account observation belongs to a different chain or signer.');
+        throw new BagSdkError('ACCOUNT_PROXY_MISMATCH', 'LI.FI Composer account observation belongs to a different chain or signer.');
       }
       const base = options.fetch ?? fetch;
-      const timeoutMs = options.timeoutMs ?? 15_000;
       const sdk = createComposeSdk({
         baseUrl: options.baseUrl,
         apiKey: options.apiKey,
@@ -121,24 +123,24 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
         maxPriceImpactBps: req.maxPriceImpactBps,
       });
       // Under the default 'strict' simulation a refusal is thrown, never returned; 'partial' needs 'allow-revert'.
-      if (result.status !== 'success') throw new Error(`LI.FI Composer returned a partial result (${result.error.kind}) under strict simulation.`);
-      if (!result.transactionRequest) throw new Error('LI.FI Composer reported success without a transaction.');
+      if (result.status !== 'success') throw new BagSdkError('COMPOSER_PARTIAL_RESULT', `LI.FI Composer returned a partial result (${result.error.kind}) under strict simulation.`);
+      if (!result.transactionRequest) throw new BagSdkError('COMPOSER_PARTIAL_RESULT', 'LI.FI Composer reported success without a transaction.');
       if (account) {
         const target = account.proxyDeployed ? account.proxy : account.factory;
         if (result.transactionRequest.to.toLowerCase() !== target.toLowerCase() || result.userProxy?.toLowerCase() !== account.proxy.toLowerCase()) {
-          throw new Error('LI.FI Composer target or user proxy differs from the independently resolved account.');
+          throw new BagSdkError('ACCOUNT_PROXY_MISMATCH', 'LI.FI Composer target or user proxy differs from the independently resolved account.');
         }
         if ((result.approvals ?? []).some(a => a.spender.toLowerCase() !== account.proxy.toLowerCase())) {
-          throw new Error('LI.FI Composer approval spender differs from the independently resolved proxy.');
+          throw new BagSdkError('ACCOUNT_PROXY_MISMATCH', 'LI.FI Composer approval spender differs from the independently resolved proxy.');
         }
       }
 
       const outputs = result.outputs;
       const fees = result.fees ?? [];
       const warnings = result.warnings ?? [];
-      if (!Array.isArray(fees) || fees.some(f => !f || typeof f !== 'object' || Array.isArray(f))) throw new ProviderResponseError('lifi-composer: malformed fee list.');
-      if (!Array.isArray(warnings) || warnings.some(w => !w || typeof w !== 'object' || Array.isArray(w))) throw new ProviderResponseError('lifi-composer: malformed warning list.');
-      if (result.fill != null && (typeof result.fill !== 'object' || Array.isArray(result.fill))) throw new ProviderResponseError('lifi-composer: malformed quote validity metadata.');
+      if (!Array.isArray(fees) || fees.some(f => !f || typeof f !== 'object' || Array.isArray(f))) throw new ProviderResponseError('lifi-composer: malformed fee list.', 'FEE_METADATA_INVALID');
+      if (!Array.isArray(warnings) || warnings.some(w => !w || typeof w !== 'object' || Array.isArray(w))) throw new ProviderResponseError('lifi-composer: malformed warning list.', 'WARNING_METADATA_INVALID');
+      if (result.fill != null && (typeof result.fill !== 'object' || Array.isArray(result.fill))) throw new ProviderResponseError('lifi-composer: malformed quote validity metadata.', 'QUOTE_TIMING_INVALID');
       return {
         transaction: {
           to: result.transactionRequest.to,
@@ -152,7 +154,7 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
           // Composer keys outputs by output port (`swap_<i>.amountOut`). A missing minimum means no floor is enforced (never 0).
           const o = outputs[`${legNode(i)}.amountOut`];
           if (o && (o.role !== 'terminal' || o.owner?.toLowerCase() !== req.signer.toLowerCase() || o.delivery.when !== 'now' || o.resource.chainId !== chainId)) {
-            throw new Error('LI.FI Composer output is not immediate terminal delivery on the requested chain to the signer.');
+            throw new BagSdkError('OUTPUT_INVALID', 'LI.FI Composer output is not immediate terminal delivery on the requested chain to the signer.');
           }
           return {
             token: o && o.resource.kind === 'erc20' ? o.resource.token : null,

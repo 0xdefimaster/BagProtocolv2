@@ -1,3 +1,4 @@
+import { BagSdkError } from './errors';
 import { encodeAbiParameters, keccak256 } from 'viem';
 import { BAG_V1_CHAINS, chainIdOf, type BagChain } from './chains';
 import { computeDefinitionHash } from './definition';
@@ -42,13 +43,13 @@ export const STRATEGY_REGISTRY_DEPLOYMENTS: Readonly<Partial<Record<BagChain, St
 
 /** offChainRef of a BAG strategy UUID: the 16 UUID bytes, left-padded to bytes32. */
 export function offChainRefOf(strategyUuid: string): Hex {
-  if (!UUID_RE.test(strategyUuid)) throw new Error(`"${strategyUuid}" is not a lowercase UUID.`);
+  if (!UUID_RE.test(strategyUuid)) throw new BagSdkError('INVALID_ARGUMENT', `"${strategyUuid}" is not a lowercase UUID.`);
   return `0x${strategyUuid.replace(/-/g, '').padStart(64, '0')}`;
 }
 
 /** keccak256(abi.encode(creator, offChainRef)): StrategyRegistry.deriveStrategyId and BagFactory.deriveBagId. */
 export function registryStrategyId(creator: string, strategyUuid: string): Hex {
-  if (!ADDRESS_RE.test(creator)) throw new Error(`creator "${creator}" is not an address.`);
+  if (!ADDRESS_RE.test(creator)) throw new BagSdkError('INVALID_ARGUMENT', `creator "${creator}" is not an address.`);
   return keccak256(encodeAbiParameters([{ type: 'address' }, { type: 'bytes32' }], [creator.toLowerCase() as Hex, offChainRefOf(strategyUuid)]));
 }
 

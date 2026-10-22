@@ -1,4 +1,5 @@
 import { normalizeAddress } from './chains';
+import { BagSdkError, type BagSdkErrorCode } from './errors';
 import { planPurchase, type PurchasePlan, type PurchaseRequest } from './purchase';
 import type { BagDocument, Hex } from './types';
 
@@ -121,9 +122,9 @@ export interface CompiledPurchase {
   executor: string | null;
 }
 
-export class ProviderResponseError extends Error {
-  constructor(message: string) {
-    super(message);
+export class ProviderResponseError extends BagSdkError {
+  constructor(message: string, code: BagSdkErrorCode = 'PROVIDER_RESPONSE_INVALID') {
+    super(code, message);
     this.name = 'ProviderResponseError';
   }
 }
@@ -140,15 +141,15 @@ interface TrustedContracts {
 }
 
 function trustedContracts(plan: PurchasePlan, provider: string, trust: ExecutionTrustPolicy): TrustedContracts {
-  const fail = (m: string): never => {
-    throw new ProviderResponseError(`${provider}: ${m}`);
+  const fail = (m: string, code: BagSdkErrorCode = 'PROVIDER_RESPONSE_INVALID'): never => {
+    throw new ProviderResponseError(`${provider}: ${m}`, code);
   };
-  if (!trust || trust.chainId !== plan.chainId) fail(`trust policy chain ${trust?.chainId ?? 'missing'} does not match plan chain ${plan.chainId}.`);
+  if (!trust || trust.chainId !== plan.chainId) fail(`trust policy chain ${trust?.chainId ?? 'missing'} does not match plan chain ${plan.chainId}.`, 'TRUST_POLICY_INVALID');
   if (!Array.isArray(trust.allowedTransactionTargets) || trust.allowedTransactionTargets.length === 0 || trust.allowedTransactionTargets.some((a) => typeof a !== 'string' || !ADDRESS_RE.test(a))) {
-    fail('trust policy must contain at least one valid transaction target.');
+    fail('trust policy must contain at least one valid transaction target.', 'TRUST_POLICY_INVALID');
   }
   if (!Array.isArray(trust.allowedApprovalSpenders) || trust.allowedApprovalSpenders.some((a) => typeof a !== 'string' || !ADDRESS_RE.test(a))) {
-    fail('trust policy contains an invalid approval spender list.');
+    fail('trust policy contains an invalid approval spender list.', 'TRUST_POLICY_INVALID');
   }
   return {
     targets: new Set(trust.allowedTransactionTargets.map((a) => a.toLowerCase())),
@@ -171,86 +172,86 @@ function requestFor(plan: PurchasePlan): ComposerCompileRequest {
 
 /** Checks a provider answer against the plan. Throws ProviderResponseError on anything unexpected. */
 function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult, trusted: TrustedContracts, requestedAtMs: number, receivedAtMs: number): CompiledPurchase {
-  const fail = (m: string): never => {
-    throw new ProviderResponseError(`${provider}: ${m}`);
+  const fail = (m: string, code: BagSdkErrorCode = 'PROVIDER_RESPONSE_INVALID'): never => {
+    throw new ProviderResponseError(`${provider}: ${m}`, code);
   };
   const tx = r.transaction;
   if (!ADDRESS_RE.test(tx.to) || !HEX_RE.test(tx.data) || tx.data.length < 10 || !VALUE_RE.test(tx.value)) fail('malformed transaction.');
-  if (tx.chainId === null || tx.chainId !== plan.chainId) fail(`transaction chain ${tx.chainId ?? 'missing'} does not match plan chain ${plan.chainId}.`);
-  if (!trusted.targets.has(tx.to.toLowerCase())) fail(`transaction target ${tx.to} is not in the caller's trusted target allowlist.`);
+  if (tx.chainId === null || tx.chainId !== plan.chainId) fail(`transaction chain ${tx.chainId ?? 'missing'} does not match plan chain ${plan.chainId}.`, 'CHAIN_MISMATCH');
+  if (!trusted.targets.has(tx.to.toLowerCase())) fail(`transaction target ${tx.to} is not in the caller's trusted target allowlist.`, 'UNTRUSTED_TARGET');
   const value = BigInt(tx.value);
   if (plan.inputKind === 'native') {
     // The purchase's ETH travels as msg.value: exactly the swapped amount, never more (it would be spent or swept
     // elsewhere), never less (the program would revert or under-buy). Nothing to approve.
     if (value !== plan.swapAmountRaw) fail(`a native purchase must send exactly ${plan.swapAmountRaw} wei, the transaction sends ${value}.`);
-    if (r.approvals.length > 0) fail('a native purchase needs no approval, the provider requested one.');
+    if (r.approvals.length > 0) fail('a native purchase needs no approval, the provider requested one.', 'APPROVAL_INVALID');
   } else if (value !== BigInt(0)) {
     fail('an ERC-20 purchase must not send native value.');
   }
 
   const approvals = r.approvals.map((a) => {
-    if (normalizeAddress(a.token) !== plan.inputToken) fail(`approval requested for ${a.token}, not the input token.`);
-    if (!ADDRESS_RE.test(a.spender) || !UINT_RE.test(a.amountRaw)) fail('malformed approval.');
-    if (!trusted.spenders.has(a.spender.toLowerCase())) fail(`approval spender ${a.spender} is not in the caller's trusted spender allowlist.`);
-    if (BigInt(a.amountRaw) > plan.swapAmountRaw) fail('approval above the swapped amount.');
+    if (normalizeAddress(a.token) !== plan.inputToken) fail(`approval requested for ${a.token}, not the input token.`, 'APPROVAL_INVALID');
+    if (!ADDRESS_RE.test(a.spender) || !UINT_RE.test(a.amountRaw)) fail('malformed approval.', 'APPROVAL_INVALID');
+    if (!trusted.spenders.has(a.spender.toLowerCase())) fail(`approval spender ${a.spender} is not in the caller's trusted spender allowlist.`, 'UNTRUSTED_SPENDER');
+    if (BigInt(a.amountRaw) > plan.swapAmountRaw) fail('approval above the swapped amount.', 'APPROVAL_INVALID');
     return { token: plan.inputToken as Hex, spender: a.spender as Hex, amountRaw: BigInt(a.amountRaw) };
   });
 
-  if (r.legs.length !== plan.legs.length) fail(`returned ${r.legs.length} legs, planned ${plan.legs.length}.`);
+  if (r.legs.length !== plan.legs.length) fail(`returned ${r.legs.length} legs, planned ${plan.legs.length}.`, 'OUTPUT_INVALID');
   const legs: QuotedLeg[] = plan.legs.map((l, i) => {
     const got = r.legs[i];
-    if (got.token === null) fail(`leg ${i} has no output token identity.`);
+    if (got.token === null) fail(`leg ${i} has no output token identity.`, 'OUTPUT_INVALID');
     const outputToken = got.token as string;
-    if (normalizeAddress(outputToken) !== l.token) fail(`leg ${i} delivers ${outputToken}, planned ${l.token}.`);
-    for (const v of [got.expectedOutRaw, got.minOutRaw]) if (v !== null && (typeof v !== 'string' || !UINT_RE.test(v))) fail(`leg ${i} has a malformed amount.`);
-    if (got.minOutRaw === null) fail(`leg ${i} has no positive on-chain minimum output; refusing an unbounded swap.`);
+    if (normalizeAddress(outputToken) !== l.token) fail(`leg ${i} delivers ${outputToken}, planned ${l.token}.`, 'OUTPUT_INVALID');
+    for (const v of [got.expectedOutRaw, got.minOutRaw]) if (v !== null && (typeof v !== 'string' || !UINT_RE.test(v))) fail(`leg ${i} has a malformed amount.`, 'OUTPUT_INVALID');
+    if (got.minOutRaw === null) fail(`leg ${i} has no positive on-chain minimum output; refusing an unbounded swap.`, 'OUTPUT_INVALID');
     const minOutRaw = got.minOutRaw as string;
     const minimum = BigInt(minOutRaw);
-    if (minimum === BigInt(0)) fail(`leg ${i} has no positive on-chain minimum output; refusing an unbounded swap.`);
-    if (got.expectedOutRaw === null) fail(`leg ${i} has no expected output; cannot enforce the configured slippage.`);
+    if (minimum === BigInt(0)) fail(`leg ${i} has no positive on-chain minimum output; refusing an unbounded swap.`, 'OUTPUT_INVALID');
+    if (got.expectedOutRaw === null) fail(`leg ${i} has no expected output; cannot enforce the configured slippage.`, 'SLIPPAGE_EXCEEDED');
     const expected = BigInt(got.expectedOutRaw as string);
-    if (expected === BigInt(0)) fail(`leg ${i} has no positive expected output; cannot enforce the configured slippage.`);
-    if (minimum > expected) fail(`leg ${i} minimum output is above its expected output.`);
+    if (expected === BigInt(0)) fail(`leg ${i} has no positive expected output; cannot enforce the configured slippage.`, 'SLIPPAGE_EXCEEDED');
+    if (minimum > expected) fail(`leg ${i} minimum output is above its expected output.`, 'OUTPUT_INVALID');
     // Compare reported amounts with integer arithmetic, allowing only raw-unit
     // floor rounding. This checks quote consistency, not arbitrary calldata.
     const requiredMinimum = expected * BigInt(10_000 - plan.slippageBps) / BigInt(10_000);
-    if (minimum < requiredMinimum) fail(`leg ${i} minimum output ${minimum} is below ${requiredMinimum}, required by the configured slippage ${plan.slippageBps} bps.`);
+    if (minimum < requiredMinimum) fail(`leg ${i} minimum output ${minimum} is below ${requiredMinimum}, required by the configured slippage ${plan.slippageBps} bps.`, 'SLIPPAGE_EXCEEDED');
     return { token: l.token, targetInputRaw: l.targetInputRaw, expectedOutRaw: got.expectedOutRaw, minOutRaw };
   });
 
   const priceImpactBps = r.priceImpactBps;
   if (priceImpactBps === null) {
-    throw new ProviderResponseError(`${provider}: provider did not report price impact; cannot enforce the configured limit.`);
+    throw new ProviderResponseError(`${provider}: provider did not report price impact; cannot enforce the configured limit.`, 'PRICE_IMPACT_INVALID');
   }
   if (!Number.isSafeInteger(priceImpactBps) || priceImpactBps < 0) {
-    fail(`malformed price impact ${priceImpactBps} bps.`);
+    fail(`malformed price impact ${priceImpactBps} bps.`, 'PRICE_IMPACT_INVALID');
   }
   if (priceImpactBps > plan.maxPriceImpactBps) {
-    fail(`price impact ${priceImpactBps} bps is above the limit ${plan.maxPriceImpactBps} bps.`);
+    fail(`price impact ${priceImpactBps} bps is above the limit ${plan.maxPriceImpactBps} bps.`, 'PRICE_IMPACT_EXCEEDED');
   }
 
   const validUntilMs = r.validUntilMs ?? null;
   if (validUntilMs !== null) {
-    if (!Number.isSafeInteger(validUntilMs) || validUntilMs <= 0) fail('malformed quote deadline; expected positive Unix milliseconds.');
-    if (validUntilMs <= receivedAtMs) fail('quote expired before the provider response was received; recompile before signing.');
+    if (!Number.isSafeInteger(validUntilMs) || validUntilMs <= 0) fail('malformed quote deadline; expected positive Unix milliseconds.', 'QUOTE_TIMING_INVALID');
+    if (validUntilMs <= receivedAtMs) fail('quote expired before the provider response was received; recompile before signing.', 'QUOTE_EXPIRED');
   }
-  if (!Array.isArray(r.fees)) fail('malformed fee list.');
+  if (!Array.isArray(r.fees)) fail('malformed fee list.', 'FEE_METADATA_INVALID');
   const fees: QuotedFee[] = r.fees.map((f, i) => {
-    if (!f || typeof f !== 'object' || typeof f.token !== 'string' || !ADDRESS_RE.test(f.token) || typeof f.recipient !== 'string' || !f.recipient.trim()) fail(`fee ${i} has a malformed token or recipient role.`);
-    if (typeof f.bps !== 'number' || !Number.isFinite(f.bps) || f.bps < 0 || f.bps > 10_000) fail(`fee ${i} has malformed basis points.`);
-    if (f.amountRaw !== null && (typeof f.amountRaw !== 'string' || !UINT_RE.test(f.amountRaw))) fail(`fee ${i} has a malformed amount.`);
+    if (!f || typeof f !== 'object' || typeof f.token !== 'string' || !ADDRESS_RE.test(f.token) || typeof f.recipient !== 'string' || !f.recipient.trim()) fail(`fee ${i} has a malformed token or recipient role.`, 'FEE_METADATA_INVALID');
+    if (typeof f.bps !== 'number' || !Number.isFinite(f.bps) || f.bps < 0 || f.bps > 10_000) fail(`fee ${i} has malformed basis points.`, 'FEE_METADATA_INVALID');
+    if (f.amountRaw !== null && (typeof f.amountRaw !== 'string' || !UINT_RE.test(f.amountRaw))) fail(`fee ${i} has a malformed amount.`, 'FEE_METADATA_INVALID');
     const recipientAddress = f.recipientAddress ?? null;
-    if (recipientAddress !== null && (typeof recipientAddress !== 'string' || !ADDRESS_RE.test(recipientAddress))) fail(`fee ${i} has a malformed recipient address.`);
+    if (recipientAddress !== null && (typeof recipientAddress !== 'string' || !ADDRESS_RE.test(recipientAddress))) fail(`fee ${i} has a malformed recipient address.`, 'FEE_METADATA_INVALID');
     return { token: f.token, recipient: f.recipient, recipientAddress, bps: f.bps, amountRaw: f.amountRaw };
   });
   const reportedWarnings = r.warnings === undefined ? [] : r.warnings;
-  if (!Array.isArray(reportedWarnings)) fail('malformed warning list.');
+  if (!Array.isArray(reportedWarnings)) fail('malformed warning list.', 'WARNING_METADATA_INVALID');
   const warnings: ProviderWarning[] = reportedWarnings.map((w, i) => {
-    if (!w || typeof w !== 'object' || typeof w.kind !== 'string' || !w.kind.trim() || typeof w.message !== 'string') fail(`warning ${i} has a malformed kind or message.`);
+    if (!w || typeof w !== 'object' || typeof w.kind !== 'string' || !w.kind.trim() || typeof w.message !== 'string') fail(`warning ${i} has a malformed kind or message.`, 'WARNING_METADATA_INVALID');
     const warning: ProviderWarning = { kind: w.kind, message: w.message };
     for (const key of ['path', 'port', 'fix'] as const) {
       if (w[key] !== undefined) {
-        if (typeof w[key] !== 'string') fail(`warning ${i} has a malformed ${key}.`);
+        if (typeof w[key] !== 'string') fail(`warning ${i} has a malformed ${key}.`, 'WARNING_METADATA_INVALID');
         warning[key] = w[key];
       }
     }
@@ -318,12 +319,12 @@ export async function simulateBag(compiled: CompiledPurchase, options: SimulateB
   const quote = compiled.quote;
   let expiresAtMs = quote.validUntilMs ?? null;
   let expirySource: 'PROVIDER' | 'LOCAL_MAX_AGE' = 'PROVIDER';
-  if (expiresAtMs !== null && (!Number.isSafeInteger(expiresAtMs) || expiresAtMs <= 0)) throw new Error('simulateBag: malformed quote deadline; recompile before signing.');
+  if (expiresAtMs !== null && (!Number.isSafeInteger(expiresAtMs) || expiresAtMs <= 0)) throw new BagSdkError('QUOTE_TIMING_INVALID', 'simulateBag: malformed quote deadline; recompile before signing.');
   if (options.maxQuoteAgeMs !== undefined) {
-    if (!Number.isSafeInteger(options.maxQuoteAgeMs) || options.maxQuoteAgeMs < 0) throw new Error('simulateBag: maxQuoteAgeMs must be a nonnegative safe integer.');
-    if (!Number.isSafeInteger(quote.requestedAtMs) || quote.requestedAtMs < 0) throw new Error('simulateBag: local quote age is unknown; recompile before applying maxQuoteAgeMs.');
+    if (!Number.isSafeInteger(options.maxQuoteAgeMs) || options.maxQuoteAgeMs < 0) throw new BagSdkError('INVALID_ARGUMENT', 'simulateBag: maxQuoteAgeMs must be a nonnegative safe integer.');
+    if (!Number.isSafeInteger(quote.requestedAtMs) || quote.requestedAtMs < 0) throw new BagSdkError('QUOTE_TIMING_INVALID', 'simulateBag: local quote age is unknown; recompile before applying maxQuoteAgeMs.');
     const localDeadline = quote.requestedAtMs + options.maxQuoteAgeMs;
-    if (!Number.isSafeInteger(localDeadline)) throw new Error('simulateBag: local quote deadline exceeds the safe integer range.');
+    if (!Number.isSafeInteger(localDeadline)) throw new BagSdkError('QUOTE_TIMING_INVALID', 'simulateBag: local quote deadline exceeds the safe integer range.');
     if (expiresAtMs === null || localDeadline < expiresAtMs) {
       expiresAtMs = localDeadline;
       expirySource = 'LOCAL_MAX_AGE';
@@ -337,12 +338,12 @@ export async function simulateBag(compiled: CompiledPurchase, options: SimulateB
   if (beforeReads) return beforeReads;
   const plan = compiled.quote.plan;
   const chainId = await client.getChainId();
-  if (chainId !== plan.chainId) throw new Error(`simulateBag: client is on chain ${chainId}, the purchase is for ${plan.chainId}.`);
+  if (chainId !== plan.chainId) throw new BagSdkError('CHAIN_MISMATCH', `simulateBag: client is on chain ${chainId}, the purchase is for ${plan.chainId}.`);
   const signer = plan.signer as Hex;
 
   let balance: bigint;
   if (plan.inputKind === 'native') {
-    if (!client.getBalance) throw new Error('simulateBag: a native purchase needs a client with getBalance.');
+    if (!client.getBalance) throw new BagSdkError('CLIENT_CAPABILITY_MISSING', 'simulateBag: a native purchase needs a client with getBalance.');
     // The value only; the network fee comes on top and the wallet shows it.
     balance = BigInt(await client.getBalance({ address: signer }));
   } else {

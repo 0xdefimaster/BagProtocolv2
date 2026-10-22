@@ -1,3 +1,4 @@
+import { BagSdkError } from '../errors';
 import { keccak256 } from 'viem';
 import type { ExecutionTrustPolicy } from '../execution';
 import type { Hex } from '../types';
@@ -42,32 +43,32 @@ const ABI = [
 ] as const;
 
 /** Resolve per-wallet trust from a caller-pinned factory, without a Composer API response. */
-export async function resolveLifiComposerAccount(options: { chainId: number; signer: Hex; deployment: ComposerDeployment; client: ComposerAccountClient }): Promise<ComposerAccount> {
+async function resolveAccount(options: { chainId: number; signer: Hex; deployment: ComposerDeployment; client: ComposerAccountClient }): Promise<ComposerAccount> {
   const { chainId, signer, deployment, client } = options;
   if (!Number.isSafeInteger(chainId) || chainId < 1 || !nonzero(signer) || !deployment || deployment.chainId !== chainId ||
-      !nonzero(deployment.factory) || !HASH.test(deployment.factoryCodeHash) || /^0x0{64}$/i.test(deployment.factoryCodeHash)) throw new Error('Composer account: invalid chain, signer or independently pinned deployment.');
-  if (await client.getChainId() !== chainId) throw new Error('Composer account: RPC chain mismatch.');
+      !nonzero(deployment.factory) || !HASH.test(deployment.factoryCodeHash) || /^0x0{64}$/i.test(deployment.factoryCodeHash)) throw new BagSdkError('ACCOUNT_DEPLOYMENT_INVALID', 'Composer account: invalid chain, signer or independently pinned deployment.');
+  if (await client.getChainId() !== chainId) throw new BagSdkError('CHAIN_MISMATCH', 'Composer account: RPC chain mismatch.');
   const blockNumber = await client.getBlockNumber({ cacheTime: 0 });
-  if (typeof blockNumber !== 'bigint' || blockNumber < BigInt(0)) throw new Error('Composer account: invalid block number.');
+  if (typeof blockNumber !== 'bigint' || blockNumber < BigInt(0)) throw new BagSdkError('ACCOUNT_OBSERVATION_INVALID', 'Composer account: invalid block number.');
   const block = await client.getBlock({ blockNumber });
-  if (!block.hash || !HASH.test(block.hash)) throw new Error('Composer account: missing canonical block hash.');
+  if (!block.hash || !HASH.test(block.hash)) throw new BagSdkError('ACCOUNT_OBSERVATION_INVALID', 'Composer account: missing canonical block hash.');
   const factoryCode = await client.getCode({ address: deployment.factory, blockNumber });
-  if (!factoryCode || factoryCode === '0x' || !CODE.test(factoryCode) || !same(keccak256(factoryCode), deployment.factoryCodeHash)) throw new Error('Composer account: factory runtime does not match the independently pinned hash.');
+  if (!factoryCode || factoryCode === '0x' || !CODE.test(factoryCode) || !same(keccak256(factoryCode), deployment.factoryCodeHash)) throw new BagSdkError('ACCOUNT_DEPLOYMENT_MISMATCH', 'Composer account: factory runtime does not match the independently pinned hash.');
   const predicted = await client.readContract({ address: deployment.factory, abi: ABI, functionName: 'predictProxyAddress', args: [signer], blockNumber });
-  if (!nonzero(predicted) || same(predicted, signer) || same(predicted, deployment.factory)) throw new Error('Composer account: invalid predicted proxy.');
+  if (!nonzero(predicted) || same(predicted, signer) || same(predicted, deployment.factory)) throw new BagSdkError('ACCOUNT_PROXY_MISMATCH', 'Composer account: invalid predicted proxy.');
   const proxy = predicted.toLowerCase() as Hex;
   const code = await client.getCode({ address: proxy, blockNumber });
-  if (code !== undefined && !CODE.test(code)) throw new Error('Composer account: invalid proxy runtime.');
+  if (code !== undefined && !CODE.test(code)) throw new BagSdkError('ACCOUNT_OBSERVATION_INVALID', 'Composer account: invalid proxy runtime.');
   const proxyDeployed = code !== undefined && code !== '0x';
   if (proxyDeployed) {
     const [owner, factory] = await Promise.all([
       client.readContract({ address: proxy, abi: ABI, functionName: 'owner', blockNumber }),
       client.readContract({ address: proxy, abi: ABI, functionName: 'factory', blockNumber }),
     ]);
-    if (!same(owner, signer) || !same(factory, deployment.factory)) throw new Error('Composer account: deployed proxy owner or factory mismatch.');
+    if (!same(owner, signer) || !same(factory, deployment.factory)) throw new BagSdkError('ACCOUNT_PROXY_MISMATCH', 'Composer account: deployed proxy owner or factory mismatch.');
   }
   const finalBlock = await client.getBlock({ blockNumber });
-  if (!same(finalBlock.hash, block.hash)) throw new Error('Composer account: canonical inclusion changed during reads.');
+  if (!same(finalBlock.hash, block.hash)) throw new BagSdkError('ACCOUNT_OBSERVATION_CHANGED', 'Composer account: canonical inclusion changed during reads.');
   return Object.freeze({
     chainId, signer: signer.toLowerCase() as Hex, factory: deployment.factory.toLowerCase() as Hex,
     factoryCodeHash: deployment.factoryCodeHash.toLowerCase() as Hex, proxy, proxyDeployed, blockNumber, blockHash: block.hash,
@@ -77,4 +78,13 @@ export async function resolveLifiComposerAccount(options: { chainId: number; sig
       allowedApprovalSpenders: Object.freeze([proxy]),
     }),
   });
+}
+
+/** Resolve from the caller's reviewed pin; RPC failures expose a stable, credential-safe code. */
+export async function resolveLifiComposerAccount(options: { chainId: number; signer: Hex; deployment: ComposerDeployment; client: ComposerAccountClient }): Promise<ComposerAccount> {
+  try { return await resolveAccount(options); }
+  catch (error) {
+    if (error instanceof BagSdkError) throw error;
+    throw new BagSdkError('RPC_READ_FAILED');
+  }
 }
