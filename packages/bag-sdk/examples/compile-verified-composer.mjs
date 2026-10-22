@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { createPublicClient, http } from 'viem';
-import { chainIdOf, compileBag, isNativeToken, parseBag, simulateBag } from '../dist/index.js';
+import { chainIdOf, compileBag, getSdkErrorInfo, isNativeToken, parseBag, simulateBag } from '../dist/index.js';
 import { readTokenDecimals } from '../dist/adapters/evm.js';
 import { lifiComposer, resolveLifiComposerAccount } from '../dist/adapters/lifi.js';
 
@@ -31,9 +31,9 @@ async function main() {
       account: { proxy: account.proxy, proxyDeployed: account.proxyDeployed, factory: account.factory, blockNumber: account.blockNumber },
       transaction: compiled.transaction, approvals: compiled.approvals, quote: compiled.quote, simulation,
     }, (_key, value) => typeof value === 'bigint' ? value.toString() : value, 2));
-  } catch {
-    // Upstream errors can include private endpoint URLs or request metadata.
-    console.error('COMPILE_NOT_COMPLETED: check the reviewed deployment pin, signer, strategy, reader capabilities and Composer API compatibility. No transaction was sent.');
+  } catch (error) {
+    // Fixed summaries never echo an upstream URL, credential, stack or abort reason.
+    console.error(JSON.stringify({ status: 'COMPILE_NOT_COMPLETED', ...getSdkErrorInfo(error) }));
     process.exitCode = 1;
   }
 }

@@ -619,6 +619,40 @@ node packages/bag-sdk/scripts/receipt-geth-smoke.mjs
 
 This local-only script deploys a fixture and submits three local transactions in one block, then checks each isolated delta and default busy-block refusal. It never submits transactions to a public chain. No Geth binary is bundled. The deployed chain's live RPC capabilities must still be checked independently; local execution is not a live purchase claim.
 
+## Error handling and HTTP retrieval
+
+SDK-owned execution, account-verification and argument failures expose a stable `BagSdkError.code`. `ProviderResponseError` and `PurchasePlanError` keep their existing names and `instanceof` behavior; purchase issues remain available. Parser/validator findings, registry checks, receipt findings and existing partition codes keep their structured contracts.
+
+`getSdkErrorInfo(error)` returns a fixed `{ code, message }` summary suitable for display. It never copies detailed messages, URLs, stacks, causes or abort reasons. Unknown errors use `UNKNOWN_ERROR`. Composer's own typed upstream errors remain unchanged; use its documented type guards for private diagnosis. Do not log arbitrary errors or request configuration.
+
+| Codes | Suggested action |
+|---|---|
+| `HTTP_TIMEOUT`, `HTTP_ABORTED`, `HTTP_NETWORK_ERROR`, `HTTP_STATUS_ERROR` | Retry when appropriate or let the caller cancel. |
+| `HTTP_RESPONSE_TOO_LARGE`, `HTTP_INVALID_UTF8`, `HTTP_BODY_READ_ERROR` | Inspect the strategy source. |
+| `TRUST_POLICY_INVALID`, `UNTRUSTED_TARGET`, `UNTRUSTED_SPENDER` | Review the independently configured deployment; never auto-allow a returned address. |
+| `OUTPUT_INVALID`, `SLIPPAGE_EXCEEDED`, `PRICE_IMPACT_INVALID`, `PRICE_IMPACT_EXCEEDED` | Obtain a compliant route. |
+| `QUOTE_EXPIRED`, `QUOTE_TIMING_INVALID` | Recompile. Simulation also reports expiry as `status: 'QUOTE_EXPIRED'`. |
+| `ACCOUNT_*`, `CHAIN_MISMATCH`, `RPC_READ_FAILED` | Recheck the pin, wallet, chain or reader capabilities. |
+
+The exported `BagSdkErrorCode` type / `SDK_ERROR_MESSAGES` map contain the complete code list. Messages are explanatory text; branch on codes or structured findings.
+
+```ts
+import { getSdkErrorInfo } from '@bagprotocol/sdk';
+import { fetchBag } from '@bagprotocol/sdk/http';
+
+const controller = new AbortController();
+try {
+  const parsed = await fetchBag(strategyUrl, { signal: controller.signal, timeoutMs: 10_000 });
+  // Handle parsed.ok, validate, recompute the hash and verify provenance separately.
+} catch (error) {
+  const diagnostic = getSdkErrorInfo(error);
+  console.log(diagnostic.code, diagnostic.message);
+}
+// Call controller.abort() when a newer request replaces this one.
+```
+
+`fetchBag` defaults to a 15-second deadline covering request and full streamed body. `timeoutMs` must be an integer from 1 to 2147483647. The response limit remains 1,000,000 UTF-8 bytes. The deadline is not reset per chunk. A pre-aborted caller signal prevents the fetch; cancellation rejects promptly and attempts to cancel the reader. A custom fetch that ignores signals is still bounded from the caller's perspective, but the SDK cannot stop that implementation's external work. Timers/listeners are removed after settlement. Strict parse failures remain `ParseResult` findings, not transport exceptions.
+
 ## Package
 
 ```

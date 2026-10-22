@@ -1,3 +1,4 @@
+export { BagSdkError, getSdkErrorInfo, SDK_ERROR_MESSAGES, type BagSdkErrorCode, type SdkErrorInfo } from './errors';
 // @bagprotocol/sdk — the bag.json v1 strategy core.
 // parse → validate → normalize → hash → verify (StrategyRegistry). No transport: getting the bytes is an
 // adapter's job (@bagprotocol/sdk/http, @bagprotocol/sdk/evm); routing is a ComposerProvider
