@@ -13,7 +13,7 @@
     "verify": "node dist/cli.js verify"
   },
   "dependencies": {
-    "@bagprotocol/sdk": "0.2.1",
+    "@bagprotocol/sdk": "0.3.0",
     "@lifi/composer-sdk": "0.11.3",
     "viem": "2.56.0"
   },

@@ -4,18 +4,21 @@
 // The provider is a local stub: this checks the PACKAGE, not LI.FI (see examples/live-compile.ts).
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { copyFileSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const pkgDir = fileURLToPath(new URL('..', import.meta.url));
+const npmCli = process.env.npm_execpath;
+if (!npmCli || !existsSync(npmCli)) throw new Error('Run via npm run smoke:consumer.');
 const fixture = join(pkgDir, 'test', 'fixtures', 'feetest.v1.bag.json');
 const dir = mkdtempSync(join(tmpdir(), 'bag-sdk-consumer-'));
-const sh = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'inherit'], shell: process.platform === 'win32' }).toString();
+const node = (args, cwd) => execFileSync(process.execPath, args, { cwd, stdio: ['ignore', 'pipe', 'inherit'], encoding: 'utf8' });
+const npm = (args, cwd) => node([npmCli, ...args], cwd);
 
 try {
-  sh('npm', ['pack', '--pack-destination', dir], pkgDir);
+  npm(['pack', '--ignore-scripts', '--pack-destination', dir], pkgDir);
   const tarball = readdirSync(dir).find((f) => f.endsWith('.tgz'));
   if (!tarball) throw new Error('npm pack produced no tarball');
   copyFileSync(fixture, join(dir, 'feetest.bag.json'));
@@ -24,7 +27,7 @@ try {
   const schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
   if (schema.$id !== 'https://bagprotocol.com/schemas/bag-sdk.v1.json') throw new Error('SDK JSON Schema export is missing or invalid');
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'consumer', private: true, type: 'module' }));
-  sh('npm', ['install', '--no-audit', '--no-fund', `./${tarball}`, 'viem@^2', '@lifi/composer-sdk@0.11.3', 'typescript@5'], dir);
+  npm(['install', '--ignore-scripts', '--no-audit', '--no-fund', `./${tarball}`, 'viem@2.56.0', '@lifi/composer-sdk@0.11.3', 'typescript@5.9.3'], dir);
 
   writeFileSync(
     join(dir, 'consumer.mjs'),
@@ -143,10 +146,12 @@ void [d, kind, lifiComposer, fetchBag, readTokenDecimals];
     JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext', strict: true, noEmit: true, skipLibCheck: false, types: [] }, files: ['consumer.ts'] })
   );
 
-  process.stdout.write(sh('node', ['consumer.mjs'], dir));
-  sh('npx', ['tsc', '-p', 'tsconfig.json'], dir);
+  process.stdout.write(node(['consumer.mjs'], dir));
+  node([join(dir, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', 'tsconfig.json'], dir);
   console.log('consumer.ts: typechecks (NodeNext, skipLibCheck off)');
   console.log(`consumer-smoke: OK (${tarball})`);
 } finally {
-  rmSync(dir, { recursive: true, force: true });
+  const target = resolve(dir);
+  if (!target.startsWith(resolve(tmpdir()) + sep) || !basename(target).startsWith('bag-sdk-consumer-')) throw new Error('Refusing cleanup outside the disposable consumer directory.');
+  rmSync(target, { recursive: true, force: true });
 }

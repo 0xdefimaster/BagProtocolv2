@@ -16,7 +16,7 @@ It needs no BAG frontend, server or database.
   - `@bagprotocol/sdk/lifi`: `lifiComposer({ apiKey, baseUrl })`, a routing provider for quote/compile (optional peer `@lifi/composer-sdk` `>=0.11.0 <0.12.0`, tested with 0.11.3: `COMPOSER_SDK_COMPAT`).
   - Other sources (a local file, IPFS, wallet storage, a registry `uri`) end in the same `parseBag(text)`.
 - Network access only through what you pass in (a `fetch`, a viem client).
-- Published on npm: [`@bagprotocol/sdk@0.2.0`](https://www.npmjs.com/package/@bagprotocol/sdk). The package is MIT-licensed; `bag.json` v1 semantics are frozen.
+- Public npm `latest` observed on 2026-10-22: [`@bagprotocol/sdk@0.2.1`](https://www.npmjs.com/package/@bagprotocol/sdk/v/0.2.1). Source release candidate: **0.3.0, not published**. The candidate includes later main-branch and SDK preparation work. The package is MIT-licensed; `bag.json` v1 semantics are frozen.
 
 ## JSON Schema
 
@@ -665,7 +665,7 @@ npm pack --dry-run  # what a tarball would contain: dist/, README.md, package.js
 npm run smoke:consumer  # packs, installs the tarball in a fresh temp project, imports every entry point, typechecks a TS consumer
 ```
 
-No build dependency beyond TypeScript. The package is configured for public npm distribution under the MIT license; it has not yet been published to npm.
+Node >=24 is the declared runtime baseline. The current **0.3.0 candidate is not published**; npm latest was observed as 0.2.1 on 2026-10-22. See [CHANGELOG](./CHANGELOG.md) and [release preparation](../../docs/SDK_RELEASE_PREPARATION.md) for compatibility evidence and open publication gates. Run `npm run release:check --prefix packages/bag-sdk -- --out <absolute-new-directory>` to build, verify fresh consumers and pack a reviewable candidate without publishing. A passing candidate check does not approve a factory, establish live purchase proof or authorize publication.
 
 ## v1 freeze
 

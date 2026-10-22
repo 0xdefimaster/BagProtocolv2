@@ -4,7 +4,7 @@ A small Node 24 / TypeScript NodeNext project using only the public package impo
 
 ## Install the prepared SDK package
 
-The new APIs are not yet published. From the BAG repository, build and pack the SDK:
+This starter targets the unpublished 0.3.0 candidate. Public npm latest was observed as 0.2.1 on 2026-10-22. From the BAG repository, build and pack the candidate:
 
 ```
 npm run build --prefix packages/bag-sdk

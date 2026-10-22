@@ -68,6 +68,7 @@ jobs:
           npm run build --prefix packages/bag-sdk
           npm run smoke:consumer --prefix packages/bag-sdk
           npm run smoke:starter --prefix packages/bag-sdk
+          SDK_RELEASE_SKIP_CONSUMERS=1 npm run release:check --prefix packages/bag-sdk -- --mode package --out "$RUNNER_TEMP/bag-sdk-candidate"
       - run: npm test
       # Same job, same `npm ci`: catches what only Next's build checks (route
       # handler signatures, page exports, server/client boundaries).
