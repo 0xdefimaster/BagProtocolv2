@@ -1,0 +1,422 @@
+{
+  "regression": "Captured USDG Composer route requires native ArbSys.arbBlockNumber in a local L1 EVM fork",
+  "sourceBaseline": "0c27dcbe1caa0f2d002cd0d55122818649498265",
+  "sourceFilesSha256": {
+    "run.mjs": "4c0917e94892d1a4c6a80655f1729c591d1db347cb97ea42a8b9231f333b90f6",
+    "README.md": "c397e44176c5c5c695c2f9fdd5001a9d8a3c972f808b1e19be3ca022cfe18fe2",
+    "contracts/LocalArbSysRead.sol": "e2e8ea5424a76898a9cde31aec5179bafc42af910aa100e90fba497bcc221127"
+  },
+  "originalFailure": {
+    "startedAt": "2026-10-22T18:14:22.747Z",
+    "fork": {
+      "blockNumber": "95311549",
+      "blockHash": "0x9f0f5eb30aee47aac80a55ac813309730fedcd87d56becae8e5add0d9b40d8fd",
+      "timestamp": "1792692878",
+      "hardhatVersion": "3.14.0",
+      "evmModel": "L1 Cancun; not Nitro gas accounting"
+    },
+    "execution": {
+      "success": false,
+      "result": "0x",
+      "transactionHash": "0x56479dfe5ffa22659d01071db1b827c083eb6bd33624aa3d48ba31c7f10b17ea",
+      "gasUsed": "12523461",
+      "before": {
+        "USDG": "100000000",
+        "WETH": "0",
+        "cbBTC": "0"
+      },
+      "after": {
+        "USDG": "100000000",
+        "WETH": "0",
+        "cbBTC": "0"
+      }
+    },
+    "apiRequests": [
+      {
+        "path": "/compose",
+        "status": 200,
+        "composerVersion": "0.11.3",
+        "revision": "9169cc8"
+      }
+    ],
+    "summary": {
+      "pass": 9,
+      "fail": 1
+    }
+  },
+  "reproducedWithoutModel": {
+    "executionMode": "CAPTURED_PROGRAM_REPLAY",
+    "summary": {
+      "pass": 9,
+      "fail": 1
+    },
+    "execution": {
+      "success": false,
+      "result": "0x",
+      "transactionHash": "0x56479dfe5ffa22659d01071db1b827c083eb6bd33624aa3d48ba31c7f10b17ea",
+      "gasUsed": "12530363",
+      "before": {
+        "USDG": "100000000",
+        "WETH": "0",
+        "cbBTC": "0"
+      },
+      "after": {
+        "USDG": "100000000",
+        "WETH": "0",
+        "cbBTC": "0"
+      }
+    },
+    "terminalFailure": {
+      "depth": 13,
+      "type": "STATICCALL",
+      "to": "0x0000000000000000000000000000000000000064",
+      "inputSelector": "0xa3b1b31d",
+      "error": "invalid opcode: INVALID",
+      "gas": "0x9815e8",
+      "gasUsed": "0x9815e8"
+    }
+  },
+  "fixedCapturedProgramReplay": {
+    "status": "REAL_USDG_COMPOSER_FORK_EXECUTION_VERIFIED",
+    "startedAt": "2026-10-22T19:25:55.650Z",
+    "finishedAt": "2026-10-22T19:26:41.227Z",
+    "executionMode": "CAPTURED_PROGRAM_REPLAY",
+    "fork": {
+      "blockNumber": "95311549",
+      "blockHash": "0x9f0f5eb30aee47aac80a55ac813309730fedcd87d56becae8e5add0d9b40d8fd",
+      "timestamp": "1792692878",
+      "hardhatVersion": "3.14.0",
+      "evmModel": "L1 Cancun with modeled ArbSys.arbBlockNumber; not Nitro gas accounting"
+    },
+    "apiRequests": [
+      {
+        "path": "/compose",
+        "status": 200,
+        "composerVersion": "0.11.3",
+        "revision": "CAPTURED_REPLAY"
+      }
+    ],
+    "summary": {
+      "pass": 13,
+      "fail": 0
+    },
+    "checks": [
+      {
+        "name": "upstream is the intended chain",
+        "status": "PASS"
+      },
+      {
+        "name": "public submission blocked by RPC proxy",
+        "status": "PASS"
+      },
+      {
+        "name": "native ArbSys block-number read is qualified and modeled explicitly",
+        "status": "PASS"
+      },
+      {
+        "name": "local transaction envelope carries the expected chain domain",
+        "status": "PASS"
+      },
+      {
+        "name": "forked factory bytecode matches research pin",
+        "status": "PASS"
+      },
+      {
+        "name": "forked tokens match the recorded USDG, WETH and cbBTC definitions",
+        "status": "PASS"
+      },
+      {
+        "name": "saved Composer program is rebound to the same fork signer and intent",
+        "status": "PASS"
+      },
+      {
+        "name": "real fork USDG funding, with no token bytecode or storage replacement",
+        "status": "PASS"
+      },
+      {
+        "name": "session attempt before scheduled time spends no USDG",
+        "status": "PASS"
+      },
+      {
+        "name": "altered Composer program is rejected without spending USDG",
+        "status": "PASS"
+      },
+      {
+        "name": "keeper executes real first-use Composer basket with a session signature",
+        "status": "PASS"
+      },
+      {
+        "name": "SDK verifies the actual inner Composer call and token balance changes",
+        "status": "PASS"
+      },
+      {
+        "name": "replay after the authorized purchase spends no additional USDG",
+        "status": "PASS"
+      }
+    ],
+    "execution": {
+      "success": true,
+      "result": "0x",
+      "transactionHash": "0xe7e0efff317237cf1f67279fe150f0f30a39d24fc56da13f2274a972bb2f7c04",
+      "gasUsed": "2730614",
+      "before": {
+        "USDG": "100000000",
+        "WETH": "0",
+        "cbBTC": "0"
+      },
+      "after": {
+        "USDG": "30000000",
+        "WETH": "16778153144252219",
+        "cbBTC": "36965"
+      }
+    },
+    "precompileModel": {
+      "address": "0x0000000000000000000000000000000000000064",
+      "kind": "LOCAL_READ_MODEL_NOT_NATIVE_NITRO",
+      "supportedSelector": "0xa3b1b31d",
+      "nativeValueAtFork": "95311549",
+      "qualifiedBlockHash": "0x9f0f5eb30aee47aac80a55ac813309730fedcd87d56becae8e5add0d9b40d8fd",
+      "qualifiedLocalHeight": "95311550",
+      "originalCode": "0xfe",
+      "runtimeCodeHash": "0xf91cbd734e75dc0d3ccefb6e09cc465690a484cded997f04f5598a9573bd968a",
+      "unsupportedSelectors": "REVERT",
+      "gasEquivalent": false
+    },
+    "receiptVerification": {
+      "status": "VERIFIED",
+      "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+      "transactionHash": "0xe7e0efff317237cf1f67279fe150f0f30a39d24fc56da13f2274a972bb2f7c04",
+      "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+      "spentInputRaw": "70000000",
+      "transactionBinding": "CALL_TRACE",
+      "chainId": 4663,
+      "blockNumber": "95311568",
+      "confirmations": "1",
+      "outputs": [
+        {
+          "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+          "receivedRaw": "16778153144252219",
+          "sentRaw": "0",
+          "netReceivedRaw": "16778153144252219",
+          "minimumRaw": "16664081782508903",
+          "satisfied": true,
+          "balanceBeforeRaw": "0",
+          "balanceAfterRaw": "16778153144252219",
+          "balanceDeltaRaw": "16778153144252219"
+        },
+        {
+          "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+          "receivedRaw": "36965",
+          "sentRaw": "0",
+          "netReceivedRaw": "36965",
+          "minimumRaw": "36632",
+          "satisfied": true,
+          "balanceBeforeRaw": "0",
+          "balanceAfterRaw": "36965",
+          "balanceDeltaRaw": "36965"
+        }
+      ],
+      "kept": {
+        "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+        "amountRaw": "30000000"
+      },
+      "keptBalanceVerified": true,
+      "accounting": "NOT_BAG_ACCOUNTED",
+      "issues": []
+    },
+    "rpcBoundary": {
+      "rejectedRpcRequests": [
+        {
+          "method": "eth_sendRawTransaction",
+          "isSubmissionMethod": true
+        }
+      ],
+      "upstreamReadMethods": {
+        "eth_chainId": 1,
+        "eth_blockNumber": 43,
+        "net_version": 1,
+        "eth_getBlockByNumber": 2,
+        "eth_getTransactionCount": 75,
+        "eth_getBalance": 75,
+        "eth_getCode": 75,
+        "eth_getStorageAt": 188
+      },
+      "publicSubmissionMethodsForwarded": 0
+    }
+  },
+  "freshLiveQuote": {
+    "status": "REAL_USDG_COMPOSER_FORK_EXECUTION_VERIFIED",
+    "startedAt": "2026-10-22T19:24:02.209Z",
+    "finishedAt": "2026-10-22T19:24:59.775Z",
+    "executionMode": "FRESH_LIVE_QUOTE",
+    "fork": {
+      "blockNumber": "95351776",
+      "blockHash": "0x35954aaf55429c3c2ce6aa0c95cc828966ec990a61c78183ca8079d15209963d",
+      "timestamp": "1792697059",
+      "hardhatVersion": "3.14.0",
+      "evmModel": "L1 Cancun with modeled ArbSys.arbBlockNumber; not Nitro gas accounting"
+    },
+    "apiRequests": [
+      {
+        "path": "/compose",
+        "status": 200,
+        "composerVersion": "0.11.3",
+        "revision": "9169cc8"
+      }
+    ],
+    "summary": {
+      "pass": 13,
+      "fail": 0
+    },
+    "checks": [
+      {
+        "name": "upstream is the intended chain",
+        "status": "PASS"
+      },
+      {
+        "name": "public submission blocked by RPC proxy",
+        "status": "PASS"
+      },
+      {
+        "name": "native ArbSys block-number read is qualified and modeled explicitly",
+        "status": "PASS"
+      },
+      {
+        "name": "local transaction envelope carries the expected chain domain",
+        "status": "PASS"
+      },
+      {
+        "name": "forked factory bytecode matches research pin",
+        "status": "PASS"
+      },
+      {
+        "name": "forked tokens match the recorded USDG, WETH and cbBTC definitions",
+        "status": "PASS"
+      },
+      {
+        "name": "real Composer compiles USDG basket for the smart account signer",
+        "status": "PASS"
+      },
+      {
+        "name": "real fork USDG funding, with no token bytecode or storage replacement",
+        "status": "PASS"
+      },
+      {
+        "name": "session attempt before scheduled time spends no USDG",
+        "status": "PASS"
+      },
+      {
+        "name": "altered Composer program is rejected without spending USDG",
+        "status": "PASS"
+      },
+      {
+        "name": "keeper executes real first-use Composer basket with a session signature",
+        "status": "PASS"
+      },
+      {
+        "name": "SDK verifies the actual inner Composer call and token balance changes",
+        "status": "PASS"
+      },
+      {
+        "name": "replay after the authorized purchase spends no additional USDG",
+        "status": "PASS"
+      }
+    ],
+    "execution": {
+      "success": true,
+      "result": "0x",
+      "transactionHash": "0xfb6907357822a011c415e8a839d97101614e2a65274e1f1d763a296916981d1c",
+      "gasUsed": "2231956",
+      "before": {
+        "USDG": "100000000",
+        "WETH": "0",
+        "cbBTC": "0"
+      },
+      "after": {
+        "USDG": "30000000",
+        "WETH": "16734098823315456",
+        "cbBTC": "36777"
+      }
+    },
+    "precompileModel": {
+      "address": "0x0000000000000000000000000000000000000064",
+      "kind": "LOCAL_READ_MODEL_NOT_NATIVE_NITRO",
+      "supportedSelector": "0xa3b1b31d",
+      "nativeValueAtFork": "95351776",
+      "qualifiedBlockHash": "0x35954aaf55429c3c2ce6aa0c95cc828966ec990a61c78183ca8079d15209963d",
+      "qualifiedLocalHeight": "95351777",
+      "originalCode": "0xfe",
+      "runtimeCodeHash": "0xf91cbd734e75dc0d3ccefb6e09cc465690a484cded997f04f5598a9573bd968a",
+      "unsupportedSelectors": "REVERT",
+      "gasEquivalent": false
+    },
+    "receiptVerification": {
+      "status": "VERIFIED",
+      "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+      "transactionHash": "0xfb6907357822a011c415e8a839d97101614e2a65274e1f1d763a296916981d1c",
+      "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+      "spentInputRaw": "70000000",
+      "transactionBinding": "CALL_TRACE",
+      "chainId": 4663,
+      "blockNumber": "95351795",
+      "confirmations": "1",
+      "outputs": [
+        {
+          "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+          "receivedRaw": "16734098823315456",
+          "sentRaw": "0",
+          "netReceivedRaw": "16734098823315456",
+          "minimumRaw": "16567392395157533",
+          "satisfied": true,
+          "balanceBeforeRaw": "0",
+          "balanceAfterRaw": "16734098823315456",
+          "balanceDeltaRaw": "16734098823315456"
+        },
+        {
+          "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+          "receivedRaw": "36777",
+          "sentRaw": "0",
+          "netReceivedRaw": "36777",
+          "minimumRaw": "36410",
+          "satisfied": true,
+          "balanceBeforeRaw": "0",
+          "balanceAfterRaw": "36777",
+          "balanceDeltaRaw": "36777"
+        }
+      ],
+      "kept": {
+        "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+        "amountRaw": "30000000"
+      },
+      "keptBalanceVerified": true,
+      "accounting": "NOT_BAG_ACCOUNTED",
+      "issues": []
+    },
+    "rpcBoundary": {
+      "rejectedRpcRequests": [
+        {
+          "method": "eth_sendRawTransaction",
+          "isSubmissionMethod": true
+        }
+      ],
+      "upstreamReadMethods": {
+        "eth_blockNumber": 57,
+        "eth_chainId": 1,
+        "net_version": 1,
+        "eth_getBlockByNumber": 2,
+        "eth_getCode": 106,
+        "eth_getTransactionCount": 106,
+        "eth_getBalance": 106,
+        "eth_getStorageAt": 204
+      },
+      "publicSubmissionMethodsForwarded": 0
+    }
+  },
+  "limitations": [
+    "Only ArbSys.arbBlockNumber is emulated; unsupported selectors revert",
+    "The native getter is read at the pinned upstream block, checked against RPC L2 height and explicitly modeled locally",
+    "Local account, EntryPoint, clock and precompile execution are models; this is not full Nitro or production DCA qualification",
+    "No token or Composer code was replaced; no public transaction was submitted",
+    "The saved-program replay uses captured API output and is not a new live Composer compilation"
+  ]
+}
