@@ -655,6 +655,8 @@ try {
 
 ## Package
 
+The [independent consumer starter](../../examples/sdk-consumer) uses public package imports in a separate NodeNext project. It covers original-intent persistence, explicitly reviewed wallet minima, caller-owned wallet integration and receipt verification. Run `npm run smoke:starter --prefix packages/bag-sdk` after building to install the tarball in a fresh directory, typecheck the consumer and run its explicitly synthetic offline demo. It does not submit transactions or establish live purchase proof.
+
 ```
 cd packages/bag-sdk
 npm run typecheck   # tsc, no output
