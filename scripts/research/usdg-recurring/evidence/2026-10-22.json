@@ -1,0 +1,3619 @@
+{
+  "startedAt": "2026-10-22T20:25:32.349Z",
+  "status": "REAL_RECURRING_USDG_COMPOSER_FORK_EXECUTION_VERIFIED",
+  "publicTransactionsSubmitted": 0,
+  "scope": "Real Robinhood token/Composer state and program; local model account, EntryPoint and qualified ArbSys block-number read; ten independently compiled, policy-validated recurring purchases; accelerated local schedule, not production DCA",
+  "executionMode": "FRESH_LIVE_QUOTE",
+  "qualifiedSdkBaseline": "82b3b2926da467e3530eba0c9f6c38452d8511ab",
+  "sourceIdentity": "DECLARED_BASELINE_WITH_RECORDED_FILE_HASHES",
+  "sdkVersion": "0.3.0-source-unpublished",
+  "composerSdkVersion": "0.11.3",
+  "tokens": {
+    "USDG": {
+      "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "symbol": "USDG",
+      "name": "Global Dollar",
+      "decimals": 6,
+      "codeHash": "0x864cc9ad53b338b82da1f7cab85ab0b3d5c8861acb422b6fec63cf36234f36a6",
+      "registryPriceUSD": "1.0006955658",
+      "registryVerificationStatus": "verified"
+    },
+    "WETH": {
+      "address": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+      "symbol": "WETH",
+      "name": "WETH",
+      "decimals": 18,
+      "codeHash": "0x5706be52f64875fee65a2cec0d80e47a23d8793cbe85d214b48445e2d05f5353",
+      "registryPriceUSD": "2412.35",
+      "registryVerificationStatus": "verified"
+    },
+    "cbBTC": {
+      "address": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+      "symbol": "cbBTC",
+      "name": "Coinbase Wrapped BTC",
+      "decimals": 8,
+      "codeHash": "0xce09c534882f533bcf57f4ef68fadfdaf69527975f4e332c9646b12e0268c320",
+      "registryPriceUSD": "82129.7834563545",
+      "registryVerificationStatus": "verified"
+    }
+  },
+  "checks": [
+    {
+      "name": "upstream is the intended chain",
+      "status": "PASS",
+      "details": {
+        "chainId": 4663
+      }
+    },
+    {
+      "name": "public submission blocked by RPC proxy",
+      "status": "PASS",
+      "details": {
+        "httpStatus": 403
+      }
+    },
+    {
+      "name": "native ArbSys block-number read is qualified and modeled explicitly",
+      "status": "PASS",
+      "details": {
+        "address": "0x0000000000000000000000000000000000000064",
+        "kind": "LOCAL_READ_MODEL_NOT_NATIVE_NITRO",
+        "supportedSelector": "0xa3b1b31d",
+        "nativeValueAtFork": "95387221",
+        "qualifiedBlockHash": "0xd07d87f56667f149079122e013c4c7e8330b72140aaaf16556860e717beb4c03",
+        "qualifiedLocalHeight": "95387222",
+        "originalCode": "0xfe",
+        "runtimeCodeHash": "0xf91cbd734e75dc0d3ccefb6e09cc465690a484cded997f04f5598a9573bd968a",
+        "unsupportedSelectors": "REVERT",
+        "gasEquivalent": false
+      }
+    },
+    {
+      "name": "local transaction envelope carries the expected chain domain",
+      "status": "PASS",
+      "details": {
+        "unlocked": {
+          "hash": "0x2b5e452f73b4cca137d2690446e165906fea7e590c0394688f4c59d3bf0d8828",
+          "type": "eip1559",
+          "chainId": 4663,
+          "rpcChainId": 4663
+        },
+        "signed": {
+          "hash": "0x6b33cdf57a62db5d0dd5ec66bc4da6f4a117bf749570d94e2f56a7a6bf520204",
+          "type": "eip1559",
+          "chainId": 4663
+        }
+      }
+    },
+    {
+      "name": "forked factory bytecode matches research pin",
+      "status": "PASS",
+      "details": {
+        "chainId": 4663,
+        "factory": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+        "factoryCodeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5",
+        "productionApproved": false
+      }
+    },
+    {
+      "name": "forked tokens match the recorded USDG, WETH and cbBTC definitions",
+      "status": "PASS",
+      "details": [
+        {
+          "symbol": "USDG",
+          "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "decimals": 6
+        },
+        {
+          "symbol": "WETH",
+          "address": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+          "decimals": 18
+        },
+        {
+          "symbol": "cbBTC",
+          "address": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+          "decimals": 8
+        }
+      ]
+    },
+    {
+      "name": "real Composer compiles USDG basket for the smart account signer",
+      "status": "PASS",
+      "details": {
+        "target": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+        "calldataHash": "0x9fbd070a91351a3b7e7fef297c56bf2144ebc3f27e8d66815da020b7a6f66c5d",
+        "approvals": [
+          {
+            "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+            "spender": "0x65d8ff74a97abc3e57923f33d61c24fe95627c74",
+            "amountRaw": "7000000"
+          }
+        ],
+        "legs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "targetInputRaw": "4000000",
+            "expectedOutRaw": "1674902407211164",
+            "minOutRaw": "1658630937402242"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "targetInputRaw": "3000000",
+            "expectedOutRaw": "3680",
+            "minOutRaw": "3643"
+          }
+        ]
+      }
+    },
+    {
+      "name": "real fork USDG funding, with no token bytecode or storage replacement",
+      "status": "PASS",
+      "details": {
+        "holder": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+        "addressImpersonatedLocally": true,
+        "fundingRaw": "100000000"
+      }
+    },
+    {
+      "name": "before start: session cannot spend USDG",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0xc6bb319d734067729060a444d22b9d65952f0ef56d3fc03ff58bbaed7cb63622",
+        "outerRejected": false,
+        "revertData": "0x47a2375f",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "known program profile validates on chain",
+      "status": "PASS",
+      "details": {
+        "profile": "PINNED_34_INSTRUCTIONS",
+        "minimums": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "amountRaw": "1642044628028219"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "amountRaw": "3606"
+          }
+        ]
+      }
+    },
+    {
+      "name": "arbitrary target is rejected",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x0afab82527b4209da08db8ef5b16c3497ef28b1813a913dff48c1316de21f133",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000001",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "extra factory calldata bytes are rejected",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0xf7dd43edd488499f065c3576de49c5aa77b0ac7c409b15be560c4cb0c67d2cd3",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000002",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "extra inner VM calldata bytes are rejected",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x7bf66bec6d2482bc725cbd949f4dbdffd4cf67ec6d0b73b3215b2afb90d8044f",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000005",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "changed VM instruction is rejected",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x40491148d4aff065fd4c82cdbf92dd6afa82288be55ad2eefb964bac39a905ce",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000006",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "extra VM instruction is rejected",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x326816804db89e4340bbbb41eef83311257396793586ca9a68c635aaf93bd5f0",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000006",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "extra VM state slot is rejected",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0xe7b1abcf8e7f89342e268e17096dbdc053d253041e56bd985713d38c24ec9882",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000006",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "100 USDG bulk input is rejected",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x9be0cce5349150f2796bab19253c367bb8ad5f9f8912adacc9882553e810a28c",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000013",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "different sweep recipient is rejected",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x05478049a567cd79919898b11702a1d91f76b8c6e7319f275201c4b28d85ea74",
+        "outerRejected": false,
+        "revertData": "0x775e666d000000000000000000000000000000000000000000000000000000000000000a",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "different approval spender is rejected",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x1cc7a97f17f2ef94f64b28192b1ef7621f85c01a2841e6043bab829ad5552b4a",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000011",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "different VM context is rejected",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x80752cc66ee3b7638cd0c1c1a570a66e45b58332e6ca3ca3b27406062d3f58db",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000019",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "route recipient cannot redirect outputs",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0xad1cf8e739f77aabb2ccaa5eca77a3174deca058a9c1a33909e30606054a33a6",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000021",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "route output token cannot change",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x3cd876b36a3a1b077bc2a92858fc3b8676f85ed018b778fb29cf5a1ff2fd032a",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000023",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "route approval target cannot change",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x9f26202e40fbd345c439175c88504667a0bfc260711e917c7dc4a3b7188c95fd",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000023",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "fee recipient or fee bytes cannot change",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x5c19e2848ebd5fe84e66fc06bced57915724d3ec451a23be4d28e7db6c09d34a",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000022",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "route deposit cannot pull a second input",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x9389d30f75c7918005f8871de322ae340e7f41a812f9a582dc4452ce4d8bb548",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000023",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "keeper cannot lower owner output floor",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0xaad8c42343c8878cca45c9b4beb3f68e793a3ec240a3d496bab0eafee8061db4",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000021",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "keeper cannot change partition weights",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x8e049ee503c167505bbd5d455e17cf16a287ce4fcbc6e926347570042eaed864",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000016",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "keeper cannot directly transfer account tokens",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0xd1aab17cd2b5c328d50029472d99f8169f842f1ad5cbfa2dc02a53a5aa0d5c38",
+        "outerRejected": true,
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "unapproved session key is rejected",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x1ad304cda9a8be9ac8b5e6062289f5c2c3a3d6af08f0ee0339eb393dbc047f34",
+        "outerRejected": true,
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "owner pause stops spending",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x54e38671974ebd2a36e23c3f3dfe198e69b16683d855d5ec81feb84406aa5051",
+        "outerRejected": false,
+        "revertData": "0xe3372e2d",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "owner can withdraw all unspent USDG while paused",
+      "status": "PASS",
+      "details": {
+        "ownerWithdrawal": true
+      }
+    },
+    {
+      "name": "owner revocation stops spending",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x54e38671974ebd2a36e23c3f3dfe198e69b16683d855d5ec81feb84406aa5051",
+        "outerRejected": false,
+        "revertData": "0xe3372e2d",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "expired policy cannot spend despite an otherwise valid session",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x54e38671974ebd2a36e23c3f3dfe198e69b16683d855d5ec81feb84406aa5051",
+        "outerRejected": false,
+        "revertData": "0xe3372e2d",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "failed real route rolls back budget and token approvals",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x1d794b59da4b693ce0168d49fa268e42a715717ae87ff6129960ca41778df0d5",
+        "outerRejected": false,
+        "revertData": "0x",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "fresh Composer quote 1 is normalized and policy-validated",
+      "status": "PASS",
+      "details": {
+        "calldataHash": "0x7d442e0c34227b9faeb654a487cc76611f937359b97171b81aa71b0eff493943",
+        "apiTarget": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+        "localTarget": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+        "contextNormalization": true,
+        "independentProxyObservation": true
+      }
+    },
+    {
+      "name": "scheduled real Composer purchase 1 succeeds",
+      "status": "PASS",
+      "details": {
+        "round": 1,
+        "transactionHash": "0xfd711a76cf6a8ef973f4fab8f9c77afc51186aa83f4f1cc366a19bbdf673b210",
+        "gasUsed": "6209948",
+        "before": {
+          "USDG": "100000000",
+          "WETH": "0",
+          "cbBTC": "0"
+        },
+        "after": {
+          "USDG": "93000000",
+          "WETH": "1675018679562378",
+          "cbBTC": "3680"
+        },
+        "budget": {
+          "runs": "1",
+          "gross": "10000000",
+          "last": "1792700919",
+          "window": "0",
+          "allowance": "0"
+        },
+        "window": "0",
+        "programHash": "0x7d442e0c34227b9faeb654a487cc76611f937359b97171b81aa71b0eff493943",
+        "accountApprovals": [
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "7000000"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          }
+        ],
+        "maximumTemporaryAllowanceRaw": "7000000",
+        "receiptVerification": {
+          "status": "VERIFIED",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "transactionHash": "0xfd711a76cf6a8ef973f4fab8f9c77afc51186aa83f4f1cc366a19bbdf673b210",
+          "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+          "spentInputRaw": "7000000",
+          "transactionBinding": "CALL_TRACE",
+          "chainId": 4663,
+          "blockNumber": "95387258",
+          "confirmations": "1",
+          "outputs": [
+            {
+              "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+              "receivedRaw": "1675018679562378",
+              "sentRaw": "0",
+              "netReceivedRaw": "1675018679562378",
+              "minimumRaw": "1642044628028219",
+              "satisfied": true,
+              "balanceBeforeRaw": "0",
+              "balanceAfterRaw": "1675018679562378",
+              "balanceDeltaRaw": "1675018679562378"
+            },
+            {
+              "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+              "receivedRaw": "3680",
+              "sentRaw": "0",
+              "netReceivedRaw": "3680",
+              "minimumRaw": "3606",
+              "satisfied": true,
+              "balanceBeforeRaw": "0",
+              "balanceAfterRaw": "3680",
+              "balanceDeltaRaw": "3680"
+            }
+          ],
+          "kept": {
+            "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+            "amountRaw": "3000000"
+          },
+          "keptBalanceVerified": true,
+          "accounting": "NOT_BAG_ACCOUNTED",
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "SDK verifies actual call and balances for purchase 1",
+      "status": "PASS",
+      "details": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0xfd711a76cf6a8ef973f4fab8f9c77afc51186aa83f4f1cc366a19bbdf673b210",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387258",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1675018679562378",
+            "sentRaw": "0",
+            "netReceivedRaw": "1675018679562378",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "0",
+            "balanceAfterRaw": "1675018679562378",
+            "balanceDeltaRaw": "1675018679562378"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "0",
+            "balanceAfterRaw": "3680",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "name": "same time window cannot execute a second purchase",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x8b743000b92943d28af15bab56d44f85db1399a9cfcffca44a4f84f01a509cc6",
+        "outerRejected": false,
+        "revertData": "0x47a2375f",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "signed operation replay fails account nonce",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x4f5b741b8736c9668de2413dcd47d422534c8d4ccaa394d910b76b2c9407f30e",
+        "outerRejected": true,
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "missed windows do not allow catch-up burst spending",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0xd2346b4a17246d801fdc16050192008f1b1dce9279f86cb935e8f32b75062ec5",
+        "outerRejected": false,
+        "revertData": "0x47a2375f",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "crossing a window boundary does not bypass minimum interval",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x65ce832c6be3ce9e3a2e37f789a1083030e67f1f34ece053ac0da44868640c7c",
+        "outerRejected": false,
+        "revertData": "0x47a2375f",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "retained USDG cannot be recycled into later purchases",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x9bba822a998d079e1c94eb2179138d59d7b2d5463137b53ccedaf5496d528916",
+        "outerRejected": false,
+        "revertData": "0x794466c6",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "fresh Composer quote 2 is normalized and policy-validated",
+      "status": "PASS",
+      "details": {
+        "calldataHash": "0x6bd40ca6fbccef9eaf5f9e8442599d89cc44215381183f56f4f1cf350d496d54",
+        "apiTarget": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+        "localTarget": "0x65d8ff74a97abc3e57923f33d61c24fe95627c74",
+        "contextNormalization": true,
+        "independentProxyObservation": true
+      }
+    },
+    {
+      "name": "scheduled real Composer purchase 2 succeeds",
+      "status": "PASS",
+      "details": {
+        "round": 2,
+        "transactionHash": "0xf7ae821c605c4ff99637d8ab91d817bd66aef0521c8a51c05f140c4e8f292d78",
+        "gasUsed": "5599158",
+        "before": {
+          "USDG": "93000000",
+          "WETH": "1675018679562378",
+          "cbBTC": "3680"
+        },
+        "after": {
+          "USDG": "86000000",
+          "WETH": "3350037359124756",
+          "cbBTC": "7360"
+        },
+        "budget": {
+          "runs": "2",
+          "gross": "20000000",
+          "last": "1792700950",
+          "window": "1",
+          "allowance": "0"
+        },
+        "window": "1",
+        "programHash": "0x6bd40ca6fbccef9eaf5f9e8442599d89cc44215381183f56f4f1cf350d496d54",
+        "accountApprovals": [
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "7000000"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          }
+        ],
+        "maximumTemporaryAllowanceRaw": "7000000",
+        "receiptVerification": {
+          "status": "VERIFIED",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "transactionHash": "0xf7ae821c605c4ff99637d8ab91d817bd66aef0521c8a51c05f140c4e8f292d78",
+          "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+          "spentInputRaw": "7000000",
+          "transactionBinding": "CALL_TRACE",
+          "chainId": 4663,
+          "blockNumber": "95387260",
+          "confirmations": "1",
+          "outputs": [
+            {
+              "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+              "receivedRaw": "1675018679562378",
+              "sentRaw": "0",
+              "netReceivedRaw": "1675018679562378",
+              "minimumRaw": "1642044628028219",
+              "satisfied": true,
+              "balanceBeforeRaw": "1675018679562378",
+              "balanceAfterRaw": "3350037359124756",
+              "balanceDeltaRaw": "1675018679562378"
+            },
+            {
+              "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+              "receivedRaw": "3680",
+              "sentRaw": "0",
+              "netReceivedRaw": "3680",
+              "minimumRaw": "3606",
+              "satisfied": true,
+              "balanceBeforeRaw": "3680",
+              "balanceAfterRaw": "7360",
+              "balanceDeltaRaw": "3680"
+            }
+          ],
+          "kept": {
+            "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+            "amountRaw": "3000000"
+          },
+          "keptBalanceVerified": true,
+          "accounting": "NOT_BAG_ACCOUNTED",
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "SDK verifies actual call and balances for purchase 2",
+      "status": "PASS",
+      "details": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0xf7ae821c605c4ff99637d8ab91d817bd66aef0521c8a51c05f140c4e8f292d78",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387260",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1675018679562378",
+            "sentRaw": "0",
+            "netReceivedRaw": "1675018679562378",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "1675018679562378",
+            "balanceAfterRaw": "3350037359124756",
+            "balanceDeltaRaw": "1675018679562378"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "3680",
+            "balanceAfterRaw": "7360",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "name": "fresh Composer quote 3 is normalized and policy-validated",
+      "status": "PASS",
+      "details": {
+        "calldataHash": "0x886315154758b74fdf394a5443cb75a0818faa7e3fa6f767b78e59222e4e3ed8",
+        "apiTarget": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+        "localTarget": "0x65d8ff74a97abc3e57923f33d61c24fe95627c74",
+        "contextNormalization": true,
+        "independentProxyObservation": true
+      }
+    },
+    {
+      "name": "scheduled real Composer purchase 3 succeeds",
+      "status": "PASS",
+      "details": {
+        "round": 3,
+        "transactionHash": "0xfd0cdbb04dc4e541d8004fe8e9693f96ebd685adeeec6c0903901305a63eb534",
+        "gasUsed": "5582046",
+        "before": {
+          "USDG": "86000000",
+          "WETH": "3350037359124756",
+          "cbBTC": "7360"
+        },
+        "after": {
+          "USDG": "79000000",
+          "WETH": "5025056038687134",
+          "cbBTC": "11040"
+        },
+        "budget": {
+          "runs": "3",
+          "gross": "30000000",
+          "last": "1792700981",
+          "window": "3",
+          "allowance": "0"
+        },
+        "window": "3",
+        "programHash": "0x886315154758b74fdf394a5443cb75a0818faa7e3fa6f767b78e59222e4e3ed8",
+        "accountApprovals": [
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "7000000"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          }
+        ],
+        "maximumTemporaryAllowanceRaw": "7000000",
+        "receiptVerification": {
+          "status": "VERIFIED",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "transactionHash": "0xfd0cdbb04dc4e541d8004fe8e9693f96ebd685adeeec6c0903901305a63eb534",
+          "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+          "spentInputRaw": "7000000",
+          "transactionBinding": "CALL_TRACE",
+          "chainId": 4663,
+          "blockNumber": "95387262",
+          "confirmations": "1",
+          "outputs": [
+            {
+              "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+              "receivedRaw": "1675018679562378",
+              "sentRaw": "0",
+              "netReceivedRaw": "1675018679562378",
+              "minimumRaw": "1642044628028219",
+              "satisfied": true,
+              "balanceBeforeRaw": "3350037359124756",
+              "balanceAfterRaw": "5025056038687134",
+              "balanceDeltaRaw": "1675018679562378"
+            },
+            {
+              "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+              "receivedRaw": "3680",
+              "sentRaw": "0",
+              "netReceivedRaw": "3680",
+              "minimumRaw": "3606",
+              "satisfied": true,
+              "balanceBeforeRaw": "7360",
+              "balanceAfterRaw": "11040",
+              "balanceDeltaRaw": "3680"
+            }
+          ],
+          "kept": {
+            "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+            "amountRaw": "3000000"
+          },
+          "keptBalanceVerified": true,
+          "accounting": "NOT_BAG_ACCOUNTED",
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "SDK verifies actual call and balances for purchase 3",
+      "status": "PASS",
+      "details": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0xfd0cdbb04dc4e541d8004fe8e9693f96ebd685adeeec6c0903901305a63eb534",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387262",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1675018679562378",
+            "sentRaw": "0",
+            "netReceivedRaw": "1675018679562378",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "3350037359124756",
+            "balanceAfterRaw": "5025056038687134",
+            "balanceDeltaRaw": "1675018679562378"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "7360",
+            "balanceAfterRaw": "11040",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "name": "fresh Composer quote 4 is normalized and policy-validated",
+      "status": "PASS",
+      "details": {
+        "calldataHash": "0x87e8669df7c9b07ac77e466265b1c5fdb1dd041bf369cd519efe7fc131409fd1",
+        "apiTarget": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+        "localTarget": "0x65d8ff74a97abc3e57923f33d61c24fe95627c74",
+        "contextNormalization": true,
+        "independentProxyObservation": true
+      }
+    },
+    {
+      "name": "scheduled real Composer purchase 4 succeeds",
+      "status": "PASS",
+      "details": {
+        "round": 4,
+        "transactionHash": "0x7cf32c5116e450ea908bd38dab951a6e6f6e001c8e50a349bf925c083c81aaff",
+        "gasUsed": "5582058",
+        "before": {
+          "USDG": "79000000",
+          "WETH": "5025056038687134",
+          "cbBTC": "11040"
+        },
+        "after": {
+          "USDG": "72000000",
+          "WETH": "6700074718249512",
+          "cbBTC": "14720"
+        },
+        "budget": {
+          "runs": "4",
+          "gross": "40000000",
+          "last": "1792701012",
+          "window": "4",
+          "allowance": "0"
+        },
+        "window": "4",
+        "programHash": "0x87e8669df7c9b07ac77e466265b1c5fdb1dd041bf369cd519efe7fc131409fd1",
+        "accountApprovals": [
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "7000000"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          }
+        ],
+        "maximumTemporaryAllowanceRaw": "7000000",
+        "receiptVerification": {
+          "status": "VERIFIED",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "transactionHash": "0x7cf32c5116e450ea908bd38dab951a6e6f6e001c8e50a349bf925c083c81aaff",
+          "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+          "spentInputRaw": "7000000",
+          "transactionBinding": "CALL_TRACE",
+          "chainId": 4663,
+          "blockNumber": "95387264",
+          "confirmations": "1",
+          "outputs": [
+            {
+              "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+              "receivedRaw": "1675018679562378",
+              "sentRaw": "0",
+              "netReceivedRaw": "1675018679562378",
+              "minimumRaw": "1642044628028219",
+              "satisfied": true,
+              "balanceBeforeRaw": "5025056038687134",
+              "balanceAfterRaw": "6700074718249512",
+              "balanceDeltaRaw": "1675018679562378"
+            },
+            {
+              "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+              "receivedRaw": "3680",
+              "sentRaw": "0",
+              "netReceivedRaw": "3680",
+              "minimumRaw": "3606",
+              "satisfied": true,
+              "balanceBeforeRaw": "11040",
+              "balanceAfterRaw": "14720",
+              "balanceDeltaRaw": "3680"
+            }
+          ],
+          "kept": {
+            "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+            "amountRaw": "3000000"
+          },
+          "keptBalanceVerified": true,
+          "accounting": "NOT_BAG_ACCOUNTED",
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "SDK verifies actual call and balances for purchase 4",
+      "status": "PASS",
+      "details": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0x7cf32c5116e450ea908bd38dab951a6e6f6e001c8e50a349bf925c083c81aaff",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387264",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1675018679562378",
+            "sentRaw": "0",
+            "netReceivedRaw": "1675018679562378",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "5025056038687134",
+            "balanceAfterRaw": "6700074718249512",
+            "balanceDeltaRaw": "1675018679562378"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "11040",
+            "balanceAfterRaw": "14720",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "name": "fresh Composer quote 5 is normalized and policy-validated",
+      "status": "PASS",
+      "details": {
+        "calldataHash": "0xdc2906c79d62ba69dd933111e3b8cd87defa7d09ce51240010273f241db187e6",
+        "apiTarget": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+        "localTarget": "0x65d8ff74a97abc3e57923f33d61c24fe95627c74",
+        "contextNormalization": true,
+        "independentProxyObservation": true
+      }
+    },
+    {
+      "name": "scheduled real Composer purchase 5 succeeds",
+      "status": "PASS",
+      "details": {
+        "round": 5,
+        "transactionHash": "0x43d53190c6afae8b2823f133d56ada236a873c0490b72f979ce053a27baa13c1",
+        "gasUsed": "5582058",
+        "before": {
+          "USDG": "72000000",
+          "WETH": "6700074718249512",
+          "cbBTC": "14720"
+        },
+        "after": {
+          "USDG": "65000000",
+          "WETH": "8375093397811890",
+          "cbBTC": "18400"
+        },
+        "budget": {
+          "runs": "5",
+          "gross": "50000000",
+          "last": "1792701043",
+          "window": "5",
+          "allowance": "0"
+        },
+        "window": "5",
+        "programHash": "0xdc2906c79d62ba69dd933111e3b8cd87defa7d09ce51240010273f241db187e6",
+        "accountApprovals": [
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "7000000"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          }
+        ],
+        "maximumTemporaryAllowanceRaw": "7000000",
+        "receiptVerification": {
+          "status": "VERIFIED",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "transactionHash": "0x43d53190c6afae8b2823f133d56ada236a873c0490b72f979ce053a27baa13c1",
+          "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+          "spentInputRaw": "7000000",
+          "transactionBinding": "CALL_TRACE",
+          "chainId": 4663,
+          "blockNumber": "95387266",
+          "confirmations": "1",
+          "outputs": [
+            {
+              "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+              "receivedRaw": "1675018679562378",
+              "sentRaw": "0",
+              "netReceivedRaw": "1675018679562378",
+              "minimumRaw": "1642044628028219",
+              "satisfied": true,
+              "balanceBeforeRaw": "6700074718249512",
+              "balanceAfterRaw": "8375093397811890",
+              "balanceDeltaRaw": "1675018679562378"
+            },
+            {
+              "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+              "receivedRaw": "3680",
+              "sentRaw": "0",
+              "netReceivedRaw": "3680",
+              "minimumRaw": "3606",
+              "satisfied": true,
+              "balanceBeforeRaw": "14720",
+              "balanceAfterRaw": "18400",
+              "balanceDeltaRaw": "3680"
+            }
+          ],
+          "kept": {
+            "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+            "amountRaw": "3000000"
+          },
+          "keptBalanceVerified": true,
+          "accounting": "NOT_BAG_ACCOUNTED",
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "SDK verifies actual call and balances for purchase 5",
+      "status": "PASS",
+      "details": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0x43d53190c6afae8b2823f133d56ada236a873c0490b72f979ce053a27baa13c1",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387266",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1675018679562378",
+            "sentRaw": "0",
+            "netReceivedRaw": "1675018679562378",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "6700074718249512",
+            "balanceAfterRaw": "8375093397811890",
+            "balanceDeltaRaw": "1675018679562378"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "14720",
+            "balanceAfterRaw": "18400",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "name": "fresh Composer quote 6 is normalized and policy-validated",
+      "status": "PASS",
+      "details": {
+        "calldataHash": "0x44d3776f79dd844fbb8bae8ed13b5a70a8722be6416a7121d048e4768cd591c1",
+        "apiTarget": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+        "localTarget": "0x65d8ff74a97abc3e57923f33d61c24fe95627c74",
+        "contextNormalization": true,
+        "independentProxyObservation": true
+      }
+    },
+    {
+      "name": "scheduled real Composer purchase 6 succeeds",
+      "status": "PASS",
+      "details": {
+        "round": 6,
+        "transactionHash": "0xceb8fbc5680f521d20acc11f6f567425e88fd34e12a15e4db374b8f166ffd584",
+        "gasUsed": "5582062",
+        "before": {
+          "USDG": "65000000",
+          "WETH": "8375093397811890",
+          "cbBTC": "18400"
+        },
+        "after": {
+          "USDG": "58000000",
+          "WETH": "10050065341751977",
+          "cbBTC": "22080"
+        },
+        "budget": {
+          "runs": "6",
+          "gross": "60000000",
+          "last": "1792701074",
+          "window": "6",
+          "allowance": "0"
+        },
+        "window": "6",
+        "programHash": "0x44d3776f79dd844fbb8bae8ed13b5a70a8722be6416a7121d048e4768cd591c1",
+        "accountApprovals": [
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "7000000"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          }
+        ],
+        "maximumTemporaryAllowanceRaw": "7000000",
+        "receiptVerification": {
+          "status": "VERIFIED",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "transactionHash": "0xceb8fbc5680f521d20acc11f6f567425e88fd34e12a15e4db374b8f166ffd584",
+          "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+          "spentInputRaw": "7000000",
+          "transactionBinding": "CALL_TRACE",
+          "chainId": 4663,
+          "blockNumber": "95387268",
+          "confirmations": "1",
+          "outputs": [
+            {
+              "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+              "receivedRaw": "1674971943940087",
+              "sentRaw": "0",
+              "netReceivedRaw": "1674971943940087",
+              "minimumRaw": "1642044628028219",
+              "satisfied": true,
+              "balanceBeforeRaw": "8375093397811890",
+              "balanceAfterRaw": "10050065341751977",
+              "balanceDeltaRaw": "1674971943940087"
+            },
+            {
+              "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+              "receivedRaw": "3680",
+              "sentRaw": "0",
+              "netReceivedRaw": "3680",
+              "minimumRaw": "3606",
+              "satisfied": true,
+              "balanceBeforeRaw": "18400",
+              "balanceAfterRaw": "22080",
+              "balanceDeltaRaw": "3680"
+            }
+          ],
+          "kept": {
+            "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+            "amountRaw": "3000000"
+          },
+          "keptBalanceVerified": true,
+          "accounting": "NOT_BAG_ACCOUNTED",
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "SDK verifies actual call and balances for purchase 6",
+      "status": "PASS",
+      "details": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0xceb8fbc5680f521d20acc11f6f567425e88fd34e12a15e4db374b8f166ffd584",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387268",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1674971943940087",
+            "sentRaw": "0",
+            "netReceivedRaw": "1674971943940087",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "8375093397811890",
+            "balanceAfterRaw": "10050065341751977",
+            "balanceDeltaRaw": "1674971943940087"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "18400",
+            "balanceAfterRaw": "22080",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "name": "fresh Composer quote 7 is normalized and policy-validated",
+      "status": "PASS",
+      "details": {
+        "calldataHash": "0x28bf6188d9c2ad3a04efc9df31126b684ef232ad9ae5045b90b38dc2e58f48a3",
+        "apiTarget": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+        "localTarget": "0x65d8ff74a97abc3e57923f33d61c24fe95627c74",
+        "contextNormalization": true,
+        "independentProxyObservation": true
+      }
+    },
+    {
+      "name": "scheduled real Composer purchase 7 succeeds",
+      "status": "PASS",
+      "details": {
+        "round": 7,
+        "transactionHash": "0x9014c0907a6f58b7af55d2975695591c8a33e0ea569b2f0c4f9687ec78f0cce5",
+        "gasUsed": "5554896",
+        "before": {
+          "USDG": "58000000",
+          "WETH": "10050065341751977",
+          "cbBTC": "22080"
+        },
+        "after": {
+          "USDG": "51000000",
+          "WETH": "11725002044745009",
+          "cbBTC": "25760"
+        },
+        "budget": {
+          "runs": "7",
+          "gross": "70000000",
+          "last": "1792701105",
+          "window": "7",
+          "allowance": "0"
+        },
+        "window": "7",
+        "programHash": "0x28bf6188d9c2ad3a04efc9df31126b684ef232ad9ae5045b90b38dc2e58f48a3",
+        "accountApprovals": [
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "7000000"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          }
+        ],
+        "maximumTemporaryAllowanceRaw": "7000000",
+        "receiptVerification": {
+          "status": "VERIFIED",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "transactionHash": "0x9014c0907a6f58b7af55d2975695591c8a33e0ea569b2f0c4f9687ec78f0cce5",
+          "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+          "spentInputRaw": "7000000",
+          "transactionBinding": "CALL_TRACE",
+          "chainId": 4663,
+          "blockNumber": "95387270",
+          "confirmations": "1",
+          "outputs": [
+            {
+              "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+              "receivedRaw": "1674936702993032",
+              "sentRaw": "0",
+              "netReceivedRaw": "1674936702993032",
+              "minimumRaw": "1642044628028219",
+              "satisfied": true,
+              "balanceBeforeRaw": "10050065341751977",
+              "balanceAfterRaw": "11725002044745009",
+              "balanceDeltaRaw": "1674936702993032"
+            },
+            {
+              "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+              "receivedRaw": "3680",
+              "sentRaw": "0",
+              "netReceivedRaw": "3680",
+              "minimumRaw": "3606",
+              "satisfied": true,
+              "balanceBeforeRaw": "22080",
+              "balanceAfterRaw": "25760",
+              "balanceDeltaRaw": "3680"
+            }
+          ],
+          "kept": {
+            "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+            "amountRaw": "3000000"
+          },
+          "keptBalanceVerified": true,
+          "accounting": "NOT_BAG_ACCOUNTED",
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "SDK verifies actual call and balances for purchase 7",
+      "status": "PASS",
+      "details": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0x9014c0907a6f58b7af55d2975695591c8a33e0ea569b2f0c4f9687ec78f0cce5",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387270",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1674936702993032",
+            "sentRaw": "0",
+            "netReceivedRaw": "1674936702993032",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "10050065341751977",
+            "balanceAfterRaw": "11725002044745009",
+            "balanceDeltaRaw": "1674936702993032"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "22080",
+            "balanceAfterRaw": "25760",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "name": "fresh Composer quote 8 is normalized and policy-validated",
+      "status": "PASS",
+      "details": {
+        "calldataHash": "0xe55a60c7c7e770722f036759f91b29a3da9b89114e4fd59d7e6774db1a2b73c7",
+        "apiTarget": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+        "localTarget": "0x65d8ff74a97abc3e57923f33d61c24fe95627c74",
+        "contextNormalization": true,
+        "independentProxyObservation": true
+      }
+    },
+    {
+      "name": "scheduled real Composer purchase 8 succeeds",
+      "status": "PASS",
+      "details": {
+        "round": 8,
+        "transactionHash": "0x310735b316a761392157d626a30d7619a19e681a5fbf5e93ee241aa7a6475f07",
+        "gasUsed": "5554900",
+        "before": {
+          "USDG": "51000000",
+          "WETH": "11725002044745009",
+          "cbBTC": "25760"
+        },
+        "after": {
+          "USDG": "44000000",
+          "WETH": "13399858211575783",
+          "cbBTC": "29440"
+        },
+        "budget": {
+          "runs": "8",
+          "gross": "80000000",
+          "last": "1792701136",
+          "window": "8",
+          "allowance": "0"
+        },
+        "window": "8",
+        "programHash": "0xe55a60c7c7e770722f036759f91b29a3da9b89114e4fd59d7e6774db1a2b73c7",
+        "accountApprovals": [
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "7000000"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          }
+        ],
+        "maximumTemporaryAllowanceRaw": "7000000",
+        "receiptVerification": {
+          "status": "VERIFIED",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "transactionHash": "0x310735b316a761392157d626a30d7619a19e681a5fbf5e93ee241aa7a6475f07",
+          "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+          "spentInputRaw": "7000000",
+          "transactionBinding": "CALL_TRACE",
+          "chainId": 4663,
+          "blockNumber": "95387272",
+          "confirmations": "1",
+          "outputs": [
+            {
+              "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+              "receivedRaw": "1674856166830774",
+              "sentRaw": "0",
+              "netReceivedRaw": "1674856166830774",
+              "minimumRaw": "1642044628028219",
+              "satisfied": true,
+              "balanceBeforeRaw": "11725002044745009",
+              "balanceAfterRaw": "13399858211575783",
+              "balanceDeltaRaw": "1674856166830774"
+            },
+            {
+              "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+              "receivedRaw": "3680",
+              "sentRaw": "0",
+              "netReceivedRaw": "3680",
+              "minimumRaw": "3606",
+              "satisfied": true,
+              "balanceBeforeRaw": "25760",
+              "balanceAfterRaw": "29440",
+              "balanceDeltaRaw": "3680"
+            }
+          ],
+          "kept": {
+            "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+            "amountRaw": "3000000"
+          },
+          "keptBalanceVerified": true,
+          "accounting": "NOT_BAG_ACCOUNTED",
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "SDK verifies actual call and balances for purchase 8",
+      "status": "PASS",
+      "details": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0x310735b316a761392157d626a30d7619a19e681a5fbf5e93ee241aa7a6475f07",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387272",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1674856166830774",
+            "sentRaw": "0",
+            "netReceivedRaw": "1674856166830774",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "11725002044745009",
+            "balanceAfterRaw": "13399858211575783",
+            "balanceDeltaRaw": "1674856166830774"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "25760",
+            "balanceAfterRaw": "29440",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "name": "fresh Composer quote 9 is normalized and policy-validated",
+      "status": "PASS",
+      "details": {
+        "calldataHash": "0x272fcb0f26faa3ae76a2a031c8d4df87c973cc086ca73ad5bc0ff8b5cd2495fa",
+        "apiTarget": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+        "localTarget": "0x65d8ff74a97abc3e57923f33d61c24fe95627c74",
+        "contextNormalization": true,
+        "independentProxyObservation": true
+      }
+    },
+    {
+      "name": "scheduled real Composer purchase 9 succeeds",
+      "status": "PASS",
+      "details": {
+        "round": 9,
+        "transactionHash": "0xf5d74138b12ed0b7b7a3ca08464d7923dfe14e8421db03d094487ecc62f3ee6c",
+        "gasUsed": "5582058",
+        "before": {
+          "USDG": "44000000",
+          "WETH": "13399858211575783",
+          "cbBTC": "29440"
+        },
+        "after": {
+          "USDG": "37000000",
+          "WETH": "15074876891138161",
+          "cbBTC": "33120"
+        },
+        "budget": {
+          "runs": "9",
+          "gross": "90000000",
+          "last": "1792701167",
+          "window": "9",
+          "allowance": "0"
+        },
+        "window": "9",
+        "programHash": "0x272fcb0f26faa3ae76a2a031c8d4df87c973cc086ca73ad5bc0ff8b5cd2495fa",
+        "accountApprovals": [
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "7000000"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          }
+        ],
+        "maximumTemporaryAllowanceRaw": "7000000",
+        "receiptVerification": {
+          "status": "VERIFIED",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "transactionHash": "0xf5d74138b12ed0b7b7a3ca08464d7923dfe14e8421db03d094487ecc62f3ee6c",
+          "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+          "spentInputRaw": "7000000",
+          "transactionBinding": "CALL_TRACE",
+          "chainId": 4663,
+          "blockNumber": "95387274",
+          "confirmations": "1",
+          "outputs": [
+            {
+              "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+              "receivedRaw": "1675018679562378",
+              "sentRaw": "0",
+              "netReceivedRaw": "1675018679562378",
+              "minimumRaw": "1642044628028219",
+              "satisfied": true,
+              "balanceBeforeRaw": "13399858211575783",
+              "balanceAfterRaw": "15074876891138161",
+              "balanceDeltaRaw": "1675018679562378"
+            },
+            {
+              "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+              "receivedRaw": "3680",
+              "sentRaw": "0",
+              "netReceivedRaw": "3680",
+              "minimumRaw": "3606",
+              "satisfied": true,
+              "balanceBeforeRaw": "29440",
+              "balanceAfterRaw": "33120",
+              "balanceDeltaRaw": "3680"
+            }
+          ],
+          "kept": {
+            "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+            "amountRaw": "3000000"
+          },
+          "keptBalanceVerified": true,
+          "accounting": "NOT_BAG_ACCOUNTED",
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "SDK verifies actual call and balances for purchase 9",
+      "status": "PASS",
+      "details": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0xf5d74138b12ed0b7b7a3ca08464d7923dfe14e8421db03d094487ecc62f3ee6c",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387274",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1675018679562378",
+            "sentRaw": "0",
+            "netReceivedRaw": "1675018679562378",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "13399858211575783",
+            "balanceAfterRaw": "15074876891138161",
+            "balanceDeltaRaw": "1675018679562378"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "29440",
+            "balanceAfterRaw": "33120",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "name": "fresh Composer quote 10 is normalized and policy-validated",
+      "status": "PASS",
+      "details": {
+        "calldataHash": "0xecfe228bd3e6babee2ac3e17d5324d09f55ae86738ea73e1867b5053dc644658",
+        "apiTarget": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+        "localTarget": "0x65d8ff74a97abc3e57923f33d61c24fe95627c74",
+        "contextNormalization": true,
+        "independentProxyObservation": true
+      }
+    },
+    {
+      "name": "scheduled real Composer purchase 10 succeeds",
+      "status": "PASS",
+      "details": {
+        "round": 10,
+        "transactionHash": "0xa272f248bd29b4cdced6d75f2d00b341c76e1e3a315b9bdf9348c06ea2cd8b2b",
+        "gasUsed": "5554908",
+        "before": {
+          "USDG": "37000000",
+          "WETH": "15074876891138161",
+          "cbBTC": "33120"
+        },
+        "after": {
+          "USDG": "30000000",
+          "WETH": "16749652527615180",
+          "cbBTC": "36800"
+        },
+        "budget": {
+          "runs": "10",
+          "gross": "100000000",
+          "last": "1792701198",
+          "window": "10",
+          "allowance": "0"
+        },
+        "window": "10",
+        "programHash": "0xecfe228bd3e6babee2ac3e17d5324d09f55ae86738ea73e1867b5053dc644658",
+        "accountApprovals": [
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "7000000"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          }
+        ],
+        "maximumTemporaryAllowanceRaw": "7000000",
+        "receiptVerification": {
+          "status": "VERIFIED",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "transactionHash": "0xa272f248bd29b4cdced6d75f2d00b341c76e1e3a315b9bdf9348c06ea2cd8b2b",
+          "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+          "spentInputRaw": "7000000",
+          "transactionBinding": "CALL_TRACE",
+          "chainId": 4663,
+          "blockNumber": "95387276",
+          "confirmations": "1",
+          "outputs": [
+            {
+              "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+              "receivedRaw": "1674775636477019",
+              "sentRaw": "0",
+              "netReceivedRaw": "1674775636477019",
+              "minimumRaw": "1642044628028219",
+              "satisfied": true,
+              "balanceBeforeRaw": "15074876891138161",
+              "balanceAfterRaw": "16749652527615180",
+              "balanceDeltaRaw": "1674775636477019"
+            },
+            {
+              "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+              "receivedRaw": "3680",
+              "sentRaw": "0",
+              "netReceivedRaw": "3680",
+              "minimumRaw": "3606",
+              "satisfied": true,
+              "balanceBeforeRaw": "33120",
+              "balanceAfterRaw": "36800",
+              "balanceDeltaRaw": "3680"
+            }
+          ],
+          "kept": {
+            "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+            "amountRaw": "3000000"
+          },
+          "keptBalanceVerified": true,
+          "accounting": "NOT_BAG_ACCOUNTED",
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "SDK verifies actual call and balances for purchase 10",
+      "status": "PASS",
+      "details": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0xa272f248bd29b4cdced6d75f2d00b341c76e1e3a315b9bdf9348c06ea2cd8b2b",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387276",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1674775636477019",
+            "sentRaw": "0",
+            "netReceivedRaw": "1674775636477019",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "15074876891138161",
+            "balanceAfterRaw": "16749652527615180",
+            "balanceDeltaRaw": "1674775636477019"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "33120",
+            "balanceAfterRaw": "36800",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "name": "eleventh purchase cannot spend remaining cash",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x4b85c6a173a7d227994c948fc0d01939a71a8e3de0cbb942dee996d71cdd29a9",
+        "outerRejected": false,
+        "revertData": "0xe3372e2d",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "ten purchases consume 70 USDG and reserve 30 USDG with zero allowance",
+      "status": "PASS",
+      "details": {
+        "end": {
+          "USDG": "30000000",
+          "WETH": "16749652527615180",
+          "cbBTC": "36800"
+        },
+        "budget": {
+          "runs": "10",
+          "gross": "100000000",
+          "last": "1792701198",
+          "window": "10",
+          "allowance": "0"
+        },
+        "uniquePrograms": 10,
+        "ownerPolicyGrants": 1,
+        "publicTransactionsSubmitted": 0
+      }
+    }
+  ],
+  "localTransactions": [
+    {
+      "hash": "0x2b5e452f73b4cca137d2690446e165906fea7e590c0394688f4c59d3bf0d8828",
+      "kind": "default envelope diagnostic",
+      "blockNumber": "95387223",
+      "gasUsed": "21000"
+    },
+    {
+      "hash": "0x6b33cdf57a62db5d0dd5ec66bc4da6f4a117bf749570d94e2f56a7a6bf520204",
+      "kind": "signed local envelope diagnostic",
+      "blockNumber": "95387224",
+      "gasUsed": "21000"
+    },
+    {
+      "hash": "0xdfd80c5fbfc99ad721384c71d6743a211d9d88f47ed661f855d54356e1308b64",
+      "kind": "deploy LocalEntryPointHarness",
+      "blockNumber": "95387225",
+      "gasUsed": "417929"
+    },
+    {
+      "hash": "0x63df2f84a45340300bf52f41d57070eb46a9328602240ce14203d7a7a8a172d0",
+      "kind": "deploy SmartSession",
+      "blockNumber": "95387226",
+      "gasUsed": "5158558"
+    },
+    {
+      "hash": "0x5e6634b93b3ba6b3f0a9216fb7624abd262b2dd5e039936cdfa843faba86387c",
+      "kind": "deploy SudoPolicy",
+      "blockNumber": "95387227",
+      "gasUsed": "252164"
+    },
+    {
+      "hash": "0x36d2c28680e34f6243006d1df54bd3484ea1a4a7657288cc5d784327669067b7",
+      "kind": "deploy TimeFramePolicy",
+      "blockNumber": "95387228",
+      "gasUsed": "466498"
+    },
+    {
+      "hash": "0xfe02d853571e601c54fda61112c958a1f6fdaaae642273f6d51dd93a7bc2772e",
+      "kind": "deploy LocalSessionSignerValidator",
+      "blockNumber": "95387229",
+      "gasUsed": "181192"
+    },
+    {
+      "hash": "0xf3a91bfb3066339b0ce667b7edff84afed73f08e8375c363e1d808c41f31ef45",
+      "kind": "deploy Local7579Account",
+      "blockNumber": "95387230",
+      "gasUsed": "717863"
+    },
+    {
+      "hash": "0xb8b76d2e902df7848b060476dfec51b70d572e601b74c0c854407d58b45cd502",
+      "kind": "installValidator",
+      "blockNumber": "95387231",
+      "gasUsed": "27279"
+    },
+    {
+      "hash": "0xc6b9f41a6c99cdf7d5dcc69c4d373de21db525b9441ff85eeda43ebe47012f5c",
+      "kind": "fork-only funding",
+      "blockNumber": "95387232",
+      "gasUsed": "65366"
+    },
+    {
+      "hash": "0xdba178793cd60610ad972fb994f2c6c6172a6b0c9a1e4d696f65590b715dcd27",
+      "kind": "deploy RecurringPurchase",
+      "blockNumber": "95387233",
+      "gasUsed": "3396183"
+    },
+    {
+      "hash": "0x243fd4e1b368f379b71933e7de40c1d3f4ca5613f2285f77b76d6ad3f3c4f6b9",
+      "kind": "setExecutor",
+      "blockNumber": "95387234",
+      "gasUsed": "43848"
+    },
+    {
+      "hash": "0x2346b364670c2d1f12e381f98e03704819c13389f54211ea5b176470fd5b2889",
+      "kind": "ownerCall",
+      "blockNumber": "95387235",
+      "gasUsed": "433365"
+    },
+    {
+      "hash": "0xc6bb319d734067729060a444d22b9d65952f0ef56d3fc03ff58bbaed7cb63622",
+      "kind": "session handle",
+      "blockNumber": "95387236",
+      "gasUsed": "202482",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x0afab82527b4209da08db8ef5b16c3497ef28b1813a913dff48c1316de21f133",
+      "kind": "session handle",
+      "blockNumber": "95387238",
+      "gasUsed": "265762",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0xf7dd43edd488499f065c3576de49c5aa77b0ac7c409b15be560c4cb0c67d2cd3",
+      "kind": "session handle",
+      "blockNumber": "95387239",
+      "gasUsed": "311812",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x7bf66bec6d2482bc725cbd949f4dbdffd4cf67ec6d0b73b3215b2afb90d8044f",
+      "kind": "session handle",
+      "blockNumber": "95387240",
+      "gasUsed": "2586577",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x40491148d4aff065fd4c82cdbf92dd6afa82288be55ad2eefb964bac39a905ce",
+      "kind": "session handle",
+      "blockNumber": "95387241",
+      "gasUsed": "2591598",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x326816804db89e4340bbbb41eef83311257396793586ca9a68c635aaf93bd5f0",
+      "kind": "session handle",
+      "blockNumber": "95387242",
+      "gasUsed": "2604636",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0xe7b1abcf8e7f89342e268e17096dbdc053d253041e56bd985713d38c24ec9882",
+      "kind": "session handle",
+      "blockNumber": "95387243",
+      "gasUsed": "2619409",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x9be0cce5349150f2796bab19253c367bb8ad5f9f8912adacc9882553e810a28c",
+      "kind": "session handle",
+      "blockNumber": "95387244",
+      "gasUsed": "2656880",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x05478049a567cd79919898b11702a1d91f76b8c6e7319f275201c4b28d85ea74",
+      "kind": "session handle",
+      "blockNumber": "95387245",
+      "gasUsed": "2592056",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x1cc7a97f17f2ef94f64b28192b1ef7621f85c01a2841e6043bab829ad5552b4a",
+      "kind": "session handle",
+      "blockNumber": "95387246",
+      "gasUsed": "2656053",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x80752cc66ee3b7638cd0c1c1a570a66e45b58332e6ca3ca3b27406062d3f58db",
+      "kind": "session handle",
+      "blockNumber": "95387247",
+      "gasUsed": "2693387",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0xad1cf8e739f77aabb2ccaa5eca77a3174deca058a9c1a33909e30606054a33a6",
+      "kind": "session handle",
+      "blockNumber": "95387248",
+      "gasUsed": "3727462",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x3cd876b36a3a1b077bc2a92858fc3b8676f85ed018b778fb29cf5a1ff2fd032a",
+      "kind": "session handle",
+      "blockNumber": "95387249",
+      "gasUsed": "3729109",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x9f26202e40fbd345c439175c88504667a0bfc260711e917c7dc4a3b7188c95fd",
+      "kind": "session handle",
+      "blockNumber": "95387250",
+      "gasUsed": "3728986",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x5c19e2848ebd5fe84e66fc06bced57915724d3ec451a23be4d28e7db6c09d34a",
+      "kind": "session handle",
+      "blockNumber": "95387251",
+      "gasUsed": "3728471",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x9389d30f75c7918005f8871de322ae340e7f41a812f9a582dc4452ce4d8bb548",
+      "kind": "session handle",
+      "blockNumber": "95387252",
+      "gasUsed": "3729193",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0xaad8c42343c8878cca45c9b4beb3f68e793a3ec240a3d496bab0eafee8061db4",
+      "kind": "session handle",
+      "blockNumber": "95387253",
+      "gasUsed": "3727475",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x8e049ee503c167505bbd5d455e17cf16a287ce4fcbc6e926347570042eaed864",
+      "kind": "session handle",
+      "blockNumber": "95387254",
+      "gasUsed": "2619535",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0xd1aab17cd2b5c328d50029472d99f8169f842f1ad5cbfa2dc02a53a5aa0d5c38",
+      "kind": "session handle",
+      "blockNumber": "95387255",
+      "gasUsed": "69205",
+      "outerStatus": "reverted"
+    },
+    {
+      "hash": "0x1ad304cda9a8be9ac8b5e6062289f5c2c3a3d6af08f0ee0339eb393dbc047f34",
+      "kind": "session handle",
+      "blockNumber": "95387256",
+      "gasUsed": "159318",
+      "outerStatus": "reverted"
+    },
+    {
+      "hash": "0x725caa5aa1470a7c1ff7726650e3ea9ce6f1f6936b7b7fd8c8809025bab1036f",
+      "kind": "setPaused",
+      "blockNumber": "95387257",
+      "gasUsed": "44778",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0x54e38671974ebd2a36e23c3f3dfe198e69b16683d855d5ec81feb84406aa5051",
+      "kind": "session handle",
+      "blockNumber": "95387258",
+      "gasUsed": "180913",
+      "outerStatus": "success",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0x82502a536f722bb16ceeb60e36da26dcf161e572770d40bd43b72292bec195f1",
+      "kind": "ownerCall",
+      "blockNumber": "95387259",
+      "gasUsed": "65260",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0x1f36148be523fd5950438e0cc664dd961eafc18a28ac9d5f2db3b853fa69cbe6",
+      "kind": "revoke",
+      "blockNumber": "95387257",
+      "gasUsed": "44445",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0x54e38671974ebd2a36e23c3f3dfe198e69b16683d855d5ec81feb84406aa5051",
+      "kind": "session handle",
+      "blockNumber": "95387258",
+      "gasUsed": "181042",
+      "outerStatus": "success",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0x54e38671974ebd2a36e23c3f3dfe198e69b16683d855d5ec81feb84406aa5051",
+      "kind": "session handle",
+      "blockNumber": "95387258",
+      "gasUsed": "181064",
+      "outerStatus": "success",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0x1d794b59da4b693ce0168d49fa268e42a715717ae87ff6129960ca41778df0d5",
+      "kind": "session handle",
+      "blockNumber": "95387257",
+      "gasUsed": "5549613",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0xfd711a76cf6a8ef973f4fab8f9c77afc51186aa83f4f1cc366a19bbdf673b210",
+      "kind": "session handle",
+      "blockNumber": "95387258",
+      "gasUsed": "6209948",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x8b743000b92943d28af15bab56d44f85db1399a9cfcffca44a4f84f01a509cc6",
+      "kind": "session handle",
+      "blockNumber": "95387259",
+      "gasUsed": "189357",
+      "outerStatus": "success",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0x4f5b741b8736c9668de2413dcd47d422534c8d4ccaa394d910b76b2c9407f30e",
+      "kind": "session handle",
+      "blockNumber": "95387259",
+      "gasUsed": "89183",
+      "outerStatus": "reverted",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0xb4948423fda73454f90f3759afbf8de9af238b17f2ea3e7d4557440665ad474f",
+      "kind": "session handle",
+      "blockNumber": "95387260",
+      "gasUsed": "5599158",
+      "outerStatus": "success",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0xd2346b4a17246d801fdc16050192008f1b1dce9279f86cb935e8f32b75062ec5",
+      "kind": "session handle",
+      "blockNumber": "95387261",
+      "gasUsed": "189345",
+      "outerStatus": "success",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0xb4948423fda73454f90f3759afbf8de9af238b17f2ea3e7d4557440665ad474f",
+      "kind": "session handle",
+      "blockNumber": "95387260",
+      "gasUsed": "5599158",
+      "outerStatus": "success",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0x65ce832c6be3ce9e3a2e37f789a1083030e67f1f34ece053ac0da44868640c7c",
+      "kind": "session handle",
+      "blockNumber": "95387262",
+      "gasUsed": "189345",
+      "outerStatus": "success",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0xee3f887436e28bfdba3cf6d2f224cadaf9786feeddd692be305525b381065f91",
+      "kind": "ownerCall",
+      "blockNumber": "95387259",
+      "gasUsed": "70072",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0x9bba822a998d079e1c94eb2179138d59d7b2d5463137b53ccedaf5496d528916",
+      "kind": "session handle",
+      "blockNumber": "95387261",
+      "gasUsed": "4780514",
+      "outerStatus": "success",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0xf7ae821c605c4ff99637d8ab91d817bd66aef0521c8a51c05f140c4e8f292d78",
+      "kind": "session handle",
+      "blockNumber": "95387260",
+      "gasUsed": "5599158",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0xfd0cdbb04dc4e541d8004fe8e9693f96ebd685adeeec6c0903901305a63eb534",
+      "kind": "session handle",
+      "blockNumber": "95387262",
+      "gasUsed": "5582046",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x7cf32c5116e450ea908bd38dab951a6e6f6e001c8e50a349bf925c083c81aaff",
+      "kind": "session handle",
+      "blockNumber": "95387264",
+      "gasUsed": "5582058",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x43d53190c6afae8b2823f133d56ada236a873c0490b72f979ce053a27baa13c1",
+      "kind": "session handle",
+      "blockNumber": "95387266",
+      "gasUsed": "5582058",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0xceb8fbc5680f521d20acc11f6f567425e88fd34e12a15e4db374b8f166ffd584",
+      "kind": "session handle",
+      "blockNumber": "95387268",
+      "gasUsed": "5582062",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x9014c0907a6f58b7af55d2975695591c8a33e0ea569b2f0c4f9687ec78f0cce5",
+      "kind": "session handle",
+      "blockNumber": "95387270",
+      "gasUsed": "5554896",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x310735b316a761392157d626a30d7619a19e681a5fbf5e93ee241aa7a6475f07",
+      "kind": "session handle",
+      "blockNumber": "95387272",
+      "gasUsed": "5554900",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0xf5d74138b12ed0b7b7a3ca08464d7923dfe14e8421db03d094487ecc62f3ee6c",
+      "kind": "session handle",
+      "blockNumber": "95387274",
+      "gasUsed": "5582058",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0xa272f248bd29b4cdced6d75f2d00b341c76e1e3a315b9bdf9348c06ea2cd8b2b",
+      "kind": "session handle",
+      "blockNumber": "95387276",
+      "gasUsed": "5554908",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x4b85c6a173a7d227994c948fc0d01939a71a8e3de0cbb942dee996d71cdd29a9",
+      "kind": "session handle",
+      "blockNumber": "95387278",
+      "gasUsed": "182551",
+      "outerStatus": "success"
+    }
+  ],
+  "runtime": {
+    "node": "v24.22.0",
+    "solc": "0.8.24+commit.e11b9ed9.Emscripten.clang",
+    "hardhat": "3.14.0",
+    "viem": "2.56.0"
+  },
+  "provenance": {
+    "packageLockSha256": "d532c7acc94992dbdbb35750c442fe4ac5e04cec0587de9617ecb65508064f78",
+    "sdkPackageSha256": "291b915820180dbf94450a2c12292c6f4c2b2f6c8a9120cd50c86223c9b09fce",
+    "sdkReceiptSourceSha256": "90e9fce59cb38717bffc9395b1f694c6fd04a888046b3b3aef6ec6dee729095b",
+    "sdkReceiptDistSha256": "dc0d2ffe3bef89f5ccc7367bf7d875d7dca437e4cf291f081558a4942f4cf093",
+    "recurringGuardSha256": "4416ba9e0c75feef1168a363a8d48e1035b4f99db2819c6b9fb7248016257c45",
+    "wireSha256": "9892b0b7eca0d46239faf5699584268a5b38cc4ba0cf109063e3c9a43dd4adfc",
+    "runnerSha256": "1941abb459aa4119f7223eae22b16d0daf4079c2bf7b9337db7874f8e0217120",
+    "smartSessionArtifactSha256": "5f0a36bfd29bbec2c197451eec4a98b0204d1f84c8a96a52b993988f8d17c8f2"
+  },
+  "fork": {
+    "blockNumber": "95387221",
+    "blockHash": "0xd07d87f56667f149079122e013c4c7e8330b72140aaaf16556860e717beb4c03",
+    "timestamp": "1792700755",
+    "hardhatVersion": "3.14.0",
+    "evmModel": "L1 Cancun with modeled ArbSys.arbBlockNumber; not Nitro gas accounting"
+  },
+  "precompileModel": {
+    "address": "0x0000000000000000000000000000000000000064",
+    "kind": "LOCAL_READ_MODEL_NOT_NATIVE_NITRO",
+    "supportedSelector": "0xa3b1b31d",
+    "nativeValueAtFork": "95387221",
+    "qualifiedBlockHash": "0xd07d87f56667f149079122e013c4c7e8330b72140aaaf16556860e717beb4c03",
+    "qualifiedLocalHeight": "95387222",
+    "originalCode": "0xfe",
+    "runtimeCodeHash": "0xf91cbd734e75dc0d3ccefb6e09cc465690a484cded997f04f5598a9573bd968a",
+    "unsupportedSelectors": "REVERT",
+    "gasEquivalent": false
+  },
+  "defaultEnvelopeDiagnostic": {
+    "hash": "0x2b5e452f73b4cca137d2690446e165906fea7e590c0394688f4c59d3bf0d8828",
+    "type": "eip1559",
+    "chainId": 4663,
+    "rpcChainId": 4663
+  },
+  "signedEnvelopeDiagnostic": {
+    "hash": "0x6b33cdf57a62db5d0dd5ec66bc4da6f4a117bf749570d94e2f56a7a6bf520204",
+    "type": "eip1559",
+    "chainId": 4663
+  },
+  "account": {
+    "address": "0x969aa7de33fdfdab7c11ade6a0288ec79f12fb19",
+    "owner": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "keeper": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    "smartSession": "0x11dc91d71c05d82f0232493d814a6af41a229b4c",
+    "entryPointModel": "0x82ab68099eed0b1276bcacdbbf31b3cc7563960a"
+  },
+  "strategy": {
+    "bag": {
+      "bagJson": 1,
+      "definition": {
+        "kind": "STATIC_BASKET",
+        "chain": "robinhood",
+        "mutability": "MUTABLE",
+        "assets": [
+          {
+            "chain": "robinhood",
+            "address": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "decimals": 18,
+            "weightBps": 4000
+          },
+          {
+            "chain": "robinhood",
+            "address": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "decimals": 8,
+            "weightBps": 3000
+          },
+          {
+            "chain": "robinhood",
+            "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+            "decimals": 6,
+            "weightBps": 3000
+          }
+        ],
+        "rules": {
+          "weightBounds": {
+            "minBps": 100,
+            "maxBps": 7000
+          },
+          "maxAssets": 10,
+          "minInvestment": null,
+          "swapSlippageBps": 100,
+          "rebalance": {
+            "frequency": "MANUAL",
+            "driftThresholdBps": 500
+          },
+          "performanceFeeBps": 0,
+          "noRouteAssetPolicy": "BLOCK"
+        }
+      }
+    },
+    "definitionHash": "0xef4f76ebabd2d5b4ce1b206b43304c538e55481c4ad7d1fac0605856752b6163",
+    "plan": {
+      "definitionHash": "0xef4f76ebabd2d5b4ce1b206b43304c538e55481c4ad7d1fac0605856752b6163",
+      "chainId": 4663,
+      "inputToken": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "inputKind": "erc20",
+      "signer": "0x969aa7de33fdfdab7c11ade6a0288ec79f12fb19",
+      "amountRaw": "10000000",
+      "kept": {
+        "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+        "amountRaw": "3000000"
+      },
+      "swapAmountRaw": "7000000",
+      "legs": [
+        {
+          "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+          "targetInputRaw": "4000000",
+          "legBps": 5714
+        },
+        {
+          "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+          "targetInputRaw": "3000000",
+          "legBps": 4286
+        }
+      ],
+      "partition": {
+        "outerBps": [
+          5714,
+          4286
+        ],
+        "groups": [
+          {
+            "legs": [
+              0
+            ],
+            "innerBps": null
+          },
+          {
+            "legs": [
+              1
+            ],
+            "innerBps": null
+          }
+        ]
+      },
+      "slippageBps": 100,
+      "maxPriceImpactBps": 500,
+      "accounting": "NOT_BAG_ACCOUNTED"
+    },
+    "btcVariant": "cbBTC, explicitly different from the earlier WBTC model"
+  },
+  "composerAccount": {
+    "chainId": 4663,
+    "signer": "0x969aa7de33fdfdab7c11ade6a0288ec79f12fb19",
+    "factory": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "factoryCodeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5",
+    "proxy": "0x65d8ff74a97abc3e57923f33d61c24fe95627c74",
+    "proxyDeployed": false,
+    "blockNumber": "95387231",
+    "blockHash": "0x7cee714ee860aa1944704d5addfe122c25b484f510b498bb58caa65faecbf75d",
+    "trust": {
+      "chainId": 4663,
+      "allowedTransactionTargets": [
+        "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae"
+      ],
+      "allowedApprovalSpenders": [
+        "0x65d8ff74a97abc3e57923f33d61c24fe95627c74"
+      ]
+    }
+  },
+  "apiRequests": [
+    {
+      "path": "/compose",
+      "status": 200,
+      "composerVersion": "0.11.3",
+      "revision": "9169cc8"
+    },
+    {
+      "path": "/compose",
+      "status": 200,
+      "composerVersion": "0.11.3",
+      "revision": "9169cc8"
+    },
+    {
+      "path": "/compose",
+      "status": 200,
+      "composerVersion": "0.11.3",
+      "revision": "9169cc8"
+    },
+    {
+      "path": "/compose",
+      "status": 200,
+      "composerVersion": "0.11.3",
+      "revision": "9169cc8"
+    },
+    {
+      "path": "/compose",
+      "status": 200,
+      "composerVersion": "0.11.3",
+      "revision": "9169cc8"
+    },
+    {
+      "path": "/compose",
+      "status": 200,
+      "composerVersion": "0.11.3",
+      "revision": "9169cc8"
+    },
+    {
+      "path": "/compose",
+      "status": 200,
+      "composerVersion": "0.11.3",
+      "revision": "9169cc8"
+    },
+    {
+      "path": "/compose",
+      "status": 200,
+      "composerVersion": "0.11.3",
+      "revision": "9169cc8"
+    },
+    {
+      "path": "/compose",
+      "status": 200,
+      "composerVersion": "0.11.3",
+      "revision": "9169cc8"
+    },
+    {
+      "path": "/compose",
+      "status": 200,
+      "composerVersion": "0.11.3",
+      "revision": "9169cc8"
+    },
+    {
+      "path": "/compose",
+      "status": 200,
+      "composerVersion": "0.11.3",
+      "revision": "9169cc8"
+    }
+  ],
+  "compiled": {
+    "quote": {
+      "plan": {
+        "definitionHash": "0xef4f76ebabd2d5b4ce1b206b43304c538e55481c4ad7d1fac0605856752b6163",
+        "chainId": 4663,
+        "inputToken": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+        "inputKind": "erc20",
+        "signer": "0x969aa7de33fdfdab7c11ade6a0288ec79f12fb19",
+        "amountRaw": "10000000",
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "swapAmountRaw": "7000000",
+        "legs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "targetInputRaw": "4000000",
+            "legBps": 5714
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "targetInputRaw": "3000000",
+            "legBps": 4286
+          }
+        ],
+        "partition": {
+          "outerBps": [
+            5714,
+            4286
+          ],
+          "groups": [
+            {
+              "legs": [
+                0
+              ],
+              "innerBps": null
+            },
+            {
+              "legs": [
+                1
+              ],
+              "innerBps": null
+            }
+          ]
+        },
+        "slippageBps": 100,
+        "maxPriceImpactBps": 500,
+        "accounting": "NOT_BAG_ACCOUNTED"
+      },
+      "provider": "lifi-composer",
+      "legs": [
+        {
+          "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+          "targetInputRaw": "4000000",
+          "expectedOutRaw": "1674902407211164",
+          "minOutRaw": "1658630937402242"
+        },
+        {
+          "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+          "targetInputRaw": "3000000",
+          "expectedOutRaw": "3680",
+          "minOutRaw": "3643"
+        }
+      ],
+      "priceImpactBps": 17,
+      "fees": [],
+      "gasLimit": "1803118",
+      "requestedAtMs": 1792700764918,
+      "receivedAtMs": 1792700766211,
+      "validUntilMs": null,
+      "warnings": []
+    },
+    "transaction": {
+      "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+      "data": "0x22aca0ca0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000208400a32e6c000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000008e00000000000000000000000000000000000000000000000000000000000000022000000000000000000000000000000000000000000000000000000000000000901100f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000035fc5360d0400a0fd4f2af552add042d716f1d1680f09000000000000000000000000000000000000000000000000000000000000000000000000000000000001ad207fd78f020f09000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002e450d45c03745909e08b5c46a87016c33f16a4a67a8f0200000000000000000000000000000000000000000000000000000000000000000000000000000009030e0d00090000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020dc20af039443dc9a8a193f0f42f0af2ea611e8a0c8c0200000000000000000000000000000000000000000000000000000000000000000000000000000001fe79e11589067c090c7b030400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020dc20af039443dc9a8a193f0f42f0af2ea611e8a09890200000000000000000000000000000000000000000000000000000000000000000000000000000001e1f0273e8d020c08000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002e450d45c03745909e08b5c46a87016c33f16a4a67a8d0200000000000000000000000000000000000000000000000000000000000000000000000000000000020bd7d308f8e1639fab988df18a8011f41eacad730d810200000000000000000000000000000000000000000000000000000000000000000000000000000000015fc5360d0400a0fd4f2af552add042d716f1d1687a8b020000000000000000000000000000000000000000000000000000000000000000000000000000000001b477751b76cf82d00a686a1232f5fcd772414af37a8a0200000000000000000000000000000000000000000000000000000000000000000000000000000000020bd7d308f8e1639fab988df18a8011f41eacad730a810200000000000000000000000000000000000000000000000000000000000000000000000000000001fe79e1158a067c0a0d7b030400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020dc20af039443dc9a8a193f0f42f0af2ea611e8a7a8a0200000000000000000000000000000000000000000000000000000000000000000000000000000001fe79e11588067c0c087b030400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020dc20af039443dc9a8a193f0f42f0af2ea611e8a7a880200000000000000000000000000000000000000000000000000000000000000000000000000000001e1f0273e88020905000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002e450d45c03745909e08b5c46a87016c33f16a4a67a88020000000000000000000000000000000000000000000000000000000000000000000000000000000002cec185eb182c47d1ba1efc84e6959e18cd620be408810200000000000000000000000000000000000000000000000000000000000000000000000000000000015fc5360d0400a0fd4f2af552add042d716f1d1687a87020000000000000000000000000000000000000000000000000000000000000000000000000000000001b477751b76cf82d00a686a1232f5fcd772414af37a86020000000000000000000000000000000000000000000000000000000000000000000000000000000002cec185eb182c47d1ba1efc84e6959e18cd620be406810200000000000000000000000000000000000000000000000000000000000000000000000000000001fe79e11586067c06087b030400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020dc20af039443dc9a8a193f0f42f0af2ea611e8a7a860200000000000000000000000000000000000000000000000000000000000000000000000000000001fe79e11583067c09057b030400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020dc20af039443dc9a8a193f0f42f0af2ea611e8a7a830200000000000000000000000000000000000000000000000000000000000000000000000000000000020bd7d308f8e1639fab988df18a8011f41eacad730381020000000000000000000000000000000000000000000000000000000000000000000000000000000a0bd7d308f8e1639fab988df18a8011f41eacad730003000000000000000000000000000000000000000000000000000000000000000000000000000000000000025fc5360d0400a0fd4f2af552add042d716f1d1680381020000000000000000000000000000000000000000000000000000000000000000000000000000000a5fc5360d0400a0fd4f2af552add042d716f1d168000300000000000000000000000000000000000000000000000000000000000000000000000000000000000002cec185eb182c47d1ba1efc84e6959e18cd620be40181020000000000000000000000000000000000000000000000000000000000000000000000000000000acec185eb182c47d1ba1efc84e6959e18cd620be4000100000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000110000000000000000000000000000000000000000000000000000000000000220000000000000000000000000000000000000000000000000000000000000026000000000000000000000000000000000000000000000000000000000000002e00000000000000000000000000000000000000000000000000000000000000320000000000000000000000000000000000000000000000000000000000000036000000000000000000000000000000000000000000000000000000000000003a000000000000000000000000000000000000000000000000000000000000003e00000000000000000000000000000000000000000000000000000000000000b800000000000000000000000000000000000000000000000000000000000000c200000000000000000000000000000000000000000000000000000000000000c600000000000000000000000000000000000000000000000000000000000000ca000000000000000000000000000000000000000000000000000000000000014800000000000000000000000000000000000000000000000000000000000001520000000000000000000000000000000000000000000000000000000000000166000000000000000000000000000000000000000000000000000000000000016a000000000000000000000000000000000000000000000000000000000000016e000000000000000000000000000000000000000000000000000000000000017200000000000000000000000000000000000000000000000000000000000000020000000000000000000000000969aa7de33fdfdab7c11ade6a0288ec79f12fb190000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000002470a0823100000000000000000000000065d8ff74a97abc3e57923f33d61c24fe95627c7400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020808101000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000002dc788000000000000000000000000000000000000000000000000000000000000078000000000000000000000000000000000000000000000000000000000000007445fd9ae2edebb55c7301c62f864ad61745fd16ae1039b21a5daff90663745f84740a38c9600000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000010000000000000000000000000065d8ff74a97abc3e57923f33d61c24fe95627c740000000000000000000000000000000000000000000000000000000000000e3b000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000000086c6966692d617069000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002a30783030303030303030303030303030303030303030303030303030303030303030303030303030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000200000000000000000000000000f4bffe4dfc693f37715a47c15bda8af9ed8f7cf1000000000000000000000000f4bffe4dfc693f37715a47c15bda8af9ed8f7cf10000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d1680000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000002dc78800000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000a4332d746b0000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001000000000000000000000000c06ebbefd94032b85424d51906e2a335efae264b0000000000000000000000000000000000000000000000000000000000001d4c000000000000000000000000000000000000000000000000000000000000000000000000000000008e6fd69a77e88ee20ba4b4fbd59dfcda3ec0e98a0000000000000000000000008e6fd69a77e88ee20ba4b4fbd59dfcda3ec0e98a0000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d168000000000000000000000000cec185eb182c47d1ba1efc84e6959e18cd620be400000000000000000000000000000000000000000000000000000000002daa3c00000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002a45f3bd1c80000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000002daa3c000000000000000000000000b477751b76cf82d00a686a1232f5fcd772414af3000000000000000000000000cec185eb182c47d1ba1efc84e6959e18cd620be40000000000000000000000000000000000000000000000000000000000000e3b0000000000000000000000000e867974275cd31c25015c2753c9d75f9f35537900000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000001846be92b890000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000002daa3c000000000000000000000000cec185eb182c47d1ba1efc84e6959e18cd620be40000000000000000000000000000000000000000000000000000000000000e60000000000000000000000000b477751b76cf82d00a686a1232f5fcd772414af3000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000005101a165492a060001015fc5360d0400a0fd4f2af552add042d716f1d16801ffff019664d869540e9d0a76f12c6623946c6d5d201e09010e867974275cd31c25015c2753c9d75f9f35537900b6a9060e600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000b477751b76cf82d00a686a1232f5fcd772414af300000000000000000000000000000000000000000000000000000000002dc78800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000003d0838000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000006acfc000000000000000000000000000000000000000000000000000000000000007c000000000000000000000000000000000000000000000000000000000000007845fd9ae2e469873504184255a2b2012226776ffa8298acc5c968ea4ab5632896ce354f94a00000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000010000000000000000000000000065d8ff74a97abc3e57923f33d61c24fe95627c740000000000000000000000000000000000000000000000000005e4841bd65b82000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000000086c6966692d617069000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002a30783030303030303030303030303030303030303030303030303030303030303030303030303030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000200000000000000000000000000f4bffe4dfc693f37715a47c15bda8af9ed8f7cf1000000000000000000000000f4bffe4dfc693f37715a47c15bda8af9ed8f7cf10000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d1680000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000003d083800000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000a4332d746b0000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001000000000000000000000000c06ebbefd94032b85424d51906e2a335efae264b000000000000000000000000000000000000000000000000000000000000270f000000000000000000000000000000000000000000000000000000000000000000000000000000008e6fd69a77e88ee20ba4b4fbd59dfcda3ec0e98a0000000000000000000000008e6fd69a77e88ee20ba4b4fbd59dfcda3ec0e98a0000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d1680000000000000000000000000bd7d308f8e1639fab988df18a8011f41eacad7300000000000000000000000000000000000000000000000000000000003ce12900000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002e45f3bd1c80000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000003ce129000000000000000000000000b477751b76cf82d00a686a1232f5fcd772414af30000000000000000000000000bd7d308f8e1639fab988df18a8011f41eacad730000000000000000000000000000000000000000000000000005e4841bd65b820000000000000000000000000e867974275cd31c25015c2753c9d75f9f35537900000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000001c46be92b890000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000003ce1290000000000000000000000000bd7d308f8e1639fab988df18a8011f41eacad730000000000000000000000000000000000000000000000000005f3c0eafcb986000000000000000000000000b477751b76cf82d00a686a1232f5fcd772414af3000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000009e01a16549588e0001015fc5360d0400a0fd4f2af552add042d716f1d16801ffff068366a39cc670b4001a1121b8f6a443a643e409510bd7d308f8e1639fab988df18a8011f41eacad73000001c2000009000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000e867974275cd31c25015c2753c9d75f9f355379f38506be7823000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000b477751b76cf82d00a686a1232f5fcd772414af300000000000000000000000000000000000000000000000000000000003d083800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000012000000000000000000000000000000000000000000000000000000000000000e4fe79e115000000000000000000000000000000000000000000000000000000000000006080810282030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000006acfc0000000000000000000000000000000000000000000000000000000000000165200000000000000000000000000000000000000000000000000000000000027100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000000000205548c837ab068cf56a2c2479df0882a4922fd203edb7517321831d95078c5f620000000000000000000000000000000000000000000000000000000000000020eecaed14a9ae4df7ab124d6a2e295033eecaed14a9ae4df7ab124d6a2e295033000000000000000000000000000000000000000000000000000000000000002047469f21e209d43e16bd7f4ca3e96bbfe3f1a41d7d486028d515bb7b3879bf2700000000000000000000000000000000000000000000000000000000",
+      "value": "0",
+      "chainId": 4663
+    },
+    "approvals": [
+      {
+        "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+        "spender": "0x65d8ff74a97abc3e57923f33d61c24fe95627c74",
+        "amountRaw": "7000000"
+      }
+    ],
+    "executor": "0x65d8ff74a97abc3e57923f33d61c24fe95627c74"
+  },
+  "policy": {
+    "address": "0x30474ce2de03045b8d0ae76f8a30dbfc8f000cea",
+    "definitionHash": "0xef4f76ebabd2d5b4ce1b206b43304c538e55481c4ad7d1fac0605856752b6163",
+    "grossPerRun": "10000000",
+    "swapPerRun": "7000000",
+    "keptPerRun": "3000000",
+    "maxRuns": 10,
+    "maxGross": "100000000",
+    "start": "1792700891",
+    "periodSeconds": "30",
+    "expiry": "1792704491",
+    "ownerFloors": [
+      {
+        "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+        "amountRaw": "1642044628028219"
+      },
+      {
+        "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+        "amountRaw": "3606"
+      }
+    ],
+    "context": "0x81a28c8275f15030a0dd9b5a5b093b7981a28c8275f15030a0dd9b5a5b093b79",
+    "pricePolicy": "FIXED_MINIMUM_OUTPUTS_APPROVED_ONCE; NOT_A_LIVE_ORACLE",
+    "profile": "Robinhood USDG/WETH/cbBTC 40/30/30, pinned 34-instruction VM shape, fixed fee+router profile",
+    "pins": [
+      {
+        "address": "0xACEB3Bb6C75488b5b806B9de4dCF78814465BdaE",
+        "codeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5"
+      },
+      {
+        "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+        "codeHash": "0x864cc9ad53b338b82da1f7cab85ab0b3d5c8861acb422b6fec63cf36234f36a6"
+      },
+      {
+        "address": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+        "codeHash": "0x5706be52f64875fee65a2cec0d80e47a23d8793cbe85d214b48445e2d05f5353"
+      },
+      {
+        "address": "0xCEC185eB182c47d1bA1EFc84e6959e18cd620Be4",
+        "codeHash": "0xce09c534882f533bcf57f4ef68fadfdaf69527975f4e332c9646b12e0268c320"
+      },
+      {
+        "address": "0xB477751B76CF82d00a686A1232f5fCD772414Af3",
+        "codeHash": "0xca0fd158089c97d9e77828a4254bc7037be8ee6f784e45d80204df0e56013101"
+      },
+      {
+        "address": "0xF4BFFE4dfC693f37715A47c15BdA8af9ed8f7Cf1",
+        "codeHash": "0x7ee455a6853068874bfd201f93d6383ed6d88934a922316db5575b057e2ebe74"
+      },
+      {
+        "address": "0x603206D6105217DD972E4Ab30676A220CA393346",
+        "codeHash": "0x5c9dd55aa2b736702f8cc44aef400fca06ea1b708f35f32978bc4ba37ec4d30f"
+      },
+      {
+        "address": "0x8E6fD69A77e88ee20Ba4B4fBd59DfCDA3EC0E98A",
+        "codeHash": "0x4b299d0674c86f701924420b3c90e4eb8efcc49f7865cc9680ee631ec7048b97"
+      },
+      {
+        "address": "0xe450D45C03745909e08B5C46A87016c33F16a4A6",
+        "codeHash": "0xa8572a5e02166f6ba48fbe72b3665eebb77aab2aef6f181d983334cad3a4cf7e"
+      },
+      {
+        "address": "0x0DC20AF039443DC9A8a193f0f42F0AF2Ea611e8a",
+        "codeHash": "0xc5bd04b825c2dd96662dfca79924ec9e5b8e80f279f8bf4b57e0f49ec35d2518"
+      }
+    ]
+  },
+  "session": {
+    "permissionId": "0x9ff0dfaf91664a7d6d3dd283876878404cc138b23c559e2b359c3aa0a2d5498a",
+    "signer": "0xB2D0616f99b8F91826f2aec95761254cFb133c33",
+    "policy": "0x30474ce2de03045b8d0ae76f8a30dbfc8f000cea",
+    "ownerPolicyGrants": 1,
+    "ownerReviewRequiredForEachNewProgram": false,
+    "upstreamCommit": "f5aaf867f7e22f3b9d746ce6f404f3a56833757f",
+    "accountAndEntryPoint": "MINIMAL_LOCAL_MODELS_NOT_PRODUCTION_WALLET"
+  },
+  "executions": [
+    {
+      "round": 1,
+      "transactionHash": "0xfd711a76cf6a8ef973f4fab8f9c77afc51186aa83f4f1cc366a19bbdf673b210",
+      "gasUsed": "6209948",
+      "before": {
+        "USDG": "100000000",
+        "WETH": "0",
+        "cbBTC": "0"
+      },
+      "after": {
+        "USDG": "93000000",
+        "WETH": "1675018679562378",
+        "cbBTC": "3680"
+      },
+      "budget": {
+        "runs": "1",
+        "gross": "10000000",
+        "last": "1792700919",
+        "window": "0",
+        "allowance": "0"
+      },
+      "window": "0",
+      "programHash": "0x7d442e0c34227b9faeb654a487cc76611f937359b97171b81aa71b0eff493943",
+      "accountApprovals": [
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "7000000"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        }
+      ],
+      "maximumTemporaryAllowanceRaw": "7000000",
+      "receiptVerification": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0xfd711a76cf6a8ef973f4fab8f9c77afc51186aa83f4f1cc366a19bbdf673b210",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387258",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1675018679562378",
+            "sentRaw": "0",
+            "netReceivedRaw": "1675018679562378",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "0",
+            "balanceAfterRaw": "1675018679562378",
+            "balanceDeltaRaw": "1675018679562378"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "0",
+            "balanceAfterRaw": "3680",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "round": 2,
+      "transactionHash": "0xf7ae821c605c4ff99637d8ab91d817bd66aef0521c8a51c05f140c4e8f292d78",
+      "gasUsed": "5599158",
+      "before": {
+        "USDG": "93000000",
+        "WETH": "1675018679562378",
+        "cbBTC": "3680"
+      },
+      "after": {
+        "USDG": "86000000",
+        "WETH": "3350037359124756",
+        "cbBTC": "7360"
+      },
+      "budget": {
+        "runs": "2",
+        "gross": "20000000",
+        "last": "1792700950",
+        "window": "1",
+        "allowance": "0"
+      },
+      "window": "1",
+      "programHash": "0x6bd40ca6fbccef9eaf5f9e8442599d89cc44215381183f56f4f1cf350d496d54",
+      "accountApprovals": [
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "7000000"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        }
+      ],
+      "maximumTemporaryAllowanceRaw": "7000000",
+      "receiptVerification": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0xf7ae821c605c4ff99637d8ab91d817bd66aef0521c8a51c05f140c4e8f292d78",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387260",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1675018679562378",
+            "sentRaw": "0",
+            "netReceivedRaw": "1675018679562378",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "1675018679562378",
+            "balanceAfterRaw": "3350037359124756",
+            "balanceDeltaRaw": "1675018679562378"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "3680",
+            "balanceAfterRaw": "7360",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "round": 3,
+      "transactionHash": "0xfd0cdbb04dc4e541d8004fe8e9693f96ebd685adeeec6c0903901305a63eb534",
+      "gasUsed": "5582046",
+      "before": {
+        "USDG": "86000000",
+        "WETH": "3350037359124756",
+        "cbBTC": "7360"
+      },
+      "after": {
+        "USDG": "79000000",
+        "WETH": "5025056038687134",
+        "cbBTC": "11040"
+      },
+      "budget": {
+        "runs": "3",
+        "gross": "30000000",
+        "last": "1792700981",
+        "window": "3",
+        "allowance": "0"
+      },
+      "window": "3",
+      "programHash": "0x886315154758b74fdf394a5443cb75a0818faa7e3fa6f767b78e59222e4e3ed8",
+      "accountApprovals": [
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "7000000"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        }
+      ],
+      "maximumTemporaryAllowanceRaw": "7000000",
+      "receiptVerification": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0xfd0cdbb04dc4e541d8004fe8e9693f96ebd685adeeec6c0903901305a63eb534",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387262",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1675018679562378",
+            "sentRaw": "0",
+            "netReceivedRaw": "1675018679562378",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "3350037359124756",
+            "balanceAfterRaw": "5025056038687134",
+            "balanceDeltaRaw": "1675018679562378"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "7360",
+            "balanceAfterRaw": "11040",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "round": 4,
+      "transactionHash": "0x7cf32c5116e450ea908bd38dab951a6e6f6e001c8e50a349bf925c083c81aaff",
+      "gasUsed": "5582058",
+      "before": {
+        "USDG": "79000000",
+        "WETH": "5025056038687134",
+        "cbBTC": "11040"
+      },
+      "after": {
+        "USDG": "72000000",
+        "WETH": "6700074718249512",
+        "cbBTC": "14720"
+      },
+      "budget": {
+        "runs": "4",
+        "gross": "40000000",
+        "last": "1792701012",
+        "window": "4",
+        "allowance": "0"
+      },
+      "window": "4",
+      "programHash": "0x87e8669df7c9b07ac77e466265b1c5fdb1dd041bf369cd519efe7fc131409fd1",
+      "accountApprovals": [
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "7000000"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        }
+      ],
+      "maximumTemporaryAllowanceRaw": "7000000",
+      "receiptVerification": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0x7cf32c5116e450ea908bd38dab951a6e6f6e001c8e50a349bf925c083c81aaff",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387264",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1675018679562378",
+            "sentRaw": "0",
+            "netReceivedRaw": "1675018679562378",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "5025056038687134",
+            "balanceAfterRaw": "6700074718249512",
+            "balanceDeltaRaw": "1675018679562378"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "11040",
+            "balanceAfterRaw": "14720",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "round": 5,
+      "transactionHash": "0x43d53190c6afae8b2823f133d56ada236a873c0490b72f979ce053a27baa13c1",
+      "gasUsed": "5582058",
+      "before": {
+        "USDG": "72000000",
+        "WETH": "6700074718249512",
+        "cbBTC": "14720"
+      },
+      "after": {
+        "USDG": "65000000",
+        "WETH": "8375093397811890",
+        "cbBTC": "18400"
+      },
+      "budget": {
+        "runs": "5",
+        "gross": "50000000",
+        "last": "1792701043",
+        "window": "5",
+        "allowance": "0"
+      },
+      "window": "5",
+      "programHash": "0xdc2906c79d62ba69dd933111e3b8cd87defa7d09ce51240010273f241db187e6",
+      "accountApprovals": [
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "7000000"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        }
+      ],
+      "maximumTemporaryAllowanceRaw": "7000000",
+      "receiptVerification": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0x43d53190c6afae8b2823f133d56ada236a873c0490b72f979ce053a27baa13c1",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387266",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1675018679562378",
+            "sentRaw": "0",
+            "netReceivedRaw": "1675018679562378",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "6700074718249512",
+            "balanceAfterRaw": "8375093397811890",
+            "balanceDeltaRaw": "1675018679562378"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "14720",
+            "balanceAfterRaw": "18400",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "round": 6,
+      "transactionHash": "0xceb8fbc5680f521d20acc11f6f567425e88fd34e12a15e4db374b8f166ffd584",
+      "gasUsed": "5582062",
+      "before": {
+        "USDG": "65000000",
+        "WETH": "8375093397811890",
+        "cbBTC": "18400"
+      },
+      "after": {
+        "USDG": "58000000",
+        "WETH": "10050065341751977",
+        "cbBTC": "22080"
+      },
+      "budget": {
+        "runs": "6",
+        "gross": "60000000",
+        "last": "1792701074",
+        "window": "6",
+        "allowance": "0"
+      },
+      "window": "6",
+      "programHash": "0x44d3776f79dd844fbb8bae8ed13b5a70a8722be6416a7121d048e4768cd591c1",
+      "accountApprovals": [
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "7000000"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        }
+      ],
+      "maximumTemporaryAllowanceRaw": "7000000",
+      "receiptVerification": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0xceb8fbc5680f521d20acc11f6f567425e88fd34e12a15e4db374b8f166ffd584",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387268",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1674971943940087",
+            "sentRaw": "0",
+            "netReceivedRaw": "1674971943940087",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "8375093397811890",
+            "balanceAfterRaw": "10050065341751977",
+            "balanceDeltaRaw": "1674971943940087"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "18400",
+            "balanceAfterRaw": "22080",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "round": 7,
+      "transactionHash": "0x9014c0907a6f58b7af55d2975695591c8a33e0ea569b2f0c4f9687ec78f0cce5",
+      "gasUsed": "5554896",
+      "before": {
+        "USDG": "58000000",
+        "WETH": "10050065341751977",
+        "cbBTC": "22080"
+      },
+      "after": {
+        "USDG": "51000000",
+        "WETH": "11725002044745009",
+        "cbBTC": "25760"
+      },
+      "budget": {
+        "runs": "7",
+        "gross": "70000000",
+        "last": "1792701105",
+        "window": "7",
+        "allowance": "0"
+      },
+      "window": "7",
+      "programHash": "0x28bf6188d9c2ad3a04efc9df31126b684ef232ad9ae5045b90b38dc2e58f48a3",
+      "accountApprovals": [
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "7000000"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        }
+      ],
+      "maximumTemporaryAllowanceRaw": "7000000",
+      "receiptVerification": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0x9014c0907a6f58b7af55d2975695591c8a33e0ea569b2f0c4f9687ec78f0cce5",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387270",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1674936702993032",
+            "sentRaw": "0",
+            "netReceivedRaw": "1674936702993032",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "10050065341751977",
+            "balanceAfterRaw": "11725002044745009",
+            "balanceDeltaRaw": "1674936702993032"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "22080",
+            "balanceAfterRaw": "25760",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "round": 8,
+      "transactionHash": "0x310735b316a761392157d626a30d7619a19e681a5fbf5e93ee241aa7a6475f07",
+      "gasUsed": "5554900",
+      "before": {
+        "USDG": "51000000",
+        "WETH": "11725002044745009",
+        "cbBTC": "25760"
+      },
+      "after": {
+        "USDG": "44000000",
+        "WETH": "13399858211575783",
+        "cbBTC": "29440"
+      },
+      "budget": {
+        "runs": "8",
+        "gross": "80000000",
+        "last": "1792701136",
+        "window": "8",
+        "allowance": "0"
+      },
+      "window": "8",
+      "programHash": "0xe55a60c7c7e770722f036759f91b29a3da9b89114e4fd59d7e6774db1a2b73c7",
+      "accountApprovals": [
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "7000000"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        }
+      ],
+      "maximumTemporaryAllowanceRaw": "7000000",
+      "receiptVerification": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0x310735b316a761392157d626a30d7619a19e681a5fbf5e93ee241aa7a6475f07",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387272",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1674856166830774",
+            "sentRaw": "0",
+            "netReceivedRaw": "1674856166830774",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "11725002044745009",
+            "balanceAfterRaw": "13399858211575783",
+            "balanceDeltaRaw": "1674856166830774"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "25760",
+            "balanceAfterRaw": "29440",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "round": 9,
+      "transactionHash": "0xf5d74138b12ed0b7b7a3ca08464d7923dfe14e8421db03d094487ecc62f3ee6c",
+      "gasUsed": "5582058",
+      "before": {
+        "USDG": "44000000",
+        "WETH": "13399858211575783",
+        "cbBTC": "29440"
+      },
+      "after": {
+        "USDG": "37000000",
+        "WETH": "15074876891138161",
+        "cbBTC": "33120"
+      },
+      "budget": {
+        "runs": "9",
+        "gross": "90000000",
+        "last": "1792701167",
+        "window": "9",
+        "allowance": "0"
+      },
+      "window": "9",
+      "programHash": "0x272fcb0f26faa3ae76a2a031c8d4df87c973cc086ca73ad5bc0ff8b5cd2495fa",
+      "accountApprovals": [
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "7000000"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        }
+      ],
+      "maximumTemporaryAllowanceRaw": "7000000",
+      "receiptVerification": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0xf5d74138b12ed0b7b7a3ca08464d7923dfe14e8421db03d094487ecc62f3ee6c",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387274",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1675018679562378",
+            "sentRaw": "0",
+            "netReceivedRaw": "1675018679562378",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "13399858211575783",
+            "balanceAfterRaw": "15074876891138161",
+            "balanceDeltaRaw": "1675018679562378"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "29440",
+            "balanceAfterRaw": "33120",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "round": 10,
+      "transactionHash": "0xa272f248bd29b4cdced6d75f2d00b341c76e1e3a315b9bdf9348c06ea2cd8b2b",
+      "gasUsed": "5554908",
+      "before": {
+        "USDG": "37000000",
+        "WETH": "15074876891138161",
+        "cbBTC": "33120"
+      },
+      "after": {
+        "USDG": "30000000",
+        "WETH": "16749652527615180",
+        "cbBTC": "36800"
+      },
+      "budget": {
+        "runs": "10",
+        "gross": "100000000",
+        "last": "1792701198",
+        "window": "10",
+        "allowance": "0"
+      },
+      "window": "10",
+      "programHash": "0xecfe228bd3e6babee2ac3e17d5324d09f55ae86738ea73e1867b5053dc644658",
+      "accountApprovals": [
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "7000000"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        }
+      ],
+      "maximumTemporaryAllowanceRaw": "7000000",
+      "receiptVerification": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0xa272f248bd29b4cdced6d75f2d00b341c76e1e3a315b9bdf9348c06ea2cd8b2b",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "7000000",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95387276",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "1674775636477019",
+            "sentRaw": "0",
+            "netReceivedRaw": "1674775636477019",
+            "minimumRaw": "1642044628028219",
+            "satisfied": true,
+            "balanceBeforeRaw": "15074876891138161",
+            "balanceAfterRaw": "16749652527615180",
+            "balanceDeltaRaw": "1674775636477019"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "3680",
+            "sentRaw": "0",
+            "netReceivedRaw": "3680",
+            "minimumRaw": "3606",
+            "satisfied": true,
+            "balanceBeforeRaw": "33120",
+            "balanceAfterRaw": "36800",
+            "balanceDeltaRaw": "3680"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3000000"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    }
+  ],
+  "execution": {
+    "success": true,
+    "result": "0x",
+    "transactionHash": "0xa272f248bd29b4cdced6d75f2d00b341c76e1e3a315b9bdf9348c06ea2cd8b2b",
+    "gasUsed": "5554908",
+    "op": {
+      "sender": "0x969aa7de33fdfdab7c11ade6a0288ec79f12fb19",
+      "nonce": "28",
+      "initCode": "0x",
+      "callData": "0xe9ae5c5300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000213830474ce2de03045b8d0ae76f8a30dbfc8f000cea0000000000000000000000000000000000000000000000000000000000000000a3d6bde900000000000000000000000065d8ff74a97abc3e57923f33d61c24fe95627c740000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000208400a32e6c000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000008e00000000000000000000000000000000000000000000000000000000000000022000000000000000000000000000000000000000000000000000000000000000901100f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000035fc5360d0400a0fd4f2af552add042d716f1d1680f09000000000000000000000000000000000000000000000000000000000000000000000000000000000001ad207fd78f020f09000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002e450d45c03745909e08b5c46a87016c33f16a4a67a8f0200000000000000000000000000000000000000000000000000000000000000000000000000000009030e0d00090000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020dc20af039443dc9a8a193f0f42f0af2ea611e8a0c8c0200000000000000000000000000000000000000000000000000000000000000000000000000000001fe79e11589067c090c7b030400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020dc20af039443dc9a8a193f0f42f0af2ea611e8a09890200000000000000000000000000000000000000000000000000000000000000000000000000000001e1f0273e8d020c08000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002e450d45c03745909e08b5c46a87016c33f16a4a67a8d0200000000000000000000000000000000000000000000000000000000000000000000000000000000020bd7d308f8e1639fab988df18a8011f41eacad730d810200000000000000000000000000000000000000000000000000000000000000000000000000000000015fc5360d0400a0fd4f2af552add042d716f1d1687a8b020000000000000000000000000000000000000000000000000000000000000000000000000000000001b477751b76cf82d00a686a1232f5fcd772414af37a8a0200000000000000000000000000000000000000000000000000000000000000000000000000000000020bd7d308f8e1639fab988df18a8011f41eacad730a810200000000000000000000000000000000000000000000000000000000000000000000000000000001fe79e1158a067c0a0d7b030400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020dc20af039443dc9a8a193f0f42f0af2ea611e8a7a8a0200000000000000000000000000000000000000000000000000000000000000000000000000000001fe79e11588067c0c087b030400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020dc20af039443dc9a8a193f0f42f0af2ea611e8a7a880200000000000000000000000000000000000000000000000000000000000000000000000000000001e1f0273e88020905000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002e450d45c03745909e08b5c46a87016c33f16a4a67a88020000000000000000000000000000000000000000000000000000000000000000000000000000000002cec185eb182c47d1ba1efc84e6959e18cd620be408810200000000000000000000000000000000000000000000000000000000000000000000000000000000015fc5360d0400a0fd4f2af552add042d716f1d1687a87020000000000000000000000000000000000000000000000000000000000000000000000000000000001b477751b76cf82d00a686a1232f5fcd772414af37a86020000000000000000000000000000000000000000000000000000000000000000000000000000000002cec185eb182c47d1ba1efc84e6959e18cd620be406810200000000000000000000000000000000000000000000000000000000000000000000000000000001fe79e11586067c06087b030400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020dc20af039443dc9a8a193f0f42f0af2ea611e8a7a860200000000000000000000000000000000000000000000000000000000000000000000000000000001fe79e11583067c09057b030400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020dc20af039443dc9a8a193f0f42f0af2ea611e8a7a830200000000000000000000000000000000000000000000000000000000000000000000000000000000020bd7d308f8e1639fab988df18a8011f41eacad730381020000000000000000000000000000000000000000000000000000000000000000000000000000000a0bd7d308f8e1639fab988df18a8011f41eacad730003000000000000000000000000000000000000000000000000000000000000000000000000000000000000025fc5360d0400a0fd4f2af552add042d716f1d1680381020000000000000000000000000000000000000000000000000000000000000000000000000000000a5fc5360d0400a0fd4f2af552add042d716f1d168000300000000000000000000000000000000000000000000000000000000000000000000000000000000000002cec185eb182c47d1ba1efc84e6959e18cd620be40181020000000000000000000000000000000000000000000000000000000000000000000000000000000acec185eb182c47d1ba1efc84e6959e18cd620be4000100000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000110000000000000000000000000000000000000000000000000000000000000220000000000000000000000000000000000000000000000000000000000000026000000000000000000000000000000000000000000000000000000000000002e00000000000000000000000000000000000000000000000000000000000000320000000000000000000000000000000000000000000000000000000000000036000000000000000000000000000000000000000000000000000000000000003a000000000000000000000000000000000000000000000000000000000000003e00000000000000000000000000000000000000000000000000000000000000b800000000000000000000000000000000000000000000000000000000000000c200000000000000000000000000000000000000000000000000000000000000c600000000000000000000000000000000000000000000000000000000000000ca000000000000000000000000000000000000000000000000000000000000014800000000000000000000000000000000000000000000000000000000000001520000000000000000000000000000000000000000000000000000000000000166000000000000000000000000000000000000000000000000000000000000016a000000000000000000000000000000000000000000000000000000000000016e000000000000000000000000000000000000000000000000000000000000017200000000000000000000000000000000000000000000000000000000000000020000000000000000000000000969aa7de33fdfdab7c11ade6a0288ec79f12fb190000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000002470a0823100000000000000000000000065d8ff74a97abc3e57923f33d61c24fe95627c7400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020808101000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000002dc788000000000000000000000000000000000000000000000000000000000000078000000000000000000000000000000000000000000000000000000000000007445fd9ae2e5ae6e3449866a6b7e255ac6a8ac693789440128f7f4919c28a5ec440a20943d100000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000010000000000000000000000000065d8ff74a97abc3e57923f33d61c24fe95627c740000000000000000000000000000000000000000000000000000000000000e3b000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000000086c6966692d617069000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002a30783030303030303030303030303030303030303030303030303030303030303030303030303030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000200000000000000000000000000f4bffe4dfc693f37715a47c15bda8af9ed8f7cf1000000000000000000000000f4bffe4dfc693f37715a47c15bda8af9ed8f7cf10000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d1680000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000002dc78800000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000a4332d746b0000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001000000000000000000000000c06ebbefd94032b85424d51906e2a335efae264b0000000000000000000000000000000000000000000000000000000000001d4c000000000000000000000000000000000000000000000000000000000000000000000000000000008e6fd69a77e88ee20ba4b4fbd59dfcda3ec0e98a0000000000000000000000008e6fd69a77e88ee20ba4b4fbd59dfcda3ec0e98a0000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d168000000000000000000000000cec185eb182c47d1ba1efc84e6959e18cd620be400000000000000000000000000000000000000000000000000000000002daa3c00000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002a45f3bd1c80000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000002daa3c000000000000000000000000b477751b76cf82d00a686a1232f5fcd772414af3000000000000000000000000cec185eb182c47d1ba1efc84e6959e18cd620be40000000000000000000000000000000000000000000000000000000000000e3b0000000000000000000000000e867974275cd31c25015c2753c9d75f9f35537900000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000001846be92b890000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000002daa3c000000000000000000000000cec185eb182c47d1ba1efc84e6959e18cd620be40000000000000000000000000000000000000000000000000000000000000e60000000000000000000000000b477751b76cf82d00a686a1232f5fcd772414af3000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000005101a1654be3640001015fc5360d0400a0fd4f2af552add042d716f1d16801ffff019664d869540e9d0a76f12c6623946c6d5d201e09010e867974275cd31c25015c2753c9d75f9f35537900b6a9060e600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000b477751b76cf82d00a686a1232f5fcd772414af300000000000000000000000000000000000000000000000000000000002dc78800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000003d0838000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000006acfc000000000000000000000000000000000000000000000000000000000000007c000000000000000000000000000000000000000000000000000000000000007845fd9ae2ee15282b8982ad29f04cab03a6c11a9600de036658d2ba0c42c21bda5a172b2ee00000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000010000000000000000000000000065d8ff74a97abc3e57923f33d61c24fe95627c740000000000000000000000000000000000000000000000000005e424f2a667ce000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000000086c6966692d617069000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002a30783030303030303030303030303030303030303030303030303030303030303030303030303030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000200000000000000000000000000f4bffe4dfc693f37715a47c15bda8af9ed8f7cf1000000000000000000000000f4bffe4dfc693f37715a47c15bda8af9ed8f7cf10000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d1680000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000003d083800000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000a4332d746b0000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000001000000000000000000000000c06ebbefd94032b85424d51906e2a335efae264b000000000000000000000000000000000000000000000000000000000000270f000000000000000000000000000000000000000000000000000000000000000000000000000000008e6fd69a77e88ee20ba4b4fbd59dfcda3ec0e98a0000000000000000000000008e6fd69a77e88ee20ba4b4fbd59dfcda3ec0e98a0000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d1680000000000000000000000000bd7d308f8e1639fab988df18a8011f41eacad7300000000000000000000000000000000000000000000000000000000003ce12900000000000000000000000000000000000000000000000000000000000000e0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002e45f3bd1c80000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000003ce129000000000000000000000000b477751b76cf82d00a686a1232f5fcd772414af30000000000000000000000000bd7d308f8e1639fab988df18a8011f41eacad730000000000000000000000000000000000000000000000000005e424f2a667ce0000000000000000000000000e867974275cd31c25015c2753c9d75f9f35537900000000000000000000000000000000000000000000000000000000000000e000000000000000000000000000000000000000000000000000000000000001c46be92b890000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000003ce1290000000000000000000000000bd7d308f8e1639fab988df18a8011f41eacad730000000000000000000000000000000000000000000000000005f360cbba2ff7000000000000000000000000b477751b76cf82d00a686a1232f5fcd772414af3000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000009e01a1654be39a0001015fc5360d0400a0fd4f2af552add042d716f1d16801ffff068366a39cc670b4001a1121b8f6a443a643e409510bd7d308f8e1639fab988df18a8011f41eacad73000001f400000a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000e867974275cd31c25015c2753c9d75f9f355379f38506be6c23000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000b477751b76cf82d00a686a1232f5fcd772414af300000000000000000000000000000000000000000000000000000000003d083800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000012000000000000000000000000000000000000000000000000000000000000000e4fe79e115000000000000000000000000000000000000000000000000000000000000006080810282030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000006acfc0000000000000000000000000000000000000000000000000000000000000165200000000000000000000000000000000000000000000000000000000000027100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d16800000000000000000000000000000000000000000000000000000000000000205548c837ab068cf56a2c2479df0882a4922fd203edb7517321831d95078c5f62000000000000000000000000000000000000000000000000000000000000002081a28c8275f15030a0dd9b5a5b093b7981a28c8275f15030a0dd9b5a5b093b79000000000000000000000000000000000000000000000000000000000000002047469f21e209d43e16bd7f4ca3e96bbfe3f1a41d7d486028d515bb7b3879bf27000000000000000000000000000000000000000000000000000000000000000000000000",
+      "accountGasLimits": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "preVerificationGas": "0",
+      "gasFees": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "paymasterAndData": "0x",
+      "signature": "0x009ff0dfaf91664a7d6d3dd283876878404cc138b23c559e2b359c3aa0a2d5498a96757b5ed1fd904e256e095ef8e2d989a6120a6b8e310d6f96c161e2ea05397e5d84977af8abbd636211bc0b284fb27cf6b520eb33881624c96f84f4c50b8c7e1b"
+    }
+  },
+  "finalBalances": {
+    "USDG": "30000000",
+    "WETH": "16749652527615180",
+    "cbBTC": "36800"
+  },
+  "finishedAt": "2026-10-22T20:27:16.309Z",
+  "rpcBoundary": {
+    "rejectedRpcRequests": [
+      {
+        "method": "eth_sendRawTransaction",
+        "isSubmissionMethod": true
+      }
+    ],
+    "upstreamReadMethods": {
+      "eth_chainId": 1,
+      "eth_blockNumber": 67,
+      "net_version": 1,
+      "eth_getBlockByNumber": 2,
+      "eth_getCode": 111,
+      "eth_getTransactionCount": 111,
+      "eth_getBalance": 111,
+      "eth_getStorageAt": 115
+    },
+    "publicSubmissionMethodsForwarded": 0
+  },
+  "summary": {
+    "pass": 71,
+    "fail": 0
+  }
+}
