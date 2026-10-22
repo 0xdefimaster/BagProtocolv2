@@ -408,7 +408,7 @@ A provider answer that breaks any row is refused with `ProviderResponseError`.
 |---|---|
 | `planPurchase` | Pure plan: enforces `minInvestment` in payment-token units, then computes exact target allocation (`splitByWeight`), keeps any matching input asset, builds whole-bp legs and the `core.partition`, and applies slippage and price-impact limits |
 | `quoteBag` / `compileBag` | Ask the provider for the route and return the quote, or the quote plus the **unsigned** transaction and the approvals it needs |
-| `simulateBag` | Dry run with `eth_call` from the signer on your client: input balance, then approvals, then the call. A point-in-time check, not a guarantee |
+| `simulateBag` | Dry run with `eth_call` from the signer on your client: full input budget balance (swapped + kept), then approvals for the swapped portion, then the call. A point-in-time check, not a guarantee |
 
 **Never signs, never sends.**
 - The SDK holds no key. It has no signing or sending call (a boundary test checks this).
@@ -424,7 +424,9 @@ A looser value is refused (`LOOSER_THAN_POLICY`). An optional `allowedTokens` re
 **Validation happens on both sides of the provider call:**
 
 - **Before calling the provider:** the SDK validates the strategy and purchase inputs, builds the plan, checks its slippage and price-impact policy, and requires a caller trust policy whose chain matches the plan. The target/spender allowlist contents are also checked for valid addresses.
-- **After the provider responds:** the SDK checks the returned transaction's chain and target, native value, approval token/spender/amount, planned output tokens on every leg, and reported price impact. A target or spender that is not allowlisted is rejected here, before the unsigned transaction is returned to the caller.
+- **After the provider responds:** the SDK checks the returned transaction's chain and target, native value, approval token/spender/amount, planned output tokens and slippage bounds on every leg, and reported price impact. A target or spender that is not allowlisted is rejected here, before the unsigned transaction is returned to the caller.
+
+Every swapped leg must report positive `expectedOutRaw` and `minOutRaw` in the same output-token units. The minimum must be no greater than the estimate and at least `floor(expectedOutRaw * (10000 - slippageBps) / 10000)`. Integer arithmetic permits less than one raw unit of rounding; a missing/zero estimate or an excessive gap is refused. This is a consistency check on the provider's reported quote, not proof of its calldata. Composer may report a simulated estimate and an operation-based minimum: an improved simulation can make that minimum fall outside this SDK bound, in which case compilation is conservatively refused rather than widening the caller's tolerance.
 
 Anything else throws `ProviderResponseError`.
 
@@ -448,6 +450,8 @@ LIFI_API_KEY=… RPC_URL=… COMPOSER_TRUSTED_TARGETS=0x… COMPOSER_TRUSTED_SPE
 ```
 
 The target and spender values must be independently verified for the strategy's chain. If the transaction needs an approval and no trusted spender is configured, compilation fails closed.
+
+If the optional `registry expectedCreator` arguments are supplied, registry verification must succeed before quoting, compiling or simulating. A failed check returns the verification report without an unsigned transaction. Omitting these arguments keeps registry verification optional.
 
 The test suite runs the same script with the real `@lifi/composer-sdk` and the network mocked. That proves the
 pipeline, **not** the live API.

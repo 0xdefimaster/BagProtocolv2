@@ -38,7 +38,7 @@ const data = encodeFunctionData({ abi: artifact.abi, functionName: 'buy', args: 
 const purchase = await compileBag(parsed.bag, { inputToken: NATIVE_TOKEN, amountRaw: 10000n, signer: account }, {
   provider: { name: 'local-geth', async compile(q) { return {
     transaction: { to: token, data, value: q.amountRaw.toString(), chainId: 4663 }, executor: null, approvals: [],
-    legs: [{ token, expectedOutRaw: '1000', minOutRaw: '900' }], priceImpactBps: 0, gasLimit: null, fees: [],
+    legs: [{ token, expectedOutRaw: '900', minOutRaw: '900' }], priceImpactBps: 0, gasLimit: null, fees: [],
   }; } }, trust: { chainId: 4663, allowedTransactionTargets: [token], allowedApprovalSpenders: [] },
 });
 // Test-only chain binding: bag.json v1's supported chain table is not changed.

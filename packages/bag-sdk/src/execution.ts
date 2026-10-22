@@ -36,6 +36,7 @@ export interface ComposerCompileResult {
   /** Contract that executes the program on the signer's behalf (informational). */
   executor: string | null;
   approvals: { token: string; spender: string; amountRaw: string }[];
+  /** Each leg needs positive expected/minimum output in the same token units to enforce the requested slippage. */
   legs: { token: string | null; expectedOutRaw: string | null; minOutRaw: string | null }[];
   priceImpactBps: number | null;
   gasLimit: string | null;
@@ -165,11 +166,19 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
     if (got.token === null) fail(`leg ${i} has no output token identity.`);
     const outputToken = got.token as string;
     if (normalizeAddress(outputToken) !== l.token) fail(`leg ${i} delivers ${outputToken}, planned ${l.token}.`);
-    for (const v of [got.expectedOutRaw, got.minOutRaw]) if (v !== null && !UINT_RE.test(v)) fail(`leg ${i} has a malformed amount.`);
+    for (const v of [got.expectedOutRaw, got.minOutRaw]) if (v !== null && (typeof v !== 'string' || !UINT_RE.test(v))) fail(`leg ${i} has a malformed amount.`);
     if (got.minOutRaw === null) fail(`leg ${i} has no positive on-chain minimum output; refusing an unbounded swap.`);
     const minOutRaw = got.minOutRaw as string;
-    if (BigInt(minOutRaw) === BigInt(0)) fail(`leg ${i} has no positive on-chain minimum output; refusing an unbounded swap.`);
-    if (got.expectedOutRaw !== null && BigInt(minOutRaw) > BigInt(got.expectedOutRaw)) fail(`leg ${i} minimum output is above its expected output.`);
+    const minimum = BigInt(minOutRaw);
+    if (minimum === BigInt(0)) fail(`leg ${i} has no positive on-chain minimum output; refusing an unbounded swap.`);
+    if (got.expectedOutRaw === null) fail(`leg ${i} has no expected output; cannot enforce the configured slippage.`);
+    const expected = BigInt(got.expectedOutRaw as string);
+    if (expected === BigInt(0)) fail(`leg ${i} has no positive expected output; cannot enforce the configured slippage.`);
+    if (minimum > expected) fail(`leg ${i} minimum output is above its expected output.`);
+    // Compare reported amounts with integer arithmetic, allowing only raw-unit
+    // floor rounding. This checks quote consistency, not arbitrary calldata.
+    const requiredMinimum = expected * BigInt(10_000 - plan.slippageBps) / BigInt(10_000);
+    if (minimum < requiredMinimum) fail(`leg ${i} minimum output ${minimum} is below ${requiredMinimum}, required by the configured slippage ${plan.slippageBps} bps.`);
     return { token: l.token, targetInputRaw: l.targetInputRaw, expectedOutRaw: got.expectedOutRaw, minOutRaw };
   });
 
@@ -227,7 +236,7 @@ const ERC20_READ_ABI = [
 
 /**
  * Dry-runs a compiled purchase from the signer with `eth_call` on the caller's client. Read-only. Checks, in
- * order: the client is on the plan's chain, the signer holds the input, the approvals are in place, then the
+ * order: the client is on the plan's chain, the signer holds the full input budget (including any kept share), the approvals are in place, then the
  * call itself. A simulation is a point-in-time check, not a guarantee: prices and routes move.
  */
 export async function simulateBag(compiled: CompiledPurchase, options: { client: SimulationClient }): Promise<SimulationResult> {
@@ -245,7 +254,8 @@ export async function simulateBag(compiled: CompiledPurchase, options: { client:
   } else {
     balance = BigInt((await client.readContract({ address: plan.inputToken as Hex, abi: ERC20_READ_ABI, functionName: 'balanceOf', args: [signer] })) as bigint);
   }
-  if (balance < plan.swapAmountRaw) return { status: 'INSUFFICIENT_BALANCE', balanceRaw: balance, requiredRaw: plan.swapAmountRaw };
+  // The basket also needs the retained input share, even though it is never approved or swapped.
+  if (balance < plan.amountRaw) return { status: 'INSUFFICIENT_BALANCE', balanceRaw: balance, requiredRaw: plan.amountRaw };
 
   const missing: CompiledPurchase['approvals'] = [];
   for (const a of compiled.approvals) {
