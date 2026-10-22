@@ -1,6 +1,6 @@
 {
   "name": "@bagprotocol/sdk",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "bag.json v1: parse, validate, normalize, hash and verify BAG strategies, and compile unsigned purchases, without the BAG app.",
   "type": "module",
   "main": "./dist/index.js",
@@ -28,14 +28,16 @@
     "dist",
     "schema",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/fix-esm-imports.mjs",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "smoke:consumer": "node scripts/consumer-smoke.mjs",
-    "smoke:starter": "node scripts/starter-smoke.mjs"
+    "smoke:starter": "node scripts/starter-smoke.mjs",
+    "release:check": "node scripts/release-candidate.mjs"
   },
   "peerDependencies": {
     "viem": "^2.0.0",
@@ -46,5 +48,20 @@
       "optional": true
     }
   },
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0xdefimaster/BagProtocolv2.git",
+    "directory": "packages/bag-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/0xdefimaster/BagProtocolv2/issues"
+  },
+  "homepage": "https://github.com/0xdefimaster/BagProtocolv2/tree/main/packages/bag-sdk"
 }

@@ -1,0 +1,8 @@
+{
+  "candidateVersion": "0.3.0",
+  "factoryPolicyConfirmed": false,
+  "deploymentPinApproved": false,
+  "liveOriginalPurchaseVerified": false,
+  "publicationApproved": false,
+  "note": "Candidate preparation does not approve a production deployment, submit a purchase or authorize npm publication."
+}
