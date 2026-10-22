@@ -1,0 +1,63 @@
+{
+  "bagId": "local-reference",
+  "bag": {
+    "bagJson": 1,
+    "definition": {
+      "kind": "STATIC_BASKET",
+      "chain": "robinhood",
+      "mutability": "MUTABLE",
+      "assets": [
+        {
+          "chain": "robinhood",
+          "address": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+          "decimals": 18,
+          "weightBps": 4000
+        },
+        {
+          "chain": "robinhood",
+          "address": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+          "decimals": 8,
+          "weightBps": 3000
+        },
+        {
+          "chain": "robinhood",
+          "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "decimals": 6,
+          "weightBps": 3000
+        }
+      ],
+      "rules": {
+        "weightBounds": {
+          "minBps": 100,
+          "maxBps": 7000
+        },
+        "maxAssets": 10,
+        "minInvestment": null,
+        "swapSlippageBps": 100,
+        "rebalance": {
+          "frequency": "MANUAL",
+          "driftThresholdBps": 500
+        },
+        "performanceFeeBps": 0,
+        "noRouteAssetPolicy": "BLOCK"
+      }
+    }
+  },
+  "definitionHash": "0xef4f76ebabd2d5b4ce1b206b43304c538e55481c4ad7d1fac0605856752b6163",
+  "settings": {
+    "budget": "27.250001",
+    "amount": "12.500002",
+    "interval": "2",
+    "unit": "hours"
+  },
+  "plan": {
+    "version": 1,
+    "budgetRaw": "27250001",
+    "amountRaw": "12500002",
+    "remainderRaw": "2249997",
+    "purchases": 2,
+    "intervalSeconds": 7200,
+    "firstAt": "2026-10-23T00:12:39.318Z",
+    "lastAt": "2026-10-23T02:12:39.318Z"
+  }
+}
