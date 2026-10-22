@@ -1,0 +1,251 @@
+{
+  "provenance": {
+    "repository": "erc7579/smartsessions",
+    "commit": "f5aaf867f7e22f3b9d746ce6f404f3a56833757f",
+    "path": "artifacts/SudoPolicy/SudoPolicy.json",
+    "originalArtifactSha256": "c31c66361caa68c798716798db906b14567517b6bc6d367e61447798acc5e809",
+    "extraction": "Original ABI and creation bytecode, without metadata or deployed-bytecode duplication"
+  },
+  "abi": [
+    {
+      "type": "function",
+      "name": "check1271SignedAction",
+      "inputs": [
+        {
+          "name": "",
+          "type": "bytes32",
+          "internalType": "ConfigId"
+        },
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "",
+          "type": "bytes",
+          "internalType": "bytes"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bool",
+          "internalType": "bool"
+        }
+      ],
+      "stateMutability": "pure"
+    },
+    {
+      "type": "function",
+      "name": "checkAction",
+      "inputs": [
+        {
+          "name": "",
+          "type": "bytes32",
+          "internalType": "ConfigId"
+        },
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "",
+          "type": "bytes",
+          "internalType": "bytes"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "pure"
+    },
+    {
+      "type": "function",
+      "name": "checkUserOpPolicy",
+      "inputs": [
+        {
+          "name": "",
+          "type": "bytes32",
+          "internalType": "ConfigId"
+        },
+        {
+          "name": "",
+          "type": "tuple",
+          "internalType": "struct PackedUserOperation",
+          "components": [
+            {
+              "name": "sender",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "nonce",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "initCode",
+              "type": "bytes",
+              "internalType": "bytes"
+            },
+            {
+              "name": "callData",
+              "type": "bytes",
+              "internalType": "bytes"
+            },
+            {
+              "name": "accountGasLimits",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "preVerificationGas",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "gasFees",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "paymasterAndData",
+              "type": "bytes",
+              "internalType": "bytes"
+            },
+            {
+              "name": "signature",
+              "type": "bytes",
+              "internalType": "bytes"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "pure"
+    },
+    {
+      "type": "function",
+      "name": "initializeWithMultiplexer",
+      "inputs": [
+        {
+          "name": "account",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "configId",
+          "type": "bytes32",
+          "internalType": "ConfigId"
+        },
+        {
+          "name": "",
+          "type": "bytes",
+          "internalType": "bytes"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "supportsInterface",
+      "inputs": [
+        {
+          "name": "interfaceID",
+          "type": "bytes4",
+          "internalType": "bytes4"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bool",
+          "internalType": "bool"
+        }
+      ],
+      "stateMutability": "pure"
+    },
+    {
+      "type": "event",
+      "name": "PolicySet",
+      "inputs": [
+        {
+          "name": "id",
+          "type": "bytes32",
+          "indexed": false,
+          "internalType": "ConfigId"
+        },
+        {
+          "name": "multiplexer",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        },
+        {
+          "name": "account",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "error",
+      "name": "PolicyNotInitialized",
+      "inputs": [
+        {
+          "name": "id",
+          "type": "bytes32",
+          "internalType": "ConfigId"
+        },
+        {
+          "name": "multiplexer",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "account",
+          "type": "address",
+          "internalType": "address"
+        }
+      ]
+    }
+  ],
+  "bytecode": {
+    "object": "0x6080604052348015600e575f5ffd5b506103988061001c5f395ff3fe608060405234801561000f575f5ffd5b5060043610610064575f3560e01c80637129edce1161004d5780637129edce146100b7578063989c9e46146100cc578063cbf34505146100e1575f5ffd5b806301ffc9a71461006857806305c0089514610090575b5f5ffd5b61007b6100763660046101dc565b6100fb565b60405190151581526020015b60405180910390f35b6100a961009e366004610277565b5f9695505050505050565b604051908152602001610087565b6100a96100c53660046102ea565b5f92915050565b6100df6100da366004610335565b610182565b005b61007b6100ef366004610277565b60019695505050505050565b5f6001600160e01b03198216633894f6e760e11b148061012b57506001600160e01b031982166305c0089560e01b145b8061014657506001600160e01b0319821663cbf3450560e01b145b8061016157506001600160e01b031982166301ffc9a760e01b145b8061017c57506001600160e01b03198216634c4e4f2360e11b145b92915050565b6040805184815233602082015273ffffffffffffffffffffffffffffffffffffffff86168183015290517f5d14f8bf6f75758495bb0b0768b81cdebc7869d1f19edacc2f483ca0c89a17159181900360600190a150505050565b5f602082840312156101ec575f5ffd5b81356001600160e01b031981168114610203575f5ffd5b9392505050565b803573ffffffffffffffffffffffffffffffffffffffff8116811461022d575f5ffd5b919050565b5f5f83601f840112610242575f5ffd5b50813567ffffffffffffffff811115610259575f5ffd5b602083019150836020828501011115610270575f5ffd5b9250929050565b5f5f5f5f5f5f60a0878903121561028c575f5ffd5b8635955061029c6020880161020a565b94506102aa6040880161020a565b935060608701359250608087013567ffffffffffffffff8111156102cc575f5ffd5b6102d889828a01610232565b979a9699509497509295939492505050565b5f5f604083850312156102fb575f5ffd5b82359150602083013567ffffffffffffffff811115610318575f5ffd5b8301610120818603121561032a575f5ffd5b809150509250929050565b5f5f5f5f60608587031215610348575f5ffd5b6103518561020a565b935060208501359250604085013567ffffffffffffffff811115610373575f5ffd5b61037f87828801610232565b9598949750955050505056fea164736f6c634300081c000a"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "observedAt": "2026-10-22T08:35:12.593Z",
+  "chainId": 4663,
+  "tokens": {
+    "USDG": {
+      "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "symbol": "USDG",
+      "name": "Global Dollar",
+      "decimals": 6,
+      "codeHash": "0x864cc9ad53b338b82da1f7cab85ab0b3d5c8861acb422b6fec63cf36234f36a6",
+      "registryPriceUSD": "1.0006955658",
+      "registryVerificationStatus": "verified"
+    },
+    "WETH": {
+      "address": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+      "symbol": "WETH",
+      "name": "WETH",
+      "decimals": 18,
+      "codeHash": "0x5706be52f64875fee65a2cec0d80e47a23d8793cbe85d214b48445e2d05f5353",
+      "registryPriceUSD": "2412.35",
+      "registryVerificationStatus": "verified"
+    },
+    "cbBTC": {
+      "address": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+      "symbol": "cbBTC",
+      "name": "Coinbase Wrapped BTC",
+      "decimals": 8,
+      "codeHash": "0xce09c534882f533bcf57f4ef68fadfdaf69527975f4e332c9646b12e0268c320",
+      "registryPriceUSD": "82129.7834563545",
+      "registryVerificationStatus": "verified"
+    }
+  },
+  "holderCandidates": [
+    {
+      "address": "0x2CBa368de9a56363C1e5F7A3425Dff1Cf4985c79",
+      "balanceRaw": "10992370361",
+      "isContract": true
+    },
+    {
+      "address": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+      "balanceRaw": "58646060656606",
+      "isContract": true
+    }
+  ]
+}
