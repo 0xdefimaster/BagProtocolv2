@@ -1,0 +1,309 @@
+{
+  "provenance": {
+    "repository": "erc7579/smartsessions",
+    "commit": "f5aaf867f7e22f3b9d746ce6f404f3a56833757f",
+    "path": "artifacts/TimeFramePolicy/TimeFramePolicy.json",
+    "originalArtifactSha256": "48be638ceec6b61d727f63c8123cd594cf86df4b1777e321798c4e35e0f424c1",
+    "extraction": "Original ABI and creation bytecode, without metadata or deployed-bytecode duplication"
+  },
+  "abi": [
+    {
+      "type": "function",
+      "name": "check1271SignedAction",
+      "inputs": [
+        {
+          "name": "id",
+          "type": "bytes32",
+          "internalType": "ConfigId"
+        },
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "smartAccount",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "",
+          "type": "bytes",
+          "internalType": "bytes"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bool",
+          "internalType": "bool"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "checkAction",
+      "inputs": [
+        {
+          "name": "id",
+          "type": "bytes32",
+          "internalType": "ConfigId"
+        },
+        {
+          "name": "account",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "",
+          "type": "bytes",
+          "internalType": "bytes"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "checkUserOpPolicy",
+      "inputs": [
+        {
+          "name": "id",
+          "type": "bytes32",
+          "internalType": "ConfigId"
+        },
+        {
+          "name": "op",
+          "type": "tuple",
+          "internalType": "struct PackedUserOperation",
+          "components": [
+            {
+              "name": "sender",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "nonce",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "initCode",
+              "type": "bytes",
+              "internalType": "bytes"
+            },
+            {
+              "name": "callData",
+              "type": "bytes",
+              "internalType": "bytes"
+            },
+            {
+              "name": "accountGasLimits",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "preVerificationGas",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "gasFees",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "paymasterAndData",
+              "type": "bytes",
+              "internalType": "bytes"
+            },
+            {
+              "name": "signature",
+              "type": "bytes",
+              "internalType": "bytes"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getTimeFrameConfig",
+      "inputs": [
+        {
+          "name": "id",
+          "type": "bytes32",
+          "internalType": "ConfigId"
+        },
+        {
+          "name": "multiplexer",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "smartAccount",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "TimeFrameConfig"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "initializeWithMultiplexer",
+      "inputs": [
+        {
+          "name": "account",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "configId",
+          "type": "bytes32",
+          "internalType": "ConfigId"
+        },
+        {
+          "name": "initData",
+          "type": "bytes",
+          "internalType": "bytes"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "supportsInterface",
+      "inputs": [
+        {
+          "name": "interfaceID",
+          "type": "bytes4",
+          "internalType": "bytes4"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bool",
+          "internalType": "bool"
+        }
+      ],
+      "stateMutability": "pure"
+    },
+    {
+      "type": "function",
+      "name": "timeFrameConfigs",
+      "inputs": [
+        {
+          "name": "id",
+          "type": "bytes32",
+          "internalType": "ConfigId"
+        },
+        {
+          "name": "multiplexer",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "opSender",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "TimeFrameConfig"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "event",
+      "name": "PolicySet",
+      "inputs": [
+        {
+          "name": "id",
+          "type": "bytes32",
+          "indexed": false,
+          "internalType": "ConfigId"
+        },
+        {
+          "name": "multiplexer",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        },
+        {
+          "name": "account",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "error",
+      "name": "PolicyNotInitialized",
+      "inputs": [
+        {
+          "name": "id",
+          "type": "bytes32",
+          "internalType": "ConfigId"
+        },
+        {
+          "name": "multiplexer",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "account",
+          "type": "address",
+          "internalType": "address"
+        }
+      ]
+    }
+  ],
+  "bytecode": {
+    "object": "0x6080604052348015600e575f5ffd5b506107778061001c5f395ff3fe608060405234801561000f575f5ffd5b506004361061007a575f3560e01c80637129edce116100585780637129edce14610102578063989c9e4614610115578063cbf345051461012a578063f4d098801461013d575f5ffd5b806301ffc9a71461007e57806305c00895146100a657806360feedad146100c7575b5f5ffd5b61009161008c366004610506565b61016c565b60405190151581526020015b60405180910390f35b6100b96100b436600461058d565b6101f3565b60405190815260200161009d565b6100b96100d5366004610600565b5f928352602083815260408085206001600160a01b03948516865282528085209290931684525290205490565b6100b9610110366004610639565b61020c565b610128610123366004610684565b61022b565b005b61009161013836600461058d565b610335565b6100b961014b366004610600565b5f602081815293815260408082208552928152828120909352825290205481565b5f6001600160e01b031982166301ffc9a760e01b148061019c57506001600160e01b03198216634c4e4f2360e11b145b806101b757506001600160e01b031982166305c0089560e01b145b806101d257506001600160e01b0319821663cbf3450560e01b145b806101ed57506001600160e01b03198216633894f6e760e11b145b92915050565b5f6101ff873388610421565b90505b9695505050505050565b5f610224833361021f60208601866106da565b610421565b9392505050565b5f610239600c8284866106f3565b6102429161071a565b60a01c90506102518160301c90565b65ffffffffffff16158061027e575061026a8160301c90565b65ffffffffffff168165ffffffffffff1611155b8433879091926102c05760405163369d19e760e11b815260048101939093526001600160a01b0391821660248401521660448201526064015b60405180910390fd5b5050505f84815260208181526040808320338085529083528184206001600160a01b038a16808652908452938290208590558151888152928301528101919091527f5d14f8bf6f75758495bb0b0768b81cdebc7869d1f19edacc2f483ca0c89a17159060600160405180910390a15050505050565b5f8681526020818152604080832033845282528083206001600160a01b03881684529091528120546103678160301c90565b65ffffffffffff1615158061038357508065ffffffffffff1615155b8833889091926103c05760405163369d19e760e11b815260048101939093526001600160a01b0391821660248401521660448201526064016102b7565b5050506103cd8160301c90565b65ffffffffffff164210806103f157506103e78160301c90565b65ffffffffffff16155b801561040557508065ffffffffffff164210155b15610414576001915050610202565b505f979650505050505050565b5f838152602081815260408083206001600160a01b03808716855290835281842090851684529091528120546104578160301c90565b65ffffffffffff1615158061047357508065ffffffffffff1615155b8585859091926104b05760405163369d19e760e11b815260048101939093526001600160a01b0391821660248401521660448201526064016102b7565b5050506104c75f6104c18360301c90565b836104d0565b95945050505050565b5f60d08265ffffffffffff16901b60a08465ffffffffffff16901b856104f6575f6104f9565b60015b60ff161717949350505050565b5f60208284031215610516575f5ffd5b81356001600160e01b031981168114610224575f5ffd5b80356001600160a01b0381168114610543575f5ffd5b919050565b5f5f83601f840112610558575f5ffd5b50813567ffffffffffffffff81111561056f575f5ffd5b602083019150836020828501011115610586575f5ffd5b9250929050565b5f5f5f5f5f5f60a087890312156105a2575f5ffd5b863595506105b26020880161052d565b94506105c06040880161052d565b935060608701359250608087013567ffffffffffffffff8111156105e2575f5ffd5b6105ee89828a01610548565b979a9699509497509295939492505050565b5f5f5f60608486031215610612575f5ffd5b833592506106226020850161052d565b91506106306040850161052d565b90509250925092565b5f5f6040838503121561064a575f5ffd5b82359150602083013567ffffffffffffffff811115610667575f5ffd5b83016101208186031215610679575f5ffd5b809150509250929050565b5f5f5f5f60608587031215610697575f5ffd5b6106a08561052d565b935060208501359250604085013567ffffffffffffffff8111156106c2575f5ffd5b6106ce87828801610548565b95989497509550505050565b5f602082840312156106ea575f5ffd5b6102248261052d565b5f5f85851115610701575f5ffd5b8386111561070d575f5ffd5b5050820193919092039150565b803573ffffffffffffffffffffffffffffffffffffffff19811690600c8410156107635773ffffffffffffffffffffffffffffffffffffffff198085600c0360031b1b82161691505b509291505056fea164736f6c634300081c000a"
+  }
+}

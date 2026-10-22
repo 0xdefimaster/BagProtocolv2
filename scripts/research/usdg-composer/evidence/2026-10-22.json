@@ -1,0 +1,217 @@
+{
+  "status": "REAL_USDG_COMPOSER_FORK_EXECUTION_VERIFIED",
+  "startedAt": "2026-10-22T17:49:51.476Z",
+  "finishedAt": "2026-10-22T17:50:42.189Z",
+  "scope": "Real Robinhood contract state and real Composer program; local model account and EntryPoint; one owner-reviewed execution, not unattended DCA",
+  "qualifiedSdkBaseline": "82b3b2926da467e3530eba0c9f6c38452d8511ab",
+  "sourceIdentity": "DECLARED_BASELINE_WITH_RECORDED_FILE_HASHES",
+  "sourceFilesSha256": {
+    "run.mjs": "9dd4d3e75b4b30cc91f0615e09bb4730403251329659299f1494c85115dc72bc",
+    "settings.mjs": "3943b3b139041203c571915f5071deec5ddbb62dd7c964f46cd62381dba43d3e",
+    "contracts/ResearchAccount.sol": "8c3597b0193280cf423fcbc68f63d07690edf8e63a794cbcae848abfca82beb5",
+    "contracts/ReviewedPurchase.sol": "9165847337dd78c97ffedb47cb929a2324f8a4f43d7831e2b0bedc9f1de4f88c",
+    "vendor/SmartSession.json": "5f0a36bfd29bbec2c197451eec4a98b0204d1f84c8a96a52b993988f8d17c8f2",
+    "vendor/SudoPolicy.json": "e935f328ee7d6ce49d792f095862f7b037f6912cdb7bc9ecaa4a0b5a8ef88dc7",
+    "vendor/TimeFramePolicy.json": "b49e0ed961255713d27da9925d413c9d277267b23e038aaff035a9ee04055bb6"
+  },
+  "sdkVersion": "0.3.0-source-unpublished",
+  "composerSdkVersion": "0.11.3",
+  "runtime": {
+    "node": "v24.22.0",
+    "solc": "0.8.24+commit.e11b9ed9.Emscripten.clang",
+    "hardhat": "3.14.0",
+    "viem": "2.56.0"
+  },
+  "provenance": {
+    "packageLockSha256": "d532c7acc94992dbdbb35750c442fe4ac5e04cec0587de9617ecb65508064f78",
+    "sdkPackageSha256": "291b915820180dbf94450a2c12292c6f4c2b2f6c8a9120cd50c86223c9b09fce",
+    "sdkReceiptSourceSha256": "90e9fce59cb38717bffc9395b1f694c6fd04a888046b3b3aef6ec6dee729095b",
+    "sdkReceiptDistSha256": "dc0d2ffe3bef89f5ccc7367bf7d875d7dca437e4cf291f081558a4942f4cf093",
+    "smartSessionArtifactSha256": "5f0a36bfd29bbec2c197451eec4a98b0204d1f84c8a96a52b993988f8d17c8f2"
+  },
+  "fork": {
+    "blockNumber": "95297321",
+    "blockHash": "0x69dcef892d0a457ca7b1664ec25a6e6f20736d5ceb6f1050426311ca3321bdac",
+    "timestamp": "1792691406",
+    "hardhatVersion": "3.14.0",
+    "evmModel": "L1 Cancun; not Nitro gas accounting"
+  },
+  "apiRequests": [
+    {
+      "path": "/compose",
+      "status": 200,
+      "composerVersion": "0.11.3",
+      "revision": "9169cc8"
+    }
+  ],
+  "account": {
+    "address": "0x969aa7de33fdfdab7c11ade6a0288ec79f12fb19",
+    "owner": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "keeper": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    "smartSession": "0x11dc91d71c05d82f0232493d814a6af41a229b4c",
+    "entryPointModel": "0x82ab68099eed0b1276bcacdbbf31b3cc7563960a"
+  },
+  "session": {
+    "permissionId": "0xf60d460a18580b05ece9e24166ad222bbbfb67d37619fc539814793316216f36",
+    "signer": "0x4608EB5d8465A6Af2862d913347647E17523B111",
+    "policy": "0x30474ce2de03045b8d0ae76f8a30dbfc8f000cea",
+    "exactReviewedCalldata": true,
+    "ownerReviewRequiredForEachNewProgram": true,
+    "upstreamCommit": "f5aaf867f7e22f3b9d746ce6f404f3a56833757f"
+  },
+  "strategy": {
+    "definitionHash": "0xef4f76ebabd2d5b4ce1b206b43304c538e55481c4ad7d1fac0605856752b6163",
+    "inputUSDGRaw": "100000000",
+    "weightsBps": {
+      "WETH": 4000,
+      "cbBTC": 3000,
+      "USDG": 3000
+    },
+    "slippageBps": 100,
+    "btcVariant": "cbBTC, explicitly different from the earlier WBTC model"
+  },
+  "checks": [
+    {
+      "name": "upstream is the intended chain",
+      "status": "PASS"
+    },
+    {
+      "name": "public submission blocked by RPC proxy",
+      "status": "PASS"
+    },
+    {
+      "name": "local transaction envelope carries the expected chain domain",
+      "status": "PASS"
+    },
+    {
+      "name": "forked factory bytecode matches research pin",
+      "status": "PASS"
+    },
+    {
+      "name": "forked tokens match the recorded USDG, WETH and cbBTC definitions",
+      "status": "PASS"
+    },
+    {
+      "name": "real Composer compiles USDG basket for the smart account signer",
+      "status": "PASS"
+    },
+    {
+      "name": "real fork USDG funding, with no token bytecode or storage replacement",
+      "status": "PASS"
+    },
+    {
+      "name": "session attempt before scheduled time spends no USDG",
+      "status": "PASS"
+    },
+    {
+      "name": "altered Composer program is rejected without spending USDG",
+      "status": "PASS"
+    },
+    {
+      "name": "keeper executes real first-use Composer basket with a session signature",
+      "status": "PASS"
+    },
+    {
+      "name": "SDK verifies the actual inner Composer call and token balance changes",
+      "status": "PASS"
+    },
+    {
+      "name": "replay after the authorized purchase spends no additional USDG",
+      "status": "PASS"
+    }
+  ],
+  "summary": {
+    "pass": 12,
+    "fail": 0
+  },
+  "execution": {
+    "success": true,
+    "result": "0x",
+    "transactionHash": "0xed23e9c583e19adff5299ab894830388c71e919aa61a69d3a4e71e2180fe5f2d",
+    "gasUsed": "1884007",
+    "before": {
+      "USDG": "100000000",
+      "WETH": "0",
+      "cbBTC": "0"
+    },
+    "after": {
+      "USDG": "30000000",
+      "WETH": "16779449939452452",
+      "cbBTC": "36899"
+    }
+  },
+  "receiptVerification": {
+    "status": "VERIFIED",
+    "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+    "transactionHash": "0xed23e9c583e19adff5299ab894830388c71e919aa61a69d3a4e71e2180fe5f2d",
+    "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+    "spentInputRaw": "70000000",
+    "transactionBinding": "CALL_TRACE",
+    "chainId": 4663,
+    "blockNumber": "95297339",
+    "confirmations": "1",
+    "outputs": [
+      {
+        "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+        "receivedRaw": "16779449939452452",
+        "sentRaw": "0",
+        "netReceivedRaw": "16779449939452452",
+        "minimumRaw": "16622482455125347",
+        "satisfied": true,
+        "balanceBeforeRaw": "0",
+        "balanceAfterRaw": "16779449939452452",
+        "balanceDeltaRaw": "16779449939452452"
+      },
+      {
+        "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+        "receivedRaw": "36899",
+        "sentRaw": "0",
+        "netReceivedRaw": "36899",
+        "minimumRaw": "36603",
+        "satisfied": true,
+        "balanceBeforeRaw": "0",
+        "balanceAfterRaw": "36899",
+        "balanceDeltaRaw": "36899"
+      }
+    ],
+    "kept": {
+      "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "amountRaw": "30000000"
+    },
+    "keptBalanceVerified": true,
+    "accounting": "NOT_BAG_ACCOUNTED",
+    "issues": []
+  },
+  "rpcBoundary": {
+    "rejectedRpcRequests": [
+      {
+        "method": "eth_sendRawTransaction",
+        "isSubmissionMethod": true
+      },
+      {
+        "method": "eth_feeHistory",
+        "isSubmissionMethod": false
+      }
+    ],
+    "upstreamReadMethods": {
+      "eth_blockNumber": 48,
+      "eth_chainId": 1,
+      "net_version": 1,
+      "eth_getBlockByNumber": 2,
+      "eth_getBalance": 90,
+      "eth_getCode": 90,
+      "eth_getTransactionCount": 90,
+      "eth_getStorageAt": 146
+    },
+    "publicSubmissionMethodsForwarded": 0
+  },
+  "publicTransactionsSubmitted": 0,
+  "limitations": [
+    "One owner-reviewed exact Composer program; fresh programs need new owner review",
+    "Minimal account/EntryPoint are research models; production wallet and bundler integration unqualified",
+    "Local Cancun gas is not Robinhood Nitro fee measurement",
+    "Current factory/migration policy remains unconfirmed by LI.FI",
+    "Not unattended DCA; no price trigger, keeper service, rebalance or app accounting"
+  ],
+  "rawEvidence": "Run the harness to generate full compiled program, API response, transaction receipt and call trace under ignored artifacts/usdg-composer/<timestamp>/."
+}
