@@ -1,0 +1,41 @@
+{
+  "status": "EXPLICIT_DCA_COUNT_TOTAL_VALIDATION_VERIFIED",
+  "recordedAt": "2026-10-23T01:40:45.852Z",
+  "scope": "Form, pure planner and API validation only; no new fork execution, wallet permission or public transaction claimed",
+  "tests": {
+    "passed": 53,
+    "failed": 0
+  },
+  "typescript": {
+    "command": "node node_modules/typescript/bin/tsc --noEmit --incremental false",
+    "exitCode": 0
+  },
+  "testCommand": "node node_modules/vitest/vitest.mjs run lib/dca/__tests__ lib/server/__tests__/dca-trial.test.ts components/bags/__tests__/DcaTrialPanel.test.tsx 'app/api/bags/[id]/dca-trial/route.test.ts' components/app/__tests__/AppHeader.nav.test.tsx components/app/__tests__/dca-nav.test.ts",
+  "browserObservations": {
+    "matching": {
+      "count": 5,
+      "amount": "5",
+      "total": "25",
+      "submitEnabled": true
+    },
+    "mismatch": {
+      "count": 5,
+      "amount": "5",
+      "total": "30",
+      "submitEnabled": false,
+      "expectedTotal": "25",
+      "errorVisible": true
+    },
+    "newTrialStarted": false
+  },
+  "sourceSha256": {
+    "lib/dca/plan.ts": "e5a8e4abeb0eb82f4c7b2af40d46777f6e8a87a52d8c5b98150445e157001eab",
+    "components/bags/DcaTrialPanel.tsx": "b9aea81e70df7f78390daeb044f8a8f43deb8380964f9dc988ec1be216bb0b37",
+    "lib/dca/__tests__/plan.test.ts": "c7711012ee28ce7f51487e8688c2f115e0bbc5338c5ac6775758aea8e081d121",
+    "components/bags/__tests__/DcaTrialPanel.test.tsx": "a2d872554452b929f18b9239342ff961f2e1090e81b2209e69698f0a4c885433",
+    "app/api/bags/[id]/dca-trial/route.test.ts": "7887cc551385baa4e6d546b68a43d20c08dc1061a51d07df49e2e6521a9baf37",
+    "docs/DCA_LOCAL_TRIAL.md": "1a513ff233e78d23f12066b0b94cd1b92cf8de6894850e02c105927bc99f1c85",
+    "scripts/research/dca-trial/README.md": "5ef96790c7d80a8f097791d192f910028953b88a2598751320ed9baf1a3c8717",
+    "scripts/research/dca-trial/examples/exact-total.json": "1fb7361627b12fb6b7c1df40f603ee57c616bb0d84af867b9b8ca2df0db15b88"
+  }
+}

@@ -14,7 +14,9 @@ node scripts/research/dca-trial/run.mjs --config artifacts/dca-trial/<id>/reques
 
 Fresh output directories are required. Fork state and quote results can change. The chosen interval is applied to actual local block timestamps with synthetic time advances; it is not an observation over real days/weeks. An unsupported route or expired quote stops execution and must not be reported as success.
 
-Two captured request files are included in `evidence/`; replace `--config` with `scripts/research/dca-trial/evidence/ui-request.json` or `fractional-request.json` to repeat their settings with current quotes. Their date previews are historical; the recorded execution schedule is recalculated from the new fork snapshot. The results files record the measured final source hashes and limitations.
+Current requests must include an explicit `settings.purchases` string (1–20), and `budget` must equal `amount × purchases`. For example 5 purchases × 5 USDG requires exactly 25 USDG. The same pure validation runs in the form, API and runner. A sample current request is `examples/exact-total.json`; pass it to `--config` to try fresh quotes. Its date preview is illustrative; the execution schedule is recalculated from the fork snapshot.
+
+The original `evidence/ui-request.json` and `fractional-request.json` are historical records from before explicit-count validation. They contain unused budget and are no longer valid input. They have not been silently rewritten to look like current measurements. Historical result files retain their original source hashes and scope.
 
 The UI's preview uses the current wall clock; `results.json.policy.start` and `periodSeconds` record the fork's actual schedule. Raw quotes, local receipts, full call traces, balances, source hashes and checks are kept in the output directory.
 

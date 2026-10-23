@@ -24,9 +24,12 @@ Choose:
 
 - Total USDG budget, up to 1,000 USDG for this trial.
 - Gross amount per purchase, at least 1 USDG and the selected Bag's minimum investment.
+- Number of purchases: an explicit whole number from 1 to 20.
 - Interval: 1–365 minutes, hours, days or weeks.
 
-The budget must cover 1–20 whole purchases. `floor(budget / amount)` determines their number; any remainder stays unused. The first purchase is due after one interval. The preview shows the first/last scheduled dates. The fork records its own start and timestamps from the chain snapshot; it does not wait days/weeks in wall-clock time.
+The total budget must equal **purchase count × amount per purchase** exactly, down to USDG's six decimal places. Five purchases of 5 USDG with a total of 25 USDG is valid. A total of 30 USDG shows the expected 25 USDG and blocks submission; direct API requests are rejected with HTTP 400 too. Missing/fractional/zero counts are rejected. No unused budget is silently accepted.
+
+The first purchase is due after one interval; the last is due after `count × interval` from setup. The preview derives both dates from the selected count and interval. The fork records its own start and timestamps from the chain snapshot; it does not wait days/weeks in wall-clock time.
 
 Press **Run local trial**. It starts one local child process and polls its actual progress. Initial Solidity compilation and quotes can take several minutes. Only one trial runs at a time, with a 20-minute process limit. Form fields are locked during a run; progress is not an invented percentage.
 
@@ -34,12 +37,12 @@ Press **Run local trial**. It starts one local child process and polls its actua
 
 The qualified compiler profile supports Robinhood chain 4663, USDG input, **40% WETH / 30% cbBTC / 30% USDG**, and no BAG performance fee. Addresses, decimals, runtime code, 34 VM instructions, 17 state slots, routers and selectors are constrained. Unknown compiler shapes/routes stop the trial.
 
-Example: budget **25 USDG**, purchase **10 USDG**, interval **1 day**:
+Example: budget **25 USDG**, purchase **5 USDG**, count **5**, interval **1 day**:
 
-- Two purchases. Each swaps 7 USDG and reserves 3 USDG as the Bag's cash allocation.
-- 14 USDG total swap inputs, including swap route fees.
-- 11 USDG remains: 6 USDG reserved cash allocation plus 5 USDG unallocated remainder.
-- Maximum temporary USDG allowance is 7 USDG per purchase, reset to zero atomically.
+- Five purchases. Each swaps 3.5 USDG and reserves 1.5 USDG as the Bag's cash allocation.
+- 17.5 USDG total swap inputs, including swap route fees.
+- 7.5 USDG remains as reserved cash allocation; no unallocated budget.
+- Maximum temporary USDG allowance is 3.5 USDG per purchase, reset to zero atomically.
 
 The configured local guard enforces the selected amount, budget, number of purchases, minimum interval and expiry. It rejects changed programs, recipients, lower output floors, early/extra purchases, paused/revoked policies, and rolls back accounting/approvals after an execution failure. Different purchase amounts derive a new fixed profile from the initial validated compilation; fee payload and partition data are pinned for that policy.
 
@@ -65,11 +68,13 @@ The local ArbSys getter is an explicitly qualified research model. Token bytecod
 
 ## Recorded qualification (23 October 2026)
 
-- 39 focused unit/component/API/navigation checks passed; the existing app header navigation check passed as part of that set.
+- Current explicit-count validation: **53 focused unit/component/API/navigation checks passed**, including the exact 5 × 5 = 25 acceptance case, mismatched totals, missing/invalid counts, date derivation and direct API rejection. Full app TypeScript check passed. This validation change does not claim a new Composer execution measurement.
+- Historical execution qualification below predates the explicit-count requirement. Its original result/request files remain unchanged; the old requests with unused budget are intentionally rejected by the current form/runner. Use a newly created exact-total request for a current trial.
+- Initial qualification: 39 focused unit/component/API/navigation checks passed; the existing app header navigation check passed as part of that set.
 - Full app TypeScript check and SDK build passed.
 - Browser-started trial: 25 USDG budget, 10 USDG gross, one-day interval; 2 actual local Composer executions and SDK receipt verifications; **27 PASS / 0 FAIL**. Final USDG 11 = cash reserve 6 + unused remainder 5.
 - Separate fractional trial: 27.250001 USDG budget, 12.500002 USDG gross, two-hour interval; 2 executions and SDK receipt verifications; **27 PASS / 0 FAIL**. Total swap inputs 17.500002, cash reserve 7.500002, unallocated remainder 2.249997; final USDG 9.749999.
-- Both runs used the final runner/guard hashes recorded in `scripts/research/dca-trial/evidence/`. The fractional case exercises largest-remainder allocation down to the USDG base unit.
+- Both historical runs used the runner/guard hashes recorded in `scripts/research/dca-trial/evidence/`. The fractional case exercises largest-remainder allocation down to the USDG base unit.
 - Browser request → local child process → progress polling → real success summary was exercised on loopback. Production-mode route rejection was checked in tests. A full production Next build was not run.
 
 These are local simulations, with zero public transactions. They are not evidence of days of unattended service or native MetaMask/Rabby onboarding.
