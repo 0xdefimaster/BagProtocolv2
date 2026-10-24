@@ -66,7 +66,12 @@ export async function startDcaTrial(bagId: string, bag: Pick<BagJson, 'bagJson' 
       try {
         const report = JSON.parse(await readFile(path.join(directory, 'execution/results.json'), 'utf8'));
         if (code !== 0 || report.status !== 'CONFIGURED_USDG_RECURRING_FORK_VERIFIED' || report.summary.fail !== 0 || report.executions.length !== plan.purchases || report.publicTransactionsSubmitted !== 0 || report.strategy.definitionHash !== definitionHash) throw new Error('incomplete');
-        job.public.result = { checks: report.summary, finalUsdgRaw: report.finalBalances.USDG, reservedUsdgRaw: report.finalReservedRaw, spentUsdgRaw: report.totalSpentRaw, publicTransactions: 0 };
+        const received = report.strategy.bag.definition.assets.filter((a: {address:string}) => a.address.toLowerCase() !== '0x5fc5360d0400a0fd4f2af552add042d716f1d168').map((a: {address:string;decimals:number}) => {
+          const token = a.address.toLowerCase(), metadata = report.tokens[token];
+          return { token, symbol: metadata?.symbol ?? token, amountRaw: report.finalBalances[token], decimals: a.decimals };
+        });
+        if (received.some((a: {amountRaw:unknown}) => typeof a.amountRaw !== 'string' || !/^\d+$/.test(a.amountRaw))) throw new Error('incomplete balances');
+        job.public.result = { checks: report.summary, finalUsdgRaw: report.finalBalances.USDG, reservedUsdgRaw: report.finalReservedRaw, spentUsdgRaw: report.totalSpentRaw, publicTransactions: 0, received };
         job.public.completedChecks = report.summary.pass;
         job.public.completedPurchases = report.executions.length;
         job.public.state = 'SUCCEEDED';

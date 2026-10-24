@@ -1,7 +1,7 @@
 import type { Bag } from '@/types';
 import type { BagDefinition } from '@/types/strategy';
 import { DCA_TOKENS } from './profile';
-export type DcaTrialBag = Pick<Bag, 'id' | 'name' | 'version' | 'chains' | 'composition'>;
+export type DcaTrialBag = Pick<Bag, 'id' | 'name' | 'version' | 'chains' | 'composition'> & { performanceFeeBps?: number | null; definitionHash?: string };
 export const DCA_REFERENCE_ID = 'local-reference';
 export const DCA_REFERENCE_DEFINITION: BagDefinition = {
   kind: 'STATIC_BASKET', chain: 'robinhood', mutability: 'MUTABLE',
@@ -13,5 +13,5 @@ export const DCA_REFERENCE_DEFINITION: BagDefinition = {
   rules: { weightBounds: { minBps: 100, maxBps: 7000 }, maxAssets: 10, minInvestment: null,
     swapSlippageBps: 100, rebalance: { frequency: 'MANUAL', driftThresholdBps: 500 }, performanceFeeBps: 0, noRouteAssetPolicy: 'BLOCK' },
 };
-export const DCA_REFERENCE_BAG: DcaTrialBag = { id: DCA_REFERENCE_ID, name: 'Local reference · WETH 40% / cbBTC 30% / USDG 30%', chains: ['robinhood'],
+export const DCA_REFERENCE_BAG: DcaTrialBag = { id: DCA_REFERENCE_ID, name: 'Local reference · WETH 40% / cbBTC 30% / USDG 30%', performanceFeeBps: 0, chains: ['robinhood'],
   composition: DCA_REFERENCE_DEFINITION.assets.map(a => ({ address: a.address, weightBps: a.weightBps, weight: a.weightBps / 100, symbol: Object.entries(DCA_TOKENS).find(([, address]) => address === a.address)![0] })) };

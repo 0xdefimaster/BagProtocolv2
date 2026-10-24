@@ -6,7 +6,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createServer} from 'node:http';
 import {createHash} from 'node:crypto';
 import {settings} from '../usdg-composer/settings.mjs';
-import {composerWire} from '../usdg-recurring/wire.mjs';
+import {basketWire} from './basket-wire.mjs';
 
 const root=fileURLToPath(new URL('.',import.meta.url));
 const shared=resolve(root,'../usdg-composer');
@@ -21,7 +21,7 @@ const replayDir=arg('--replay')?resolve(arg('--replay')):null;
 const replay=replayDir?JSON.parse(readFileSync(join(replayDir,'results.json'),'utf8')):null;
 const replayResponse=replayDir?readFileSync(join(replayDir,'composer-response.json'),'utf8'):null;
 const require=createRequire(join(repo,'package.json')),v=require('viem');
-const wire=composerWire(v);
+const wire=basketWire(v);
 const {privateKeyToAccount,mnemonicToAccount}=require('viem/accounts'),solc=require('solc');
 const {createHardhatRuntimeEnvironment}=await import(pathToFileURL(require.resolve('hardhat/hre')));
 const sdk=await import(pathToFileURL(join(repo,'packages/bag-sdk/dist/index.js')));
@@ -36,6 +36,7 @@ const config=JSON.parse(readFileSync(resolve(arg('--config')),'utf8'));
 const checked=buildDcaPlan(config.settings);
 for(const field of ['budgetRaw','amountRaw','remainderRaw','purchases','intervalSeconds'])assert.equal(config.plan[field],checked[field],'Plan/settings mismatch: '+field);
 const gross=BigInt(checked.amountRaw),budget=BigInt(checked.budgetRaw),runCount=checked.purchases;
+assets.tokens={USDG:assets.tokens.USDG,...Object.fromEntries(config.bag.definition.assets.filter(a=>a.address.toLowerCase()!==assets.tokens.USDG.address).map(a=>[a.address.toLowerCase(),{address:a.address.toLowerCase(),decimals:a.decimals,codeHash:null,symbol:null}]))};
 
 const cases=[],localTransactions=[],upstreamMethods={};
 const report={startedAt:new Date().toISOString(),status:'IN_PROGRESS',publicTransactionsSubmitted:0,
@@ -48,7 +49,7 @@ const report={startedAt:new Date().toISOString(),status:'IN_PROGRESS',publicTran
     sdkPackageSha256:sha(readFileSync(join(repo,'packages/bag-sdk/package.json'))),
     sdkReceiptSourceSha256:sha(readFileSync(join(repo,'packages/bag-sdk/src/receipt.ts'))),
     sdkReceiptDistSha256:sha(readFileSync(join(repo,'packages/bag-sdk/dist/receipt.js'))),
-    recurringGuardSha256:sha(readFileSync(join(root,'contracts/ConfiguredPurchase.sol'))),wireSha256:sha(readFileSync(join(root,'../usdg-recurring/wire.mjs'))),runnerSha256:sha(readFileSync(join(root,'run.mjs'))),smartSessionArtifactSha256:sha(readFileSync(join(shared,'vendor/SmartSession.json')))}};
+    recurringGuardSha256:sha(readFileSync(join(root,'contracts/BasketPurchase.sol'))),wireSha256:sha(readFileSync(join(root,'basket-wire.mjs'))),runnerSha256:sha(readFileSync(join(root,'run.mjs'))),smartSessionArtifactSha256:sha(readFileSync(join(shared,'vendor/SmartSession.json')))}};
 const chain=v.defineChain({id:4663,name:'ISOLATED Robinhood fork; not public mainnet',nativeCurrency:{name:'Local Ether',symbol:'ETH',decimals:18},rpcUrls:{default:{http:[]}}});
 const tokenAbi=v.parseAbi(['function symbol() view returns(string)','function decimals() view returns(uint8)','function balanceOf(address) view returns(uint256)','function transfer(address,uint256) returns(bool)','function allowance(address,address) view returns(uint256)']);
 const deployment={chainId:4663,factory:'0xaceb3bb6c75488b5b806b9de4dcf78814465bdae',factoryCodeHash:'0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5'};
@@ -76,7 +77,7 @@ function errorDetails(e){const parts=[];for(let x=e,i=0;x&&i<8;x=x.cause,i++){if
 try{
   stage='compile research guard';
   const sources=Object.fromEntries(['ResearchAccount.sol','LocalArbSysRead.sol'].map(name=>[name,{content:readFileSync(join(shared,'contracts',name),'utf8')} ]));
-  sources['ConfiguredPurchase.sol']={content:readFileSync(join(root,'contracts/ConfiguredPurchase.sol'),'utf8')};
+  sources['BasketPurchase.sol']={content:readFileSync(join(root,'contracts/BasketPurchase.sol'),'utf8')};
   const input={language:'Solidity',sources,settings:{optimizer:{enabled:true,runs:200},viaIR:true,outputSelection:{'*':{'*':['abi','evm.bytecode.object','evm.deployedBytecode.object']}}}};
   const buildKey=sha(solc.version()+json(input)),buildPath=join(out,'local-build.json');
   let built=existsSync(buildPath)?JSON.parse(readFileSync(buildPath,'utf8')):null;
@@ -143,11 +144,11 @@ try{
     return {unlocked:report.defaultEnvelopeDiagnostic,signed:report.signedEnvelopeDiagnostic};
   });
   await check('forked factory bytecode matches research pin',async()=>{assert.equal(v.keccak256(await client.getCode({address:deployment.factory})),deployment.factoryCodeHash);return {...deployment,productionApproved:false};});
-  await check('forked tokens match the recorded USDG, WETH and cbBTC definitions',async()=>{
+  await check('forked token identities and decimals match the selected BAG definition',async()=>{
     const details=[];
     for(const [symbol,token]of Object.entries(assets.tokens)){
       const [actualSymbol,decimals,code]=await Promise.all([client.readContract({address:token.address,abi:tokenAbi,functionName:'symbol'}),client.readContract({address:token.address,abi:tokenAbi,functionName:'decimals'}),client.getCode({address:token.address})]);
-      assert.equal(actualSymbol,symbol);assert.equal(decimals,token.decimals);assert.equal(v.keccak256(code),token.codeHash);details.push({symbol,address:token.address,decimals});
+      assert(code&&code!=='0x');assert.equal(decimals,token.decimals);if(symbol==='USDG'){assert.equal(actualSymbol,'USDG');assert.equal(v.keccak256(code),token.codeHash);}else{token.codeHash=v.keccak256(code);token.symbol=actualSymbol;}details.push({symbol:actualSymbol,address:token.address,decimals,codeHash:token.codeHash});
     }return details;
   });
   stage='deploy local session account';
@@ -156,14 +157,12 @@ try{
   report.account={address:account,owner:owner.account.address,keeper:keeper.account.address,smartSession:smart,entryPointModel:ep};
   const parsed=sdk.parseBag(config.bag);assert(parsed.ok);assert(sdk.validateBag(parsed.bag).valid);
   assert.equal(sdk.hashBag(parsed.bag),config.definitionHash);
-  const expectedTokens=new Map([[assets.tokens.WETH.address,4000],[assets.tokens.cbBTC.address,3000],[assets.tokens.USDG.address,3000]]);
-  assert.equal(parsed.bag.definition.chain,'robinhood');assert.equal(parsed.bag.definition.assets.length,3);
-  for(const a of parsed.bag.definition.assets)assert.equal(expectedTokens.get(a.address.toLowerCase()),a.weightBps);
+  assert.equal(parsed.bag.definition.chain,'robinhood');assert(parsed.bag.definition.assets.length>=1&&parsed.bag.definition.assets.length<=10);
   assert(!parsed.bag.definition.rules.performanceFeeBps,'Performance-fee accounting is outside this local trial');
   const plan=sdk.planPurchase(parsed.bag,{inputToken:assets.tokens.USDG.address,amountRaw:gross,inputTokenDecimals:6,signer:account});
   const swapAmount=plan.swapAmountRaw;
-  assert.equal(swapAmount+plan.kept.amountRaw,gross);
-  assert(plan.kept.amountRaw>=gross*3000n/10000n&&plan.kept.amountRaw<=gross*3000n/10000n+1n);
+  assert.equal(swapAmount+(plan.kept?.amountRaw??0n),gross);assert(plan.legs.length>0);
+  assert.equal(plan.accounting,'NOT_BAG_ACCOUNTED');
   report.settings=config.settings;report.requestedPlan=config.plan;
   report.strategy={bag:parsed.bag,definitionHash:sdk.hashBag(parsed.bag),plan};
   const captureFetch=async(url,init)=>{
@@ -185,16 +184,15 @@ try{
     await receipt(await wallet(holder).writeContract({address:assets.tokens.USDG.address,abi:tokenAbi,functionName:'transfer',args:[account,budget],gas:1000000n,type:'eip1559'}),'fork-only funding');
     await client.request({method:'hardhat_stopImpersonatingAccount',params:[holder]});assert.equal((await balances()).USDG,budget);return {budgetRaw:budget,holder,localImpersonation:true};
   });
-  const decoded=wire.decode(compiled.transaction.data),btcSwap=wire.swap(decoded.state[6]),ethSwap=wire.swap(decoded.state[10]);
-  const profile={btcInput:btcSwap[5][0].fromAmount,ethInput:ethSwap[5][0].fromAmount,btcNet:btcSwap[5][1].fromAmount,ethNet:ethSwap[5][1].fromAmount,partitionHash:v.keccak256(decoded.state[12]),btcFeeHash:v.keccak256(btcSwap[5][0].callData),ethFeeHash:v.keccak256(ethSwap[5][0].callData)};
-  const floors=compiled.quote.legs.map(l=>({token:l.token,amountRaw:BigInt(l.minOutRaw)*9900n/10000n}));
-  assert.equal(floors[0].token.toLowerCase(),assets.tokens.WETH.address);assert.equal(floors[1].token.toLowerCase(),assets.tokens.cbBTC.address);
+  const profile=wire.profile(compiled,plan,sdk.simulatePartition(swapAmount,plan.legs.map(l=>l.legBps)),parsed.bag.definition);
+  const floors=profile.legs.map(l=>({token:l.token,amountRaw:l.minimum}));
   assert(floors.every(l=>l.amountRaw>0n));
   const now=(await client.getBlock()).timestamp,period=BigInt(config.plan.intervalSeconds),start=now+period,expiry=start+period*BigInt(runCount+2);
-  policy=await deploy('ConfiguredPurchase',[account,report.strategy.definitionHash,gross,budget,start,period,expiry,floors[0].amountRaw,floors[1].amountRaw,profile]);
+  const cashBps=BigInt(parsed.bag.definition.assets.find(a=>a.address.toLowerCase()===plan.inputToken)?.weightBps??0);
+  policy=await deploy('BasketPurchase',[{account,definitionHash:report.strategy.definitionHash,gross,total:budget,start,period,expiry,cashBps},profile]);
   await send(owner,account,'Local7579Account','setExecutor',[policy]);
-  const context=await read(policy,'ConfiguredPurchase','context');
-  const normalize=(result,observed)=>({...result,transaction:{...result.transaction,to:observed.proxyDeployed?observed.proxy:observed.factory,data:wire.normalize(result.transaction.data,context,observed.proxyDeployed)}});
+  const context=await read(policy,'BasketPurchase','context');
+  const normalize=(result,observed)=>({...result,transaction:{...result.transaction,to:observed.proxyDeployed?observed.proxy:observed.factory,data:wire.normalize(result.transaction.data,context,observed.proxyDeployed,profile)}});
   compiled=normalize(compiled,observation);
   report.policy={address:policy,definitionHash:report.strategy.definitionHash,grossPerRun:gross,swapPerRun:swapAmount,keptPerRun:gross-swapAmount,maxRuns:runCount,maxGross:budget,start,periodSeconds:period,expiry,ownerFloors:floors,profile,context,pricePolicy:'FIXED_INITIAL_QUANTITY_FLOORS_NOT_LIVE_ORACLE',schedule:'REQUESTED_INTERVAL_IN_LOCAL_BLOCK_TIMESTAMPS; TIME_ADVANCED_NOT_WALL_CLOCK'};
   const sessionKey=privateKeyToAccount(v.keccak256(v.stringToHex('BAG_USDG_FORK_ONLY_RECURRING_SESSION_SIGNER')));
@@ -206,7 +204,7 @@ try{
   async function invoke(options={}){
     const tx=options.tx??compiled.transaction;
     const actionTarget=options.actionTarget??policy;
-    const actionData=options.actionData??encode('ConfiguredPurchase','run',[tx.to,tx.data]);
+    const actionData=options.actionData??encode('BasketPurchase','run',[tx.to,tx.data]);
     const callData=encode('Local7579Account','execute',[v.zeroHash,packed(actionTarget,actionData)]);
     const nonce=await read(ep,'LocalEntryPointHarness','nonce',[account]);
     const op=options.op??{sender:account,nonce,initCode:'0x',callData,accountGasLimits:v.zeroHash,preVerificationGas:0n,gasFees:v.zeroHash,paymasterAndData:'0x',signature:'0x'};
@@ -218,7 +216,7 @@ try{
     if(r.status==='reverted')return {success:false,outerRejected:true,transactionHash:hash,gasUsed:r.gasUsed,op};
     assert(event);return {success:event.args.success,result:event.args.result,transactionHash:hash,gasUsed:r.gasUsed,op};
   }
-  async function counters(){return {runs:await read(policy,'ConfiguredPurchase','runs'),gross:await read(policy,'ConfiguredPurchase','grossBudgetUsed'),last:await read(policy,'ConfiguredPurchase','lastExecution'),window:await read(policy,'ConfiguredPurchase','lastWindow'),allowance:await client.readContract({address:assets.tokens.USDG.address,abi:tokenAbi,functionName:'allowance',args:[account,observation.proxy]})};}
+  async function counters(){return {runs:await read(policy,'BasketPurchase','runs'),gross:await read(policy,'BasketPurchase','grossBudgetUsed'),last:await read(policy,'BasketPurchase','lastExecution'),window:await read(policy,'BasketPurchase','lastWindow'),allowance:await client.readContract({address:assets.tokens.USDG.address,abi:tokenAbi,functionName:'allowance',args:[account,observation.proxy]})};}
   async function rejected(name,options={},error){return check(name,async()=>{
     const before=await balances(),budget=await counters(),r=await invoke(options);
     assert.equal(r.success,false,'Attempt unexpectedly succeeded');
@@ -229,23 +227,25 @@ try{
   async function advance(t){const current=(await client.getBlock()).timestamp;if(t>current){await client.request({method:'evm_setNextBlockTimestamp',params:[Number(t)]});await client.request({method:'evm_mine',params:[]});}}
   async function branch(fn){const id=await client.request({method:'evm_snapshot',params:[]}),first=localTransactions.length;try{return await fn();}finally{assert(await client.request({method:'evm_revert',params:[id]}));for(const tx of localTransactions.slice(first))tx.revertedBySnapshot=true;}}
   function changed(fn){return {tx:{...compiled.transaction,data:wire.mutate(compiled.transaction.data,fn)}};}
-  function changedSwap(fn,slot=6){return {tx:{...compiled.transaction,data:wire.mutateSwap(compiled.transaction.data,slot,fn)}};}
+  function changedSwap(fn,slot=Number(profile.legs[0].slot)){return {tx:{...compiled.transaction,data:wire.mutateSwap(compiled.transaction.data,slot,fn)}};}
 
   await rejected('before the selected interval: no USDG is spent',{},'NotDue()');
   await advance(start);
   await check('selected budget, amount and interval are enforced on chain',async()=>{
-    assert.equal(await read(policy,'ConfiguredPurchase','grossAmount'),gross);assert.equal(await read(policy,'ConfiguredPurchase','maxGross'),budget);assert.equal(await read(policy,'ConfiguredPurchase','maxRuns'),BigInt(runCount));assert.equal(await read(policy,'ConfiguredPurchase','period'),period);
-    await read(policy,'ConfiguredPurchase','validate',[compiled.transaction.to,compiled.transaction.data]);return report.policy;
+    assert.equal(await read(policy,'BasketPurchase','grossAmount'),gross);assert.equal(await read(policy,'BasketPurchase','maxGross'),budget);assert.equal(await read(policy,'BasketPurchase','maxRuns'),BigInt(runCount));assert.equal(await read(policy,'BasketPurchase','period'),period);
+    await read(policy,'BasketPurchase','validate',[compiled.transaction.to,compiled.transaction.data]);return report.policy;
   });
   await rejected('changed Composer instruction is rejected',changed(x=>{x.instructions[0][0]=0n;}),'ProfileViolation(uint256)');
-  await rejected('changed amount in a constant slot is rejected',changed(x=>{x.state[9]=v.toHex(swapAmount+1n,{size:32});}),'ProfileViolation(uint256)');
+  await rejected('changed amount in a constant slot is rejected',changed(x=>{x.state[Number(profile.amountSlot)]=v.toHex(swapAmount+1n,{size:32});}),'ProfileViolation(uint256)');
   await rejected('unapproved recipient is rejected',changedSwap(x=>{x[3]=keeper.account.address;}),'ProfileViolation(uint256)');
   await rejected('lower minimum output is rejected',changedSwap(x=>{x[4]=0n;}),'ProfileViolation(uint256)');
-  await branch(async()=>{await send(owner,policy,'ConfiguredPurchase','setPaused',[true]);await rejected('paused policy cannot spend',{},'Denied()');});
-  await branch(async()=>{await send(owner,policy,'ConfiguredPurchase','revoke');await rejected('revoked policy cannot spend',{},'Denied()');});
+  await rejected('a different output token is rejected',changedSwap(x=>{x[5][1].receivingAssetId=keeper.account.address;}),'ProfileViolation(uint256)');
+  await rejected('an unapproved router is rejected',changedSwap(x=>{x[5][1].callTo=keeper.account.address;}),'ProfileViolation(uint256)');
+  await branch(async()=>{await send(owner,policy,'BasketPurchase','setPaused',[true]);await rejected('paused policy cannot spend',{},'Denied()');});
+  await branch(async()=>{await send(owner,policy,'BasketPurchase','revoke');await rejected('revoked policy cannot spend',{},'Denied()');});
   await branch(async()=>{await advance(expiry+1n);await rejected('expired policy cannot spend',{},'Denied()');});
   const badRoute=changedSwap(x=>{x[5][1].callData=v.concat([v.slice(x[5][1].callData,0,4),'0xdeadbeef']);});
-  await read(policy,'ConfiguredPurchase','validate',[badRoute.tx.to,badRoute.tx.data]);
+  await read(policy,'BasketPurchase','validate',[badRoute.tx.to,badRoute.tx.data]);
   await rejected('failed route rolls back the budget, balance and approvals',badRoute);
   report.executions=[];
   for(let round=0;round<runCount;round++){
@@ -256,7 +256,7 @@ try{
     const provider={name:'local-trial-envelope',async compile(req){rawResult=await upstream.compile(req);return normalize(rawResult,observation);}};
     await check('fresh Composer quote '+(round+1)+' matches the approved profile',async()=>{
       compiled=await sdk.compileBag(parsed.bag,{inputToken:assets.tokens.USDG.address,amountRaw:gross,inputTokenDecimals:6,signer:account},{provider,trust:observation.trust});
-      await read(policy,'ConfiguredPurchase','validate',[compiled.transaction.to,compiled.transaction.data]);
+      await read(policy,'BasketPurchase','validate',[compiled.transaction.to,compiled.transaction.data]);
       writeFileSync(join(dir,'compiled.json'),json(compiled));writeFileSync(join(dir,'upstream-adapter-result.json'),json(rawResult));writeFileSync(join(dir,'composer-response.json'),readFileSync(join(out,'composer-response.json')));
       return {programHash:v.keccak256(compiled.transaction.data),remoteTarget:rawResult.transaction.to,localTarget:compiled.transaction.to};
     });
@@ -265,7 +265,7 @@ try{
     await check('scheduled purchase '+(round+1)+' executes with the selected amount',async()=>{
       const before=await balances(),r=await invoke(),after=await balances();assert.equal(r.success,true,'Composer execution failed: '+r.result);
       const budgetState=await counters();assert.equal(before.USDG-after.USDG,swapAmount);assert.equal(budgetState.runs,BigInt(round+1));assert.equal(budgetState.gross,BigInt(round+1)*gross);assert.equal(budgetState.allowance,0n);
-      assert(after.WETH-before.WETH>=floors[0].amountRaw);assert(after.cbBTC-before.cbBTC>=floors[1].amountRaw);
+      for(const floor of floors)assert(after[floor.token]-before[floor.token]>=floor.amountRaw);
       const receipt=await client.getTransactionReceipt({hash:r.transactionHash});
       const approvals=v.parseEventLogs({abi:v.parseAbi(['event Approval(address indexed owner,address indexed spender,uint256 value)']),logs:receipt.logs,eventName:'Approval'}).filter(x=>x.address.toLowerCase()===assets.tokens.USDG.address&&x.args.owner.toLowerCase()===account.toLowerCase());
       assert(approvals.some(x=>x.args.value===swapAmount));assert(approvals.every(x=>x.args.spender.toLowerCase()===observation.proxy.toLowerCase()&&x.args.value<=swapAmount));
@@ -274,12 +274,12 @@ try{
     });
     await check('SDK verifies actual call and balances for purchase '+(round+1),async()=>{
       const result=await sdk.verifyPurchaseReceipt(compiled,{client:withReceiptEvidence(client),transactionHash:execution.transactionHash,minimumReceived:floors,confirmations:1});
-      assert.equal(result.status,'VERIFIED',json(result));assert.equal(result.transactionBinding,'CALL_TRACE');assert.equal(result.keptBalanceVerified,true);execution.receiptVerification=result;
+      assert.equal(result.status,'VERIFIED',json(result));assert.equal(result.transactionBinding,'CALL_TRACE');assert.equal(result.keptBalanceVerified,!!plan.kept);assert.equal(result.spentInputRaw,swapAmount);execution.receiptVerification=result;
       writeFileSync(join(dir,'execution-call-trace.json'),json(await client.request({method:'debug_traceTransaction',params:[execution.transactionHash,{tracer:'callTracer'}]})));return result;
     });
     console.log('PURCHASE '+(round+1));
     if(round===0&&runCount>1){
-      const repeat={...compiled.transaction,to:observation.proxy,data:wire.normalize(compiled.transaction.data,context,true)};
+      const repeat={...compiled.transaction,to:observation.proxy,data:wire.normalize(compiled.transaction.data,context,true,profile)};
       await rejected('an immediate repeat cannot spend a second purchase',{tx:repeat},'NotDue()');
     }
   }

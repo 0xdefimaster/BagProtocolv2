@@ -1,0 +1,264 @@
+{
+  "recordedAt": "2026-10-24T00:50:44.978Z",
+  "scope": "ISOLATED_LOCAL_FORK_NOT_BAG_ACCOUNTED",
+  "declaredBaseline": "5276d5511d8c274a7853cf964a91f7100310610d",
+  "runs": [
+    {
+      "case": "actual-four-token-cli",
+      "status": "CONFIGURED_USDG_RECURRING_FORK_VERIFIED",
+      "checks": {
+        "pass": 38,
+        "fail": 0
+      },
+      "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9",
+      "settings": {
+        "budget": "25",
+        "amount": "5",
+        "purchases": "5",
+        "interval": "1",
+        "unit": "days"
+      },
+      "fork": {
+        "blockNumber": "96350440",
+        "blockHash": "0x725c7a582c031378193ed2982cf167136544279b7395fe932d7f71724ff92ea6",
+        "timestamp": "1792801314",
+        "hardhatVersion": "3.14.0",
+        "evmModel": "L1 Cancun with modeled ArbSys.arbBlockNumber; not Nitro gas accounting"
+      },
+      "executions": [
+        {
+          "round": 1,
+          "transactionHash": "0x439efe6ce56dd6c31e8812d7b2d3f130417833ade17f16222a6905b85f3157bf",
+          "receiptStatus": "VERIFIED",
+          "transactionBinding": "CALL_TRACE",
+          "allowanceAfter": "0"
+        },
+        {
+          "round": 2,
+          "transactionHash": "0xd672267f8eff2596a2ec215d48a7712f66c1fde195f9f7634bec8cc0d381f79e",
+          "receiptStatus": "VERIFIED",
+          "transactionBinding": "CALL_TRACE",
+          "allowanceAfter": "0"
+        },
+        {
+          "round": 3,
+          "transactionHash": "0xea9284cb6c8f2927d59d920b4c016a2c99413f83043bc1ef7fe3982b67b405d4",
+          "receiptStatus": "VERIFIED",
+          "transactionBinding": "CALL_TRACE",
+          "allowanceAfter": "0"
+        },
+        {
+          "round": 4,
+          "transactionHash": "0x54b06b19852311be92988a98cb3f26cf7c287bf535fa59db649db14edd6dde84",
+          "receiptStatus": "VERIFIED",
+          "transactionBinding": "CALL_TRACE",
+          "allowanceAfter": "0"
+        },
+        {
+          "round": 5,
+          "transactionHash": "0x4703068470d6cdeef1130b0c95565ff3e5b913b7de2b98ad042915dd07cd2c43",
+          "receiptStatus": "VERIFIED",
+          "transactionBinding": "CALL_TRACE",
+          "allowanceAfter": "0"
+        }
+      ],
+      "totalSpentRaw": "25000000",
+      "remainingUsdgRaw": "0",
+      "reservedUsdgRaw": "0",
+      "publicTransactionsSubmitted": 0,
+      "sourceHashes": {
+        "packageLockSha256": "d532c7acc94992dbdbb35750c442fe4ac5e04cec0587de9617ecb65508064f78",
+        "sdkPackageSha256": "291b915820180dbf94450a2c12292c6f4c2b2f6c8a9120cd50c86223c9b09fce",
+        "sdkReceiptSourceSha256": "90e9fce59cb38717bffc9395b1f694c6fd04a888046b3b3aef6ec6dee729095b",
+        "sdkReceiptDistSha256": "dc0d2ffe3bef89f5ccc7367bf7d875d7dca437e4cf291f081558a4942f4cf093",
+        "recurringGuardSha256": "d8b139067be1d75101d8833c7579f9385423bb042a3084ae9cb45d3a9ce684f9",
+        "wireSha256": "99da9e9f048743f126b5797b85fb64208759ad1a5b8b024d4d919d495d4409c2",
+        "runnerSha256": "2e19042c718fa97dd42d038df389cb035296071db3ee2cb8fb8e536dad89e212",
+        "smartSessionArtifactSha256": "5f0a36bfd29bbec2c197451eec4a98b0204d1f84c8a96a52b993988f8d17c8f2"
+      },
+      "runtime": {
+        "node": "v24.22.0",
+        "solc": "0.8.24+commit.e11b9ed9.Emscripten.clang",
+        "hardhat": "3.14.0",
+        "viem": "2.56.0"
+      }
+    },
+    {
+      "case": "actual-four-token-browser",
+      "status": "CONFIGURED_USDG_RECURRING_FORK_VERIFIED",
+      "checks": {
+        "pass": 38,
+        "fail": 0
+      },
+      "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9",
+      "settings": {
+        "budget": "25",
+        "amount": "5",
+        "purchases": "5",
+        "interval": "1",
+        "unit": "days",
+        "expectedDefinitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9",
+        "expectedVersion": 1
+      },
+      "fork": {
+        "blockNumber": "96356331",
+        "blockHash": "0x075db2ed7ae1b873ca8eb1a5df0b013f65fcee5659f65b1db84c1d8687d97d3b",
+        "timestamp": "1792801935",
+        "hardhatVersion": "3.14.0",
+        "evmModel": "L1 Cancun with modeled ArbSys.arbBlockNumber; not Nitro gas accounting"
+      },
+      "executions": [
+        {
+          "round": 1,
+          "transactionHash": "0x7812db477c594c232a193ee451e544449357453c30c41cf932ce892631ea57fd",
+          "receiptStatus": "VERIFIED",
+          "transactionBinding": "CALL_TRACE",
+          "allowanceAfter": "0"
+        },
+        {
+          "round": 2,
+          "transactionHash": "0x3cb23baec95479d7e5b448f878197464e7847a205d2eb0d4ef961e3d426f0cce",
+          "receiptStatus": "VERIFIED",
+          "transactionBinding": "CALL_TRACE",
+          "allowanceAfter": "0"
+        },
+        {
+          "round": 3,
+          "transactionHash": "0xa99e7322cd76dc598d7ab93d9796290d9581080473547ba3ed4cd2869c55cf25",
+          "receiptStatus": "VERIFIED",
+          "transactionBinding": "CALL_TRACE",
+          "allowanceAfter": "0"
+        },
+        {
+          "round": 4,
+          "transactionHash": "0xf05195e0c0d5377400bad2bff23344374ae3a21aea73aed87ec42af6d88b9a6d",
+          "receiptStatus": "VERIFIED",
+          "transactionBinding": "CALL_TRACE",
+          "allowanceAfter": "0"
+        },
+        {
+          "round": 5,
+          "transactionHash": "0xa32653d1913a97a139d3921a96318f8b730eef78cf803e9fc294b3d8dfa5f28a",
+          "receiptStatus": "VERIFIED",
+          "transactionBinding": "CALL_TRACE",
+          "allowanceAfter": "0"
+        }
+      ],
+      "totalSpentRaw": "25000000",
+      "remainingUsdgRaw": "0",
+      "reservedUsdgRaw": "0",
+      "publicTransactionsSubmitted": 0,
+      "sourceHashes": {
+        "packageLockSha256": "d532c7acc94992dbdbb35750c442fe4ac5e04cec0587de9617ecb65508064f78",
+        "sdkPackageSha256": "291b915820180dbf94450a2c12292c6f4c2b2f6c8a9120cd50c86223c9b09fce",
+        "sdkReceiptSourceSha256": "90e9fce59cb38717bffc9395b1f694c6fd04a888046b3b3aef6ec6dee729095b",
+        "sdkReceiptDistSha256": "dc0d2ffe3bef89f5ccc7367bf7d875d7dca437e4cf291f081558a4942f4cf093",
+        "recurringGuardSha256": "d8b139067be1d75101d8833c7579f9385423bb042a3084ae9cb45d3a9ce684f9",
+        "wireSha256": "99da9e9f048743f126b5797b85fb64208759ad1a5b8b024d4d919d495d4409c2",
+        "runnerSha256": "2e19042c718fa97dd42d038df389cb035296071db3ee2cb8fb8e536dad89e212",
+        "smartSessionArtifactSha256": "5f0a36bfd29bbec2c197451eec4a98b0204d1f84c8a96a52b993988f8d17c8f2"
+      },
+      "runtime": {
+        "node": "v24.22.0",
+        "solc": "0.8.24+commit.e11b9ed9.Emscripten.clang",
+        "hardhat": "3.14.0",
+        "viem": "2.56.0"
+      }
+    },
+    {
+      "case": "retained-USDG-reference",
+      "status": "CONFIGURED_USDG_RECURRING_FORK_VERIFIED",
+      "checks": {
+        "pass": 38,
+        "fail": 0
+      },
+      "definitionHash": "0xef4f76ebabd2d5b4ce1b206b43304c538e55481c4ad7d1fac0605856752b6163",
+      "settings": {
+        "budget": "25",
+        "amount": "5",
+        "purchases": "5",
+        "interval": "1",
+        "unit": "days"
+      },
+      "fork": {
+        "blockNumber": "96354175",
+        "blockHash": "0x7318dfff45e52cc6708577d53a5fd3962c2958823273cb0d565a5a3ec7dcd785",
+        "timestamp": "1792801716",
+        "hardhatVersion": "3.14.0",
+        "evmModel": "L1 Cancun with modeled ArbSys.arbBlockNumber; not Nitro gas accounting"
+      },
+      "executions": [
+        {
+          "round": 1,
+          "transactionHash": "0x02eb5dfa72e6477aae20ac43d27692c2c7552e1058a1dda18d76b67ce1752086",
+          "receiptStatus": "VERIFIED",
+          "transactionBinding": "CALL_TRACE",
+          "allowanceAfter": "0"
+        },
+        {
+          "round": 2,
+          "transactionHash": "0xfef7831847ae3293a866b51ed4e22379869aea215f2026632f5f67b39c56e77b",
+          "receiptStatus": "VERIFIED",
+          "transactionBinding": "CALL_TRACE",
+          "allowanceAfter": "0"
+        },
+        {
+          "round": 3,
+          "transactionHash": "0x0276ccd111165f3eabbfff4e7fb0e85abc122f4342f0abab12243b50272be11f",
+          "receiptStatus": "VERIFIED",
+          "transactionBinding": "CALL_TRACE",
+          "allowanceAfter": "0"
+        },
+        {
+          "round": 4,
+          "transactionHash": "0x30dca9aebeffbfdd6232f6a8fbcaa2cbb48d42239a49fc46d2d12cf67c449f6b",
+          "receiptStatus": "VERIFIED",
+          "transactionBinding": "CALL_TRACE",
+          "allowanceAfter": "0"
+        },
+        {
+          "round": 5,
+          "transactionHash": "0xeb2bdccb8a71b908fc680329b899bc97238a3fd0405db87f7f5e4294f07dc52d",
+          "receiptStatus": "VERIFIED",
+          "transactionBinding": "CALL_TRACE",
+          "allowanceAfter": "0"
+        }
+      ],
+      "totalSpentRaw": "17500000",
+      "remainingUsdgRaw": "7500000",
+      "reservedUsdgRaw": "7500000",
+      "publicTransactionsSubmitted": 0,
+      "sourceHashes": {
+        "packageLockSha256": "d532c7acc94992dbdbb35750c442fe4ac5e04cec0587de9617ecb65508064f78",
+        "sdkPackageSha256": "291b915820180dbf94450a2c12292c6f4c2b2f6c8a9120cd50c86223c9b09fce",
+        "sdkReceiptSourceSha256": "90e9fce59cb38717bffc9395b1f694c6fd04a888046b3b3aef6ec6dee729095b",
+        "sdkReceiptDistSha256": "dc0d2ffe3bef89f5ccc7367bf7d875d7dca437e4cf291f081558a4942f4cf093",
+        "recurringGuardSha256": "d8b139067be1d75101d8833c7579f9385423bb042a3084ae9cb45d3a9ce684f9",
+        "wireSha256": "99da9e9f048743f126b5797b85fb64208759ad1a5b8b024d4d919d495d4409c2",
+        "runnerSha256": "2e19042c718fa97dd42d038df389cb035296071db3ee2cb8fb8e536dad89e212",
+        "smartSessionArtifactSha256": "5f0a36bfd29bbec2c197451eec4a98b0204d1f84c8a96a52b993988f8d17c8f2"
+      },
+      "runtime": {
+        "node": "v24.22.0",
+        "solc": "0.8.24+commit.e11b9ed9.Emscripten.clang",
+        "hardhat": "3.14.0",
+        "viem": "2.56.0"
+      }
+    }
+  ],
+  "focusedRepositoryTests": {
+    "passed": 84,
+    "failed": 0
+  },
+  "typecheck": {
+    "command": "tsc --noEmit --pretty false",
+    "exitCode": 0
+  },
+  "limitations": [
+    "Only explicit zero performance fee, Robinhood, USDG input and supported compiler/router shapes",
+    "Fixed initial quantity floors, no live oracle",
+    "Local account/EntryPoint and qualified ArbSys model; no native MetaMask/Rabby or Nitro gas qualification",
+    "No production keeper, BAG position/profit accounting, deployment or npm release",
+    "Some public quotes were rejected by the existing SDK negative-price-impact check; validation was not weakened"
+  ]
+}

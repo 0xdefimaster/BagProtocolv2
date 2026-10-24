@@ -4,12 +4,18 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarClock, Loader2, CheckCircle2 } from 'lucide-react';
 import type { DcaTrialBag } from '@/lib/dca/reference';
 import { buildDcaPlan, displayUsdg, type DcaSettings } from '@/lib/dca/plan';
-import { supportsDcaTrial } from '@/lib/dca/profile';
+import { supportsDcaTrial, dcaTrialUnsupportedReason } from '@/lib/dca/profile';
 import type { DcaTrialState } from '@/lib/dca/types';
 
 const initial: DcaSettings = { budget: '100', amount: '10', purchases: '10', interval: '1', unit: 'days' };
 const date = (value: string) => new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 const headers = { 'Content-Type': 'application/json', 'x-bag-local-trial': '1' };
+function displayToken(raw: string, decimals: number): string {
+  const value = BigInt(raw), unit = BigInt(10) ** BigInt(decimals), whole = (value / unit).toString();
+  const fraction = (value % unit).toString().padStart(decimals, '0').slice(0, 6).replace(/0+$/, '');
+  if (value > BigInt(0) && whole === '0' && !fraction) return '<0.000001';
+  return fraction ? `${whole}.${fraction}` : whole;
+}
 
 export function DcaTrialPanel({ bag }: { bag: DcaTrialBag }) {
   const [settings, setSettings] = useState(initial);
@@ -52,7 +58,7 @@ export function DcaTrialPanel({ bag }: { bag: DcaTrialBag }) {
     setStarting(true); setError(null);
     const bagId = bag.id;
     try {
-      const response = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(settings) });
+      const response = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ ...settings, expectedDefinitionHash: bag.definitionHash, expectedVersion: bag.version }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || 'Could not start the local trial.');
       if (alive.current && bagId === bag.id) setTrial(body.trial);
@@ -67,6 +73,7 @@ export function DcaTrialPanel({ bag }: { bag: DcaTrialBag }) {
         <span className="rounded-full border border-amber-400/25 px-3 py-1 text-xs text-amber-200">Local trial</span>
       </div>
       <p className="mb-5 text-sm text-white/60">This trial uses a local copy of the chain with real Composer quotes. Time is advanced locally. Your wallet is not charged and live purchases are not activated.</p>
+      <div aria-label="Selected allocation" className="mb-5 flex flex-wrap gap-2">{bag.composition.map(a => <span key={a.address} className="rounded border border-white/15 px-2 py-1 text-xs text-white/75">{a.symbol} {(a.weightBps ?? a.weight * 100) / 100}%</span>)}</div>
       <fieldset disabled={busy} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 disabled:opacity-60">
         <label className="text-sm text-white/70">Total budget (USDG)
           <input value={settings.budget} onChange={e => update('budget', e.target.value)} inputMode="decimal" autoComplete="off" className="mt-2 w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2.5 text-white" /></label>
@@ -85,7 +92,7 @@ export function DcaTrialPanel({ bag }: { bag: DcaTrialBag }) {
         <p className="text-white/60">First: {date((trial?.plan ?? preview.plan).firstAt)}</p><p className="text-white/60">Last: {date((trial?.plan ?? preview.plan).lastAt)}</p>
       </div>}
       <p className="mt-3 text-xs leading-relaxed text-white/50">Total budget must equal the purchase count × amount per purchase. The first purchase is due after one interval; the last date follows from your count and interval. The Bag’s USDG allocation stays reserved in the account.</p>
-      {!supported && <p className="mt-4 text-sm text-amber-200">This first trial supports 40% WETH / 30% cbBTC / 30% USDG on Robinhood. This Bag is not supported; its allocation will not be substituted.</p>}
+      {!supported && <p className="mt-4 text-sm text-amber-200">{dcaTrialUnsupportedReason(bag)} This Bag will not be substituted.</p>}
       <div className="mt-5 flex flex-wrap items-center gap-4"><button type="button" onClick={run} disabled={!preview.plan || !supported || busy} className="inline-flex items-center gap-2 rounded-lg bg-emerald-400 px-4 py-2.5 font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40">{busy && <Loader2 className="h-4 w-4 animate-spin" />}{busy ? 'Trial running…' : 'Run local trial'}</button>
         {trial?.state === 'RUNNING' && <p role="status" className="text-sm text-white/70">{trial.completedPurchases}/{trial.plan.purchases} purchases · {trial.completedChecks} checks passed</p>}</div>
       {error && <p role="alert" className="mt-4 text-sm text-amber-200">{error}</p>}
@@ -93,6 +100,7 @@ export function DcaTrialPanel({ bag }: { bag: DcaTrialBag }) {
       {trial?.state === 'SUCCEEDED' && trial.result && <div role="status" className="mt-5 space-y-2 rounded-lg border border-emerald-400/20 p-4 text-sm text-white/75">
         <p className="flex items-center gap-2 font-semibold text-emerald-300"><CheckCircle2 className="h-4 w-4" />Local trial verified · {trial.result.checks.pass} checks passed</p>
         <p>{trial.completedPurchases} purchases · {displayUsdg(trial.result.spentUsdgRaw)} USDG swapped · {displayUsdg(trial.result.finalUsdgRaw)} USDG remaining</p>
+        {trial.result.received && <ul aria-label="Purchased assets" className="flex flex-wrap gap-x-4 gap-y-1">{trial.result.received.map(a => <li key={a.token}>{a.symbol}: {displayToken(a.amountRaw, a.decimals)}</li>)}</ul>}
         <p>{displayUsdg(trial.result.reservedUsdgRaw)} USDG of the remaining balance belongs to the Bag’s cash allocation. No public-chain transactions were sent.</p>
         <p className="text-xs text-white/45">Local account/session model. MetaMask/Rabby permission screens and live automation are a separate step.</p>
       </div>}

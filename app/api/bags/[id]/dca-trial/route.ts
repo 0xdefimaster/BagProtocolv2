@@ -3,9 +3,10 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
 import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
 import { definitionFromRecipe, computeDefinitionHash } from '@/lib/domain/basket-protocol/bag-json';
 import { buildDcaPlan, DcaPlanError, usdgRaw, type DcaSettings } from '@/lib/dca/plan';
-import { supportsDcaTrial } from '@/lib/dca/profile';
+import { supportsDcaTrial, dcaTrialUnsupportedReason } from '@/lib/dca/profile';
 import { getDcaTrial, localDcaRequestAllowed, startDcaTrial } from '@/lib/server/dca-trial';
 import { DCA_REFERENCE_DEFINITION, DCA_REFERENCE_ID } from '@/lib/dca/reference';
+import { loadPublicDcaBag, publicDcaSourceEnabled } from '@/lib/server/dca-public-bags';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (Number(request.headers.get('content-length') ?? 0) > 2048) return NextResponse.json({ error: 'Request too large.' }, { status: 413 });
   const text = await request.text();
   if (text.length > 2048) return NextResponse.json({ error: 'Request too large.' }, { status: 413 });
-  let settings: DcaSettings;
+  let settings: DcaSettings & { expectedDefinitionHash?: string; expectedVersion?: number };
   try { settings = JSON.parse(text); } catch { return NextResponse.json({ error: 'Invalid request.' }, { status: 400 }); }
   try {
     const plan = buildDcaPlan(settings);
@@ -26,6 +27,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const trial = await startDcaTrial(id, { bagJson: 1, definition }, computeDefinitionHash(definition), settings, plan);
       return NextResponse.json({ trial }, { status: 202, headers: { 'Cache-Control': 'no-store' } });
     }
+    if (publicDcaSourceEnabled()) {
+      const { bag, document } = await loadPublicDcaBag(id);
+      if (settings.expectedDefinitionHash !== document.definitionHash || settings.expectedVersion !== bag.version) return NextResponse.json({ error: 'The selected strategy version or hash does not match. Reload this Bag before starting.' }, { status: 409 });
+      if (!supportsDcaTrial(bag)) return NextResponse.json({ error: `${dcaTrialUnsupportedReason(bag)} This BAG was not substituted.` }, { status: 422 });
+      const definition = document.definition;
+      if (definition.rules.performanceFeeBps) return NextResponse.json({ error: 'The local trial does not support Bags with a performance fee.' }, { status: 422 });
+      if (definition.rules.minInvestment && BigInt(plan.amountRaw) < usdgRaw(definition.rules.minInvestment.amount)) throw new DcaPlanError('The purchase amount is below this Bag’s minimum investment.');
+      const trial = await startDcaTrial(id, { bagJson: 1, definition }, document.definitionHash, settings, plan);
+      return NextResponse.json({ trial }, { status: 202, headers: { 'Cache-Control': 'no-store' } });
+    }
     if (!isSupabaseConfigured()) return NextResponse.json({ error: 'Supabase is not configured.' }, { status: 503 });
     const admin = supabaseAdmin();
     const stored = await getBagById(admin, id);
@@ -33,8 +44,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const version = await getCurrentBagVersion(admin, stored.id);
     if (!version) return NextResponse.json({ error: 'Current strategy is unavailable.' }, { status: 409 });
     const recipe = version.recipe;
-    if (!supportsDcaTrial({ chains: [recipe.chain], composition: recipe.assets.map(a => ({ address: a.address, weightBps: a.weightBps, weight: a.weightBps / 100, symbol: a.symbol })) })) return NextResponse.json({ error: 'The local trial currently supports 40% WETH / 30% cbBTC / 30% USDG on Robinhood.' }, { status: 422 });
+    if (!supportsDcaTrial({ chains: [recipe.chain], performanceFeeBps: recipe.performanceFeeBps, composition: recipe.assets.map(a => ({ address: a.address, weightBps: a.weightBps, weight: a.weightBps / 100, symbol: a.symbol })) })) return NextResponse.json({ error: 'This Bag is outside the supported local trial profile.' }, { status: 422 });
     const definition = definitionFromRecipe(recipe);
+    if (settings.expectedDefinitionHash !== computeDefinitionHash(definition) || settings.expectedVersion !== version.version) return NextResponse.json({ error: 'The selected strategy version or hash does not match. Reload this Bag before starting.' }, { status: 409 });
     if (definition.rules.performanceFeeBps) return NextResponse.json({ error: 'The local trial does not support Bags with a performance fee.' }, { status: 422 });
     if (definition.rules.minInvestment && BigInt(plan.amountRaw) < usdgRaw(definition.rules.minInvestment.amount)) throw new DcaPlanError('The purchase amount is below this Bag’s minimum investment.');
     const trial = await startDcaTrial(id, { bagJson: 1, definition }, computeDefinitionHash(definition), settings, plan);

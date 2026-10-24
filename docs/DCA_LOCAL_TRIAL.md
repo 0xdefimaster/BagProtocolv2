@@ -11,6 +11,7 @@ npm ci
 npm run build --prefix packages/bag-sdk
 $env:NEXT_PUBLIC_DCA_TRIAL = 'true'
 $env:BAG_DCA_TRIAL = 'true'
+$env:BAG_DCA_PUBLIC_SOURCE = 'bagprotocol.com'
 # Only when credentials are in another checkout; otherwise .env.local is used:
 $env:BAG_DCA_ENV_FILE = 'C:\Users\ilife\Desktop\BagProtocolv2\.env.local'
 npm run dev:webpack -- --hostname 127.0.0.1
@@ -18,7 +19,7 @@ npm run dev:webpack -- --hostname 127.0.0.1
 
 Open `http://127.0.0.1:3000/dashboard/dca`. The DCA navigation entry appears only in development with the public flag. Both flags, development mode and local same-origin requests are required to start or inspect a worker. Production builds cannot run it even if flags are accidentally enabled.
 
-Select the **local reference** basket explicitly, or select a live Bag from the existing registry. No fake Bag is inserted in the database. An unsupported live Bag is never replaced with the reference. The worker snapshots the server's current strategy definition and binds its hash to the local policy.
+Select the **local reference** basket explicitly, or select a live Bag from the public catalog. The public-source mode reads only `https://bagprotocol.com/api/bags` and the selected version's public `bag.json`; it needs no Supabase key. If public-source mode is unset, the explicit local reference remains available. No fake Bag is inserted in the database. An unsupported live Bag is never replaced with the reference. The worker snapshots the selected strategy definition and binds its hash to the local policy. For a real Bag, the submitted expected version/hash must match the freshly verified server snapshot; otherwise HTTP 409 requires a reload.
 
 Choose:
 
@@ -35,7 +36,13 @@ Press **Run local trial**. It starts one local child process and polls its actua
 
 ## Supported basket and economics
 
-The qualified compiler profile supports Robinhood chain 4663, USDG input, **40% WETH / 30% cbBTC / 30% USDG**, and no BAG performance fee. Addresses, decimals, runtime code, 34 VM instructions, 17 state slots, routers and selectors are constrained. Unknown compiler shapes/routes stop the trial.
+The allocation model supports Robinhood chain 4663, USDG input, up to 10 distinct ERC-20 assets and an explicitly declared **0% BAG performance fee**. There must be at least one swap leg. Public definitions pass SDK parsing, validation and hash verification; on-chain token decimals are checked against the selected definition. Bags with unknown or nonzero performance fees are rejected because BAG profit-fee accounting is outside this trial.
+
+`BasketPurchase.sol` replaces the runner's fixed two-output guard. Each owner-authorized template pins the full instruction hash, every non-swap state cell, context and per-token input amounts. Fresh quotes can change only the semantically checked swap payloads. Factory/proxy lifecycle, known VM opcodes/call targets, router selectors, fee payloads and dependency bytecode hashes remain constrained. Every token's output minimum is checked after execution, the exact USDG debit is enforced, and allowances return to zero atomically. Unknown compiler shapes/routes stop the trial.
+
+The measured new case is the real **asdas (Fork), version 1**: AAPL 10%, ASML 26.01%, COIN 37.24%, GME 26.75%. Its definition hash is `0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9`. Five purchases of 5 USDG each executed with all four actual tokens on a local fork, both directly and through the browser-started worker. Each run passed 38 checks and five SDK call-trace/balance receipt verifications. No reference-basket substitution was used.
+
+The older reference remains useful for retained-USDG regression:
 
 Example: budget **25 USDG**, purchase **5 USDG**, count **5**, interval **1 day**:
 
@@ -67,6 +74,17 @@ This tab deliberately exposes the **local ERC-7579 account/EntryPoint + SmartSes
 The local ArbSys getter is an explicitly qualified research model. Token bytecode/storage are not replaced. This is not Nitro gas measurement, a general VM audit or a production security guarantee. Existing research licenses and trust limitations continue to apply.
 
 ## Recorded qualification (23 October 2026)
+
+### 24 October allocation update
+
+- Actual four-token BAG: 5 × 5 = 25 USDG, 38 PASS / 0 FAIL, both CLI and browser worker runs; all five receipts verified by SDK call trace and balance evidence.
+- Retained-USDG reference regression under the new generic guard: 5 × 5 = 25 USDG, 38 PASS / 0 FAIL; 17.5 USDG swapped, 7.5 USDG reserved, zero remaining allowance.
+- API rejects stale/missing expected hashes/versions, inconsistent totals and performance-fee Bags. No worker is launched for those rejections.
+- Four- and five-output captured-wire fixtures test exact SDK input splits, template/context normalization and token/amount substitution rejection. The five-output wire fixture is from a fee-bearing Bag and is **not** an execution qualification or fee-accounting claim.
+- Several other public Bags returned negative provider price-impact values that the current SDK rejects. The SDK validation was not weakened; these are unsupported quote observations, not successful executions.
+- The 1–10 asset model is not a claim that every token, route, asset count or market condition has been execution-qualified. Fixed quantity floors, local account/session model and all earlier production limits still apply.
+
+### Earlier measurements
 
 - Current explicit-count validation: **53 focused unit/component/API/navigation checks passed**, including the exact 5 × 5 = 25 acceptance case, mismatched totals, missing/invalid counts, date derivation and direct API rejection. Full app TypeScript check passed. This validation change does not claim a new Composer execution measurement.
 - Historical execution qualification below predates the explicit-count requirement. Its original result/request files remain unchanged; the old requests with unused budget are intentionally rejected by the current form/runner. Use a newly created exact-total request for a current trial.

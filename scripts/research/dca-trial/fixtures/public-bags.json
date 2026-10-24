@@ -1,0 +1,78 @@
+{
+  "bags": [
+    {
+      "id": "955df6e0-b6ea-44ba-a5eb-1288a80c0a06",
+      "name": "asdas (Fork)",
+      "version": 1,
+      "chains": [
+        "robinhood"
+      ],
+      "composition": [
+        {
+          "address": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "symbol": "AAPL",
+          "weightBps": 1000,
+          "weight": 10
+        },
+        {
+          "address": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "symbol": "ASML",
+          "weightBps": 2601,
+          "weight": 26.01
+        },
+        {
+          "address": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "symbol": "COIN",
+          "weightBps": 3724,
+          "weight": 37.24
+        },
+        {
+          "address": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "symbol": "GME",
+          "weightBps": 2675,
+          "weight": 26.75
+        }
+      ]
+    },
+    {
+      "id": "a3caff05-d606-486b-959f-30865a4cbfa7",
+      "name": "v2 ui",
+      "version": 2,
+      "chains": [
+        "robinhood"
+      ],
+      "composition": [
+        {
+          "address": "0x020bfc650a365f8bb26819deaabf3e21291018b4",
+          "symbol": "CASHCAT",
+          "weightBps": 937,
+          "weight": 9.37
+        },
+        {
+          "address": "0xeb61c0ed490a367d4e3631ccf8a74b3bfc7e775d",
+          "symbol": "HII",
+          "weightBps": 3881,
+          "weight": 38.81
+        },
+        {
+          "address": "0xacef2e09adb47ad6abebad9ff06689e60615c2b6",
+          "symbol": "INDA",
+          "weightBps": 1300,
+          "weight": 13
+        },
+        {
+          "address": "0x39dbed3a2bd333467115de45665cc57f813c4571",
+          "symbol": "PONS",
+          "weightBps": 2945,
+          "weight": 29.45
+        },
+        {
+          "address": "0x75742c18bc1f1c5c5f448f4c9d9c6f66dafaaa38",
+          "symbol": "SOXX",
+          "weightBps": 937,
+          "weight": 9.37
+        }
+      ]
+    }
+  ]
+}
