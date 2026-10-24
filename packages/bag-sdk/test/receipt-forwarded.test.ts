@@ -175,6 +175,18 @@ describe('verifyPurchaseReceipt forwarded delivery', () => {
     expect((await g.run()).issues[0].code).toBe('INPUT_SPEND_EXCEEDS_PLAN');
   });
 
+  it('requires the funding source to pay the whole swapped share, unlike the default mode', async () => {
+    // Zero or partial debit with a net-zero caller: the swap input came from somewhere else in the transaction.
+    for (const after of ['zero', 'partial'] as const) {
+      const f = await setup();
+      f.balances[SOURCE][INPUT] = [f.gross, after === 'zero' ? f.gross : f.gross - f.swap + BigInt(1)];
+      const result = await f.run();
+      expect(result.status).toBe('FAILED');
+      expect(result.issues[0].code).toBe('INPUT_SPEND_BELOW_PLAN');
+      expect(result.spentInputRaw).toBe(after === 'zero' ? BigInt(0) : f.swap - BigInt(1));
+    }
+  });
+
   it('checks a retained input share against the funding source, debiting only the swapped share', async () => {
     const f = await setup(true);
     expect(f.keptRaw > BigInt(0)).toBe(true);

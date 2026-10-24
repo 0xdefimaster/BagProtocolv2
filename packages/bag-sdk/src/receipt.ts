@@ -101,7 +101,8 @@ export type PurchaseReceiptIssueCode =
   | 'INVALID_CALL_TRACE' | 'COMPILED_CALL_NOT_EXECUTED' | 'AMBIGUOUS_CALL_TRACE'
   | 'BALANCE_EVIDENCE_UNAVAILABLE' | 'INVALID_BALANCE_EVIDENCE' | 'INPUT_SPEND_EXCEEDS_PLAN'
   | 'INPUT_BALANCE_BELOW_PLAN' | 'KEPT_INPUT_MISSING'
-  | 'DELIVERY_AUTHORIZATION_UNAVAILABLE' | 'DELIVERY_AUTHORIZATION_MISMATCH' | 'CALLER_RETAINED_BALANCE';
+  | 'DELIVERY_AUTHORIZATION_UNAVAILABLE' | 'DELIVERY_AUTHORIZATION_MISMATCH' | 'CALLER_RETAINED_BALANCE'
+  | 'INPUT_SPEND_BELOW_PLAN';
 
 export interface PurchaseReceiptVerification {
   status: 'VERIFIED' | 'FAILED' | 'INDETERMINATE';
@@ -152,7 +153,8 @@ export interface VerifyPurchaseReceiptOptions {
   /**
    * Opt-in. Absent: the signer is the wallet and is measured directly (unchanged behavior).
    * Present: `minimumReceived` applies to `recipient`, input spending to `fundingSource`, and the
-   * caller must keep none of the planned tokens. Requires BALANCE_DELTA and an ERC-20 input.
+   * caller must keep none of the planned tokens. The funding source must be debited exactly the
+   * planned swap amount. Requires BALANCE_DELTA and an ERC-20 input.
    */
   delivery?: ForwardedDeliveryExpectation;
 }
@@ -433,6 +435,9 @@ export async function verifyPurchaseReceipt(
       // Same input rules as the default mode, applied to the account that actually pays.
       if (input.beforeRaw < plan.amountRaw) return stop('FAILED', 'INPUT_BALANCE_BELOW_PLAN', 'Pre-transaction funding-source balance was below the planned deposit.');
       if (result.spentInputRaw > plan.swapAmountRaw) return stop('FAILED', 'INPUT_SPEND_EXCEEDS_PLAN', 'Funding-source input debit exceeds the planned swap amount.');
+      // Stricter than the default mode: a forwarding caller must pull the whole swapped share from
+      // the authorized source. Anything less means the swap was at least partly paid by someone else.
+      if (result.spentInputRaw < plan.swapAmountRaw) return stop('FAILED', 'INPUT_SPEND_BELOW_PLAN', 'Funding-source input debit is below the planned swap amount.');
       if (plan.kept) {
         if (input.afterRaw < plan.kept.amountRaw) return stop('FAILED', 'KEPT_INPUT_MISSING', 'The retained input share is not present in the funding source after execution.');
         result.keptBalanceVerified = true;

@@ -614,7 +614,7 @@ const result = await verifyPurchaseReceipt(compiledForPlan, {
 - **Caller:** `caller` is the compiled signer.
 - **Authorization:** `fundingSource` and `recipient` equal what the caller contract itself declares (`source()` and `recipient()`). These are read at the purchase block, canonical only. The reader is unavailable unless explicitly enabled, and without it the result is `INDETERMINATE` (`DELIVERY_AUTHORIZATION_UNAVAILABLE`). A difference returns `FAILED` (`DELIVERY_AUTHORIZATION_MISMATCH`).
 - **Call trace:** the trace proves exactly one successful compiled call from the caller.
-- **Input:** the funding source passes the same input rules as the default mode. Its pre-balance must cover the plan (`INPUT_BALANCE_BELOW_PLAN`). Its debit must not exceed the swapped share (`INPUT_SPEND_EXCEEDS_PLAN`). A retained input share must stay in the funding source.
+- **Input:** the funding source passes the same input rules as the default mode. Its pre-balance must cover the plan (`INPUT_BALANCE_BELOW_PLAN`). Its debit must equal the swapped share exactly: more is `INPUT_SPEND_EXCEEDS_PLAN`, less is `INPUT_SPEND_BELOW_PLAN`. This is stricter than the default mode, which accepts a smaller debit; a forwarding caller that pulls less than its share was at least partly funded by someone else. A retained input share must stay in the funding source.
 - **Delivery:** every recipient balance delta meets its minimum.
 - **Caller net zero:** the caller's balance of every planned token, input included, is unchanged (`CALLER_RETAINED_BALANCE`).
 
