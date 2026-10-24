@@ -1,11 +1,21 @@
-import type { PurchaseReceiptClient, PurchaseEvidenceContext, PurchaseBalanceEvidence } from '../receipt';
+import type { PurchaseReceiptClient, PurchaseEvidenceContext, PurchaseBalanceEvidence, DeliveryAuthorizationContext, DeliveryAuthorizationEvidence } from '../receipt';
 import type { Hex } from '../types';
 import { BAG_V1_CHAINS } from '../chains';
 
 export interface ReceiptEvidenceOptions {
   /** Indexed modes require a qualified reader with BEFORE-transaction txIndex semantics. No automatic detection/fallback. */
   balanceState?: 'SINGLE_TRANSACTION_BLOCK' | 'GETH_TRANSACTION_INDEX' | 'ROBINHOOD_NITRO_TRANSACTION_INDEX';
+  /**
+   * Opt-in reader for forwarded-delivery verification. 'BAG_DCA_PLAN_V1': the caller contract
+   * exposes `source()` and `recipient()` address getters (the recurring-plan research contract).
+   * Unset: no authorization reader, so forwarded delivery returns INDETERMINATE.
+   */
+  deliveryAuthorization?: 'BAG_DCA_PLAN_V1';
 }
+
+const SOURCE_SELECTOR = '0x67e828bf'; // source()
+const RECIPIENT_SELECTOR = '0x66d003ac'; // recipient()
+const ADDRESS_WORD = /^0x0{24}[0-9a-fA-F]{40}$/;
 
 type Rpc = (args: { method: string; params: readonly unknown[] }) => Promise<unknown>;
 const HASH = /^0x[0-9a-fA-F]{64}$/;
@@ -22,6 +32,7 @@ export function withReceiptEvidence(client: PurchaseReceiptClient & { request: u
   const mode = options.balanceState ?? 'SINGLE_TRANSACTION_BLOCK';
   if (!['SINGLE_TRANSACTION_BLOCK', 'GETH_TRANSACTION_INDEX', 'ROBINHOOD_NITRO_TRANSACTION_INDEX'].includes(mode)) throw new Error('Unknown balance-state mode.');
   const indexed = mode !== 'SINGLE_TRANSACTION_BLOCK';
+  if (options.deliveryAuthorization !== undefined && options.deliveryAuthorization !== 'BAG_DCA_PLAN_V1') throw new Error('Unknown delivery-authorization reader.');
   const rpc: Rpc = args => (client.request as Rpc).call(client, args);
   const assertInclusion = async (context: PurchaseEvidenceContext, index?: number) => {
     const receipt = record(await rpc({ method: 'eth_getTransactionReceipt', params: [context.transactionHash] }));
@@ -97,5 +108,20 @@ export function withReceiptEvidence(client: PurchaseReceiptClient & { request: u
       await assertInclusion(context, index);
       return { ...context, scope: mode === 'SINGLE_TRANSACTION_BLOCK' ? 'SINGLE_TRANSACTION_BLOCK' : 'TRANSACTION', balances };
     },
+    ...(options.deliveryAuthorization ? {
+      async readDeliveryAuthorization(context: DeliveryAuthorizationContext): Promise<DeliveryAuthorizationEvidence> {
+        // Read at the purchase block itself, canonical only; a caller without code cannot authorize anything.
+        const at = { blockHash: context.blockHash, requireCanonical: true };
+        const code = await rpc({ method: 'eth_getCode', params: [context.caller, at] });
+        if (typeof code !== 'string' || code === '0x' || !/^0x[0-9a-fA-F]+$/.test(code)) throw new Error('Caller has no contract code at the purchase block.');
+        const read = async (data: string) => {
+          const output = await rpc({ method: 'eth_call', params: [{ to: context.caller, data, gas: '0x186a0' }, at] });
+          if (typeof output !== 'string' || !ADDRESS_WORD.test(output)) throw new Error('Authorization getter did not return an address.');
+          return ('0x' + output.slice(-40)) as Hex;
+        };
+        const [fundingSource, recipient] = [await read(SOURCE_SELECTOR), await read(RECIPIENT_SELECTOR)];
+        return { ...context, fundingSource, recipient };
+      },
+    } : {}),
   };
 }
