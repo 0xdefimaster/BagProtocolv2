@@ -76,6 +76,14 @@ describe('LI.FI Composer signed price impact', () => {
     expect(await code(lifiWith(impact({ impactBps: 0, inputValueUsd: 5, outputValueUsd: 5 })))).toBe('ACCEPTED');
   });
 
+  it('applies the loss limit to favorable values too (|impactBps| ≤ maxPriceImpactBps)', async () => {
+    const max = (await compile(lifiWith(impact()))).quote.plan.maxPriceImpactBps;
+    const at = (bps: number) => impact({ inputValueUsd: 5, outputValueUsd: 5 * (1 + bps / 10_000), impactBps: -bps });
+    expect(await code(lifiWith(at(max)))).toBe('ACCEPTED');
+    expect(await code(lifiWith(at(max + 1)))).toBe('PRICE_IMPACT_EXCEEDED');
+    expect(await code(lifiWith(at(3000)))).toBe('PRICE_IMPACT_EXCEEDED');
+  });
+
   it('refuses a negative impact whose USD values point the other way', async () => {
     expect(await code(lifiWith(impact({ inputValueUsd: 4.99499414537114, outputValueUsd: 4.9918325034999995, impactBps: -6 })))).toBe('PRICE_IMPACT_INVALID');
     expect(await code(lifiWith(impact({ inputValueUsd: 5, outputValueUsd: 5, impactBps: -1 })))).toBe('PRICE_IMPACT_INVALID');

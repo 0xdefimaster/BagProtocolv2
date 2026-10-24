@@ -280,6 +280,11 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
     if (!Number.isFinite(ratioBps) || Math.abs(priceImpactBps - ratioBps) > SIGNED_PRICE_IMPACT_TOLERANCE_BPS) {
       fail(`negative price impact ${priceImpactBps} bps is inconsistent with its USD values (${ratioBps.toFixed(2)} bps).`, 'PRICE_IMPACT_INVALID');
     }
+    // The same bound applies in both directions: a favorable gap larger than the loss limit more
+    // likely means a stale or wrong reference price than a real gain.
+    if (-priceImpactBps > plan.maxPriceImpactBps) {
+      fail(`favorable price impact ${priceImpactBps} bps is beyond the limit of ${plan.maxPriceImpactBps} bps in either direction.`, 'PRICE_IMPACT_EXCEEDED');
+    }
   }
   // The caller's maximum-loss limit is unchanged and applies to every reported value.
   if (priceImpactBps > plan.maxPriceImpactBps) {
