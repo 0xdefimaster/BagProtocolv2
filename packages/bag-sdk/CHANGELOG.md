@@ -3,7 +3,7 @@
 ## Unreleased: LI.FI signed price impact (not part of the 0.3.0 candidate)
 
 - The LI.FI Composer adapter passes `priceImpact` through unchanged: the raw signed `impactBps`, plus `inputValueUsd`, `outputValueUsd` and the unpriced asset lists. `PurchaseQuote` gains `priceImpactUsd`.
-- A negative (favorable) impact from that adapter is accepted when the USD values are finite, the output is above the input, nothing is unpriced, and the value is within ±1 bps of the USD ratio. This is an observed-behavior compatibility tolerance, not LI.FI's documented formula. Other providers still refuse negative values. The loss limit, minimum outputs, slippage and transaction checks are unchanged.
+- A negative (favorable) impact from that adapter is accepted when the USD values are finite, the output is above the input, nothing is unpriced, and the value is within ±1 bps of the USD ratio. This is an observed-behavior compatibility tolerance, not LI.FI's documented formula. Other providers still refuse negative values. The `maxPriceImpactBps` limit applies in both directions (`|impactBps| ≤ maxPriceImpactBps`). Minimum outputs, slippage and transaction checks are unchanged.
 
 ## Unreleased (not part of the 0.3.0 candidate)
 
