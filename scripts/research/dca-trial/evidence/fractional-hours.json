@@ -1,0 +1,1198 @@
+{
+  "startedAt": "2026-10-22T22:13:52.368Z",
+  "status": "CONFIGURED_USDG_RECURRING_FORK_VERIFIED",
+  "publicTransactionsSubmitted": 0,
+  "scope": "Real Robinhood token/Composer state and program; local model account, EntryPoint and qualified ArbSys block-number read; user-configured, policy-validated recurring purchases; accelerated local schedule, not production DCA",
+  "executionMode": "FRESH_LIVE_QUOTE",
+  "qualifiedSdkBaseline": "82b3b2926da467e3530eba0c9f6c38452d8511ab",
+  "sourceIdentity": "DECLARED_BASELINE_WITH_RECORDED_FILE_HASHES",
+  "sdkVersion": "0.3.0-source-unpublished",
+  "composerSdkVersion": "0.11.3",
+  "tokens": {
+    "USDG": {
+      "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "symbol": "USDG",
+      "name": "Global Dollar",
+      "decimals": 6,
+      "codeHash": "0x864cc9ad53b338b82da1f7cab85ab0b3d5c8861acb422b6fec63cf36234f36a6",
+      "registryPriceUSD": "1.0006955658",
+      "registryVerificationStatus": "verified"
+    },
+    "WETH": {
+      "address": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+      "symbol": "WETH",
+      "name": "WETH",
+      "decimals": 18,
+      "codeHash": "0x5706be52f64875fee65a2cec0d80e47a23d8793cbe85d214b48445e2d05f5353",
+      "registryPriceUSD": "2412.35",
+      "registryVerificationStatus": "verified"
+    },
+    "cbBTC": {
+      "address": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+      "symbol": "cbBTC",
+      "name": "Coinbase Wrapped BTC",
+      "decimals": 8,
+      "codeHash": "0xce09c534882f533bcf57f4ef68fadfdaf69527975f4e332c9646b12e0268c320",
+      "registryPriceUSD": "82129.7834563545",
+      "registryVerificationStatus": "verified"
+    }
+  },
+  "checks": [
+    {
+      "name": "upstream is the intended chain",
+      "status": "PASS",
+      "details": {
+        "chainId": 4663
+      }
+    },
+    {
+      "name": "public submission blocked by RPC proxy",
+      "status": "PASS",
+      "details": {
+        "httpStatus": 403
+      }
+    },
+    {
+      "name": "native ArbSys block-number read is qualified and modeled explicitly",
+      "status": "PASS",
+      "details": {
+        "address": "0x0000000000000000000000000000000000000064",
+        "kind": "LOCAL_READ_MODEL_NOT_NATIVE_NITRO",
+        "supportedSelector": "0xa3b1b31d",
+        "nativeValueAtFork": "95450641",
+        "qualifiedBlockHash": "0x975156f218475a10747d6f40495f563c29bcd23b7694f11dcfba75a6262c2f84",
+        "qualifiedLocalHeight": "95450642",
+        "originalCode": "0xfe",
+        "runtimeCodeHash": "0xf91cbd734e75dc0d3ccefb6e09cc465690a484cded997f04f5598a9573bd968a",
+        "unsupportedSelectors": "REVERT",
+        "gasEquivalent": false
+      }
+    },
+    {
+      "name": "local transaction envelope carries the expected chain domain",
+      "status": "PASS",
+      "details": {
+        "unlocked": {
+          "hash": "0x7520837dbc96e61e11315b78fa1bc32e437b2a62693a3c827c207940cffe55a6",
+          "type": "eip1559",
+          "chainId": 4663,
+          "rpcChainId": 4663
+        },
+        "signed": {
+          "hash": "0x642fa93edbd44d098d479e32972a35e04f7a2630c943d03eea53483b5ab5286c",
+          "type": "eip1559",
+          "chainId": 4663
+        }
+      }
+    },
+    {
+      "name": "forked factory bytecode matches research pin",
+      "status": "PASS",
+      "details": {
+        "chainId": 4663,
+        "factory": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+        "factoryCodeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5",
+        "productionApproved": false
+      }
+    },
+    {
+      "name": "forked tokens match the recorded USDG, WETH and cbBTC definitions",
+      "status": "PASS",
+      "details": [
+        {
+          "symbol": "USDG",
+          "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "decimals": 6
+        },
+        {
+          "symbol": "WETH",
+          "address": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+          "decimals": 18
+        },
+        {
+          "symbol": "cbBTC",
+          "address": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+          "decimals": 8
+        }
+      ]
+    },
+    {
+      "name": "Composer compiles the selected Bag and purchase amount",
+      "status": "PASS",
+      "details": {
+        "definitionHash": "0xef4f76ebabd2d5b4ce1b206b43304c538e55481c4ad7d1fac0605856752b6163",
+        "grossRaw": "12500002",
+        "swapRaw": "8750001"
+      }
+    },
+    {
+      "name": "the selected USDG budget is funded only on the local fork",
+      "status": "PASS",
+      "details": {
+        "budgetRaw": "27250001",
+        "holder": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+        "localImpersonation": true
+      }
+    },
+    {
+      "name": "before the selected interval: no USDG is spent",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x0474a6975f515e784a9f62274c09dd8c7ed01003389909b5106b98f81f5f5520",
+        "outerRejected": false,
+        "revertData": "0x47a2375f",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "selected budget, amount and interval are enforced on chain",
+      "status": "PASS",
+      "details": {
+        "address": "0x30474ce2de03045b8d0ae76f8a30dbfc8f000cea",
+        "definitionHash": "0xef4f76ebabd2d5b4ce1b206b43304c538e55481c4ad7d1fac0605856752b6163",
+        "grossPerRun": "12500002",
+        "swapPerRun": "8750001",
+        "keptPerRun": "3750001",
+        "maxRuns": 2,
+        "maxGross": "27250001",
+        "start": "1792714579",
+        "periodSeconds": "7200",
+        "expiry": "1792743379",
+        "ownerFloors": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "amountRaw": "2046149206952415"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "amountRaw": "4500"
+          }
+        ],
+        "profile": {
+          "btcInput": "3750251",
+          "ethInput": "4999750",
+          "btcNet": "3740876",
+          "ethNet": "4987251",
+          "partitionHash": "0x627091c1980fec04c68a650a7760ca93f8cbaa75e8d1add9b219b0bca495379e",
+          "btcFeeHash": "0xbc52c0e0e2a74437aab24c67ee28b5c25d249e7a0e7911b6ceddc174a1915c04",
+          "ethFeeHash": "0x0ce923d626ef9652b5203e0a2bb2f7fcdd53c0cf62216d2fe345f750dff96455"
+        },
+        "context": "0x81a28c8275f15030a0dd9b5a5b093b7981a28c8275f15030a0dd9b5a5b093b79",
+        "pricePolicy": "FIXED_INITIAL_QUANTITY_FLOORS_NOT_LIVE_ORACLE",
+        "schedule": "REQUESTED_INTERVAL_IN_LOCAL_BLOCK_TIMESTAMPS; TIME_ADVANCED_NOT_WALL_CLOCK"
+      }
+    },
+    {
+      "name": "changed Composer instruction is rejected",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0xc1a8247bac9f7827b8529394555bb4946deee0d4e43239e81f7fbb453679aecf",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000006",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "changed amount in a constant slot is rejected",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x7a8237701a8c77660012bf44bb3d2d0bcc2906848758705f11b052751a44f103",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000013",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "unapproved recipient is rejected",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x38f3cde1e4ed64a704c502fac4a4bf17c38f50369d2176021853b4f3c1372ddf",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000021",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "lower minimum output is rejected",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x77ce13e7a56e37a3d198bdc171711d682a06f32a68eefb8acfe9fa3adc949512",
+        "outerRejected": false,
+        "revertData": "0x775e666d0000000000000000000000000000000000000000000000000000000000000021",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "paused policy cannot spend",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x883eccf114da8e6a1120a3a8e9727c1b1b64a593c53dcdd8d8e0c158e1396125",
+        "outerRejected": false,
+        "revertData": "0xe3372e2d",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "revoked policy cannot spend",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x883eccf114da8e6a1120a3a8e9727c1b1b64a593c53dcdd8d8e0c158e1396125",
+        "outerRejected": false,
+        "revertData": "0xe3372e2d",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "expired policy cannot spend",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x883eccf114da8e6a1120a3a8e9727c1b1b64a593c53dcdd8d8e0c158e1396125",
+        "outerRejected": false,
+        "revertData": "0xe3372e2d",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "failed route rolls back the budget, balance and approvals",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x7a517df9ef5e721578146f828a5aaa7dca7ee8e115761c6e3c0bba5021e3897c",
+        "outerRejected": false,
+        "revertData": "0x",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "fresh Composer quote 1 matches the approved profile",
+      "status": "PASS",
+      "details": {
+        "programHash": "0xd95a9eea05d335a8b39f857a4a381aedc18f4fd08ca78ef6c381572cfbbb985b",
+        "remoteTarget": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+        "localTarget": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae"
+      }
+    },
+    {
+      "name": "scheduled purchase 1 executes with the selected amount",
+      "status": "PASS",
+      "details": {
+        "round": 1,
+        "transactionHash": "0x3027702ff9422b74be991e6dc24d1adcbbd3c17b3579c8f72dd23b7387e8c53f",
+        "gasUsed": "6260639",
+        "before": {
+          "USDG": "27250001",
+          "WETH": "0",
+          "cbBTC": "0"
+        },
+        "after": {
+          "USDG": "18500000",
+          "WETH": "2087694324000017",
+          "cbBTC": "4591"
+        },
+        "budget": {
+          "runs": "1",
+          "gross": "12500002",
+          "last": "1792714596",
+          "window": "0",
+          "allowance": "0"
+        },
+        "programHash": "0xd95a9eea05d335a8b39f857a4a381aedc18f4fd08ca78ef6c381572cfbbb985b",
+        "approvals": [
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "8750001"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          }
+        ],
+        "receiptVerification": {
+          "status": "VERIFIED",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "transactionHash": "0x3027702ff9422b74be991e6dc24d1adcbbd3c17b3579c8f72dd23b7387e8c53f",
+          "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+          "spentInputRaw": "8750001",
+          "transactionBinding": "CALL_TRACE",
+          "chainId": 4663,
+          "blockNumber": "95450663",
+          "confirmations": "1",
+          "outputs": [
+            {
+              "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+              "receivedRaw": "2087694324000017",
+              "sentRaw": "0",
+              "netReceivedRaw": "2087694324000017",
+              "minimumRaw": "2046149206952415",
+              "satisfied": true,
+              "balanceBeforeRaw": "0",
+              "balanceAfterRaw": "2087694324000017",
+              "balanceDeltaRaw": "2087694324000017"
+            },
+            {
+              "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+              "receivedRaw": "4591",
+              "sentRaw": "0",
+              "netReceivedRaw": "4591",
+              "minimumRaw": "4500",
+              "satisfied": true,
+              "balanceBeforeRaw": "0",
+              "balanceAfterRaw": "4591",
+              "balanceDeltaRaw": "4591"
+            }
+          ],
+          "kept": {
+            "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+            "amountRaw": "3750001"
+          },
+          "keptBalanceVerified": true,
+          "accounting": "NOT_BAG_ACCOUNTED",
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "SDK verifies actual call and balances for purchase 1",
+      "status": "PASS",
+      "details": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0x3027702ff9422b74be991e6dc24d1adcbbd3c17b3579c8f72dd23b7387e8c53f",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "8750001",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95450663",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "2087694324000017",
+            "sentRaw": "0",
+            "netReceivedRaw": "2087694324000017",
+            "minimumRaw": "2046149206952415",
+            "satisfied": true,
+            "balanceBeforeRaw": "0",
+            "balanceAfterRaw": "2087694324000017",
+            "balanceDeltaRaw": "2087694324000017"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "4591",
+            "sentRaw": "0",
+            "netReceivedRaw": "4591",
+            "minimumRaw": "4500",
+            "satisfied": true,
+            "balanceBeforeRaw": "0",
+            "balanceAfterRaw": "4591",
+            "balanceDeltaRaw": "4591"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3750001"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "name": "an immediate repeat cannot spend a second purchase",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x77e55a0a30764cedf459ad9e78ac5c6c981ec1f3668f6e48ba7fb197fdd1e438",
+        "outerRejected": false,
+        "revertData": "0x47a2375f",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "fresh Composer quote 2 matches the approved profile",
+      "status": "PASS",
+      "details": {
+        "programHash": "0xaac8406ec537bcb599b8fa929bd1f863ecd35228586951d991578d546b2c8d8a",
+        "remoteTarget": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+        "localTarget": "0x65d8ff74a97abc3e57923f33d61c24fe95627c74"
+      }
+    },
+    {
+      "name": "scheduled purchase 2 executes with the selected amount",
+      "status": "PASS",
+      "details": {
+        "round": 2,
+        "transactionHash": "0x113738f9c1cd7eeac3093e0e9d7a266f27e4475fe290602384d94b4f30ce4643",
+        "gasUsed": "5177315",
+        "before": {
+          "USDG": "18500000",
+          "WETH": "2087694324000017",
+          "cbBTC": "4591"
+        },
+        "after": {
+          "USDG": "9749999",
+          "WETH": "4176198051731244",
+          "cbBTC": "9182"
+        },
+        "budget": {
+          "runs": "2",
+          "gross": "25000004",
+          "last": "1792721797",
+          "window": "1",
+          "allowance": "0"
+        },
+        "programHash": "0xaac8406ec537bcb599b8fa929bd1f863ecd35228586951d991578d546b2c8d8a",
+        "approvals": [
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "8750001"
+          },
+          {
+            "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+            "value": "0"
+          }
+        ],
+        "receiptVerification": {
+          "status": "VERIFIED",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "transactionHash": "0x113738f9c1cd7eeac3093e0e9d7a266f27e4475fe290602384d94b4f30ce4643",
+          "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+          "spentInputRaw": "8750001",
+          "transactionBinding": "CALL_TRACE",
+          "chainId": 4663,
+          "blockNumber": "95450666",
+          "confirmations": "1",
+          "outputs": [
+            {
+              "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+              "receivedRaw": "2088503727731227",
+              "sentRaw": "0",
+              "netReceivedRaw": "2088503727731227",
+              "minimumRaw": "2046149206952415",
+              "satisfied": true,
+              "balanceBeforeRaw": "2087694324000017",
+              "balanceAfterRaw": "4176198051731244",
+              "balanceDeltaRaw": "2088503727731227"
+            },
+            {
+              "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+              "receivedRaw": "4591",
+              "sentRaw": "0",
+              "netReceivedRaw": "4591",
+              "minimumRaw": "4500",
+              "satisfied": true,
+              "balanceBeforeRaw": "4591",
+              "balanceAfterRaw": "9182",
+              "balanceDeltaRaw": "4591"
+            }
+          ],
+          "kept": {
+            "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+            "amountRaw": "3750001"
+          },
+          "keptBalanceVerified": true,
+          "accounting": "NOT_BAG_ACCOUNTED",
+          "issues": []
+        }
+      }
+    },
+    {
+      "name": "SDK verifies actual call and balances for purchase 2",
+      "status": "PASS",
+      "details": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0x113738f9c1cd7eeac3093e0e9d7a266f27e4475fe290602384d94b4f30ce4643",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "8750001",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95450666",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "2088503727731227",
+            "sentRaw": "0",
+            "netReceivedRaw": "2088503727731227",
+            "minimumRaw": "2046149206952415",
+            "satisfied": true,
+            "balanceBeforeRaw": "2087694324000017",
+            "balanceAfterRaw": "4176198051731244",
+            "balanceDeltaRaw": "2088503727731227"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "4591",
+            "sentRaw": "0",
+            "netReceivedRaw": "4591",
+            "minimumRaw": "4500",
+            "satisfied": true,
+            "balanceBeforeRaw": "4591",
+            "balanceAfterRaw": "9182",
+            "balanceDeltaRaw": "4591"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3750001"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "name": "no extra purchase is allowed after the complete-purchase budget",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0xf02a529e8999e7eb11a71d9e3ee17b8fdcb52fd07d764258bb6743904e79a667",
+        "outerRejected": false,
+        "revertData": "0xe3372e2d",
+        "budgetUnchanged": true,
+        "balancesUnchanged": true
+      }
+    },
+    {
+      "name": "remaining balance is reserved USDG plus the unallocated remainder",
+      "status": "PASS",
+      "details": {
+        "final": {
+          "USDG": "9749999",
+          "WETH": "4176198051731244",
+          "cbBTC": "9182"
+        },
+        "reserved": "7500002",
+        "remainderRaw": "2249997",
+        "state": {
+          "runs": "2",
+          "gross": "25000004",
+          "last": "1792721797",
+          "window": "1",
+          "allowance": "0"
+        }
+      }
+    }
+  ],
+  "localTransactions": [
+    {
+      "hash": "0x7520837dbc96e61e11315b78fa1bc32e437b2a62693a3c827c207940cffe55a6",
+      "kind": "default envelope diagnostic",
+      "blockNumber": "95450643",
+      "gasUsed": "21000"
+    },
+    {
+      "hash": "0x642fa93edbd44d098d479e32972a35e04f7a2630c943d03eea53483b5ab5286c",
+      "kind": "signed local envelope diagnostic",
+      "blockNumber": "95450644",
+      "gasUsed": "21000"
+    },
+    {
+      "hash": "0xc44f87c3b102c5da1bd2806e6aafe24dc56eadc04bd6ba9cee72a7365e3161ed",
+      "kind": "deploy LocalEntryPointHarness",
+      "blockNumber": "95450645",
+      "gasUsed": "417929"
+    },
+    {
+      "hash": "0x83e456fdf9a640182dd3dca859d53903af57e2ed124f216b23fab6d1504dcd3e",
+      "kind": "deploy SmartSession",
+      "blockNumber": "95450646",
+      "gasUsed": "5158558"
+    },
+    {
+      "hash": "0x195221f577d8c03afd198accd4847faac3c255c445cca3b80531dcc12952d52a",
+      "kind": "deploy SudoPolicy",
+      "blockNumber": "95450647",
+      "gasUsed": "252164"
+    },
+    {
+      "hash": "0xf9d380a2fb77c08a23e47ff3f89ffc2498df7fe29e6ecfa03e509b723c2288d5",
+      "kind": "deploy TimeFramePolicy",
+      "blockNumber": "95450648",
+      "gasUsed": "466498"
+    },
+    {
+      "hash": "0x554c6ef4063fe98698665be648904ef966e7b89734363cb92ef31a5dab1c970b",
+      "kind": "deploy LocalSessionSignerValidator",
+      "blockNumber": "95450649",
+      "gasUsed": "181192"
+    },
+    {
+      "hash": "0x5fa4ecde133f68ff88cbe65261ee7f96fff36044d628f56dbe0b14d6f5acdac8",
+      "kind": "deploy Local7579Account",
+      "blockNumber": "95450650",
+      "gasUsed": "717863"
+    },
+    {
+      "hash": "0xa2de32bbf685dd8d8cbaae55299ff08828d1ddd897d931b1bfb348eb2719cd93",
+      "kind": "installValidator",
+      "blockNumber": "95450651",
+      "gasUsed": "27279"
+    },
+    {
+      "hash": "0x6d2980abef6f97d98010b6fd5e9591720d4bed098b8ff381c0f91a04e98db215",
+      "kind": "fork-only funding",
+      "blockNumber": "95450652",
+      "gasUsed": "65378"
+    },
+    {
+      "hash": "0x1be0b6bf620f7172be6988024af65effd602474351c74b2128fce446e84c7ea5",
+      "kind": "deploy ConfiguredPurchase",
+      "blockNumber": "95450653",
+      "gasUsed": "3637548"
+    },
+    {
+      "hash": "0x70928b46b967743bbced0e819767a109e621daf2a09d866e073c5e11c736a33b",
+      "kind": "setExecutor",
+      "blockNumber": "95450654",
+      "gasUsed": "43848"
+    },
+    {
+      "hash": "0x879cc95fd499c162675636274e694a9703b44a79c852ed66f07c56ecfa2b6082",
+      "kind": "ownerCall",
+      "blockNumber": "95450655",
+      "gasUsed": "433365"
+    },
+    {
+      "hash": "0x0474a6975f515e784a9f62274c09dd8c7ed01003389909b5106b98f81f5f5520",
+      "kind": "session handle",
+      "blockNumber": "95450656",
+      "gasUsed": "203174",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0xc1a8247bac9f7827b8529394555bb4946deee0d4e43239e81f7fbb453679aecf",
+      "kind": "session handle",
+      "blockNumber": "95450658",
+      "gasUsed": "2610095",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x7a8237701a8c77660012bf44bb3d2d0bcc2906848758705f11b052751a44f103",
+      "kind": "session handle",
+      "blockNumber": "95450659",
+      "gasUsed": "2675411",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x38f3cde1e4ed64a704c502fac4a4bf17c38f50369d2176021853b4f3c1372ddf",
+      "kind": "session handle",
+      "blockNumber": "95450660",
+      "gasUsed": "3780916",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x77ce13e7a56e37a3d198bdc171711d682a06f32a68eefb8acfe9fa3adc949512",
+      "kind": "session handle",
+      "blockNumber": "95450661",
+      "gasUsed": "3780929",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x51bfb358c03c2546dac531b52bc76739fcb1c329d1c5cf5d6854afcf25afcb29",
+      "kind": "setPaused",
+      "blockNumber": "95450662",
+      "gasUsed": "44778",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0x883eccf114da8e6a1120a3a8e9727c1b1b64a593c53dcdd8d8e0c158e1396125",
+      "kind": "session handle",
+      "blockNumber": "95450663",
+      "gasUsed": "181599",
+      "outerStatus": "success",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0x1b822e02c18e413f51247fe1a2325e2ab8cd670b1cf89b55841337f2d3f1da58",
+      "kind": "revoke",
+      "blockNumber": "95450662",
+      "gasUsed": "44511",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0x883eccf114da8e6a1120a3a8e9727c1b1b64a593c53dcdd8d8e0c158e1396125",
+      "kind": "session handle",
+      "blockNumber": "95450663",
+      "gasUsed": "181728",
+      "outerStatus": "success",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0x883eccf114da8e6a1120a3a8e9727c1b1b64a593c53dcdd8d8e0c158e1396125",
+      "kind": "session handle",
+      "blockNumber": "95450663",
+      "gasUsed": "181750",
+      "outerStatus": "success",
+      "revertedBySnapshot": true
+    },
+    {
+      "hash": "0x7a517df9ef5e721578146f828a5aaa7dca7ee8e115761c6e3c0bba5021e3897c",
+      "kind": "session handle",
+      "blockNumber": "95450662",
+      "gasUsed": "5549768",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x3027702ff9422b74be991e6dc24d1adcbbd3c17b3579c8f72dd23b7387e8c53f",
+      "kind": "session handle",
+      "blockNumber": "95450663",
+      "gasUsed": "6260639",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x77e55a0a30764cedf459ad9e78ac5c6c981ec1f3668f6e48ba7fb197fdd1e438",
+      "kind": "session handle",
+      "blockNumber": "95450664",
+      "gasUsed": "187878",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0x113738f9c1cd7eeac3093e0e9d7a266f27e4475fe290602384d94b4f30ce4643",
+      "kind": "session handle",
+      "blockNumber": "95450666",
+      "gasUsed": "5177315",
+      "outerStatus": "success"
+    },
+    {
+      "hash": "0xf02a529e8999e7eb11a71d9e3ee17b8fdcb52fd07d764258bb6743904e79a667",
+      "kind": "session handle",
+      "blockNumber": "95450668",
+      "gasUsed": "178872",
+      "outerStatus": "success"
+    }
+  ],
+  "runtime": {
+    "node": "v24.22.0",
+    "solc": "0.8.24+commit.e11b9ed9.Emscripten.clang",
+    "hardhat": "3.14.0",
+    "viem": "2.56.0"
+  },
+  "provenance": {
+    "packageLockSha256": "d532c7acc94992dbdbb35750c442fe4ac5e04cec0587de9617ecb65508064f78",
+    "sdkPackageSha256": "291b915820180dbf94450a2c12292c6f4c2b2f6c8a9120cd50c86223c9b09fce",
+    "sdkReceiptSourceSha256": "90e9fce59cb38717bffc9395b1f694c6fd04a888046b3b3aef6ec6dee729095b",
+    "sdkReceiptDistSha256": "dc0d2ffe3bef89f5ccc7367bf7d875d7dca437e4cf291f081558a4942f4cf093",
+    "recurringGuardSha256": "ca894ecb55d0c9781baf7e6fe5fc0647cbd09427e0c1971a6ebe63cbe73b4020",
+    "wireSha256": "9892b0b7eca0d46239faf5699584268a5b38cc4ba0cf109063e3c9a43dd4adfc",
+    "runnerSha256": "87c51d956961402bcc8d4ea31dee28d5057bdba7280de02a33218f7cc5f5ff67",
+    "smartSessionArtifactSha256": "5f0a36bfd29bbec2c197451eec4a98b0204d1f84c8a96a52b993988f8d17c8f2"
+  },
+  "fork": {
+    "blockNumber": "95450641",
+    "blockHash": "0x975156f218475a10747d6f40495f563c29bcd23b7694f11dcfba75a6262c2f84",
+    "timestamp": "1792707363",
+    "hardhatVersion": "3.14.0",
+    "evmModel": "L1 Cancun with modeled ArbSys.arbBlockNumber; not Nitro gas accounting"
+  },
+  "precompileModel": {
+    "address": "0x0000000000000000000000000000000000000064",
+    "kind": "LOCAL_READ_MODEL_NOT_NATIVE_NITRO",
+    "supportedSelector": "0xa3b1b31d",
+    "nativeValueAtFork": "95450641",
+    "qualifiedBlockHash": "0x975156f218475a10747d6f40495f563c29bcd23b7694f11dcfba75a6262c2f84",
+    "qualifiedLocalHeight": "95450642",
+    "originalCode": "0xfe",
+    "runtimeCodeHash": "0xf91cbd734e75dc0d3ccefb6e09cc465690a484cded997f04f5598a9573bd968a",
+    "unsupportedSelectors": "REVERT",
+    "gasEquivalent": false
+  },
+  "defaultEnvelopeDiagnostic": {
+    "hash": "0x7520837dbc96e61e11315b78fa1bc32e437b2a62693a3c827c207940cffe55a6",
+    "type": "eip1559",
+    "chainId": 4663,
+    "rpcChainId": 4663
+  },
+  "signedEnvelopeDiagnostic": {
+    "hash": "0x642fa93edbd44d098d479e32972a35e04f7a2630c943d03eea53483b5ab5286c",
+    "type": "eip1559",
+    "chainId": 4663
+  },
+  "account": {
+    "address": "0x969aa7de33fdfdab7c11ade6a0288ec79f12fb19",
+    "owner": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "keeper": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    "smartSession": "0x11dc91d71c05d82f0232493d814a6af41a229b4c",
+    "entryPointModel": "0x82ab68099eed0b1276bcacdbbf31b3cc7563960a"
+  },
+  "settings": {
+    "budget": "27.250001",
+    "amount": "12.500002",
+    "interval": "2",
+    "unit": "hours"
+  },
+  "requestedPlan": {
+    "version": 1,
+    "budgetRaw": "27250001",
+    "amountRaw": "12500002",
+    "remainderRaw": "2249997",
+    "purchases": 2,
+    "intervalSeconds": 7200,
+    "firstAt": "2026-10-23T00:12:39.318Z",
+    "lastAt": "2026-10-23T02:12:39.318Z"
+  },
+  "strategy": {
+    "bag": {
+      "bagJson": 1,
+      "definition": {
+        "kind": "STATIC_BASKET",
+        "chain": "robinhood",
+        "mutability": "MUTABLE",
+        "assets": [
+          {
+            "chain": "robinhood",
+            "address": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "decimals": 18,
+            "weightBps": 4000
+          },
+          {
+            "chain": "robinhood",
+            "address": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "decimals": 8,
+            "weightBps": 3000
+          },
+          {
+            "chain": "robinhood",
+            "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+            "decimals": 6,
+            "weightBps": 3000
+          }
+        ],
+        "rules": {
+          "weightBounds": {
+            "minBps": 100,
+            "maxBps": 7000
+          },
+          "maxAssets": 10,
+          "minInvestment": null,
+          "swapSlippageBps": 100,
+          "rebalance": {
+            "frequency": "MANUAL",
+            "driftThresholdBps": 500
+          },
+          "performanceFeeBps": 0,
+          "noRouteAssetPolicy": "BLOCK"
+        }
+      }
+    },
+    "definitionHash": "0xef4f76ebabd2d5b4ce1b206b43304c538e55481c4ad7d1fac0605856752b6163",
+    "plan": {
+      "definitionHash": "0xef4f76ebabd2d5b4ce1b206b43304c538e55481c4ad7d1fac0605856752b6163",
+      "chainId": 4663,
+      "inputToken": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "inputKind": "erc20",
+      "signer": "0x969aa7de33fdfdab7c11ade6a0288ec79f12fb19",
+      "amountRaw": "12500002",
+      "kept": {
+        "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+        "amountRaw": "3750001"
+      },
+      "swapAmountRaw": "8750001",
+      "legs": [
+        {
+          "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+          "targetInputRaw": "5000001",
+          "legBps": 5714
+        },
+        {
+          "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+          "targetInputRaw": "3750000",
+          "legBps": 4286
+        }
+      ],
+      "partition": {
+        "outerBps": [
+          5714,
+          4286
+        ],
+        "groups": [
+          {
+            "legs": [
+              0
+            ],
+            "innerBps": null
+          },
+          {
+            "legs": [
+              1
+            ],
+            "innerBps": null
+          }
+        ]
+      },
+      "slippageBps": 100,
+      "maxPriceImpactBps": 500,
+      "accounting": "NOT_BAG_ACCOUNTED"
+    }
+  },
+  "apiRequests": [
+    {
+      "path": "/compose",
+      "status": 200,
+      "composerVersion": "0.11.3",
+      "revision": "9169cc8"
+    },
+    {
+      "path": "/compose",
+      "status": 200,
+      "composerVersion": "0.11.3",
+      "revision": "9169cc8"
+    },
+    {
+      "path": "/compose",
+      "status": 200,
+      "composerVersion": "0.11.3",
+      "revision": "9169cc8"
+    }
+  ],
+  "policy": {
+    "address": "0x30474ce2de03045b8d0ae76f8a30dbfc8f000cea",
+    "definitionHash": "0xef4f76ebabd2d5b4ce1b206b43304c538e55481c4ad7d1fac0605856752b6163",
+    "grossPerRun": "12500002",
+    "swapPerRun": "8750001",
+    "keptPerRun": "3750001",
+    "maxRuns": 2,
+    "maxGross": "27250001",
+    "start": "1792714579",
+    "periodSeconds": "7200",
+    "expiry": "1792743379",
+    "ownerFloors": [
+      {
+        "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+        "amountRaw": "2046149206952415"
+      },
+      {
+        "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+        "amountRaw": "4500"
+      }
+    ],
+    "profile": {
+      "btcInput": "3750251",
+      "ethInput": "4999750",
+      "btcNet": "3740876",
+      "ethNet": "4987251",
+      "partitionHash": "0x627091c1980fec04c68a650a7760ca93f8cbaa75e8d1add9b219b0bca495379e",
+      "btcFeeHash": "0xbc52c0e0e2a74437aab24c67ee28b5c25d249e7a0e7911b6ceddc174a1915c04",
+      "ethFeeHash": "0x0ce923d626ef9652b5203e0a2bb2f7fcdd53c0cf62216d2fe345f750dff96455"
+    },
+    "context": "0x81a28c8275f15030a0dd9b5a5b093b7981a28c8275f15030a0dd9b5a5b093b79",
+    "pricePolicy": "FIXED_INITIAL_QUANTITY_FLOORS_NOT_LIVE_ORACLE",
+    "schedule": "REQUESTED_INTERVAL_IN_LOCAL_BLOCK_TIMESTAMPS; TIME_ADVANCED_NOT_WALL_CLOCK"
+  },
+  "session": {
+    "permissionId": "0x9ff0dfaf91664a7d6d3dd283876878404cc138b23c559e2b359c3aa0a2d5498a",
+    "signer": "0xB2D0616f99b8F91826f2aec95761254cFb133c33",
+    "policy": "0x30474ce2de03045b8d0ae76f8a30dbfc8f000cea",
+    "ownerPolicyGrants": 1,
+    "ownerReviewRequiredForEachNewProgram": false,
+    "upstreamCommit": "f5aaf867f7e22f3b9d746ce6f404f3a56833757f",
+    "accountAndEntryPoint": "MINIMAL_LOCAL_MODELS_NOT_PRODUCTION_WALLET"
+  },
+  "executions": [
+    {
+      "round": 1,
+      "transactionHash": "0x3027702ff9422b74be991e6dc24d1adcbbd3c17b3579c8f72dd23b7387e8c53f",
+      "gasUsed": "6260639",
+      "before": {
+        "USDG": "27250001",
+        "WETH": "0",
+        "cbBTC": "0"
+      },
+      "after": {
+        "USDG": "18500000",
+        "WETH": "2087694324000017",
+        "cbBTC": "4591"
+      },
+      "budget": {
+        "runs": "1",
+        "gross": "12500002",
+        "last": "1792714596",
+        "window": "0",
+        "allowance": "0"
+      },
+      "programHash": "0xd95a9eea05d335a8b39f857a4a381aedc18f4fd08ca78ef6c381572cfbbb985b",
+      "approvals": [
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "8750001"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        }
+      ],
+      "receiptVerification": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0x3027702ff9422b74be991e6dc24d1adcbbd3c17b3579c8f72dd23b7387e8c53f",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "8750001",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95450663",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "2087694324000017",
+            "sentRaw": "0",
+            "netReceivedRaw": "2087694324000017",
+            "minimumRaw": "2046149206952415",
+            "satisfied": true,
+            "balanceBeforeRaw": "0",
+            "balanceAfterRaw": "2087694324000017",
+            "balanceDeltaRaw": "2087694324000017"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "4591",
+            "sentRaw": "0",
+            "netReceivedRaw": "4591",
+            "minimumRaw": "4500",
+            "satisfied": true,
+            "balanceBeforeRaw": "0",
+            "balanceAfterRaw": "4591",
+            "balanceDeltaRaw": "4591"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3750001"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    },
+    {
+      "round": 2,
+      "transactionHash": "0x113738f9c1cd7eeac3093e0e9d7a266f27e4475fe290602384d94b4f30ce4643",
+      "gasUsed": "5177315",
+      "before": {
+        "USDG": "18500000",
+        "WETH": "2087694324000017",
+        "cbBTC": "4591"
+      },
+      "after": {
+        "USDG": "9749999",
+        "WETH": "4176198051731244",
+        "cbBTC": "9182"
+      },
+      "budget": {
+        "runs": "2",
+        "gross": "25000004",
+        "last": "1792721797",
+        "window": "1",
+        "allowance": "0"
+      },
+      "programHash": "0xaac8406ec537bcb599b8fa929bd1f863ecd35228586951d991578d546b2c8d8a",
+      "approvals": [
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "8750001"
+        },
+        {
+          "spender": "0x65D8ff74A97aBC3e57923F33d61C24fe95627C74",
+          "value": "0"
+        }
+      ],
+      "receiptVerification": {
+        "status": "VERIFIED",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "transactionHash": "0x113738f9c1cd7eeac3093e0e9d7a266f27e4475fe290602384d94b4f30ce4643",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "spentInputRaw": "8750001",
+        "transactionBinding": "CALL_TRACE",
+        "chainId": 4663,
+        "blockNumber": "95450666",
+        "confirmations": "1",
+        "outputs": [
+          {
+            "token": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+            "receivedRaw": "2088503727731227",
+            "sentRaw": "0",
+            "netReceivedRaw": "2088503727731227",
+            "minimumRaw": "2046149206952415",
+            "satisfied": true,
+            "balanceBeforeRaw": "2087694324000017",
+            "balanceAfterRaw": "4176198051731244",
+            "balanceDeltaRaw": "2088503727731227"
+          },
+          {
+            "token": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+            "receivedRaw": "4591",
+            "sentRaw": "0",
+            "netReceivedRaw": "4591",
+            "minimumRaw": "4500",
+            "satisfied": true,
+            "balanceBeforeRaw": "4591",
+            "balanceAfterRaw": "9182",
+            "balanceDeltaRaw": "4591"
+          }
+        ],
+        "kept": {
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "amountRaw": "3750001"
+        },
+        "keptBalanceVerified": true,
+        "accounting": "NOT_BAG_ACCOUNTED",
+        "issues": []
+      }
+    }
+  ],
+  "finalBalances": {
+    "USDG": "9749999",
+    "WETH": "4176198051731244",
+    "cbBTC": "9182"
+  },
+  "finalReservedRaw": "7500002",
+  "totalSpentRaw": "17500002",
+  "finishedAt": "2026-10-22T22:16:51.900Z",
+  "rpcBoundary": {
+    "rejectedRpcRequests": [
+      {
+        "method": "eth_sendRawTransaction",
+        "isSubmissionMethod": true
+      }
+    ],
+    "upstreamReadMethods": {
+      "eth_blockNumber": 40,
+      "eth_chainId": 1,
+      "net_version": 1,
+      "eth_getBlockByNumber": 2,
+      "eth_getBalance": 74,
+      "eth_getTransactionCount": 74,
+      "eth_getCode": 74,
+      "eth_getStorageAt": 106
+    },
+    "publicSubmissionMethodsForwarded": 0
+  },
+  "summary": {
+    "pass": 27,
+    "fail": 0
+  }
+}

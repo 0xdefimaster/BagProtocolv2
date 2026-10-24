@@ -15,6 +15,7 @@ export const APP_NAV: AppNavLink[] = [
   { href: '/dashboard/portfolio', label: 'Portfolio' },
   { href: '/dashboard/create', label: 'Create' },
   { href: '/dashboard/swap', label: 'Swap' },
+  ...(process.env.NEXT_PUBLIC_DCA_TRIAL === 'true' && process.env.NODE_ENV === 'development' ? [{ href: '/dashboard/dca', label: 'DCA' }] : []),
   { href: '/dashboard/leaderboard', label: 'Leaderboard' },
   { href: '/dashboard/proof', label: 'Proof' },
   { href: '/dashboard/profile', label: 'Profile' },
