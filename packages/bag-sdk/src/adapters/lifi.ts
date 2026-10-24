@@ -2,7 +2,7 @@ import { BagSdkError } from '../errors';
 import { createComposeSdk, materialisers, resources } from '@lifi/composer-sdk';
 import type { Bindable } from '@lifi/composer-sdk';
 import type { ComposerCompileRequest, ComposerCompileResult, ComposerProvider } from '../execution';
-import { ProviderResponseError } from '../execution';
+import { markSignedUsdPriceImpactProvider, ProviderResponseError } from '../execution';
 import { planPartition } from '../partition';
 import type { ComposerAccount } from './composer-account';
 export { resolveLifiComposerAccount, type ComposerAccount, type ComposerAccountClient, type ComposerDeployment } from './composer-account';
@@ -82,7 +82,8 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
   }
   const timeoutMs = options.timeoutMs ?? 15_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647) throw new BagSdkError('COMPOSER_CONFIGURATION_INVALID', 'lifiComposer: invalid timeoutMs.');
-  return {
+  // Composer reports a signed, USD-based impact; only this adapter's providers may report a negative one.
+  return markSignedUsdPriceImpactProvider({
     name: 'lifi-composer',
     async compile(req: ComposerCompileRequest): Promise<ComposerCompileResult> {
       const account = options.account;
@@ -162,7 +163,14 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
             minOutRaw: o?.amount.minimum ? o.amount.minimum.value.toString() : null,
           };
         }),
+        // Raw values, never clamped: a negative impactBps stays negative and is judged by compileBag.
         priceImpactBps: result.priceImpact?.impactBps ?? null,
+        priceImpactUsd: result.priceImpact ? {
+          inputValueUsd: result.priceImpact.inputValueUsd,
+          outputValueUsd: result.priceImpact.outputValueUsd,
+          unpricedInputs: result.priceImpact.unpricedInputs as string[],
+          unpricedOutputs: result.priceImpact.unpricedOutputs as string[],
+        } : null,
         gasLimit: result.transactionRequest.gasLimit ?? null,
         fees: fees.map((f) => ({ token: f.token, recipient: f.recipient, recipientAddress: f.recipientAddress, bps: f.bps, amountRaw: f.amount ?? null })),
         validUntilMs: result.fill?.validUntilMs ?? null,
@@ -173,5 +181,5 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
         })),
       };
     },
-  };
+  });
 }

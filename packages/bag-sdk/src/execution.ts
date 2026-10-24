@@ -56,6 +56,33 @@ export interface ProviderWarning {
   fix?: string;
 }
 
+/** Provider-reported USD values of the priced input and outputs. Not an independent price check. */
+export interface PriceImpactUsd {
+  inputValueUsd: number;
+  outputValueUsd: number;
+  /** Assets the provider could not price; non-empty lists make the USD comparison partial. */
+  unpricedInputs: string[];
+  unpricedOutputs: string[];
+}
+
+/**
+ * Providers whose signed impact (negative = priced output worth more than priced input) may be
+ * accepted when it is consistent with their own USD values. Populated only by lifiComposer;
+ * deliberately not exported from the package, so other providers keep the non-negative rule.
+ */
+const signedUsdImpactProviders = new WeakSet<ComposerProvider>();
+export function markSignedUsdPriceImpactProvider<T extends ComposerProvider>(provider: T): T {
+  signedUsdImpactProviders.add(provider);
+  return provider;
+}
+
+/**
+ * Observed-behaviour compatibility tolerance, not an official formula: LI.FI Composer 0.11.3
+ * returned impactBps = -6 for (inputValueUsd − outputValueUsd) / inputValueUsd × 10 000 = −6.33.
+ * The exact rounding is undocumented, so a reported value must lie within ±1 bps of that ratio.
+ */
+export const SIGNED_PRICE_IMPACT_TOLERANCE_BPS = 1;
+
 /** A provider's compiled purchase, normalized. `null` = the provider did not report it (never guessed). */
 export interface ComposerCompileResult {
   transaction: { to: string; data: string; value: string; chainId: number | null };
@@ -65,6 +92,11 @@ export interface ComposerCompileResult {
   /** Each leg needs positive expected/minimum output in the same token units to enforce the requested slippage. */
   legs: { token: string | null; expectedOutRaw: string | null; minOutRaw: string | null }[];
   priceImpactBps: number | null;
+  /**
+   * The USD valuation behind `priceImpactBps`, as the provider reported it. Only the LI.FI Composer
+   * adapter supplies it; it is what allows a negative (favorable) impact for that adapter alone.
+   */
+  priceImpactUsd?: PriceImpactUsd | null;
   gasLimit: string | null;
   fees: ProviderFee[];
   /** Provider deadline as Unix milliseconds. Omitted/null means unknown, not unlimited validity. */
@@ -102,7 +134,10 @@ export interface PurchaseQuote {
   plan: PurchasePlan;
   provider: string;
   legs: QuotedLeg[];
+  /** Negative only for the LI.FI Composer adapter, and only when consistent with `priceImpactUsd`. */
   priceImpactBps: number;
+  /** The provider's USD valuation as reported (LI.FI Composer only), otherwise null. */
+  priceImpactUsd: PriceImpactUsd | null;
   fees: QuotedFee[];
   gasLimit: string | null;
   /** Local clock immediately before asking the provider. Not an upstream quote creation time. */
@@ -171,7 +206,7 @@ function requestFor(plan: PurchasePlan): ComposerCompileRequest {
 }
 
 /** Checks a provider answer against the plan. Throws ProviderResponseError on anything unexpected. */
-function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult, trusted: TrustedContracts, requestedAtMs: number, receivedAtMs: number): CompiledPurchase {
+function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult, trusted: TrustedContracts, requestedAtMs: number, receivedAtMs: number, signedUsdImpact = false): CompiledPurchase {
   const fail = (m: string, code: BagSdkErrorCode = 'PROVIDER_RESPONSE_INVALID'): never => {
     throw new ProviderResponseError(`${provider}: ${m}`, code);
   };
@@ -223,9 +258,30 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
   if (priceImpactBps === null) {
     throw new ProviderResponseError(`${provider}: provider did not report price impact; cannot enforce the configured limit.`, 'PRICE_IMPACT_INVALID');
   }
-  if (!Number.isSafeInteger(priceImpactBps) || priceImpactBps < 0) {
-    fail(`malformed price impact ${priceImpactBps} bps.`, 'PRICE_IMPACT_INVALID');
+  if (!Number.isSafeInteger(priceImpactBps)) fail(`malformed price impact ${priceImpactBps} bps.`, 'PRICE_IMPACT_INVALID');
+  const reportedUsd = r.priceImpactUsd ?? null;
+  let priceImpactUsd: PriceImpactUsd | null = null;
+  if (signedUsdImpact && reportedUsd !== null) {
+    const u = reportedUsd;
+    if (!u || typeof u !== 'object' || !Array.isArray(u.unpricedInputs) || !Array.isArray(u.unpricedOutputs) ||
+        [...u.unpricedInputs, ...u.unpricedOutputs].some((x) => typeof x !== 'string')) fail('malformed price impact USD values.', 'PRICE_IMPACT_INVALID');
+    priceImpactUsd = { inputValueUsd: u.inputValueUsd, outputValueUsd: u.outputValueUsd, unpricedInputs: [...u.unpricedInputs], unpricedOutputs: [...u.unpricedOutputs] };
   }
+  if (priceImpactBps < 0) {
+    // A favorable impact is accepted only from a provider that reports signed USD-based impact,
+    // and only when it is consistent with that provider's own complete USD valuation.
+    if (!signedUsdImpact) fail(`malformed price impact ${priceImpactBps} bps.`, 'PRICE_IMPACT_INVALID');
+    if (priceImpactUsd === null) fail(`negative price impact ${priceImpactBps} bps without its USD values.`, 'PRICE_IMPACT_INVALID');
+    const { inputValueUsd, outputValueUsd, unpricedInputs, unpricedOutputs } = priceImpactUsd!;
+    if (typeof inputValueUsd !== 'number' || !Number.isFinite(inputValueUsd) || inputValueUsd <= 0) fail('negative price impact with a non-positive or non-finite input USD value.', 'PRICE_IMPACT_INVALID');
+    if (typeof outputValueUsd !== 'number' || !Number.isFinite(outputValueUsd) || outputValueUsd <= inputValueUsd) fail('negative price impact, but the output USD value is not above the input USD value.', 'PRICE_IMPACT_INVALID');
+    if (unpricedInputs.length || unpricedOutputs.length) fail('negative price impact from a partial USD valuation (unpriced assets).', 'PRICE_IMPACT_INVALID');
+    const ratioBps = (inputValueUsd - outputValueUsd) / inputValueUsd * 10_000;
+    if (!Number.isFinite(ratioBps) || Math.abs(priceImpactBps - ratioBps) > SIGNED_PRICE_IMPACT_TOLERANCE_BPS) {
+      fail(`negative price impact ${priceImpactBps} bps is inconsistent with its USD values (${ratioBps.toFixed(2)} bps).`, 'PRICE_IMPACT_INVALID');
+    }
+  }
+  // The caller's maximum-loss limit is unchanged and applies to every reported value.
   if (priceImpactBps > plan.maxPriceImpactBps) {
     fail(`price impact ${priceImpactBps} bps is above the limit ${plan.maxPriceImpactBps} bps.`, 'PRICE_IMPACT_EXCEEDED');
   }
@@ -259,7 +315,7 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
   });
 
   return {
-    quote: { plan, provider, legs, priceImpactBps, fees, gasLimit: r.gasLimit, requestedAtMs, receivedAtMs, validUntilMs, warnings },
+    quote: { plan, provider, legs, priceImpactBps, priceImpactUsd, fees, gasLimit: r.gasLimit, requestedAtMs, receivedAtMs, validUntilMs, warnings },
     transaction: { to: tx.to as Hex, data: tx.data as Hex, value, chainId: plan.chainId },
     approvals,
     executor: r.executor,
@@ -279,7 +335,7 @@ export async function compileBag(bag: BagDocument, req: PurchaseRequest, options
   // approval spenders are available to compare with the caller's allowlists.
   const requestedAtMs = Date.now();
   const result = await options.provider.compile(requestFor(plan));
-  return checked(plan, options.provider.name, result, trusted, requestedAtMs, Date.now());
+  return checked(plan, options.provider.name, result, trusted, requestedAtMs, Date.now(), signedUsdImpactProviders.has(options.provider));
 }
 
 /** Anything with viem's `readContract` and `call` (a viem PublicClient on the strategy's chain); `getBalance` for a native purchase. */
