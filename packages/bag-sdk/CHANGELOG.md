@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased (not part of the 0.3.0 candidate)
+
+- `verifyPurchaseReceipt` gains an opt-in `delivery: { caller, fundingSource, recipient }` mode. It is for a contract signer that funds itself from another account and forwards outputs in the same transaction. The mode verifies the inner compiled call, the funding-source debit against the plan, the recipient minimums, and a net-zero caller together. It also checks that the funding source and recipient are the ones the caller contract declares at the purchase block.
+- `withReceiptEvidence(client, { deliveryAuthorization: 'BAG_DCA_PLAN_V1' })` adds the authorization reader. It reads `source()` and `recipient()` from the caller.
+- In this mode the funding source must be debited exactly the planned swap amount.
+- New issue codes: `DELIVERY_AUTHORIZATION_UNAVAILABLE`, `DELIVERY_AUTHORIZATION_MISMATCH`, `CALLER_RETAINED_BALANCE`, `INPUT_SPEND_BELOW_PLAN`. The result gains a `delivery` field, which is `null` in the default mode.
+- The default verification is unchanged. A forwarding signer verified without `delivery` still returns `FAILED / INPUT_BALANCE_BELOW_PLAN`.
+
 ## 0.3.0 — unreleased candidate
 
 This candidate contains changes after the npm 0.2.1 publication. bag.json v1 definition, normalization, hash domain and allocation semantics remain frozen.

@@ -56,6 +56,30 @@ export interface PurchaseCallEvidence {
   call: unknown;
 }
 
+/**
+ * Opt-in forwarded delivery: the compiled signer (`caller`) is a contract, such as a recurring
+ * purchase plan, that pulls its input from `fundingSource` and forwards every output to
+ * `recipient` within the same transaction. All three addresses are explicit and are checked
+ * against the plan's on-chain authorization; none is inferred from the transaction.
+ */
+export interface ForwardedDeliveryExpectation {
+  caller: Hex;
+  fundingSource: Hex;
+  recipient: Hex;
+}
+
+export interface DeliveryAuthorizationContext {
+  caller: Hex;
+  blockHash: Hex;
+  blockNumber: bigint;
+}
+
+/** What the caller contract itself declares, read by a trusted reader at the purchase block. */
+export interface DeliveryAuthorizationEvidence extends DeliveryAuthorizationContext {
+  fundingSource: Hex;
+  recipient: Hex;
+}
+
 /** Caller-owned read-only client; a viem public client satisfies this interface. */
 export interface PurchaseReceiptClient {
   getChainId(): Promise<number>;
@@ -65,6 +89,8 @@ export interface PurchaseReceiptClient {
   getBlockNumber(args: { cacheTime: number }): Promise<bigint>;
   tracePurchaseCall?(context: PurchaseEvidenceContext): Promise<PurchaseCallEvidence>;
   getPurchaseBalanceChanges?(context: PurchaseEvidenceContext & { tokens: readonly string[] }): Promise<PurchaseBalanceEvidence>;
+  /** Required only for forwarded delivery. */
+  readDeliveryAuthorization?(context: DeliveryAuthorizationContext): Promise<DeliveryAuthorizationEvidence>;
 }
 
 export type PurchaseReceiptIssueCode =
@@ -74,7 +100,9 @@ export type PurchaseReceiptIssueCode =
   | 'INVALID_RECEIPT_LOGS' | 'OUTPUT_BELOW_MINIMUM'
   | 'INVALID_CALL_TRACE' | 'COMPILED_CALL_NOT_EXECUTED' | 'AMBIGUOUS_CALL_TRACE'
   | 'BALANCE_EVIDENCE_UNAVAILABLE' | 'INVALID_BALANCE_EVIDENCE' | 'INPUT_SPEND_EXCEEDS_PLAN'
-  | 'INPUT_BALANCE_BELOW_PLAN' | 'KEPT_INPUT_MISSING';
+  | 'INPUT_BALANCE_BELOW_PLAN' | 'KEPT_INPUT_MISSING'
+  | 'DELIVERY_AUTHORIZATION_UNAVAILABLE' | 'DELIVERY_AUTHORIZATION_MISMATCH' | 'CALLER_RETAINED_BALANCE'
+  | 'INPUT_SPEND_BELOW_PLAN';
 
 export interface PurchaseReceiptVerification {
   status: 'VERIFIED' | 'FAILED' | 'INDETERMINATE';
@@ -101,6 +129,11 @@ export interface PurchaseReceiptVerification {
   /** Planned retained input; keptBalanceVerified says whether post-state and input debit were checked. */
   kept: CompiledPurchase['quote']['plan']['kept'];
   keptBalanceVerified: boolean;
+  /**
+   * Null in the default mode. In forwarded-delivery mode, outputs and `spentInputRaw` refer to
+   * `recipient` and `fundingSource`; `callerNetZero` says every planned token left the caller.
+   */
+  delivery: (ForwardedDeliveryExpectation & { authorization: 'ON_CHAIN_PLAN_READ' | null; callerNetZero: boolean }) | null;
   accounting: 'NOT_BAG_ACCOUNTED';
   issues: { code: PurchaseReceiptIssueCode; detail: string }[];
 }
@@ -117,6 +150,13 @@ export interface VerifyPurchaseReceiptOptions {
   confirmations?: number;
   /** Default BALANCE_DELTA: no automatic fallback to event-only evidence. */
   verification?: 'BALANCE_DELTA' | 'TRANSFER_LOGS';
+  /**
+   * Opt-in. Absent: the signer is the wallet and is measured directly (unchanged behavior).
+   * Present: `minimumReceived` applies to `recipient`, input spending to `fundingSource`, and the
+   * caller must keep none of the planned tokens. The funding source must be debited exactly the
+   * planned swap amount. Requires BALANCE_DELTA and an ERC-20 input.
+   */
+  delivery?: ForwardedDeliveryExpectation;
 }
 
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
@@ -199,6 +239,18 @@ function minimumsFor(compiled: CompiledPurchase, options: VerifyPurchaseReceiptO
     minimums.set(token, item.amountRaw);
   }
   if (minimums.size !== expected.size) throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: provide a wallet minimum for every planned swap output.');
+  if (options.delivery !== undefined) {
+    const { caller, fundingSource, recipient } = options.delivery ?? ({} as Partial<ForwardedDeliveryExpectation>);
+    if (![caller, fundingSource, recipient].every((a) => typeof a === 'string' && ADDRESS.test(a) && !/^0x0{40}$/.test(a))) {
+      throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: forwarded delivery needs caller, fundingSource and recipient addresses.');
+    }
+    if (!same(caller, plan.signer)) throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: forwarded-delivery caller must be the compiled signer.');
+    if (same(fundingSource, caller!) || same(recipient, caller!)) {
+      throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: forwarded delivery requires a funding source and recipient other than the caller.');
+    }
+    if (options.verification === 'TRANSFER_LOGS') throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: forwarded delivery requires balance evidence.');
+    if (plan.inputKind !== 'erc20') throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: forwarded delivery requires an ERC-20 input.');
+  }
   return minimums;
 }
 
@@ -220,8 +272,12 @@ export async function verifyPurchaseReceipt(
     balanceScope: null, spentInputRaw: null, transactionBinding: null,
     chainId: plan.chainId, blockNumber: null, confirmations: BigInt(0), outputs: [],
     kept: plan.kept ? { ...plan.kept } : null, keptBalanceVerified: false,
+    delivery: options.delivery ? { ...options.delivery, authorization: null, callerNetZero: false } : null,
     accounting: 'NOT_BAG_ACCOUNTED', issues: [],
   };
+  const delivery = options.delivery;
+  // Transfer events are counted for the address that must receive the outputs.
+  const measured = delivery ? delivery.recipient : plan.signer;
   const stop = (status: PurchaseReceiptVerification['status'], code: PurchaseReceiptIssueCode, detail: string) => {
     result.status = status;
     result.keptBalanceVerified = false;
@@ -289,6 +345,24 @@ export async function verifyPurchaseReceipt(
       result.transactionBinding = 'CALL_TRACE';
     }
 
+    if (delivery) {
+      // The funding source and recipient must be the ones the caller contract itself declares.
+      if (!client.readDeliveryAuthorization) {
+        return stop('INDETERMINATE', 'DELIVERY_AUTHORIZATION_UNAVAILABLE', 'Forwarded delivery requires the caller contract authorization to be read at the purchase block.');
+      }
+      let declared: DeliveryAuthorizationEvidence;
+      try { declared = await client.readDeliveryAuthorization({ caller: delivery.caller, blockHash: receipt.blockHash, blockNumber: receipt.blockNumber }); }
+      catch { return stop('INDETERMINATE', 'DELIVERY_AUTHORIZATION_UNAVAILABLE', 'Caller contract authorization could not be read.'); }
+      if (!declared || !same(declared.caller, delivery.caller) || !same(declared.blockHash, receipt.blockHash) || declared.blockNumber !== receipt.blockNumber ||
+          typeof declared.fundingSource !== 'string' || !ADDRESS.test(declared.fundingSource) || typeof declared.recipient !== 'string' || !ADDRESS.test(declared.recipient)) {
+        return stop('INDETERMINATE', 'DELIVERY_AUTHORIZATION_UNAVAILABLE', 'Authorization evidence has an incorrect caller, block or address.');
+      }
+      if (!same(declared.fundingSource, delivery.fundingSource) || !same(declared.recipient, delivery.recipient)) {
+        return stop('FAILED', 'DELIVERY_AUTHORIZATION_MISMATCH', 'Expected funding source or recipient differs from the caller contract authorization.');
+      }
+      result.delivery!.authorization = 'ON_CHAIN_PLAN_READ';
+    }
+
     const counts = new Map([...minimums].map(([token]) => [token, { received: BigInt(0), sent: BigInt(0) }]));
     const indices = new Set<number>();
     for (const log of receipt.logs) {
@@ -307,8 +381,8 @@ export async function verifyPurchaseReceipt(
       const from = '0x' + log.topics[1].slice(-40);
       const to = '0x' + log.topics[2].slice(-40);
       const amount = BigInt(log.data);
-      if (same(to, plan.signer)) count.received += amount;
-      if (same(from, plan.signer)) count.sent += amount;
+      if (same(to, measured)) count.received += amount;
+      if (same(from, measured)) count.sent += amount;
     }
     result.outputs = [...minimums].map(([token, minimumRaw]) => {
       const count = counts.get(token)!;
@@ -317,7 +391,62 @@ export async function verifyPurchaseReceipt(
         satisfied: !balanceMode && netReceivedRaw >= minimumRaw,
         balanceBeforeRaw: null, balanceAfterRaw: null, balanceDeltaRaw: null };
     });
-    if (balanceMode) {
+    if (delivery) {
+      if (!client.getPurchaseBalanceChanges) return stop('INDETERMINATE', 'BALANCE_EVIDENCE_UNAVAILABLE', 'Transaction-scoped balance reads are required; event-only fallback is not automatic.');
+      const tokens = [...minimums.keys()];
+      if (!tokens.includes(plan.inputToken)) tokens.push(plan.inputToken);
+      const owners = [delivery.caller, delivery.fundingSource, delivery.recipient].filter((o, i, all) => all.findIndex((x) => same(x, o)) === i);
+      const balancesOf = new Map<string, Map<string, { beforeRaw: bigint; afterRaw: bigint }>>();
+      for (const owner of owners) {
+        let proof: PurchaseBalanceEvidence;
+        try { proof = await client.getPurchaseBalanceChanges({ ...context, owner, tokens }); }
+        catch { return stop('INDETERMINATE', 'BALANCE_EVIDENCE_UNAVAILABLE', 'Historical transaction-scoped balances are unavailable.'); }
+        if (!proof || !same(proof.transactionHash, transactionHash) || !same(proof.blockHash, receipt.blockHash) ||
+            proof.blockNumber !== receipt.blockNumber || !same(proof.owner, owner) ||
+            !['TRANSACTION', 'SINGLE_TRANSACTION_BLOCK'].includes(proof.scope) || !Array.isArray(proof.balances) || proof.balances.length !== tokens.length ||
+            (result.balanceScope !== null && proof.scope !== result.balanceScope)) {
+          return stop('INDETERMINATE', 'INVALID_BALANCE_EVIDENCE', 'Balance evidence has an incorrect transaction, block, owner or token set.');
+        }
+        const balances = new Map<string, { beforeRaw: bigint; afterRaw: bigint }>();
+        for (const entry of proof.balances) {
+          if (!entry || typeof entry.token !== 'string' || !tokens.includes(entry.token.toLowerCase()) || balances.has(entry.token.toLowerCase()) ||
+              typeof entry.beforeRaw !== 'bigint' || typeof entry.afterRaw !== 'bigint' ||
+              entry.beforeRaw < BigInt(0) || entry.afterRaw < BigInt(0) || entry.beforeRaw >= BigInt(2) ** BigInt(256) || entry.afterRaw >= BigInt(2) ** BigInt(256)) {
+            return stop('INDETERMINATE', 'INVALID_BALANCE_EVIDENCE', 'Balance evidence contains a duplicate, missing, unexpected or invalid token balance.');
+          }
+          balances.set(entry.token.toLowerCase(), entry);
+        }
+        result.balanceScope = proof.scope;
+        balancesOf.set(owner.toLowerCase(), balances);
+      }
+      if (result.balanceScope === 'SINGLE_TRANSACTION_BLOCK' &&
+          (!block.transactions || block.transactions.length !== 1 || !same(typeof block.transactions[0] === 'string' ? block.transactions[0] : block.transactions[0].hash, transactionHash))) {
+        return stop('INDETERMINATE', 'INVALID_BALANCE_EVIDENCE', 'Block-boundary balances are not isolated to this transaction.');
+      }
+      const at = (owner: string) => balancesOf.get(owner.toLowerCase())!;
+      const recipient = at(delivery.recipient), source = at(delivery.fundingSource), caller = at(delivery.caller);
+      result.outputs = result.outputs.map(output => {
+        const balance = recipient.get(output.token)!;
+        const delta = balance.afterRaw - balance.beforeRaw;
+        return { ...output, balanceBeforeRaw: balance.beforeRaw, balanceAfterRaw: balance.afterRaw, balanceDeltaRaw: delta, satisfied: delta >= output.minimumRaw };
+      });
+      const input = source.get(plan.inputToken)!;
+      result.spentInputRaw = input.beforeRaw - input.afterRaw;
+      // Same input rules as the default mode, applied to the account that actually pays.
+      if (input.beforeRaw < plan.amountRaw) return stop('FAILED', 'INPUT_BALANCE_BELOW_PLAN', 'Pre-transaction funding-source balance was below the planned deposit.');
+      if (result.spentInputRaw > plan.swapAmountRaw) return stop('FAILED', 'INPUT_SPEND_EXCEEDS_PLAN', 'Funding-source input debit exceeds the planned swap amount.');
+      // Stricter than the default mode: a forwarding caller must pull the whole swapped share from
+      // the authorized source. Anything less means the swap was at least partly paid by someone else.
+      if (result.spentInputRaw < plan.swapAmountRaw) return stop('FAILED', 'INPUT_SPEND_BELOW_PLAN', 'Funding-source input debit is below the planned swap amount.');
+      if (plan.kept) {
+        if (input.afterRaw < plan.kept.amountRaw) return stop('FAILED', 'KEPT_INPUT_MISSING', 'The retained input share is not present in the funding source after execution.');
+        result.keptBalanceVerified = true;
+      }
+      if ([...caller.values()].some((b) => b.afterRaw !== b.beforeRaw)) {
+        return stop('FAILED', 'CALLER_RETAINED_BALANCE', 'The caller contract balance of a planned token changed; delivery was not fully forwarded.');
+      }
+      result.delivery!.callerNetZero = true;
+    } else if (balanceMode) {
       if (!client.getPurchaseBalanceChanges) return stop('INDETERMINATE', 'BALANCE_EVIDENCE_UNAVAILABLE', 'Transaction-scoped balance reads are required; event-only fallback is not automatic.');
       const tokens = [...minimums.keys()];
       if (plan.inputKind === 'erc20' && !tokens.includes(plan.inputToken)) tokens.push(plan.inputToken);
