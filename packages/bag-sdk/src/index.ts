@@ -90,4 +90,7 @@ export {
   type PurchaseEvidenceContext,
   type PurchaseBalanceEvidence,
   type PurchaseCallEvidence,
+  type ForwardedDeliveryExpectation,
+  type DeliveryAuthorizationContext,
+  type DeliveryAuthorizationEvidence,
 } from './receipt';
