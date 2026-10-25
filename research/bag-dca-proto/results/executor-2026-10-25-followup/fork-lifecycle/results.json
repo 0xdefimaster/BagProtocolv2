@@ -1,0 +1,1513 @@
+{
+  "schema": "bag-recurring-executor-fork/v1",
+  "evidenceClass": "TEST_KEY_FORK",
+  "phases": [
+    "lifecycle"
+  ],
+  "startedAt": "2026-10-25T20:55:28.813Z",
+  "args": [
+    "--app",
+    "/home/user/dca-close",
+    "--out",
+    "--phase",
+    "lifecycle"
+  ],
+  "notEvidenceOf": [
+    "a wallet (MetaMask/Rabby) signature",
+    "a human signature",
+    "a public-network transaction",
+    "an independent market price reference"
+  ],
+  "build": {
+    "appCommit": "d71d1db9c4809c3bef1e844f128f28d5ae82bca5",
+    "appDirtyInContractsOrSdk": "",
+    "executor": {
+      "source": "contracts/dca/RecurringPurchaseExecutor.sol",
+      "checkedSources": [
+        "project/contracts/dca/RecurringPurchaseExecutor.sol",
+        "project/contracts/BagExecutionRouter.sol",
+        "project/contracts/dca/IRecurringPurchaseExecution.sol"
+      ],
+      "sourceSha256": "f3d4e1857ff43e8ce8cc9eaba487bf34a4b38214c9e72a5adb2f61918bfc839b",
+      "buildInfoId": "solc-0_8_24-6ca3a1208bc6c6febb4839902d0be4fa277fd88c",
+      "solc": "0.8.24+commit.e11b9ed9",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "evmVersion": "shanghai"
+    },
+    "router": {
+      "source": "contracts/BagExecutionRouter.sol",
+      "checkedSources": [
+        "project/contracts/BagExecutionRouter.sol"
+      ],
+      "sourceSha256": "d39b6cbb41755885f25964452b7c29e6dbe2e0d2b4fd1314a36113e1cd5df210",
+      "buildInfoId": "solc-0_8_24-2c34557d043fde1a806eaea3346bc3967a93298d",
+      "solc": "0.8.24+commit.e11b9ed9",
+      "evmVersion": "shanghai"
+    },
+    "sdk": {
+      "dist": "packages/bag-sdk/dist",
+      "recurringJsSha256": "4b1769de93a57eb8931fc43d826132f24629b330518da9a8bd20353fa84be181",
+      "uniswapV3JsSha256": "83ed25b268fd25693e41b970a7a3342e43b16ac02764a5b1fb2ec565b20bec11"
+    }
+  },
+  "keylessExecutor": {
+    "label": "BAG RecurringPurchaseExecutor fork-only v1",
+    "address": "0x008f01d056eb06d708eaeC1e2e27B82435910CB9",
+    "mainnetCode": "0x",
+    "mainnetNonce": 0
+  },
+  "fork": {
+    "blockNumber": "97879116",
+    "blockHash": "0xb06d35e83d9fd48fcebbd0a34f9a08a37dea27f4334bd58b5dd082bea3bdd7ad",
+    "timestamp": "1792961729",
+    "note": "one fork block for the whole run; every leg of a purchase executes in one transaction (same block by construction)"
+  },
+  "deployment": {
+    "executor": {
+      "address": "0x008f01d056eb06d708eaeC1e2e27B82435910CB9",
+      "runtimeMatchesArtifact": true,
+      "immutables": {
+        "bagFactory": "0x7Ce5A81Df434755F38Cb5f67Ad49a8bb3c8e6f72",
+        "strategyRegistry": "0x907cc27d644C8ea1c24B8320ad09eCF2819209A8",
+        "chainLabel": "robinhood"
+      },
+      "domainSeparator": "0x821e22a46807e81583bd86d25f49a3fd765f74d722e7c4f6b879d47bbc1076f8",
+      "domainSeparatorMatchesSdk": true,
+      "compositionCheck": {
+        "955df6e0-b6ea-44ba-a5eb-1288a80c0a06": {
+          "registered": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+          "executorRebuilt": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+          "sdk": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+          "matches": true
+        },
+        "a3caff05-d606-486b-959f-30865a4cbfa7": {
+          "registered": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+          "executorRebuilt": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+          "sdk": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+          "matches": true
+        }
+      }
+    },
+    "router": {
+      "address": "0x1866e6896c531850a877ce746d0c42eedb23d973",
+      "runtimeMatchesArtifact": true,
+      "bagFactory": "0x7Ce5A81Df434755F38Cb5f67Ad49a8bb3c8e6f72",
+      "planSigner": "0xE557DB3147C0e1CF690EAF0E5631F19167BF40CB",
+      "owner": "0x09240A3a4a6b94500BdE31A704BEcBfa1b4aF856",
+      "allowlist": {
+        "targets": [
+          "0xCaf681a66D020601342297493863E78C959E5cb2"
+        ],
+        "tokens": "USDG + assets of both BAGs"
+      },
+      "trust": "test keys: router owner and planSigner are local; the runs treat both as compromised"
+    },
+    "realContracts": {
+      "USDG": {
+        "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+        "codeKeccak": "0x864cc9ad53b338b82da1f7cab85ab0b3d5c8861acb422b6fec63cf36234f36a6",
+        "bytes": 170,
+        "eip1967Implementation": "0x68184C449E1a8f34fA18d289737129FD27B66f8F"
+      },
+      "SWAP_ROUTER02": {
+        "address": "0xCaf681a66D020601342297493863E78C959E5cb2",
+        "codeKeccak": "0x6f36c378e272c6324c48f045182bcb54bd8ad654cf9ebd42e8893d52c4cb25dc",
+        "bytes": 24497
+      },
+      "QUOTER_V2": {
+        "address": "0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7",
+        "codeKeccak": "0x3db0868d945e9304c9bc6a8b2181948109ea617647142f3c4083e14393496a28",
+        "bytes": 8273
+      },
+      "BAG_FACTORY": {
+        "address": "0x7Ce5A81Df434755F38Cb5f67Ad49a8bb3c8e6f72",
+        "codeKeccak": "0x48e56712deee2744d90301b4a6eb3dd3760525aec15a7c18b3200defac8d1541",
+        "bytes": 11231
+      },
+      "STRATEGY_REGISTRY": {
+        "address": "0x907cc27d644C8ea1c24B8320ad09eCF2819209A8",
+        "codeKeccak": "0x0f559b7b92ab3fa101bc64974b219a770edf5ce1dabafef0e831d17b1f1ebcfd",
+        "bytes": 4830
+      }
+    },
+    "usdgPermitDomain": {
+      "onChain": "0x7a3d7400b27830f4f91c2c16a082486d67c1befecaec2f53b33f1f35d5b62036",
+      "matches": true,
+      "name": "Global Dollar",
+      "version": "1"
+    }
+  },
+  "testAccounts": {
+    "planSigner": "0xE557DB3147C0e1CF690EAF0E5631F19167BF40CB",
+    "routerOwner": "0x09240A3a4a6b94500BdE31A704BEcBfa1b4aF856",
+    "deployer": "0xcC184b60dA086029A9007ec2f692d140F990A83C",
+    "owner": "0xf6a893637B0A7697CF01a69c6007198eD8ad35Be",
+    "keeper": "0x05f48fB5d2C0D6d9670506F5Abf576A50cc86f98",
+    "attacker": "0xdF082E7859fbB1cEE96575967A4912b24786E327",
+    "relayer": "0xC5C8B3C4307b4ca3E113F1c04CBb221F6f9aA065",
+    "note": "keys generated in this process and discarded at exit; none is a user wallet"
+  },
+  "purchaseVerification": {
+    "sdk": "verifyRecurringPurchase",
+    "binding": "PREPARED_INTENT (the exact execute calldata prepared by this runner)",
+    "balanceReader": "SINGLE_TRANSACTION_BLOCK",
+    "crossCheck": "the runner's own latest-state balance snapshots before/after each run",
+    "realChainReader": "not exercised here: Robinhood Chain needs ROBINHOOD_NITRO_TRANSACTION_INDEX on the qualified Nitro build"
+  },
+  "bags": {
+    "955df6e0-b6ea-44ba-a5eb-1288a80c0a06": {
+      "uuid": "955df6e0-b6ea-44ba-a5eb-1288a80c0a06",
+      "bagId": "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+      "bag": "0x8E668bf1eD1e3Eb104Dab3341F14b9CF7d55510d",
+      "version": "1",
+      "compositionHash": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+      "sdkCompositionHash": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+      "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9",
+      "strategyId": "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+      "registered": false,
+      "matches": false,
+      "docVersion": 1
+    },
+    "a3caff05-d606-486b-959f-30865a4cbfa7": {
+      "uuid": "a3caff05-d606-486b-959f-30865a4cbfa7",
+      "bagId": "0x72ec1d37c03f9bfb3dc369cf77f19841e7d0a7ca00ca3757605d97fb2f398cae",
+      "bag": "0xb6C8B277AbcD5866bBE62C5A89295a992A90F3d5",
+      "version": "2",
+      "compositionHash": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+      "sdkCompositionHash": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+      "definitionHash": "0x62e5dd238e967169064c3ccc5d34ed2c6829b3cbcb3119b76c4d3a88758e9f5a",
+      "strategyId": "0x72ec1d37c03f9bfb3dc369cf77f19841e7d0a7ca00ca3757605d97fb2f398cae",
+      "registered": true,
+      "matches": true,
+      "docVersion": 2
+    }
+  },
+  "priceLimitPolicy": {
+    "kind": "OWNER_SIGNED_MAX_PRICE",
+    "thisRun": "TEST LIMIT = best real-chain QuoterV2 quote at setup + 300 bps (A/B/C, keeper) or + 100 bps (P, K7)",
+    "isIndependentReference": false,
+    "limitsRaw": {
+      "0x1b0e319c6a659f002271b69db8a7df2f911c153e": "25716347",
+      "0x47f93d52cbec7c6d2cfc080e154002370a60daea": "1632392152",
+      "0x6330d8c3178a418788df01a47479c0ce7ccf450b": "169586191",
+      "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9": "357676837"
+    },
+    "sources": {
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x1b0e319c6a659f002271b69db8a7df2f911c153e:300": {
+        "realChainQuoteRaw": "53570012325025967",
+        "legInRaw": "1337500",
+        "bufferBps": 300
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x47f93d52cbec7c6d2cfc080e154002370a60daea:300": {
+        "realChainQuoteRaw": "820584072707883",
+        "legInRaw": "1300500",
+        "bufferBps": 300
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x6330d8c3178a418788df01a47479c0ce7ccf450b:300": {
+        "realChainQuoteRaw": "11309057606560468",
+        "legInRaw": "1862000",
+        "bufferBps": 300
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0xaf3d76f1834a1d425780943c99ea8a608f8a93f9:300": {
+        "realChainQuoteRaw": "1439847223516587",
+        "legInRaw": "500000",
+        "bufferBps": 300
+      }
+    },
+    "note": "The executor enforces the limit the owner signed. Choosing it from the same AMM is a test convenience, not a fair-price proof."
+  },
+  "authorizations": {
+    "A": {
+      "id": "0x3a62c6ac70d5901ce0688df3bdb49a7f5f93c7300a8fe21c33fdb5802908ce5e",
+      "summary": {
+        "owner": "0xf6a893637b0a7697cf01a69c6007198ed8ad35be",
+        "recipient": "0xf6a893637b0a7697cf01a69c6007198ed8ad35be",
+        "funding": "ALLOWANCE",
+        "fundsStayInOwnerAddress": true,
+        "perRunRaw": "5000000",
+        "runs": 3,
+        "totalBudgetRaw": "15000000",
+        "firstWindowStart": "1792961745",
+        "periodSeconds": "86400",
+        "lastWindowStart": "1793134545",
+        "expiresAt": "1793393745",
+        "assets": [
+          {
+            "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+            "symbol": "AAPL",
+            "weightBps": 1000,
+            "legInputRaw": "500000",
+            "maxPriceRaw": "357676837",
+            "minimumOutRaw": "1397909923923869"
+          },
+          {
+            "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+            "symbol": "ASML",
+            "weightBps": 2601,
+            "legInputRaw": "1300500",
+            "maxPriceRaw": "1632392152",
+            "minimumOutRaw": "796683565530889"
+          },
+          {
+            "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+            "symbol": "COIN",
+            "weightBps": 3724,
+            "legInputRaw": "1862000",
+            "maxPriceRaw": "169586191",
+            "minimumOutRaw": "10979667560314507"
+          },
+          {
+            "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+            "symbol": "GME",
+            "weightBps": 2675,
+            "legInputRaw": "1337500",
+            "maxPriceRaw": "25716347",
+            "minimumOutRaw": "52009719731966597"
+          }
+        ],
+        "route": {
+          "router": "0x1866e6896c531850a877ce746d0c42eedb23d973",
+          "swapTarget": "0xcaf681a66d020601342297493863e78c959e5cb2",
+          "allowedFees": [
+            100,
+            500,
+            3000,
+            10000
+          ]
+        },
+        "bag": {
+          "bagId": "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+          "bagVersion": "1",
+          "compositionHash": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+          "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9",
+          "strategyId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "strategyVersion": 0
+        },
+        "priceLimit": {
+          "kind": "FIXED_MAX_PRICE_PER_ASSET",
+          "isSlippageProtection": false,
+          "windowSkippedWhileAbove": true,
+          "catchUp": false,
+          "mayEndBeforeAllRuns": true
+        },
+        "dependencies": {
+          "composer": "NOT_USED",
+          "planSignerSignatureEachRun": true,
+          "keeperTransactionEachRun": true,
+          "routerOwnerAllowlist": true,
+          "canExceedSignedLimits": false,
+          "canStopOrDelayPurchases": true
+        }
+      },
+      "onChainIdMatchesSdk": true
+    },
+    "B": {
+      "id": "0xab40b8c162d016a0b3e95ac7b8f03e36441b20cda5df3e9ea4270f9b6d9082a3"
+    },
+    "C": {
+      "id": "0xa6f398138e2152a49ea1091502590014a66e3c884a1f43419fda31e95535df26"
+    }
+  },
+  "fundsStayInOwnerAddress": {
+    "mode": "ALLOWANCE",
+    "ownerAddress": "0xf6a893637B0A7697CF01a69c6007198eD8ad35Be",
+    "ownerUsdgStart": "100000000",
+    "ownerUsdgEnd": "70000000",
+    "spentRaw": "30000000",
+    "honestRuns": 6,
+    "expectedSpentRaw": "30000000",
+    "pass": true,
+    "note": "USDG stayed in the owner EOA except the exact per-run debits; the executor and router held nothing between runs (checked after every run). Trust that remains: the immutable executor is the spender of the remaining allowance, shared by all of the owner's authorizations."
+  },
+  "scenarios": [
+    {
+      "id": "L1-permit-first-run",
+      "gate": "LIFECYCLE",
+      "kind": "LIFECYCLE",
+      "expected": "run 1 of A; EIP-2612 permit for exactly the total budget is consumed inside execute (real USDG)",
+      "purchase": true,
+      "pass": true,
+      "checks": {
+        "sdkVerified": true,
+        "sdkSourceDebitEqualsFork": true,
+        "ownerDebitExact": true,
+        "sdkDeliveriesEqualForkBalances": true,
+        "sdkNoTransit": true,
+        "atOrAboveOwnerLimit": true,
+        "noTransitBalance": true,
+        "allowancesBackToZero": true,
+        "ownerAllowanceUsedExactly": true,
+        "countersAdvanced": true
+      },
+      "tx": "0x3f601afe1b500795516140eae1db52901312f714a7a10a7313a918776d1fa235",
+      "gasUsed": "1309003",
+      "window": "0",
+      "legs": [
+        {
+          "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "fee": 500,
+          "amountInRaw": "500000",
+          "quotedOutRaw": "1439847223516587",
+          "minimumOutRaw": "1425448751281422",
+          "ownerLimitFloorRaw": "1397909923923869",
+          "receivedRaw": "1439847223516587"
+        },
+        {
+          "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "fee": 3000,
+          "amountInRaw": "1300500",
+          "quotedOutRaw": "820584072707883",
+          "minimumOutRaw": "812378231980805",
+          "ownerLimitFloorRaw": "796683565530889",
+          "receivedRaw": "820584072707883"
+        },
+        {
+          "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "fee": 500,
+          "amountInRaw": "1862000",
+          "quotedOutRaw": "11309057606560468",
+          "minimumOutRaw": "11195967030494864",
+          "ownerLimitFloorRaw": "10979667560314507",
+          "receivedRaw": "11309057606560468"
+        },
+        {
+          "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "fee": 500,
+          "amountInRaw": "1337500",
+          "quotedOutRaw": "53570012325025967",
+          "minimumOutRaw": "53034312201775708",
+          "ownerLimitFloorRaw": "52009719731966597",
+          "receivedRaw": "53570012325025967"
+        }
+      ],
+      "sdkVerification": {
+        "status": "VERIFIED",
+        "binding": "PREPARED_INTENT",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "source": {
+          "account": "0xf6a893637b0a7697cf01a69c6007198ed8ad35be",
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "beforeRaw": "100000000",
+          "afterRaw": "95000000",
+          "debitRaw": "5000000"
+        },
+        "issues": []
+      },
+      "ownerUsdgAfter": "95000000",
+      "ownerAllowanceAfter": "10000000",
+      "observed": "VERIFIED (PREPARED_INTENT, SINGLE_TRANSACTION_BLOCK), debit 5000000 raw, executions 1, gas 1309003"
+    },
+    {
+      "id": "F1-same-window-again",
+      "gate": "SCHEDULE",
+      "kind": "REAL_FAULT",
+      "expected": "NotDue; nothing changes",
+      "observed": "reverted (mined): NotDue()",
+      "reason": {
+        "name": "NotDue",
+        "args": []
+      },
+      "tx": "0xc5eea7d1df5de5adab61a86c6a533effc60713fa425ae8e1a4f6d1dd72b68542",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "L2-approve-first-run-B",
+      "gate": "LIFECYCLE",
+      "kind": "LIFECYCLE",
+      "expected": "run 1 of B with a standard approve (no permit)",
+      "purchase": true,
+      "pass": true,
+      "checks": {
+        "sdkVerified": true,
+        "sdkSourceDebitEqualsFork": true,
+        "ownerDebitExact": true,
+        "sdkDeliveriesEqualForkBalances": true,
+        "sdkNoTransit": true,
+        "atOrAboveOwnerLimit": true,
+        "noTransitBalance": true,
+        "allowancesBackToZero": true,
+        "ownerAllowanceUsedExactly": true,
+        "countersAdvanced": true
+      },
+      "tx": "0x7654588320651c76a8240ff680cc3bd344bb092eb67e44717e80704ec8f924b9",
+      "gasUsed": "1174771",
+      "window": "0",
+      "legs": [
+        {
+          "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "fee": 500,
+          "amountInRaw": "500000",
+          "quotedOutRaw": "1439846910327993",
+          "minimumOutRaw": "1425448441224714",
+          "ownerLimitFloorRaw": "1397909923923869",
+          "receivedRaw": "1439846910327993"
+        },
+        {
+          "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "fee": 3000,
+          "amountInRaw": "1300500",
+          "quotedOutRaw": "820517249117418",
+          "minimumOutRaw": "812312076626244",
+          "ownerLimitFloorRaw": "796683565530889",
+          "receivedRaw": "820517249117418"
+        },
+        {
+          "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "fee": 500,
+          "amountInRaw": "1862000",
+          "quotedOutRaw": "11307251628374058",
+          "minimumOutRaw": "11194179112090318",
+          "ownerLimitFloorRaw": "10979667560314507",
+          "receivedRaw": "11307251628374058"
+        },
+        {
+          "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "fee": 500,
+          "amountInRaw": "1337500",
+          "quotedOutRaw": "53569911569332124",
+          "minimumOutRaw": "53034212453638803",
+          "ownerLimitFloorRaw": "52009719731966597",
+          "receivedRaw": "53569911569332124"
+        }
+      ],
+      "sdkVerification": {
+        "status": "VERIFIED",
+        "binding": "PREPARED_INTENT",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "source": {
+          "account": "0xf6a893637b0a7697cf01a69c6007198ed8ad35be",
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "beforeRaw": "95000000",
+          "afterRaw": "90000000",
+          "debitRaw": "5000000"
+        },
+        "issues": []
+      },
+      "ownerUsdgAfter": "90000000",
+      "ownerAllowanceAfter": "10000000",
+      "observed": "VERIFIED (PREPARED_INTENT, SINGLE_TRANSACTION_BLOCK), debit 5000000 raw, executions 1, gas 1174771"
+    },
+    {
+      "id": "V1-revoke-B",
+      "gate": "REVOCATION",
+      "kind": "LIFECYCLE",
+      "expected": "owner revoke(idB) on chain; allowance untouched by revoke",
+      "pass": true,
+      "observed": "revoked=true, allowance 10000000 → 10000000 (revoke does not reset allowance)"
+    },
+    {
+      "id": "V2-revoked-B-with-restored-allowance",
+      "gate": "REVOCATION",
+      "kind": "REAL_FAULT",
+      "expected": "after revoke and approve(0), a third party submits B's unused permit (allowance restored); execute → RevokedAuthorization",
+      "observed": "reverted (mined): RevokedAuthorization(0xab40b8c162d016a0b3e95ac7b8f03e36441b20cda5df3e9ea4270f9b6d9082a3)",
+      "reason": {
+        "name": "RevokedAuthorization",
+        "args": [
+          "0xab40b8c162d016a0b3e95ac7b8f03e36441b20cda5df3e9ea4270f9b6d9082a3"
+        ]
+      },
+      "tx": "0x7db12fc0d68fde54525152d8544c85629eb1a87475cf4be1b2ad10e0a33e517a",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true,
+      "allowanceWhenRefused": "15000000"
+    },
+    {
+      "id": "U1-permit-front-run-C",
+      "gate": "FUNDING",
+      "kind": "REAL_FAULT",
+      "expected": "a third party submits the permit first; execute still succeeds (the try/catch only skips the used nonce)",
+      "purchase": true,
+      "pass": true,
+      "checks": {
+        "sdkVerified": true,
+        "sdkSourceDebitEqualsFork": true,
+        "ownerDebitExact": true,
+        "sdkDeliveriesEqualForkBalances": true,
+        "sdkNoTransit": true,
+        "atOrAboveOwnerLimit": true,
+        "noTransitBalance": true,
+        "allowancesBackToZero": true,
+        "ownerAllowanceUsedExactly": true,
+        "countersAdvanced": true
+      },
+      "tx": "0xb1fe6ae969c1bc0aec0d8ef4914cd8ee8a8556aa2067b6cacaf96454939b24a5",
+      "gasUsed": "1196017",
+      "window": "0",
+      "legs": [
+        {
+          "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "fee": 500,
+          "amountInRaw": "500000",
+          "quotedOutRaw": "1439846597139501",
+          "minimumOutRaw": "1425448131168106",
+          "ownerLimitFloorRaw": "1397909923923869",
+          "receivedRaw": "1439846597139501"
+        },
+        {
+          "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "fee": 3000,
+          "amountInRaw": "1300500",
+          "quotedOutRaw": "820450433689207",
+          "minimumOutRaw": "812245929352315",
+          "ownerLimitFloorRaw": "796683565530889",
+          "receivedRaw": "820450433689207"
+        },
+        {
+          "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "fee": 500,
+          "amountInRaw": "1862000",
+          "quotedOutRaw": "11305446082756424",
+          "minimumOutRaw": "11192391621928860",
+          "ownerLimitFloorRaw": "10979667560314507",
+          "receivedRaw": "11305446082756424"
+        },
+        {
+          "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "fee": 500,
+          "amountInRaw": "1337500",
+          "quotedOutRaw": "53569810813922536",
+          "minimumOutRaw": "53034112705783311",
+          "ownerLimitFloorRaw": "52009719731966597",
+          "receivedRaw": "53569810813922536"
+        }
+      ],
+      "sdkVerification": {
+        "status": "VERIFIED",
+        "binding": "PREPARED_INTENT",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "source": {
+          "account": "0xf6a893637b0a7697cf01a69c6007198ed8ad35be",
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "beforeRaw": "90000000",
+          "afterRaw": "85000000",
+          "debitRaw": "5000000"
+        },
+        "issues": []
+      },
+      "ownerUsdgAfter": "85000000",
+      "ownerAllowanceAfter": "10000000",
+      "observed": "VERIFIED (PREPARED_INTENT, SINGLE_TRANSACTION_BLOCK), debit 5000000 raw, executions 1, gas 1196017"
+    },
+    {
+      "id": "P1-recipient-to-attacker",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "leg output sent to the attacker instead of the router → RouteViolation(0,6)",
+      "observed": "reverted (mined): RouteViolation(0,6)",
+      "reason": {
+        "name": "RouteViolation",
+        "args": [
+          "0",
+          "6"
+        ]
+      },
+      "tx": "0x8515b95157e0baccc1081c6b55245577a11be5001e78b48cf2507e96f86a5292",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P2-min-below-owner-limit",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "leg 1 minimum set to 1 (calldata and router check) → RouteViolation(1,11)",
+      "observed": "reverted (mined): RouteViolation(1,11)",
+      "reason": {
+        "name": "RouteViolation",
+        "args": [
+          "1",
+          "11"
+        ]
+      },
+      "tx": "0x7c9dbb80f0da647574875cf5d47159225e345f103515f769d2f7a3551b3eaff4",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P3-spend-more",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "inputAmount doubled → PlanMismatch(3)",
+      "observed": "reverted (mined): PlanMismatch(3)",
+      "reason": {
+        "name": "PlanMismatch",
+        "args": [
+          "3"
+        ]
+      },
+      "tx": "0x04706adca1d055f67a70215b18b4210cce5a68ba0f790a86f2e7717c429dad77",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P4-other-bag",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "plan for another bagId → PlanMismatch(4)",
+      "observed": "reverted (mined): PlanMismatch(4)",
+      "reason": {
+        "name": "PlanMismatch",
+        "args": [
+          "4"
+        ]
+      },
+      "tx": "0xc3e52ebc5a6ca7d75fd71136fb3e357c88d90efa139724997f44fbdb8e85e1e0",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P5-other-target",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "leg 0 sent to UniversalRouter (allowlisted by the malicious router owner) → RouteViolation(0,1)",
+      "observed": "reverted (mined): RouteViolation(0,1)",
+      "reason": {
+        "name": "RouteViolation",
+        "args": [
+          "0",
+          "1"
+        ]
+      },
+      "tx": "0x09bc7b548271b31e6e646ec3c73c101acecaccad340cd6cd581583d17e1cd743",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P6-other-token",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "leg 2 buys USDG→GME instead of COIN → RouteViolation(2,5)",
+      "observed": "reverted (mined): RouteViolation(2,5)",
+      "reason": {
+        "name": "RouteViolation",
+        "args": [
+          "2",
+          "5"
+        ]
+      },
+      "tx": "0x20a318bde7b7a38a30b8e8b6d24fcdaf2f471f8e32f5aca29b38b7ccf868e320",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P7-price-limit-partial-fill",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "sqrtPriceLimitX96 set on leg 0 (partial fill) → RouteViolation(0,8)",
+      "observed": "reverted (mined): RouteViolation(0,8)",
+      "reason": {
+        "name": "RouteViolation",
+        "args": [
+          "0",
+          "8"
+        ]
+      },
+      "tx": "0xfc6893784f88692cc8d6ae3a20bb137a48acf3f8f4869173e09e823d4b15238c",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P8-shift-leg-amounts",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "leg 0 +1 raw, leg 1 −1 raw (same total) → RouteViolation(0,3)",
+      "observed": "reverted (mined): RouteViolation(0,3)",
+      "reason": {
+        "name": "RouteViolation",
+        "args": [
+          "0",
+          "3"
+        ]
+      },
+      "tx": "0x12177a8601b6e7fc584ee952c0740d31adc3d516ec372da19a4e976ce992aaff",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P9-wrong-window",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "execution claims window 2 while window 1 is current → WrongWindow",
+      "observed": "reverted (mined): WrongWindow(1,2)",
+      "reason": {
+        "name": "WrongWindow",
+        "args": [
+          "1",
+          "2"
+        ]
+      },
+      "tx": "0x3d726b8089c1da58abbaead8cef320ab2e99888e6b00ef68b8c6cda5f1ae7fea",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P10-stale-quote",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "quoteDeadline in the past → QuoteExpired",
+      "observed": "reverted (mined): QuoteExpired(1793045028)",
+      "reason": {
+        "name": "QuoteExpired",
+        "args": [
+          "1793045028"
+        ]
+      },
+      "tx": "0xb9e668c1c12a8e44ec46658d7e7ceff9c69b5f79ad7b90b61bc9dd1fbce45f1a",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P11-forged-owner-signature",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "authorization signature from another key → InvalidOwnerSignature",
+      "observed": "reverted (mined): InvalidOwnerSignature()",
+      "reason": {
+        "name": "InvalidOwnerSignature",
+        "args": []
+      },
+      "tx": "0x273277f489aa4c1fc8ebcf81f9c50c4d4f99c9b25d31363831fd0775ed715348",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P12-terms-swapped-recipient",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "keeper swaps the recipient in the terms, keeps the owner signature and id → AuthorizationMismatch",
+      "observed": "reverted (mined): AuthorizationMismatch(0x43fe065ad0db7753fd04f1e06d1adbb62bae27a4d63f9511fbb77fba58e7f459,0x3a62c6ac70d5901ce0688df3bdb49a7f5f93c7300a8fe21c33fdb5802908ce5e)",
+      "reason": {
+        "name": "AuthorizationMismatch",
+        "args": [
+          "0x43fe065ad0db7753fd04f1e06d1adbb62bae27a4d63f9511fbb77fba58e7f459",
+          "0x3a62c6ac70d5901ce0688df3bdb49a7f5f93c7300a8fe21c33fdb5802908ce5e"
+        ]
+      },
+      "tx": "0x252f3daa5b3834901b8917f28a032f961b52ac60e52d5a376b1c6ca44cf19b7f",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "L3-second-run-same-window-after-attacks",
+      "gate": "LIFECYCLE",
+      "kind": "LIFECYCLE",
+      "expected": "run 2 of A in window 1: the refusals above did not consume the window",
+      "purchase": true,
+      "pass": true,
+      "checks": {
+        "sdkVerified": true,
+        "sdkSourceDebitEqualsFork": true,
+        "ownerDebitExact": true,
+        "sdkDeliveriesEqualForkBalances": true,
+        "sdkNoTransit": true,
+        "atOrAboveOwnerLimit": true,
+        "noTransitBalance": true,
+        "allowancesBackToZero": true,
+        "ownerAllowanceUsedExactly": true,
+        "countersAdvanced": true
+      },
+      "tx": "0xa3b7b45eaa94b6e24dd3c87c9809b38ac8552816a20ca30dc3b4909e48ab2502",
+      "gasUsed": "1127230",
+      "window": "1",
+      "legs": [
+        {
+          "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "fee": 500,
+          "amountInRaw": "500000",
+          "quotedOutRaw": "1439846283951111",
+          "minimumOutRaw": "1425447821111600",
+          "ownerLimitFloorRaw": "1397909923923869",
+          "receivedRaw": "1439846283951111"
+        },
+        {
+          "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "fee": 3000,
+          "amountInRaw": "1300500",
+          "quotedOutRaw": "820383626421920",
+          "minimumOutRaw": "812179790157701",
+          "ownerLimitFloorRaw": "796683565530889",
+          "receivedRaw": "820383626421920"
+        },
+        {
+          "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "fee": 500,
+          "amountInRaw": "1862000",
+          "quotedOutRaw": "11303640969569432",
+          "minimumOutRaw": "11190604559873738",
+          "ownerLimitFloorRaw": "10979667560314507",
+          "receivedRaw": "11303640969569432"
+        },
+        {
+          "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "fee": 500,
+          "amountInRaw": "1337500",
+          "quotedOutRaw": "53569710058797203",
+          "minimumOutRaw": "53034012958209231",
+          "ownerLimitFloorRaw": "52009719731966597",
+          "receivedRaw": "53569710058797203"
+        }
+      ],
+      "sdkVerification": {
+        "status": "VERIFIED",
+        "binding": "PREPARED_INTENT",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "source": {
+          "account": "0xf6a893637b0a7697cf01a69c6007198ed8ad35be",
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "beforeRaw": "85000000",
+          "afterRaw": "80000000",
+          "debitRaw": "5000000"
+        },
+        "issues": []
+      },
+      "ownerUsdgAfter": "80000000",
+      "ownerAllowanceAfter": "5000000",
+      "observed": "VERIFIED (PREPARED_INTENT, SINGLE_TRANSACTION_BLOCK), debit 5000000 raw, executions 2, gas 1127230"
+    },
+    {
+      "id": "V3-allowance-reset-is-not-revocation",
+      "gate": "REVOCATION",
+      "kind": "REAL_FAULT",
+      "expected": "C has allowance 0 (approve(0) on day 0) → the transfer fails; C is NOT revoked",
+      "observed": "reverted (mined): InsufficientAllowance()",
+      "reason": {
+        "name": "InsufficientAllowance",
+        "args": []
+      },
+      "tx": "0x6bc8e6cccf6d358314b414dfb12743745d3a732742c80b6a7d868dc7361d878f",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true,
+      "revoked": false,
+      "note": "the token's own allowance error; C stays valid (see L4)"
+    },
+    {
+      "id": "L4-C-after-reapprove",
+      "gate": "LIFECYCLE",
+      "kind": "LIFECYCLE",
+      "expected": "C runs again after the owner re-approves one run",
+      "purchase": true,
+      "pass": true,
+      "checks": {
+        "sdkVerified": true,
+        "sdkSourceDebitEqualsFork": true,
+        "ownerDebitExact": true,
+        "sdkDeliveriesEqualForkBalances": true,
+        "sdkNoTransit": true,
+        "atOrAboveOwnerLimit": true,
+        "noTransitBalance": true,
+        "allowancesBackToZero": true,
+        "ownerAllowanceUsedExactly": true,
+        "countersAdvanced": true
+      },
+      "tx": "0x5f023d941ee5fd7b64dbf90ad70a63f1a768b9f707dcf0957d78eb0ec549315b",
+      "gasUsed": "1134152",
+      "window": "1",
+      "legs": [
+        {
+          "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "fee": 500,
+          "amountInRaw": "500000",
+          "quotedOutRaw": "1439845970762824",
+          "minimumOutRaw": "1425447511055196",
+          "ownerLimitFloorRaw": "1397909923923869",
+          "receivedRaw": "1439845970762824"
+        },
+        {
+          "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "fee": 3000,
+          "amountInRaw": "1300500",
+          "quotedOutRaw": "820316827314229",
+          "minimumOutRaw": "812113659041087",
+          "ownerLimitFloorRaw": "796683565530889",
+          "receivedRaw": "820316827314229"
+        },
+        {
+          "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "fee": 500,
+          "amountInRaw": "1862000",
+          "quotedOutRaw": "11301836288675002",
+          "minimumOutRaw": "11188817925788252",
+          "ownerLimitFloorRaw": "10979667560314507",
+          "receivedRaw": "11301836288675002"
+        },
+        {
+          "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "fee": 500,
+          "amountInRaw": "1337500",
+          "quotedOutRaw": "53569609303956122",
+          "minimumOutRaw": "53033913210916561",
+          "ownerLimitFloorRaw": "52009719731966597",
+          "receivedRaw": "53569609303956122"
+        }
+      ],
+      "sdkVerification": {
+        "status": "VERIFIED",
+        "binding": "PREPARED_INTENT",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "source": {
+          "account": "0xf6a893637b0a7697cf01a69c6007198ed8ad35be",
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "beforeRaw": "80000000",
+          "afterRaw": "75000000",
+          "debitRaw": "5000000"
+        },
+        "issues": []
+      },
+      "ownerUsdgAfter": "75000000",
+      "ownerAllowanceAfter": "0",
+      "observed": "VERIFIED (PREPARED_INTENT, SINGLE_TRANSACTION_BLOCK), debit 5000000 raw, executions 2, gas 1134152"
+    },
+    {
+      "id": "V4-revokeBySig-C",
+      "gate": "REVOCATION",
+      "kind": "LIFECYCLE",
+      "expected": "owner signs Revocation off chain; a third party submits revokeBySig",
+      "pass": true,
+      "observed": "revoked=true (submitted by 0xC5C8B3C4307b4ca3E113F1c04CBb221F6f9aA065)"
+    },
+    {
+      "id": "V5-revoked-C",
+      "gate": "REVOCATION",
+      "kind": "REAL_FAULT",
+      "expected": "C has allowance again but is revoked → RevokedAuthorization",
+      "observed": "reverted (mined): RevokedAuthorization(0xa6f398138e2152a49ea1091502590014a66e3c884a1f43419fda31e95535df26)",
+      "reason": {
+        "name": "RevokedAuthorization",
+        "args": [
+          "0xa6f398138e2152a49ea1091502590014a66e3c884a1f43419fda31e95535df26"
+        ]
+      },
+      "tx": "0x311a13ce2d34b54bd720b7f74530d8c87426ea45ae3eb03a0c8e0ddd240943db",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "L5-third-run-A",
+      "gate": "LIFECYCLE",
+      "kind": "LIFECYCLE",
+      "expected": "run 3 of A (last), window 2",
+      "purchase": true,
+      "pass": true,
+      "checks": {
+        "sdkVerified": true,
+        "sdkSourceDebitEqualsFork": true,
+        "ownerDebitExact": true,
+        "sdkDeliveriesEqualForkBalances": true,
+        "sdkNoTransit": true,
+        "atOrAboveOwnerLimit": true,
+        "noTransitBalance": true,
+        "allowancesBackToZero": true,
+        "ownerAllowanceUsedExactly": true,
+        "countersAdvanced": true
+      },
+      "tx": "0xee8a5e55518f8ca37bbe514482e2b7e2f0e40b8d3c0ac07ce2ad9d4e2e1d193e",
+      "gasUsed": "1139519",
+      "window": "2",
+      "legs": [
+        {
+          "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "fee": 500,
+          "amountInRaw": "500000",
+          "quotedOutRaw": "1439845657574638",
+          "minimumOutRaw": "1425447200998892",
+          "ownerLimitFloorRaw": "1397909923923869",
+          "receivedRaw": "1439845657574638"
+        },
+        {
+          "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "fee": 3000,
+          "amountInRaw": "1300500",
+          "quotedOutRaw": "820250036364806",
+          "minimumOutRaw": "812047536001158",
+          "ownerLimitFloorRaw": "796683565530889",
+          "receivedRaw": "820250036364806"
+        },
+        {
+          "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "fee": 500,
+          "amountInRaw": "1862000",
+          "quotedOutRaw": "11300021707321700",
+          "minimumOutRaw": "11187021490248483",
+          "ownerLimitFloorRaw": "10979667560314507",
+          "receivedRaw": "11300021707321700"
+        },
+        {
+          "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "fee": 500,
+          "amountInRaw": "1337500",
+          "quotedOutRaw": "53569508549399294",
+          "minimumOutRaw": "53033813463905302",
+          "ownerLimitFloorRaw": "52009719731966597",
+          "receivedRaw": "53569508549399294"
+        }
+      ],
+      "sdkVerification": {
+        "status": "VERIFIED",
+        "binding": "PREPARED_INTENT",
+        "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+        "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+        "source": {
+          "account": "0xf6a893637b0a7697cf01a69c6007198ed8ad35be",
+          "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "beforeRaw": "75000000",
+          "afterRaw": "70000000",
+          "debitRaw": "5000000"
+        },
+        "issues": []
+      },
+      "ownerUsdgAfter": "70000000",
+      "ownerAllowanceAfter": "0",
+      "observed": "VERIFIED (PREPARED_INTENT, SINGLE_TRANSACTION_BLOCK), debit 5000000 raw, executions 3, gas 1139519"
+    },
+    {
+      "id": "F2-exhausted",
+      "gate": "SCHEDULE",
+      "kind": "REAL_FAULT",
+      "expected": "A after 3 of 3 runs, allowance available → Exhausted",
+      "observed": "reverted (mined): Exhausted()",
+      "reason": {
+        "name": "Exhausted",
+        "args": []
+      },
+      "tx": "0x4bfd43770e8ab40bea99061bf9073165478c142b79f64dff2be80d86607bfd91",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "F3-expired",
+      "gate": "SCHEDULE",
+      "kind": "REAL_FAULT",
+      "expected": "A at/after expiresAt → Expired (the SDK refuses to build first; the plan is built for the last valid second)",
+      "observed": "reverted (mined): Expired()",
+      "reason": {
+        "name": "Expired",
+        "args": []
+      },
+      "tx": "0x66aa9aa6e671b6e25530d0cfd1a3ded85d2819b173b72573256781a71db1739a",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true,
+      "sdkRefusal": "RECURRING_TERMS_INVALID"
+    },
+    {
+      "id": "E0-baseline",
+      "gate": "RECEIPT_VERIFIER",
+      "kind": "ALTERED_EXPECTATION",
+      "expected": "the good L1 transaction: VERIFIED with the prepared call and with the decoded call; event-only mode is VERIFIED but labelled TRANSACTION_AND_TRANSFER_LOGS",
+      "pass": true,
+      "results": [
+        {
+          "variant": "prepared call",
+          "status": "VERIFIED",
+          "binding": "PREPARED_INTENT",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "codes": [],
+          "pass": true
+        },
+        {
+          "variant": "decoded call",
+          "status": "VERIFIED",
+          "binding": "DECODED_CALL",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "codes": [],
+          "pass": true
+        },
+        {
+          "variant": "event-only",
+          "status": "VERIFIED",
+          "binding": "PREPARED_INTENT",
+          "evidence": "TRANSACTION_AND_TRANSFER_LOGS",
+          "codes": [],
+          "pass": true
+        }
+      ],
+      "observed": "prepared call: VERIFIED | decoded call: VERIFIED | event-only: VERIFIED"
+    },
+    {
+      "id": "E1-other-recipient",
+      "gate": "RECEIPT_VERIFIER",
+      "kind": "ALTERED_EXPECTATION",
+      "expected": "expect another recipient (another authorization id) → AUTHORIZATION_MISMATCH",
+      "pass": true,
+      "results": [
+        {
+          "variant": "prepared call",
+          "status": "FAILED",
+          "binding": null,
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "codes": [
+            "AUTHORIZATION_MISMATCH"
+          ],
+          "pass": true
+        },
+        {
+          "variant": "decoded call",
+          "status": "FAILED",
+          "binding": null,
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "codes": [
+            "AUTHORIZATION_MISMATCH"
+          ],
+          "pass": true
+        }
+      ],
+      "observed": "prepared call: FAILED AUTHORIZATION_MISMATCH | decoded call: FAILED AUTHORIZATION_MISMATCH"
+    },
+    {
+      "id": "E2-other-amount",
+      "gate": "RECEIPT_VERIFIER",
+      "kind": "ALTERED_EXPECTATION",
+      "expected": "expect 6 USDG per run → AUTHORIZATION_MISMATCH",
+      "pass": true,
+      "results": [
+        {
+          "variant": "prepared call",
+          "status": "FAILED",
+          "binding": null,
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "codes": [
+            "AUTHORIZATION_MISMATCH"
+          ],
+          "pass": true
+        },
+        {
+          "variant": "decoded call",
+          "status": "FAILED",
+          "binding": null,
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "codes": [
+            "AUTHORIZATION_MISMATCH"
+          ],
+          "pass": true
+        }
+      ],
+      "observed": "prepared call: FAILED AUTHORIZATION_MISMATCH | decoded call: FAILED AUTHORIZATION_MISMATCH"
+    },
+    {
+      "id": "E3-other-executor",
+      "gate": "RECEIPT_VERIFIER",
+      "kind": "ALTERED_EXPECTATION",
+      "expected": "expect another executor address → AUTHORIZATION_MISMATCH (prepared) / NOT_EXECUTOR_TX (decoded)",
+      "pass": true,
+      "results": [
+        {
+          "variant": "prepared call",
+          "status": "FAILED",
+          "binding": null,
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "codes": [
+            "AUTHORIZATION_MISMATCH"
+          ],
+          "pass": true
+        },
+        {
+          "variant": "decoded call",
+          "status": "FAILED",
+          "binding": null,
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "codes": [
+            "NOT_EXECUTOR_TX"
+          ],
+          "pass": true
+        }
+      ],
+      "observed": "prepared call: FAILED AUTHORIZATION_MISMATCH | decoded call: FAILED NOT_EXECUTOR_TX"
+    },
+    {
+      "id": "E4-tighter-limits",
+      "gate": "RECEIPT_VERIFIER",
+      "kind": "ALTERED_EXPECTATION",
+      "expected": "expect limits 10× tighter → AUTHORIZATION_MISMATCH",
+      "pass": true,
+      "results": [
+        {
+          "variant": "prepared call",
+          "status": "FAILED",
+          "binding": null,
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "codes": [
+            "AUTHORIZATION_MISMATCH"
+          ],
+          "pass": true
+        },
+        {
+          "variant": "decoded call",
+          "status": "FAILED",
+          "binding": null,
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "codes": [
+            "AUTHORIZATION_MISMATCH"
+          ],
+          "pass": true
+        }
+      ],
+      "observed": "prepared call: FAILED AUTHORIZATION_MISMATCH | decoded call: FAILED AUTHORIZATION_MISMATCH"
+    },
+    {
+      "id": "E5-other-prepared-call",
+      "gate": "RECEIPT_VERIFIER",
+      "kind": "ALTERED_EXPECTATION",
+      "expected": "same authorization, but the call prepared for another run (L3), or the L1 call without its permit proof → CALL_MISMATCH",
+      "pass": true,
+      "results": [
+        {
+          "variant": "L3 intent",
+          "status": "FAILED",
+          "binding": null,
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "codes": [
+            "CALL_MISMATCH"
+          ],
+          "pass": true
+        },
+        {
+          "variant": "permit proof dropped",
+          "status": "FAILED",
+          "binding": null,
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "codes": [
+            "CALL_MISMATCH"
+          ],
+          "pass": true
+        }
+      ],
+      "observed": "L3 intent: FAILED CALL_MISMATCH | permit proof dropped: FAILED CALL_MISMATCH"
+    },
+    {
+      "id": "E6-mined-revert",
+      "gate": "RECEIPT_VERIFIER",
+      "kind": "ALTERED_EXPECTATION",
+      "expected": "F1's mined, reverted execute for A → FAILED TRANSACTION_REVERTED (nothing bought)",
+      "pass": true,
+      "results": [
+        {
+          "variant": "decoded call",
+          "status": "FAILED",
+          "binding": "DECODED_CALL",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "codes": [
+            "TRANSACTION_REVERTED"
+          ],
+          "pass": true
+        }
+      ],
+      "observed": "decoded call: FAILED TRANSACTION_REVERTED"
+    }
+  ],
+  "counts": {
+    "byKind": {
+      "LIFECYCLE": {
+        "pass": 7,
+        "fail": 0
+      },
+      "REAL_FAULT": {
+        "pass": 19,
+        "fail": 0
+      },
+      "ALTERED_EXPECTATION": {
+        "pass": 7,
+        "fail": 0
+      }
+    },
+    "byGate": {
+      "LIFECYCLE": {
+        "pass": 5,
+        "fail": 0
+      },
+      "SCHEDULE": {
+        "pass": 3,
+        "fail": 0
+      },
+      "REVOCATION": {
+        "pass": 5,
+        "fail": 0
+      },
+      "FUNDING": {
+        "pass": 1,
+        "fail": 0
+      },
+      "PLAN_SIGNER_TRUST": {
+        "pass": 12,
+        "fail": 0
+      },
+      "RECEIPT_VERIFIER": {
+        "pass": 7,
+        "fail": 0
+      }
+    }
+  },
+  "exit": {
+    "code": 0,
+    "status": "COMPLETE"
+  },
+  "quoteDiagnostics": {
+    "nonRevertErrors": []
+  },
+  "network": {
+    "allowedHosts": [
+      "rpc.mainnet.chain.robinhood.com",
+      "127.0.0.1"
+    ],
+    "requestsByHost": {
+      "127.0.0.1": 22,
+      "upstream-rpc": 706
+    },
+    "refused": [],
+    "composerOrLifiRequests": 0,
+    "relay": {
+      "allowlist": [
+        "eth_chainId",
+        "net_version",
+        "eth_blockNumber",
+        "eth_getBlockByNumber",
+        "eth_getBlockByHash",
+        "eth_getCode",
+        "eth_getStorageAt",
+        "eth_getBalance",
+        "eth_getTransactionCount",
+        "eth_call",
+        "eth_getLogs",
+        "eth_getTransactionByHash",
+        "eth_getTransactionReceipt",
+        "eth_getProof"
+      ],
+      "forwardedRequests": 706,
+      "forwardedByMethod": {
+        "eth_getCode": 125,
+        "eth_getTransactionCount": 122,
+        "eth_getBlockByNumber": 4,
+        "eth_chainId": 1,
+        "eth_blockNumber": 98,
+        "net_version": 1,
+        "eth_getBalance": 121,
+        "eth_getStorageAt": 218,
+        "eth_call": 16
+      },
+      "refusedRequests": 0,
+      "refusedMethods": {},
+      "retries": 0,
+      "upstreamErrors": {},
+      "failures": 0,
+      "selfTest": {
+        "singleWriteRefused": true,
+        "batchWithWriteRefused": true
+      }
+    },
+    "forkLocalTransactions": 56,
+    "publicWrites": 0,
+    "note": "publicWrites is 0 by construction: the relay refuses every non-read method (self-tested at start) and counts refusals"
+  },
+  "forkChanges": [
+    {
+      "kind": "ARBSYS",
+      "method": "hardhat_setCode",
+      "target": "0x0000000000000000000000000000000000000064",
+      "note": "ArbSys read emulation (Nitro precompile is not in EDR)",
+      "at": 0
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xE557DB3147C0e1CF690EAF0E5631F19167BF40CB",
+      "note": "fork-only gas for a local test account",
+      "at": 1
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x09240A3a4a6b94500BdE31A704BEcBfa1b4aF856",
+      "note": "fork-only gas for a local test account",
+      "at": 2
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xcC184b60dA086029A9007ec2f692d140F990A83C",
+      "note": "fork-only gas for a local test account",
+      "at": 3
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xf6a893637B0A7697CF01a69c6007198eD8ad35Be",
+      "note": "fork-only gas for a local test account",
+      "at": 4
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x05f48fB5d2C0D6d9670506F5Abf576A50cc86f98",
+      "note": "fork-only gas for a local test account",
+      "at": 5
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xdF082E7859fbB1cEE96575967A4912b24786E327",
+      "note": "fork-only gas for a local test account",
+      "at": 6
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xC5C8B3C4307b4ca3E113F1c04CBb221F6f9aA065",
+      "note": "fork-only gas for a local test account",
+      "at": 7
+    },
+    {
+      "kind": "IMPERSONATE",
+      "method": "hardhat_impersonateAccount",
+      "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+      "note": "USDG for test accounts from a real holder balance (fork only)",
+      "at": 8
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+      "note": "gas for the impersonated holder",
+      "at": 9
+    },
+    {
+      "kind": "SET_CODE",
+      "method": "hardhat_setCode",
+      "target": "0x008f01d056eb06d708eaeC1e2e27B82435910CB9",
+      "note": "executor runtime from 0x346aa66a29c743e96a0d6baa8fa4138e1c1e8dc5 (immutables: real BagFactory, real StrategyRegistry) at the keyless address",
+      "at": 10
+    },
+    {
+      "kind": "SET_CODE",
+      "method": "hardhat_setCode",
+      "target": "0x346aa66a29c743e96a0d6baa8fa4138e1c1e8dc5",
+      "note": "remove the deployer-address copy so only the keyless executor exists",
+      "at": 11
+    }
+  ],
+  "finishedAt": "2026-10-25T21:00:23.497Z"
+}
