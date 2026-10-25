@@ -32,7 +32,8 @@ interface IRecurringPurchaseExecution {
 
     /// @notice Which BAG, exactly. `bagId`/`bagVersion`/`compositionHash` are checked
     /// against BagFactory and the Bag contract on every purchase; a new version
-    /// recorded by the creator stops the authorization. `strategyId != 0` adds a
+    /// recorded by the creator stops the authorization, and the signed asset list must
+    /// reproduce the registered `compositionHash` (see AssetLimit). `strategyId != 0` adds a
     /// StrategyRegistry check of `definitionHash` (bag.json v1) at `strategyVersion`.
     struct BagRef {
         bytes32 bagId;
@@ -43,11 +44,15 @@ interface IRecurringPurchaseExecution {
         uint32 strategyVersion;
     }
 
-    /// @notice One asset of the BAG: its weight (from the definition) and the most the
-    /// owner accepts to pay for one whole token, in input-token raw units.
-    /// Minimum output of a leg = ceil(legInput * 10**decimals / maxPriceRaw).
+    /// @notice One asset of the BAG and the most the owner accepts to pay for one whole token,
+    /// in input-token raw units (minimum output of a leg = ceil(legInput * 10**decimals / maxPriceRaw)).
+    /// The list is the BAG's REGISTERED content, in its registered order: the executor rebuilds the
+    /// Bag's composition string from these fields (rows `chain:address:symbol:decimals:weightBps`,
+    /// lowercase address, joined by `|`) and requires its keccak256 to equal the Bag contract's
+    /// `compositionHash`. A real BAG id signed next to any other token/weight list is refused.
     struct AssetLimit {
         address asset;
+        string symbol;
         uint16 weightBps;
         uint8 decimals;
         uint256 maxPriceRaw;
