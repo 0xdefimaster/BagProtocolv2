@@ -1,0 +1,33 @@
+{
+  "startedAt": "2026-10-24T18:29:22.937Z",
+  "mode": "FRESH_COMPOSER_QUOTES_LOCAL_FORK",
+  "chainId": 4663,
+  "repoCommit": "e6bdd1057f4cb68d492e2c503736d7e30d24b0c0",
+  "sdkCommit": "dadef000f9679cad9dbd2e13ce40b14a4310274e",
+  "prototypeArchiveSha256": "915d6d62b0aa0a2af727b2a3f0dfed96c551e736c81528eaf00ab2a1a5a392e5",
+  "sourceHashes": {
+    "composer/run.mjs": "08c7d1d301765b76c3e54c0a5296f2843bf7ee227dd3e5cd670466e7762220c6",
+    "composer/contracts/DcaComposerPlan.sol": "bd8aa5ce2ef65c4663231004be2d66ffa84ed2becec943191b986da27f66b137",
+    "package-lock.json": "506a3900ff0c0f0af3fe6e8378d8dd18bf862be34d621f5cf38d4a044095dbcc"
+  },
+  "sdkBuildHashes": {
+    "receipt.js": "d5fc5879cac6aa1270d11153586e09c5a3c4ac003cc49d88e6c6fe71cf19d7e7",
+    "execution.js": "e93b5048946ae091338aa27dd6e8107eb37cabfb4a846b00274833cffa44a010",
+    "adapters/lifi.js": "57af01d5bfe03d5aa16df737a188c03f5a4b8f8d91797311d7de76bf6b7c8fa5"
+  },
+  "walletFiles": [
+    {
+      "name": "wallet-signing-io.rabby-1792860998364.json",
+      "sha256": "7c5b0831d092c10056ef507172138229c650ce63945893f123d11ad5d31db32f"
+    },
+    {
+      "name": "wallet-signing-io.metamask-1792861380410.json",
+      "sha256": "eb6a7bf050f87039921e93da8e3d1e238042d0cef753f8c33762edd88648823a"
+    }
+  ],
+  "modificationsToRunner": true,
+  "modelIsolation": "Independent A/B models use the same initial fork state; original security guards unchanged",
+  "runnerSha256": "98823fe3965b486213f246a2c74fe1b1cb6612c91b34bc0b714c01e9ba49ef19",
+  "publicTransactionsAuthorized": false,
+  "reproduction": "node composer/run.mjs --repo <e6bdd10-checkout> --sdk <dadef00-checkout>/packages/bag-sdk --mode live --env-file <local-env> --wallet-results <rabby-export>,<metamask-export> --out <new-output>"
+}

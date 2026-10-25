@@ -1,0 +1,75 @@
+diff --git "a/C:\\Users\\ilife\\Documents\\Codex\\2026-10-21\\bag\\work\\claude-dca-auth-v2-2026-10-24\\proto\\composer\\run.mjs" "b/C:\\Users\\ilife\\Documents\\Codex\\2026-10-21\\bag\\work\\claude-dca-auth-v2-2026-10-24\\proto\\composer\\run-codex-negative-impact.mjs"
+index 2d23d7b..7467ebb 100644
+--- "a/C:\\Users\\ilife\\Documents\\Codex\\2026-10-21\\bag\\work\\claude-dca-auth-v2-2026-10-24\\proto\\composer\\run.mjs"
++++ "b/C:\\Users\\ilife\\Documents\\Codex\\2026-10-21\\bag\\work\\claude-dca-auth-v2-2026-10-24\\proto\\composer\\run-codex-negative-impact.mjs"
+@@ -110,7 +110,7 @@ const report = { scope: 'ISOLATED_ROBINHOOD_FORK_REAL_COMPOSER_AUTHORIZATION_PRO
+   runtime: { node: process.version, solc: solc.version(), solcSettings: settingsSolc },
+   sourceHashes: { 'DcaComposerPlan.sol': sha(sources['DcaComposerPlan.sol'].content), 'run.mjs': sha(readFileSync(fileURLToPath(import.meta.url))),
+     'basket-wire.mjs': sha(readFileSync(join(repo, 'scripts/research/dca-trial/basket-wire.mjs'))), 'sdk/dist/receipt.js': sha(readFileSync(join(sdkDir, 'dist/receipt.js'))) },
+-  planRuntimeBytes: (art('DcaComposerPlan').runtime.length - 2) / 2, sdkVerdicts: [], sdkForwardedVerdicts: [], sdk: { dir: '<sdk>', supportsForwardedDelivery: sdkSupportsDelivery }, cases };
++  planRuntimeBytes: (art('DcaComposerPlan').runtime.length - 2) / 2, quoteAttempts: [], sdkVerdicts: [], sdkForwardedVerdicts: [], sdk: { dir: '<sdk>', supportsForwardedDelivery: sdkSupportsDelivery }, cases };
+ 
+ await check('F-0', 'ArbSys arbBlockNumber() read model installed (only the getter; everything else reverts)', async () => {
+   const native = await remote.readContract({ address: '0x0000000000000000000000000000000000000064', abi: v.parseAbi(['function arbBlockNumber() view returns (uint256)']), functionName: 'arbBlockNumber', blockNumber: forkBlock.number });
+@@ -148,8 +148,29 @@ const planFor = signer => sdk.planPurchase(parsed.bag, { inputToken: USDG, amoun
+ async function compileFor(signer) {
+   if (mode === 'live') {
+     const account = await resolveLifiComposerAccount({ chainId: 4663, signer, deployment, client: remote });
+-    const provider = lifiComposer({ apiKey: cfg.apiKey, baseUrl: 'https://composer.li.quest', account, timeoutMs: 60000 });
+-    return sdk.compileBag(parsed.bag, { inputToken: USDG, amountRaw: GROSS, inputTokenDecimals: 6, signer }, { provider, trust: account.trust });
++    const attempt = { signer, capturedAt: new Date().toISOString(), responses: [] };
++    report.quoteAttempts.push(attempt);
++    const captureFetch = async (url, init) => {
++      const response = await fetch(url, { ...init, redirect: 'error' });
++      let body; try { body = await response.clone().json(); } catch { body = null; }
++      const pi = body?.data?.priceImpact ?? body?.priceImpact;
++      attempt.responses.push({ path: new URL(url).pathname, status: response.status,
++        composerVersion: response.headers.get('x-lifi-composer-version'), revision: response.headers.get('x-revision'),
++        priceImpact: pi ? { inputValueUsd: pi.inputValueUsd, outputValueUsd: pi.outputValueUsd,
++          impactBps: pi.impactBps, unpricedInputs: pi.unpricedInputs, unpricedOutputs: pi.unpricedOutputs } : null });
++      return response;
++    };
++    const provider = lifiComposer({ apiKey: cfg.apiKey, baseUrl: 'https://composer.li.quest', account, timeoutMs: 60000, fetch: captureFetch });
++    try {
++      const compiled = await sdk.compileBag(parsed.bag, { inputToken: USDG, amountRaw: GROSS, inputTokenDecimals: 6, signer }, { provider, trust: account.trust });
++      attempt.status = 'ACCEPTED'; attempt.priceImpactBps = compiled.quote.priceImpactBps;
++      attempt.priceImpactUsd = compiled.quote.priceImpactUsd;
++      attempt.compiledProgramHash = v.keccak256(compiled.transaction.data);
++      console.log('QUOTE impactBps=' + compiled.quote.priceImpactBps);
++      return compiled;
++    } catch (e) {
++      attempt.status = 'REJECTED'; attempt.error = cfg.redact(e?.message ?? e); throw e;
++    }
+   }
+   // Replay: re-address the recorded program. Only slot 0 (signer), slot 1 (balanceOf(proxy)) and the
+   // swap receivers change; analyze-signer-dependence.mjs shows nothing else names the signer.
+@@ -231,7 +252,7 @@ async function sdkChecks(id, compiled, txHash, plan, source) {
+   await check(id + '-sdk-forwarded', 'SDK forwarded-delivery mode VERIFIES inner call, funding-source debit, recipient minimums and net-zero caller', async () => {
+     const r = await forwarded(user.address);
+     writeFileSync(join(out, id + '-sdk-forwarded.json'), json(r));
+-    report.sdkForwardedVerdicts.push({ id, status: r.status, issues: r.issues, delivery: r.delivery });
++    report.sdkForwardedVerdicts.push({ id, status: r.status, issues: r.issues, delivery: r.delivery, priceImpactBps: compiled.quote.priceImpactBps, priceImpactUsd: compiled.quote.priceImpactUsd });
+     assert.equal(r.status, 'VERIFIED', json(r.issues));
+     assert.equal(r.transactionBinding, 'CALL_TRACE'); assert.equal(r.delivery.authorization, 'ON_CHAIN_PLAN_READ'); assert.equal(r.delivery.callerNetZero, true);
+     return { status: r.status, spentInputRaw: r.spentInputRaw, delivery: r.delivery };
+@@ -284,7 +305,7 @@ async function model(label, terms, nonce, setup, permissionContextFor, extra) {
+       assert.equal(after.runs, before.runs + 1n); assert.equal(after.planUsdg, 0n); assert.equal(after.proxyAllowance, 0n);
+       for (const f of floorsOf(TD)) { assert(after['user:' + f.token.toLowerCase()] - before['user:' + f.token.toLowerCase()] >= f.amountRaw); assert.equal(after['plan:' + f.token.toLowerCase()], 0n); }
+       writeFileSync(join(out, id + '-trace.json'), json(await rpc('debug_traceTransaction', [hash, { tracer: 'callTracer' }])));
+-      return { transactionHash: hash, gasUsed: r.gasUsed, swapAmount: swap };
++      return { transactionHash: hash, gasUsed: r.gasUsed, swapAmount: swap, priceImpactBps: c.quote.priceImpactBps, priceImpactUsd: c.quote.priceImpactUsd };
+     });
+     if (hash) await sdkChecks(id, c, hash, P, terms.source);
+   };
+@@ -357,6 +378,11 @@ report.acceptance = { sdkFullVerification: report.sdkVerdicts.length && report.s
+   sdkVerdicts: report.sdkVerdicts,
+   sdkForwardedDeliveryVerification: !sdkSupportsDelivery ? 'NOT_RUN_SDK_WITHOUT_FORWARDED_MODE'
+     : report.sdkForwardedVerdicts.length === 4 && report.sdkForwardedVerdicts.every(x => x.status === 'VERIFIED') ? 'MET' : 'NOT_MET' };
++report.negativeImpact = {
++  acceptedQuotes: report.quoteAttempts.filter(q => q.status === 'ACCEPTED' && q.priceImpactBps < 0).length,
++  verifiedPurchaseIds: report.sdkForwardedVerdicts.filter(q => q.status === 'VERIFIED' && q.priceImpactBps < 0).map(q => q.id),
++  negativeQuotesUsed: report.sdkForwardedVerdicts.filter(q => q.status === 'VERIFIED' && q.priceImpactBps < 0).length
++};
+ report.summary = { pass: cases.filter(c => c.status === 'PASS').length, fail: cases.filter(c => c.status === 'FAIL').length };
+ writeFileSync(join(out, 'results.json'), json(report));
+ console.log(`\nSUMMARY mode=${mode} pass=${report.summary.pass} fail=${report.summary.fail} sdkFullVerification=${report.acceptance.sdkFullVerification} sdkForwarded=${report.acceptance.sdkForwardedDeliveryVerification}  -> ${out}`);

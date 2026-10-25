@@ -1,0 +1,89 @@
+OK   node: Node v24.22.0 (needs >= 24)
+OK   dep hardhat: 3.14.0 (pinned 3.14.0)
+OK   dep viem: 2.56.0 (pinned 2.56.0)
+OK   dep solc: 0.8.23 (pinned 0.8.23)
+OK   dep tsx: 4.23.15 (pinned 4.23.15)
+OK   dep @metamask/smart-accounts-kit: 2.0.0 (pinned 2.0.0)
+OK   vendor e6bdd10: all vendored files match SHA256SUMS
+OK   sdk path: /home/user/integ-wt/packages/bag-sdk
+OK   sdk forwarded mode: built SDK contains the forwarded-delivery verification (#126)
+OK   sdk commit: dadef00; expected dadef00
+
+== unit tests
+✔ 5 x 5 USDG = 25 USDG is valid; total is derived, not entered (7.102718ms)
+✔ a total of 30 for 5 x 5 is rejected with the exact message, nothing is auto-corrected (0.41406ms)
+✔ amount parsing: no floats, exact decimals, rejects zero/negative/exponent/comma/too many decimals/overflow (1.574022ms)
+✔ period: units to seconds; invalid units and counts are rejected (0.36594ms)
+✔ start: now = immediate first purchase; a future time = AT_START; the past is rejected (1.359749ms)
+✔ fixed calendar windows, no accumulation, readable summary with exact UTC dates (0.820802ms)
+✔ token, BAG and addresses must be verified/valid (2.599966ms)
+✔ delegation typed data decodes to exactly the plan; any change is reported (7.718798ms)
+✔ userOp typed data: inner transfer, paymaster binding and window are decoded (11.502106ms)
+✔ the shipped policy never passes: a clean route is PRICE_POLICY_UNPROVEN, with no reference price (5.943199ms)
+✔ a constant high-fee pool fails even when the probe sees no impact (1.1966ms)
+✔ hooked pools fail unless allowlisted; dynamic fee is unknown, never assumed low (0.880435ms)
+✔ quote-only, simulated or unverified fork evidence fails (1.470661ms)
+✔ thin liquidity or far below another route at the same block fails; peers are never a reference (0.838231ms)
+✔ reference price: stale, wrong source, below tolerance, synthetic, unset tolerance (0.984307ms)
+✔ mechanics: PASS only with a proven policy, a fresh real reference and every check satisfied (0.5331ms)
+✔ basket gate: any FAIL fails, any UNPROVEN blocks, empty fails (0.726185ms)
+✔ a receipt-verified basket alone does not make router DCA ready (5.025442ms)
+✔ non-archive per-unit evidence, failed baskets and v4 picks close more gates (0.872803ms)
+✔ structural gates stay closed even if every measured gate were open (0.770687ms)
+✔ an empty report is blocked (0.535743ms)
+✔ loopback signing server: host, origin, secret, size, step binding and signer checks (152.932698ms)
+✔ exact input both directions: payer pays exactly amountIn and receives the output; the adapter keeps nothing (553.988576ms)
+✔ partial fill reverts the whole swap (PartialFill) and nothing moves (117.626863ms)
+✔ wrong-signed or zero deltas revert (BadDelta) (403.263674ms)
+✔ output below minOut reverts (MinOut) (272.856169ms)
+✔ amount bounds and native currency are refused (AmountOutOfRange, NativeUnsupported) (188.190913ms)
+✔ callback: only the PoolManager, and only inside our own unlock (NotPoolManager, NotActive) (114.675536ms)
+✔ re-entering swapExactIn during the swap is refused (Reentered) (185.899073ms)
+✔ payer binding: a caller can only spend its own tokens; another approver is never charged (294.274877ms)
+ℹ tests 30
+ℹ suites 0
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11794.021577
+
+== fork lifecycle (test key)
+PASS P-1 preflight: chain, USDG definition, pinned bytecode, keyless addresses, empty test account
+PASS P-2 plan addresses recomputed from factory + salt + initCodeHash; programs for them match the signer-independent template
+PASS E-1 fork setup: pinned bytecode, keyless factory/paymaster code, paymaster deposit, smart account deployed and funded on the fork only
+PASS E-2 the account accepts the user signatures (ERC-1271) and their digests equal the DelegationManager hash
+PASS H-1 D1 window 0: purchase with the user-signed periodic permission
+PASS H-2 D2 window 0: purchase with the second user-signed permission
+PASS H-3 D1 same window: second purchase refused by the plan (NotDue)
+PASS H-4 D1 same window, plan bypassed: the permission itself refuses (ERC20PeriodTransferEnforcer)
+PASS H-5a cancel op under the mainnet condition (paymaster has no code; deposit and account ETH present): cannot execute, nothing changes
+PASS H-5b cancel op with the paymaster removed or replaced: the same signature no longer validates (AA24)
+PASS H-5c cancel op executes on the fork via EntryPoint.handleOps; the account pays no gas; D2 disabled
+PASS H-5d replaying the executed cancel op is refused (AA25 nonce)
+PASS H-6 D1 window 1: second purchase (total reaches the budget)
+PASS H-7 D2 window 1 after cancel: purchase refused (CannotUseADisabledDelegation) while budget remained
+PASS H-8 D1 window 2: plan refuses (Inactive: runs/expiry)
+PASS H-9 D1 window 2, plan bypassed: total budget enforced by the permission (ERC20TransferAmountEnforcer)
+PASS H-10 withdraw op: remaining USDG returns to the owner EOA via handleOps; account pays no gas
+PASS H-11 replaying the executed withdraw op is refused (AA25 nonce)
+PASS P-3 explicit Delegation typed data signs to the same signature as Smart Accounts Kit (same account, same delegation)
+PASS X-1 two keepers in the same block, same window: exactly one purchase; the other reverts; counters move once
+PASS X-2 failed swap (router payload corrupted, plan validation passes): reverts; balances, runs and enforcer counters unchanged
+PASS X-3 modified Composer program (a pinned state slot changed): plan validation refuses
+PASS X-4 wrong plan: another plan presents this permission (InvalidDelegate)
+PASS X-5 wrong recipient: transfer to an address other than the plan (AllowedCalldataEnforcer)
+PASS X-6 wrong token: a different token through the permission (ERC20PeriodTransferEnforcer)
+PASS X-7 over-spend: more than the per-period amount (transfer-amount-exceeded)
+PASS X-8 call-count limit: a permission with maxCalls 1 works once, then LimitedCallsEnforcer refuses
+PASS X-9 expired permission: TimestampEnforcer refuses after notAfter
+PASS X-10 user operation after its paymaster validUntil: refused (AA32), nothing changes
+PASS X-11 SDK forwarded verification of the real H-1 receipt refuses over-, partial- and zero-spend claims
+
+SUMMARY status=PASSED signer=test mode=replay pass=30 fail=0 purchases=3 userOps=2 -> /home/user/dca-close/research/bag-dca-proto/wallet-fork/out/2026-10-25T02-46-36-a9b1-test
+
+Result: /home/user/dca-close/research/bag-dca-proto/wallet-fork/out/2026-10-25T02-46-36-a9b1-test/results.json (exit 0: PASSED)
+
+launcher log: /home/user/dca-close/research/bag-dca-proto/out/launcher/2026-10-25T02-46-36-a9b1.json
+EXIT 0

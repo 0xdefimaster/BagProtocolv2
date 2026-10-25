@@ -1,0 +1,91 @@
+{
+  "createdAt": "2026-10-24T15:55:59.088Z",
+  "sdkCommit": "f8d73b487929d196ff83ac09dee260987e171a40",
+  "pr126Commit": "3f85a4cf80e6d9cc4289d6d074fc7e000e0737ef",
+  "pr127Commit": "a879ff12960ab73fa1345625bfb81483e06aec29",
+  "fixtureCommit": "e6bdd1057f4cb68d492e2c503736d7e30d24b0c0",
+  "integrationBranch": "claude/sdk-integration-126-negative-impact",
+  "node": "v24.22.0",
+  "fork": {
+    "blockNumber": "96879819",
+    "blockHash": "0x5b6f4584745431c1c09aca8c1678f196cbf1d672623a73f73fb02d1689722315",
+    "timestamp": "1792857092"
+  },
+  "sdkTests": {
+    "pass": 312,
+    "fail": 0
+  },
+  "sdkBuild": "PASS",
+  "rootTypecheck": "PASS",
+  "live": {
+    "summary": {
+      "pass": 34,
+      "fail": 0
+    },
+    "purchases": [
+      {
+        "id": "A-4",
+        "impactBps": 13,
+        "transactionHash": "0x50b276caa69164f9f611d745f7fa643c8ac2eec52aa7d3196cb7d643fa0fd575",
+        "sourceDebitRaw": "5000000"
+      },
+      {
+        "id": "A-6",
+        "impactBps": 13,
+        "transactionHash": "0x77618ac6c47a77c2c66f5a5a8d97af7682db5cec7b6017c06426bcb837554720",
+        "sourceDebitRaw": "5000000"
+      },
+      {
+        "id": "B-4",
+        "impactBps": 15,
+        "transactionHash": "0x09f3cafb6334ed10bf33d09dab33879b9940731d9e61753c15e6cc97cf6a9370",
+        "sourceDebitRaw": "5000000"
+      },
+      {
+        "id": "B-6",
+        "impactBps": 15,
+        "transactionHash": "0x83d0aedd7e92d2f4bd566e2d9718c1f4b3de06dfb0fd5269acb20725cb95ca6d",
+        "sourceDebitRaw": "5000000"
+      }
+    ],
+    "forwardedVerified": 4,
+    "negativeQuotesUsed": 0,
+    "negativeLivePath": "NOT_TESTED_NO_NEGATIVE_QUOTE_IN_THIS_RUN",
+    "acceptedCompileAttempts": 7
+  },
+  "sourceHashes": {
+    "sdkReceipt": "e173d1b1215656924b5e52ce01596ba04f722b9b90164a398be57f3c1cbf7605",
+    "sdkDistReceipt": "d5fc5879cac6aa1270d11153586e09c5a3c4ac003cc49d88e6c6fe71cf19d7e7",
+    "sdkExecution": "bd458b84632cd40199a17e75b78cbd51247677e17111a530e2e5353e89e4819e",
+    "sdkLifi": "48ad5e170de85b71569b6ee868f21484a60e157e2327bc62908d130c94f3665f",
+    "repoLock": "d532c7acc94992dbdbb35750c442fe4ac5e04cec0587de9617ecb65508064f78",
+    "prototypeLock": "506a3900ff0c0f0af3fe6e8378d8dd18bf862be34d621f5cf38d4a044095dbcc",
+    "originalRunner": "cb49452f699c3fff27aae074c6a44d64a1d6e5de5a4acc7b6fe977a2ccbd3d71",
+    "instrumentedRunner": "815787b21f66677cb28cd4a0823a51f4355625f1ccaeadaf2f44ca7ed56e535f",
+    "unchangedPrototypeContract": "bd8aa5ce2ef65c4663231004be2d66ffa84ed2becec943191b986da27f66b137"
+  },
+  "lifiConfirmation": {
+    "source": "Leo message supplied by the user, 2026-10-24 18:30-18:31",
+    "negativeImpactValid": true,
+    "inputOutputValuesCompared": true,
+    "quoteTimeLimitDescribed": true,
+    "exactRoundingConfirmed": false
+  },
+  "changes": {
+    "trackedSdkEdits": false,
+    "prototypeContractEdits": false,
+    "instrumentationOnly": true,
+    "retries": false,
+    "publicTransactions": 0,
+    "merged": false,
+    "published": false
+  },
+  "realWalletSignatures": "NOT TESTED",
+  "wholeRepositoryTests": "NOT RERUN HERE",
+  "commands": [
+    "npm run build --prefix packages/bag-sdk",
+    "node node_modules/typescript/bin/tsc --noEmit",
+    "node node_modules/vitest/vitest.mjs run packages/bag-sdk --maxWorkers=2 --fileParallelism=false --reporter=json --outputFile=<output>/sdk-tests.json",
+    "node composer/run-codex-negative-impact.mjs --repo <e6bdd10 checkout> --sdk <f8d73b4 checkout>/packages/bag-sdk --mode live --env-file <local env path> --out <new output directory>"
+  ]
+}

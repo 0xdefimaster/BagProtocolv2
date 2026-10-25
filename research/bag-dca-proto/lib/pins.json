@@ -1,0 +1,68 @@
+{
+  "chainId": 4663,
+  "pinnedAtBlock": "97232427",
+  "pinnedAtBlockHash": "0x2d488e8b6fb80f573df93377cb1e41399d9dd51d067f14011ec002474de2dbd1",
+  "delegationFramework": "v1.3.0",
+  "contracts": {
+    "DelegationManager": {
+      "address": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3",
+      "codeHash": "0xe45747f90ecec2ba96ae9f4a15c36289653efdfef7690bcfb90a1945bb0fe207",
+      "bytes": 11503,
+      "sourceVerifiedV130": true
+    },
+    "MultiSigDeleGatorImpl": {
+      "address": "0x56a9EdB16a0105eb5a4C54f4C062e2868844f3A7",
+      "codeHash": "0xeac446c6d463a040ab5dcd42b0c4eb28b335452781621c40e84d3534790b35c6",
+      "bytes": 16949,
+      "sourceVerifiedV130": true
+    },
+    "ERC20PeriodTransferEnforcer": {
+      "address": "0x474e3Ae7E169e940607cC624Da8A15Eb120139aB",
+      "codeHash": "0xd9a721435a13aaa562f7e6c7f7d062170a725ffdb7dd7c1e30798194ee9e186c",
+      "bytes": 3346,
+      "sourceVerifiedV130": true
+    },
+    "ERC20TransferAmountEnforcer": {
+      "address": "0xf100b0819427117EcF76Ed94B358B1A5b5C6D2Fc",
+      "codeHash": "0xa9104d82ccfcdb251f90da0f1b49f36432d574925f72ed4cb97bec5b3a94cd54",
+      "bytes": 2078,
+      "sourceVerifiedV130": true
+    },
+    "LimitedCallsEnforcer": {
+      "address": "0x04658B29F6b82ed55274221a06Fc97D318E25416",
+      "codeHash": "0x3a07a1b31d8f8f29cde4260f88fc5011e003e4bdbd519c8274fc7092d2356468",
+      "bytes": 1257,
+      "sourceVerifiedV130": true
+    },
+    "TimestampEnforcer": {
+      "address": "0x1046bb45C8d673d4ea75321280DB34899413c069",
+      "codeHash": "0x1da353833766081398664c131a50988f6f7190d6a1a974f497607b974705900c",
+      "bytes": 1255,
+      "sourceVerifiedV130": true
+    },
+    "RedeemerEnforcer": {
+      "address": "0xE144b0b2618071B4E56f746313528a669c7E65c5",
+      "codeHash": "0x0acea3889e6bab48774ee99ed9ada1b91875bde5a15976330063e91998e84228",
+      "bytes": 1611,
+      "sourceVerifiedV130": true
+    },
+    "AllowedCalldataEnforcer": {
+      "address": "0xc2b0d624c1c4319760C96503BA27C347F3260f55",
+      "codeHash": "0x26a87ea53c698e47fbea2566d50d18964062d0c74bd0baebc60316393461bf84",
+      "bytes": 1756,
+      "sourceVerifiedV130": true
+    },
+    "EntryPointV07": {
+      "address": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+      "codeHash": "0x8db5ff695839d655407cc8490bb7a5d82337a86a6b39c3f0258aa6c3b582fc58",
+      "bytes": 16035,
+      "sourceVerifiedV130": false
+    },
+    "SimpleFactory": {
+      "address": "0x69Aa2f9fe1572F1B640E1bbc512f5c3a734fc77c",
+      "codeHash": "0x82c94f0735e1e8ea2ffc1df4186cf5d3e28877459f9ff330289b99ea851e5ae9",
+      "bytes": 751,
+      "sourceVerifiedV130": false
+    }
+  }
+}

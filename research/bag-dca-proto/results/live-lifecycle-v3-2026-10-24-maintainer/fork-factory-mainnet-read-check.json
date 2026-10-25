@@ -1,0 +1,12 @@
+{
+  "checkedAt": "2026-10-24T18:23:56.356Z",
+  "factory": "0x7fE0cf854704Ce6f29691a75F6839233AFfDb3E6",
+  "checks": {
+    "eth_chainId": "0x1237",
+    "eth_blockNumber": "0x5c79d88",
+    "eth_getCode": "0x",
+    "eth_getTransactionCount": "0x0",
+    "eth_getBalance": "0x0"
+  },
+  "publicTransactions": 0
+}

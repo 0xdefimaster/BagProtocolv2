@@ -1,0 +1,863 @@
+{
+  "scope": "ISOLATED_ROBINHOOD_FORK_REAL_COMPOSER_AUTHORIZATION_PROTOTYPE",
+  "mode": "live",
+  "programSource": "FRESH_LIVE_COMPOSER_COMPILATION",
+  "fork": {
+    "blockNumber": "96434989",
+    "blockHash": "0xb5e5bc47923e72e5cda852a24ffbab46a491ec111b29c4d8540b46d9cb0220fb",
+    "timestamp": "1792810179"
+  },
+  "bag": {
+    "id": "955df6e0-b6ea-44ba-a5eb-1288a80c0a06",
+    "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9"
+  },
+  "publicTransactions": 0,
+  "runtime": {
+    "node": "v24.22.0",
+    "solc": "0.8.23+commit.f704f362.Emscripten.clang",
+    "solcSettings": {
+      "optimizer": {
+        "enabled": true,
+        "runs": 1
+      },
+      "viaIR": true,
+      "evmVersion": "shanghai",
+      "outputSelection": {
+        "*": {
+          "*": [
+            "abi",
+            "evm.bytecode.object",
+            "evm.deployedBytecode.object"
+          ]
+        }
+      }
+    }
+  },
+  "sourceHashes": {
+    "DcaComposerPlan.sol": "bd8aa5ce2ef65c4663231004be2d66ffa84ed2becec943191b986da27f66b137",
+    "run.mjs": "606b1ecbcefb5e697fd57fb15871444dfd35dee11af43acf42e89004af6b0298",
+    "basket-wire.mjs": "99da9e9f048743f126b5797b85fb64208759ad1a5b8b024d4d919d495d4409c2",
+    "sdk/dist/receipt.js": "dc0d2ffe3bef89f5ccc7367bf7d875d7dca437e4cf291f081558a4942f4cf093"
+  },
+  "planRuntimeBytes": 12238,
+  "sdkVerdicts": [
+    {
+      "id": "A-4",
+      "status": "FAILED",
+      "issues": [
+        {
+          "code": "INPUT_BALANCE_BELOW_PLAN",
+          "detail": "Pre-transaction input balance was below the planned deposit."
+        }
+      ]
+    },
+    {
+      "id": "A-6",
+      "status": "FAILED",
+      "issues": [
+        {
+          "code": "INPUT_BALANCE_BELOW_PLAN",
+          "detail": "Pre-transaction input balance was below the planned deposit."
+        }
+      ]
+    },
+    {
+      "id": "B-4",
+      "status": "FAILED",
+      "issues": [
+        {
+          "code": "INPUT_BALANCE_BELOW_PLAN",
+          "detail": "Pre-transaction input balance was below the planned deposit."
+        }
+      ]
+    },
+    {
+      "id": "B-6",
+      "status": "FAILED",
+      "issues": [
+        {
+          "code": "INPUT_BALANCE_BELOW_PLAN",
+          "detail": "Pre-transaction input balance was below the planned deposit."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "F-0",
+      "name": "ArbSys arbBlockNumber() read model installed (only the getter; everything else reverts)",
+      "status": "PASS",
+      "details": {
+        "nativeAtFork": "96434989"
+      }
+    },
+    {
+      "id": "F-1",
+      "name": "Composer factory bytecode matches the research pin",
+      "status": "PASS"
+    },
+    {
+      "id": "T-1",
+      "name": "compile the selected BAG for an unrelated placeholder signer",
+      "status": "PASS",
+      "details": {
+        "signer": "0x7F19c6aC68163B00b94DAC3Afe101C260cc4F71D",
+        "programHash": "0x21e1820c34fd91ca6bbbffdff6779bcfcc6b2a87e2be5c067f155d7fab3b2c16"
+      }
+    },
+    {
+      "id": "T-2",
+      "name": "derive the signer-independent template (no signer/proxy bytes remain)",
+      "status": "PASS",
+      "details": {
+        "instructions": [
+          [
+            "9",
+            "0x0119180000000000000000000000000000000000000000000000000000000000"
+          ],
+          [
+            "3",
+            "0x5fc5360d0400a0fd4f2af552add042d716f1d168180b00000000000000000000"
+          ],
+          [
+            "1",
+            "0xad207fd79802180b000000000000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x02e450d45c03745909e08b5c46a87016c33f16a4a67a98020000000000000000"
+          ],
+          [
+            "9",
+            "0x031716000b000000000000000000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x020dc20af039443dc9a8a193f0f42f0af2ea611e8a1494020000000000000000"
+          ],
+          [
+            "0",
+            "0x020dc20af039443dc9a8a193f0f42f0af2ea611e8a1090020000000000000000"
+          ],
+          [
+            "0",
+            "0x020dc20af039443dc9a8a193f0f42f0af2ea611e8a0d8d020000000000000000"
+          ],
+          [
+            "1",
+            "0xfe79e11596067c14107b15030000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x020dc20af039443dc9a8a193f0f42f0af2ea611e8a1696020000000000000000"
+          ],
+          [
+            "1",
+            "0xfe79e11595067c160d7b15030000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x020dc20af039443dc9a8a193f0f42f0af2ea611e8a1595020000000000000000"
+          ],
+          [
+            "1",
+            "0xfe79e1158b067c0b157b04030000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x020dc20af039443dc9a8a193f0f42f0af2ea611e8a0b8b020000000000000000"
+          ],
+          [
+            "1",
+            "0xe1f0273e95021411000000000000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x02e450d45c03745909e08b5c46a87016c33f16a4a67a95020000000000000000"
+          ],
+          [
+            "0",
+            "0x021b0e319c6a659f002271b69db8a7df2f911c153e1581020000000000000000"
+          ],
+          [
+            "0",
+            "0x015fc5360d0400a0fd4f2af552add042d716f1d1687a93020000000000000000"
+          ],
+          [
+            "0",
+            "0x01b477751b76cf82d00a686a1232f5fcd772414af37a92020000000000000000"
+          ],
+          [
+            "0",
+            "0x021b0e319c6a659f002271b69db8a7df2f911c153e1281020000000000000000"
+          ],
+          [
+            "1",
+            "0xfe79e11592067c12157b04030000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x020dc20af039443dc9a8a193f0f42f0af2ea611e8a7a92020000000000000000"
+          ],
+          [
+            "1",
+            "0xfe79e11591067c14117b04030000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x020dc20af039443dc9a8a193f0f42f0af2ea611e8a7a91020000000000000000"
+          ],
+          [
+            "1",
+            "0xe1f0273e9102100c000000000000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x02e450d45c03745909e08b5c46a87016c33f16a4a67a91020000000000000000"
+          ],
+          [
+            "0",
+            "0x0247f93d52cbec7c6d2cfc080e154002370a60daea1181020000000000000000"
+          ],
+          [
+            "0",
+            "0x015fc5360d0400a0fd4f2af552add042d716f1d1687a8f020000000000000000"
+          ],
+          [
+            "0",
+            "0x01b477751b76cf82d00a686a1232f5fcd772414af37a8e020000000000000000"
+          ],
+          [
+            "0",
+            "0x0247f93d52cbec7c6d2cfc080e154002370a60daea0e81020000000000000000"
+          ],
+          [
+            "1",
+            "0xfe79e1158e067c0e117b04030000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x020dc20af039443dc9a8a193f0f42f0af2ea611e8a7a8e020000000000000000"
+          ],
+          [
+            "1",
+            "0xfe79e1158c067c100c7b04030000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x020dc20af039443dc9a8a193f0f42f0af2ea611e8a7a8c020000000000000000"
+          ],
+          [
+            "1",
+            "0xe1f0273e8c020d08000000000000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x02e450d45c03745909e08b5c46a87016c33f16a4a67a8c020000000000000000"
+          ],
+          [
+            "0",
+            "0x026330d8c3178a418788df01a47479c0ce7ccf450b0c81020000000000000000"
+          ],
+          [
+            "0",
+            "0x015fc5360d0400a0fd4f2af552add042d716f1d1687a8a020000000000000000"
+          ],
+          [
+            "0",
+            "0x01b477751b76cf82d00a686a1232f5fcd772414af37a89020000000000000000"
+          ],
+          [
+            "0",
+            "0x026330d8c3178a418788df01a47479c0ce7ccf450b0981020000000000000000"
+          ],
+          [
+            "1",
+            "0xfe79e11589067c090c7b04030000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x020dc20af039443dc9a8a193f0f42f0af2ea611e8a7a89020000000000000000"
+          ],
+          [
+            "1",
+            "0xfe79e11588067c0d087b04030000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x020dc20af039443dc9a8a193f0f42f0af2ea611e8a7a88020000000000000000"
+          ],
+          [
+            "1",
+            "0xe1f0273e88020b05000000000000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x02e450d45c03745909e08b5c46a87016c33f16a4a67a88020000000000000000"
+          ],
+          [
+            "0",
+            "0x02af3d76f1834a1d425780943c99ea8a608f8a93f90881020000000000000000"
+          ],
+          [
+            "0",
+            "0x015fc5360d0400a0fd4f2af552add042d716f1d1687a87020000000000000000"
+          ],
+          [
+            "0",
+            "0x01b477751b76cf82d00a686a1232f5fcd772414af37a86020000000000000000"
+          ],
+          [
+            "0",
+            "0x02af3d76f1834a1d425780943c99ea8a608f8a93f90681020000000000000000"
+          ],
+          [
+            "1",
+            "0xfe79e11586067c06087b04030000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x020dc20af039443dc9a8a193f0f42f0af2ea611e8a7a86020000000000000000"
+          ],
+          [
+            "1",
+            "0xfe79e11583067c0b057b04030000000000000000000000000000000000000000"
+          ],
+          [
+            "0",
+            "0x020dc20af039443dc9a8a193f0f42f0af2ea611e8a7a83020000000000000000"
+          ],
+          [
+            "0",
+            "0x021b0e319c6a659f002271b69db8a7df2f911c153e0381020000000000000000"
+          ],
+          [
+            "10",
+            "0x1b0e319c6a659f002271b69db8a7df2f911c153e000300000000000000000000"
+          ],
+          [
+            "0",
+            "0x025fc5360d0400a0fd4f2af552add042d716f1d1680381020000000000000000"
+          ],
+          [
+            "10",
+            "0x5fc5360d0400a0fd4f2af552add042d716f1d168000300000000000000000000"
+          ],
+          [
+            "0",
+            "0x0247f93d52cbec7c6d2cfc080e154002370a60daea0381020000000000000000"
+          ],
+          [
+            "10",
+            "0x47f93d52cbec7c6d2cfc080e154002370a60daea000300000000000000000000"
+          ],
+          [
+            "0",
+            "0x026330d8c3178a418788df01a47479c0ce7ccf450b0381020000000000000000"
+          ],
+          [
+            "10",
+            "0x6330d8c3178a418788df01a47479c0ce7ccf450b000300000000000000000000"
+          ],
+          [
+            "0",
+            "0x02af3d76f1834a1d425780943c99ea8a608f8a93f90181020000000000000000"
+          ],
+          [
+            "10",
+            "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9000100000000000000000000"
+          ]
+        ],
+        "state": [
+          "0x",
+          "0x",
+          "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0x0000000000000000000000000000000000000000000000000000000000000003",
+          "0x8081010000000000000000000000000000000000000000000000000000000000",
+          "0x000000000000000000000000000000000000000000000000000000000007a120",
+          "0x",
+          "0x0000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000b477751b76cf82d00a686a1232f5fcd772414af3000000000000000000000000000000000000000000000000000000000007a12000000000000000000000000000000000000000000000000000000000",
+          "0x00000000000000000000000000000000000000000000000000000000001c6970",
+          "0x",
+          "0x0000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000b477751b76cf82d00a686a1232f5fcd772414af300000000000000000000000000000000000000000000000000000000001c697000000000000000000000000000000000000000000000000000000000",
+          "0x00000000000000000000000000000000000000000000000000000000004c4b40",
+          "0x000000000000000000000000000000000000000000000000000000000013d814",
+          "0x00000000000000000000000000000000000000000000000000000000000000e4fe79e115000000000000000000000000000000000000000000000000000000000000006080810282030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000004c4b400000000000000000000000000000000000000000000000000000000000000e8c000000000000000000000000000000000000000000000000000000000000271000000000000000000000000000000000000000000000000000000000",
+          "0x",
+          "0x0000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000b477751b76cf82d00a686a1232f5fcd772414af3000000000000000000000000000000000000000000000000000000000013d81400000000000000000000000000000000000000000000000000000000",
+          "0x00000000000000000000000000000000000000000000000000000000000000e4fe79e115000000000000000000000000000000000000000000000000000000000000006080810282030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000004c4b400000000000000000000000000000000000000000000000000000000000000a29000000000000000000000000000000000000000000000000000000000000271000000000000000000000000000000000000000000000000000000000",
+          "0x000000000000000000000000000000000000000000000000000000000014689c",
+          "0x",
+          "0x0000000000000000000000000000000000000000000000000000000000000044095ea7b3000000000000000000000000b477751b76cf82d00a686a1232f5fcd772414af3000000000000000000000000000000000000000000000000000000000014689c00000000000000000000000000000000000000000000000000000000",
+          "0x00000000000000000000000000000000000000000000000000000000000000e4fe79e115000000000000000000000000000000000000000000000000000000000000006080810282030000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000004c4b400000000000000000000000000000000000000000000000000000000000000a73000000000000000000000000000000000000000000000000000000000000271000000000000000000000000000000000000000000000000000000000",
+          "0x8081000000000000000000000000000000000000000000000000000000000000",
+          "0x0000000000000000000000005fc5360d0400a0fd4f2af552add042d716f1d168",
+          "0x5548c837ab068cf56a2c2479df0882a4922fd203edb7517321831d95078c5f62",
+          "0x",
+          "0x47469f21e209d43e16bd7f4ca3e96bbfe3f1a41d7d486028d515bb7b3879bf27"
+        ],
+        "signerSlot": "0",
+        "proxyBalanceSlot": "1",
+        "contextSlot": "24",
+        "amountSlot": "11",
+        "legs": [
+          {
+            "token": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+            "weightBps": "2675",
+            "input": "1337500",
+            "net": "1334157",
+            "minimum": "52788541477926863",
+            "slot": "18",
+            "feeHash": "0xa49c0fbfa4638e47986ad9717225d4e2fdbbe0e9cc2a5b7f7df28035334be7b5"
+          },
+          {
+            "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+            "weightBps": "2601",
+            "input": "1300500",
+            "net": "1297249",
+            "minimum": "810309838517399",
+            "slot": "14",
+            "feeHash": "0xef721fa9d21a5385cf8d0eccbc03d1989d6d573733816b895c4bf33b44646a93"
+          },
+          {
+            "token": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+            "weightBps": "3724",
+            "input": "1862000",
+            "net": "1857345",
+            "minimum": "11060067069942523",
+            "slot": "9",
+            "feeHash": "0x3bdad69103328efa4938960f2eeff0f4acb33952d3ccbfa43ff29a0431bac656"
+          },
+          {
+            "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+            "weightBps": "1000",
+            "input": "500000",
+            "net": "498750",
+            "minimum": "1407400401375049",
+            "slot": "6",
+            "feeHash": "0x86357692d8bb416d0123107073770edbad202d40c510024772b47a6b8a920ffb"
+          }
+        ],
+        "commandsHash": "0xf202f7222be31f87204d846dfd2b668f071dfe0db5f7a9e91250e18561778eaf"
+      }
+    },
+    {
+      "id": "A-1",
+      "name": "predict the CREATE2 plan address before any Composer data for it exists",
+      "status": "PASS",
+      "details": {
+        "predicted": "0x66EbbC3317d4a13728577414D628Af6c691f16dd",
+        "initCodeHash": "0xdb0d9e40194a2f2bf2d8616da63e4a1b289efbc792b448073ccc22319c34a8f1"
+      }
+    },
+    {
+      "id": "A-2",
+      "name": "compile for the predicted plan: template identical to the placeholder template (no address cycle)",
+      "status": "PASS",
+      "details": {
+        "commandsHashEqual": true,
+        "fixedSlotsEqual": true,
+        "derivedSlotsOnly": [
+          0,
+          1,
+          6,
+          9,
+          14,
+          18,
+          24
+        ]
+      }
+    },
+    {
+      "id": "A-setup",
+      "name": "user signs one USDG permit; keeper deploys the plan and submits it",
+      "status": "PASS",
+      "details": {
+        "userSignatures": 1,
+        "userTransactions": 0,
+        "allowance": "15000000"
+      }
+    },
+    {
+      "id": "A-3",
+      "name": "deployed address equals the prediction; owner = user",
+      "status": "PASS",
+      "details": {
+        "plan": "0x66EbbC3317d4a13728577414D628Af6c691f16dd"
+      }
+    },
+    {
+      "id": "A-4",
+      "name": "run 1: funding, Composer purchase and delivery to the user in one transaction",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0xb935cb92be7938a896c8daf1c5f661fd3724e4875dc4560e92cc8c5457a12810",
+        "gasUsed": "11443401",
+        "swapAmount": "5000000"
+      }
+    },
+    {
+      "id": "A-4-sdk-binding",
+      "name": "SDK verifyPurchaseReceipt binds the inner compiled Composer call (CALL_TRACE); its overall verdict is recorded, not asserted",
+      "status": "PASS",
+      "details": {
+        "sdkOverallStatus": "FAILED",
+        "transactionBinding": "CALL_TRACE",
+        "issues": [
+          {
+            "code": "INPUT_BALANCE_BELOW_PLAN",
+            "detail": "Pre-transaction input balance was below the planned deposit."
+          }
+        ]
+      }
+    },
+    {
+      "id": "A-4-delivery",
+      "name": "SDK transaction-scoped balance evidence: source debit = swap amount, recipient >= floors, plan residue 0",
+      "status": "PASS",
+      "details": {
+        "userDeltas": {
+          "0x1b0e319c6a659f002271b69db8a7df2f911c153e": "53860362695568667",
+          "0x47f93d52cbec7c6d2cfc080e154002370a60daea": "826762410486072",
+          "0x6330d8c3178a418788df01a47479c0ce7ccf450b": "11284631231448346",
+          "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9": "1435976330348995",
+          "0x5fc5360d0400a0fd4f2af552add042d716f1d168": "-5000000"
+        },
+        "sourceDeltas": null,
+        "planDeltas": {
+          "0x1b0e319c6a659f002271b69db8a7df2f911c153e": "0",
+          "0x47f93d52cbec7c6d2cfc080e154002370a60daea": "0",
+          "0x6330d8c3178a418788df01a47479c0ce7ccf450b": "0",
+          "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9": "0",
+          "0x5fc5360d0400a0fd4f2af552add042d716f1d168": "0"
+        }
+      }
+    },
+    {
+      "id": "A-5",
+      "name": "a failing Composer swap reverts funding, approvals, plan counters",
+      "status": "PASS",
+      "details": {
+        "reverted": true,
+        "reason": "The contract function \"run\" reverted with the following reason:\nTransaction reverted without a reason string | Transaction reverted without a reason string | The contract function \"run\" reverted with ",
+        "stateUnchanged": true
+      }
+    },
+    {
+      "id": "A-6",
+      "name": "run 2: funding, Composer purchase and delivery to the user in one transaction",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0xd3bd915dc5aa24f0a15d374ffe568bf7e6985540962673ef67af81e94fc934ce",
+        "gasUsed": "10658487",
+        "swapAmount": "5000000"
+      }
+    },
+    {
+      "id": "A-6-sdk-binding",
+      "name": "SDK verifyPurchaseReceipt binds the inner compiled Composer call (CALL_TRACE); its overall verdict is recorded, not asserted",
+      "status": "PASS",
+      "details": {
+        "sdkOverallStatus": "FAILED",
+        "transactionBinding": "CALL_TRACE",
+        "issues": [
+          {
+            "code": "INPUT_BALANCE_BELOW_PLAN",
+            "detail": "Pre-transaction input balance was below the planned deposit."
+          }
+        ]
+      }
+    },
+    {
+      "id": "A-6-delivery",
+      "name": "SDK transaction-scoped balance evidence: source debit = swap amount, recipient >= floors, plan residue 0",
+      "status": "PASS",
+      "details": {
+        "userDeltas": {
+          "0x1b0e319c6a659f002271b69db8a7df2f911c153e": "53856316994880048",
+          "0x47f93d52cbec7c6d2cfc080e154002370a60daea": "826388896424204",
+          "0x6330d8c3178a418788df01a47479c0ce7ccf450b": "11284572122605822",
+          "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9": "1433157886708782",
+          "0x5fc5360d0400a0fd4f2af552add042d716f1d168": "-5000000"
+        },
+        "sourceDeltas": null,
+        "planDeltas": {
+          "0x1b0e319c6a659f002271b69db8a7df2f911c153e": "0",
+          "0x47f93d52cbec7c6d2cfc080e154002370a60daea": "0",
+          "0x6330d8c3178a418788df01a47479c0ce7ccf450b": "0",
+          "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9": "0",
+          "0x5fc5360d0400a0fd4f2af552add042d716f1d168": "0"
+        }
+      }
+    },
+    {
+      "id": "B-1",
+      "name": "predict the CREATE2 plan address before any Composer data for it exists",
+      "status": "PASS",
+      "details": {
+        "predicted": "0xf7792E0b7FeB77b963A5CeDb0780531C687E3530",
+        "initCodeHash": "0x90a1ed24298c45528fd3690d5187146369bc57d56f4c217b347bdf97bfae7e05"
+      }
+    },
+    {
+      "id": "B-2",
+      "name": "compile for the predicted plan: template identical to the placeholder template (no address cycle)",
+      "status": "PASS",
+      "details": {
+        "commandsHashEqual": true,
+        "fixedSlotsEqual": true,
+        "derivedSlotsOnly": [
+          0,
+          1,
+          6,
+          9,
+          14,
+          18,
+          24
+        ]
+      }
+    },
+    {
+      "id": "B-setup",
+      "name": "keeper deploys the plan; user signs one delegation bounded by the enforcers",
+      "status": "PASS",
+      "details": {
+        "account": "0xb87187763825d9e6D6d59cA6222db1034375776d",
+        "implementation": "MultiSigDeleGator v1.3.0 (bytecode verified)",
+        "userSignatures": 1,
+        "userTransactions": 1,
+        "delegationHash": "0x6b54fcc6d536ec784dc62ddfccc109ec6a5d33db968072471681fec7ef4bd272"
+      }
+    },
+    {
+      "id": "B-3",
+      "name": "deployed address equals the prediction; owner = user",
+      "status": "PASS",
+      "details": {
+        "plan": "0xf7792E0b7FeB77b963A5CeDb0780531C687E3530"
+      }
+    },
+    {
+      "id": "B-4",
+      "name": "run 1: funding, Composer purchase and delivery to the user in one transaction",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x4b3625de0bf00b35298fa451d7443d2e63021f51fd60b71e6bc27fc4adf89bc1",
+        "gasUsed": "11660385",
+        "swapAmount": "5000000"
+      }
+    },
+    {
+      "id": "B-4-sdk-binding",
+      "name": "SDK verifyPurchaseReceipt binds the inner compiled Composer call (CALL_TRACE); its overall verdict is recorded, not asserted",
+      "status": "PASS",
+      "details": {
+        "sdkOverallStatus": "FAILED",
+        "transactionBinding": "CALL_TRACE",
+        "issues": [
+          {
+            "code": "INPUT_BALANCE_BELOW_PLAN",
+            "detail": "Pre-transaction input balance was below the planned deposit."
+          }
+        ]
+      }
+    },
+    {
+      "id": "B-4-delivery",
+      "name": "SDK transaction-scoped balance evidence: source debit = swap amount, recipient >= floors, plan residue 0",
+      "status": "PASS",
+      "details": {
+        "userDeltas": {
+          "0x1b0e319c6a659f002271b69db8a7df2f911c153e": "53852271750011216",
+          "0x47f93d52cbec7c6d2cfc080e154002370a60daea": "826015635423999",
+          "0x6330d8c3178a418788df01a47479c0ce7ccf450b": "11284469272966980",
+          "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9": "1430228148525316",
+          "0x5fc5360d0400a0fd4f2af552add042d716f1d168": "0"
+        },
+        "sourceDeltas": {
+          "0x1b0e319c6a659f002271b69db8a7df2f911c153e": "0",
+          "0x47f93d52cbec7c6d2cfc080e154002370a60daea": "0",
+          "0x6330d8c3178a418788df01a47479c0ce7ccf450b": "0",
+          "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9": "0",
+          "0x5fc5360d0400a0fd4f2af552add042d716f1d168": "-5000000"
+        },
+        "planDeltas": {
+          "0x1b0e319c6a659f002271b69db8a7df2f911c153e": "0",
+          "0x47f93d52cbec7c6d2cfc080e154002370a60daea": "0",
+          "0x6330d8c3178a418788df01a47479c0ce7ccf450b": "0",
+          "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9": "0",
+          "0x5fc5360d0400a0fd4f2af552add042d716f1d168": "0"
+        }
+      }
+    },
+    {
+      "id": "B-5",
+      "name": "a failing Composer swap reverts funding, approvals, plan counters and enforcer counters",
+      "status": "PASS",
+      "details": {
+        "reverted": true,
+        "reason": "The contract function \"run\" reverted with the following reason:\nTransaction reverted without a reason string | Transaction reverted without a reason string | The contract function \"run\" reverted with ",
+        "stateUnchanged": true
+      }
+    },
+    {
+      "id": "B-6",
+      "name": "run 2: funding, Composer purchase and delivery to the user in one transaction",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x7533f5aaf0d87d9830bc37ae5854ab798634ec07c972d80b5ec103d97baa4f5a",
+        "gasUsed": "10883494",
+        "swapAmount": "5000000"
+      }
+    },
+    {
+      "id": "B-6-sdk-binding",
+      "name": "SDK verifyPurchaseReceipt binds the inner compiled Composer call (CALL_TRACE); its overall verdict is recorded, not asserted",
+      "status": "PASS",
+      "details": {
+        "sdkOverallStatus": "FAILED",
+        "transactionBinding": "CALL_TRACE",
+        "issues": [
+          {
+            "code": "INPUT_BALANCE_BELOW_PLAN",
+            "detail": "Pre-transaction input balance was below the planned deposit."
+          }
+        ]
+      }
+    },
+    {
+      "id": "B-6-delivery",
+      "name": "SDK transaction-scoped balance evidence: source debit = swap amount, recipient >= floors, plan residue 0",
+      "status": "PASS",
+      "details": {
+        "userDeltas": {
+          "0x1b0e319c6a659f002271b69db8a7df2f911c153e": "53848226960893699",
+          "0x47f93d52cbec7c6d2cfc080e154002370a60daea": "825642627256905",
+          "0x6330d8c3178a418788df01a47479c0ce7ccf450b": "11284366424734217",
+          "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9": "1427307384860540",
+          "0x5fc5360d0400a0fd4f2af552add042d716f1d168": "0"
+        },
+        "sourceDeltas": {
+          "0x1b0e319c6a659f002271b69db8a7df2f911c153e": "0",
+          "0x47f93d52cbec7c6d2cfc080e154002370a60daea": "0",
+          "0x6330d8c3178a418788df01a47479c0ce7ccf450b": "0",
+          "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9": "0",
+          "0x5fc5360d0400a0fd4f2af552add042d716f1d168": "-5000000"
+        },
+        "planDeltas": {
+          "0x1b0e319c6a659f002271b69db8a7df2f911c153e": "0",
+          "0x47f93d52cbec7c6d2cfc080e154002370a60daea": "0",
+          "0x6330d8c3178a418788df01a47479c0ce7ccf450b": "0",
+          "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9": "0",
+          "0x5fc5360d0400a0fd4f2af552add042d716f1d168": "0"
+        }
+      }
+    }
+  ],
+  "template": {
+    "commandsHash": "0xf202f7222be31f87204d846dfd2b668f071dfe0db5f7a9e91250e18561778eaf",
+    "signerSlot": "0",
+    "proxyBalanceSlot": "1",
+    "contextSlot": "24",
+    "amountSlot": "11",
+    "derivedSlots": [
+      0,
+      1,
+      6,
+      9,
+      14,
+      18,
+      24
+    ],
+    "legs": [
+      {
+        "token": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+        "weightBps": "2675",
+        "input": "1337500",
+        "net": "1334157",
+        "minimum": "52788541477926863",
+        "slot": "18",
+        "feeHash": "0xa49c0fbfa4638e47986ad9717225d4e2fdbbe0e9cc2a5b7f7df28035334be7b5"
+      },
+      {
+        "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+        "weightBps": "2601",
+        "input": "1300500",
+        "net": "1297249",
+        "minimum": "810309838517399",
+        "slot": "14",
+        "feeHash": "0xef721fa9d21a5385cf8d0eccbc03d1989d6d573733816b895c4bf33b44646a93"
+      },
+      {
+        "token": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+        "weightBps": "3724",
+        "input": "1862000",
+        "net": "1857345",
+        "minimum": "11060067069942523",
+        "slot": "9",
+        "feeHash": "0x3bdad69103328efa4938960f2eeff0f4acb33952d3ccbfa43ff29a0431bac656"
+      },
+      {
+        "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+        "weightBps": "1000",
+        "input": "500000",
+        "net": "498750",
+        "minimum": "1407400401375049",
+        "slot": "6",
+        "feeHash": "0x86357692d8bb416d0123107073770edbad202d40c510024772b47a6b8a920ffb"
+      }
+    ]
+  },
+  "relayRejectedMethods": [
+    "eth_sendRawTransaction"
+  ],
+  "acceptance": {
+    "sdkFullVerification": "NOT_MET_UNCHANGED_SDK_MEASURES_FORWARDING_SIGNER",
+    "sdkVerdicts": [
+      {
+        "id": "A-4",
+        "status": "FAILED",
+        "issues": [
+          {
+            "code": "INPUT_BALANCE_BELOW_PLAN",
+            "detail": "Pre-transaction input balance was below the planned deposit."
+          }
+        ]
+      },
+      {
+        "id": "A-6",
+        "status": "FAILED",
+        "issues": [
+          {
+            "code": "INPUT_BALANCE_BELOW_PLAN",
+            "detail": "Pre-transaction input balance was below the planned deposit."
+          }
+        ]
+      },
+      {
+        "id": "B-4",
+        "status": "FAILED",
+        "issues": [
+          {
+            "code": "INPUT_BALANCE_BELOW_PLAN",
+            "detail": "Pre-transaction input balance was below the planned deposit."
+          }
+        ]
+      },
+      {
+        "id": "B-6",
+        "status": "FAILED",
+        "issues": [
+          {
+            "code": "INPUT_BALANCE_BELOW_PLAN",
+            "detail": "Pre-transaction input balance was below the planned deposit."
+          }
+        ]
+      }
+    ]
+  },
+  "summary": {
+    "pass": 26,
+    "fail": 0
+  }
+}

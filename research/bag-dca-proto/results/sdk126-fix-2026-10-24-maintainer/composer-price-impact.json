@@ -1,0 +1,35 @@
+{
+  "capturedAt": "2026-10-24T11:37:33.505Z",
+  "sdkCommit": "3f85a4cf80e6d9cc4289d6d074fc7e000e0737ef",
+  "scope": "READ_ONLY_COMPILE_DIAGNOSTIC_NO_TRANSACTION_SUBMISSION",
+  "chainId": 4663,
+  "bagId": "955df6e0-b6ea-44ba-a5eb-1288a80c0a06",
+  "amountRaw": "5000000",
+  "inputTokenDecimals": 6,
+  "responses": [
+    {
+      "path": "/compose",
+      "status": 200,
+      "composerVersion": "0.11.3",
+      "revision": "9169cc8",
+      "maxPriceImpactBps": 500,
+      "impacts": [
+        {
+          "path": "$.data.priceImpact",
+          "inputValueUsd": 4.9918325034999995,
+          "outputValueUsd": 4.99499414537114,
+          "impactBps": -6,
+          "unpricedInputs": [],
+          "unpricedOutputs": [],
+          "diagnosticFormulaBps": -6.3336297219986495,
+          "diagnosticFormulaIsInference": true
+        }
+      ]
+    }
+  ],
+  "officialSignConventionConfirmed": false,
+  "guardChanged": false,
+  "sdkCompileStatus": "REJECTED",
+  "error": "lifi-composer: malformed price impact -6 bps.",
+  "errorCode": "PRICE_IMPACT_INVALID"
+}

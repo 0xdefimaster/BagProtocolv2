@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DCA Wallet Signature Test</title>
+<style>
+  :root { --bg:#fbfaf7; --fg:#1d1c1a; --muted:#6b6862; --line:#e4e0d8; --card:#ffffff; --accent:#2f5d50; --warn:#9a4b16; --ok:#2f6b3a; --bad:#9b2c2c; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#171614; --fg:#ece9e3; --muted:#a29e96; --line:#34312c; --card:#201e1b; --accent:#7fb8a6; --warn:#e0a46a; --ok:#86c493; --bad:#e58a8a; } }
+  :root[data-theme="dark"] { --bg:#171614; --fg:#ece9e3; --muted:#a29e96; --line:#34312c; --card:#201e1b; --accent:#7fb8a6; --warn:#e0a46a; --ok:#86c493; --bad:#e58a8a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; } h2 { font-size: 16px; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 12px 0; }
+  .warn { border-left: 4px solid var(--warn); }
+  label { display:block; font-size: 13px; color: var(--muted); margin: 8px 0 2px; }
+  input[type=text], select, textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px ui-monospace, monospace; }
+  textarea { min-height: 54px; font-family: system-ui, sans-serif; }
+  button { padding: 7px 12px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--bg); font-weight: 600; cursor: pointer; margin: 6px 6px 0 0; }
+  button.secondary { background: transparent; color: var(--accent); }
+  code, .mono { font: 12px ui-monospace, monospace; word-break: break-all; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; } .row > div { flex: 1 1 240px; }
+  .status { font-weight: 600; } .status.ok { color: var(--ok); } .status.bad { color: var(--bad); }
+  .checks label { display: inline-flex; gap: 6px; align-items: center; margin-right: 14px; color: var(--fg); }
+  details pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; background: var(--bg); padding: 8px; border-radius: 6px; border: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<main>
+  <h1>DCA cüzdan imza denemesi</h1>
+  <p class="lead">Yalnızca <code>eth_signTypedData_v4</code> imzası istenir. Hiçbir işlem gönderilmez. Sonuçlar fork sonuçlarından ayrı bir JSON dosyası olarak indirilir.</p>
+
+  <div class="card warn">
+    <h2>Güvenlik</h2>
+    <ul>
+      <li>Boş, <b>tek kullanımlık</b> bir cüzdan kullanın.</li>
+      <li>Her imza bilerek kullanılamaz yapıldı:
+        <ul>
+          <li>Permit: tutar <b>0</b>, son tarih <b>1970</b>, spender <code>0x…dEaD</code>.</li>
+          <li>Delegasyon: delegate <code>0x…dEaD</code>, <code>TimestampEnforcer</code> eşiği <b>1970</b> (süresi geçmiş).</li>
+          <li>UserOp: gas limitleri <b>0</b>, callData boş.</li>
+        </ul>
+      </li>
+      <li>Cüzdan imza ekranında bu değerleri görmüyorsanız <b>imzalamayın</b>.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>1. Cüzdan</h2>
+    <label for="wallet">EIP-6963 ile bulunan cüzdanlar</label>
+    <select id="wallet"><option value="">— aranıyor —</option></select>
+    <button id="connect">Bağlan</button>
+    <button id="switch" class="secondary">Robinhood Chain'e geç (4663)</button>
+    <div class="row">
+      <div><label>Hesap</label><div id="account" class="mono">—</div></div>
+      <div><label>Ağ</label><div id="chain" class="mono">—</div></div>
+    </div>
+    <label for="sa">Delegator / smart account adresi (W-3, W-4, W-5)</label>
+    <input id="sa" type="text" value="0x000000000000000000000000000000000000bEEF">
+    <p class="lead" style="font-size:13px;margin-top:6px">Gerçek bir sayaç-hesap adresi için: <code>node wallet/print-account.mjs &lt;EOA&gt;</code>. Bu komut, EOA'nın MultiSig sayaç-hesabının adresini yazdırır.</p>
+  </div>
+
+  <div id="tests"></div>
+
+  <div class="card">
+    <h2>Sonuçlar</h2>
+    <button id="export">JSON indir</button>
+    <details><summary>Önizleme</summary><pre id="preview">[]</pre></details>
+  </div>
+</main>
+<script>
+(() => {
+  const USDG = '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168';
+  const DM = '0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3';
+  const ENTRY_POINT = '0x0000000071727De22E5E9d8BAf0edAc6f37da032';
+  const TIMESTAMP_ENFORCER = '0x1046bb45C8d673d4ea75321280DB34899413c069';
+  const DEAD = '0x000000000000000000000000000000000000dEaD';
+  const ROOT = '0x' + 'f'.repeat(64);
+  const $ = id => document.getElementById(id);
+  const providers = new Map(); let provider = null, info = null, account = null, chainId = null;
+  const results = [];
+
+  window.addEventListener('eip6963:announceProvider', e => {
+    providers.set(e.detail.info.uuid, e.detail);
+    $('wallet').innerHTML = [...providers.values()].map(p => `<option value="${p.info.uuid}">${p.info.name} (${p.info.rdns})</option>`).join('');
+  });
+  window.dispatchEvent(new Event('eip6963:requestProvider'));
+  setTimeout(() => { if (!providers.size) $('wallet').innerHTML = '<option value="">EIP-6963 cüzdan bulunamadı</option>'; }, 1500);
+
+  $('connect').onclick = async () => {
+    const p = providers.get($('wallet').value); if (!p) return alert('Önce bir cüzdan seçin.');
+    provider = p.provider; info = p.info;
+    [account] = await provider.request({ method: 'eth_requestAccounts' });
+    chainId = await provider.request({ method: 'eth_chainId' });
+    $('account').textContent = account; $('chain').textContent = chainId + (chainId === '0x1237' ? ' (Robinhood Chain)' : ' — 0x1237 olmalı');
+    provider.on?.('chainChanged', c => { chainId = c; $('chain').textContent = c; });
+  };
+  $('switch').onclick = async () => {
+    if (!provider) return alert('Önce bağlanın.');
+    try { await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x1237' }] }); }
+    catch (e) { alert('Ağ değiştirilemedi: ' + (e.message || e) + '\nRobinhood Chain\'i cüzdana elle ekleyin.'); }
+  };
+
+  const tsTerms = '0x' + '0'.repeat(32) + '0'.repeat(31) + '1';   // after = 0, before = 1 (1970): always expired
+  const salt = () => BigInt('0x' + [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, '0')).join('')).toString();
+  const EIP712Domain = [{ name: 'name', type: 'string' }, { name: 'version', type: 'string' }, { name: 'chainId', type: 'uint256' }, { name: 'verifyingContract', type: 'address' }];
+  const tests = [
+    { id: 'W-PERMIT', title: 'USDG Permit (A modeli)', why: 'Spender, tutar ve son tarih okunabiliyor mu? Uyarı çıkıyor mu?',
+      build: () => ({ types: { EIP712Domain, Permit: [{ name: 'owner', type: 'address' }, { name: 'spender', type: 'address' }, { name: 'value', type: 'uint256' }, { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint256' }] },
+        primaryType: 'Permit', domain: { name: 'Global Dollar', version: '1', chainId: 4663, verifyingContract: USDG },
+        message: { owner: account, spender: DEAD, value: '0', nonce: '0', deadline: '1' } }) },
+    { id: 'W-DELEGATION-SA', title: 'Delegation, ayrı smart account delegator (B modeli)', why: 'MetaMask ayrı bir smart account için delegasyon imzalamayı engelliyor mu (#10667)? Caveat\'ler okunabiliyor mu?',
+      build: () => delegation($('sa').value) },
+    { id: 'W-DELEGATION-EOA', title: 'Delegation, bağlı EOA delegator (karşılaştırma)', why: 'Cüzdanın kendi hesabı için engel var mı? Kaynak: MetaMask/core#10667, "External signature requests cannot sign delegations for internal accounts".',
+      build: () => delegation(account) },
+    { id: 'W-USEROP', title: 'MultiSig userOp (B modelinde iptal/çekim)', why: 'Cüzdan PackedUserOperation imzalıyor mu? Ne gösteriyor?',
+      build: () => ({ types: { EIP712Domain, PackedUserOperation: [{ name: 'sender', type: 'address' }, { name: 'nonce', type: 'uint256' }, { name: 'initCode', type: 'bytes' }, { name: 'callData', type: 'bytes' },
+          { name: 'accountGasLimits', type: 'bytes32' }, { name: 'preVerificationGas', type: 'uint256' }, { name: 'gasFees', type: 'bytes32' }, { name: 'paymasterAndData', type: 'bytes' }, { name: 'entryPoint', type: 'address' }] },
+        primaryType: 'PackedUserOperation', domain: { name: 'MultiSigDeleGator', version: '1', chainId: 4663, verifyingContract: $('sa').value },
+        message: { sender: $('sa').value, nonce: (2n ** 255n).toString(), initCode: '0x', callData: '0x', accountGasLimits: '0x' + '0'.repeat(64), preVerificationGas: '0', gasFees: '0x' + '0'.repeat(64), paymasterAndData: '0x', entryPoint: ENTRY_POINT } }) },
+  ];
+  function delegation(delegator) {
+    return { types: { EIP712Domain, Caveat: [{ name: 'enforcer', type: 'address' }, { name: 'terms', type: 'bytes' }],
+        Delegation: [{ name: 'delegate', type: 'address' }, { name: 'delegator', type: 'address' }, { name: 'authority', type: 'bytes32' }, { name: 'caveats', type: 'Caveat[]' }, { name: 'salt', type: 'uint256' }] },
+      primaryType: 'Delegation', domain: { name: 'DelegationManager', version: '1', chainId: 4663, verifyingContract: DM },
+      message: { delegate: DEAD, delegator, authority: ROOT, caveats: [{ enforcer: TIMESTAMP_ENFORCER, terms: tsTerms }], salt: salt() } };
+  }
+
+  const container = $('tests');
+  for (const t of tests) {
+    const el = document.createElement('div'); el.className = 'card';
+    el.innerHTML = `<h2>${t.id} · ${t.title}</h2><p class="lead">${t.why}</p>
+      <button data-run>İmza iste</button> <span class="status" data-status></span>
+      <div class="checks" style="margin-top:8px">
+        <label><input type="checkbox" data-o="readable"> alanlar okunabildi</label>
+        <label><input type="checkbox" data-o="warning"> uyarı gösterdi</label>
+        <label><input type="checkbox" data-o="blocked"> cüzdan engelledi</label></div>
+      <label>Cüzdanın gösterdiği (ekran görüntüsü notu, uyarı metni)</label><textarea data-note></textarea>
+      <details><summary>İstenen typed data</summary><pre data-req></pre></details>`;
+    container.appendChild(el);
+    el.querySelector('[data-run]').onclick = async () => {
+      const status = el.querySelector('[data-status]');
+      if (!provider || !account) return alert('Önce bağlanın.');
+      const typed = t.build(); el.querySelector('[data-req]').textContent = JSON.stringify(typed, null, 2);
+      const entry = { test: t.id, wallet: info && { name: info.name, rdns: info.rdns }, account, chainId, requestedAt: new Date().toISOString(), typedData: typed };
+      try {
+        entry.signature = await provider.request({ method: 'eth_signTypedData_v4', params: [account, JSON.stringify(typed)] });
+        entry.outcome = 'SIGNED'; status.textContent = 'İmzalandı'; status.className = 'status ok';
+      } catch (e) {
+        entry.outcome = e?.code === 4001 ? 'USER_REJECTED' : 'WALLET_ERROR'; entry.error = { code: e?.code ?? null, message: String(e?.message ?? e).slice(0, 500) };
+        status.textContent = entry.outcome + ': ' + entry.error.message; status.className = 'status bad';
+      }
+      entry.observations = () => ({ ...Object.fromEntries([...el.querySelectorAll('[data-o]')].map(c => [c.dataset.o, c.checked])), note: el.querySelector('[data-note]').value });
+      results.push(entry); render();
+    };
+    el.addEventListener('input', render);
+  }
+  const snapshot = () => results.map(r => ({ ...r, observations: r.observations() }));
+  function render() { $('preview').textContent = JSON.stringify(snapshot(), null, 2); }
+  $('export').onclick = () => {
+    const doc = { kind: 'WALLET_SIGNING_RESULTS_NOT_FORK_RESULTS', page: 'wallet/sign-test.html', exportedAt: new Date().toISOString(), userAgent: navigator.userAgent, results: snapshot() };
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' }));
+    a.download = `wallet-signing-${(info?.rdns || 'wallet').replace(/[^a-z0-9.]/gi, '_')}-${Date.now()}.json`; a.click();
+  };
+})();
+</script>
+</body>
+</html>
