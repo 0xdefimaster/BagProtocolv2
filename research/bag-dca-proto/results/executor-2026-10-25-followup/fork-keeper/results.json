@@ -1,0 +1,567 @@
+{
+  "schema": "bag-recurring-executor-fork/v1",
+  "evidenceClass": "TEST_KEY_FORK",
+  "phases": [
+    "keeper"
+  ],
+  "startedAt": "2026-10-25T21:12:25.436Z",
+  "args": [
+    "--app",
+    "/home/user/dca-close",
+    "--out",
+    "--phase",
+    "keeper"
+  ],
+  "notEvidenceOf": [
+    "a wallet (MetaMask/Rabby) signature",
+    "a human signature",
+    "a public-network transaction",
+    "an independent market price reference"
+  ],
+  "build": {
+    "appCommit": "9ebbf2459dccbb42d52095f6c40b8cebfcbb5152",
+    "appDirtyInContractsOrSdk": "",
+    "executor": {
+      "source": "contracts/dca/RecurringPurchaseExecutor.sol",
+      "checkedSources": [
+        "project/contracts/dca/RecurringPurchaseExecutor.sol",
+        "project/contracts/BagExecutionRouter.sol",
+        "project/contracts/dca/IRecurringPurchaseExecution.sol"
+      ],
+      "sourceSha256": "f3d4e1857ff43e8ce8cc9eaba487bf34a4b38214c9e72a5adb2f61918bfc839b",
+      "buildInfoId": "solc-0_8_24-6ca3a1208bc6c6febb4839902d0be4fa277fd88c",
+      "solc": "0.8.24+commit.e11b9ed9",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "evmVersion": "shanghai"
+    },
+    "router": {
+      "source": "contracts/BagExecutionRouter.sol",
+      "checkedSources": [
+        "project/contracts/BagExecutionRouter.sol"
+      ],
+      "sourceSha256": "d39b6cbb41755885f25964452b7c29e6dbe2e0d2b4fd1314a36113e1cd5df210",
+      "buildInfoId": "solc-0_8_24-2c34557d043fde1a806eaea3346bc3967a93298d",
+      "solc": "0.8.24+commit.e11b9ed9",
+      "evmVersion": "shanghai"
+    },
+    "sdk": {
+      "dist": "packages/bag-sdk/dist",
+      "recurringJsSha256": "4b1769de93a57eb8931fc43d826132f24629b330518da9a8bd20353fa84be181",
+      "uniswapV3JsSha256": "83ed25b268fd25693e41b970a7a3342e43b16ac02764a5b1fb2ec565b20bec11"
+    }
+  },
+  "keylessExecutor": {
+    "label": "BAG RecurringPurchaseExecutor fork-only v1",
+    "address": "0x008f01d056eb06d708eaeC1e2e27B82435910CB9",
+    "mainnetCode": "0x",
+    "mainnetNonce": 0
+  },
+  "fork": {
+    "blockNumber": "97888876",
+    "blockHash": "0x7b9dd0864da7a3bd136f6fe4de6568255770aa0cd2c74aeebadce3d0706967a2",
+    "timestamp": "1792962746",
+    "note": "one fork block for the whole run; every leg of a purchase executes in one transaction (same block by construction)"
+  },
+  "deployment": {
+    "executor": {
+      "address": "0x008f01d056eb06d708eaeC1e2e27B82435910CB9",
+      "runtimeMatchesArtifact": true,
+      "immutables": {
+        "bagFactory": "0x7Ce5A81Df434755F38Cb5f67Ad49a8bb3c8e6f72",
+        "strategyRegistry": "0x907cc27d644C8ea1c24B8320ad09eCF2819209A8",
+        "chainLabel": "robinhood"
+      },
+      "domainSeparator": "0x821e22a46807e81583bd86d25f49a3fd765f74d722e7c4f6b879d47bbc1076f8",
+      "domainSeparatorMatchesSdk": true,
+      "compositionCheck": {
+        "955df6e0-b6ea-44ba-a5eb-1288a80c0a06": {
+          "registered": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+          "executorRebuilt": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+          "sdk": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+          "matches": true
+        },
+        "a3caff05-d606-486b-959f-30865a4cbfa7": {
+          "registered": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+          "executorRebuilt": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+          "sdk": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+          "matches": true
+        }
+      }
+    },
+    "router": {
+      "address": "0x1cf3eaf7375879dcc6ac7c51f868bc72510c2cdb",
+      "runtimeMatchesArtifact": true,
+      "bagFactory": "0x7Ce5A81Df434755F38Cb5f67Ad49a8bb3c8e6f72",
+      "planSigner": "0xF05728bC6607A47dcE660DDdCCDe119Acc425CB1",
+      "owner": "0xacf5711F665d5d437f73b6aa5fC70d0017c4314f",
+      "allowlist": {
+        "targets": [
+          "0xCaf681a66D020601342297493863E78C959E5cb2"
+        ],
+        "tokens": "USDG + assets of both BAGs"
+      },
+      "trust": "test keys: router owner and planSigner are local; the runs treat both as compromised"
+    },
+    "realContracts": {
+      "USDG": {
+        "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+        "codeKeccak": "0x864cc9ad53b338b82da1f7cab85ab0b3d5c8861acb422b6fec63cf36234f36a6",
+        "bytes": 170,
+        "eip1967Implementation": "0x68184C449E1a8f34fA18d289737129FD27B66f8F"
+      },
+      "SWAP_ROUTER02": {
+        "address": "0xCaf681a66D020601342297493863E78C959E5cb2",
+        "codeKeccak": "0x6f36c378e272c6324c48f045182bcb54bd8ad654cf9ebd42e8893d52c4cb25dc",
+        "bytes": 24497
+      },
+      "QUOTER_V2": {
+        "address": "0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7",
+        "codeKeccak": "0x3db0868d945e9304c9bc6a8b2181948109ea617647142f3c4083e14393496a28",
+        "bytes": 8273
+      },
+      "BAG_FACTORY": {
+        "address": "0x7Ce5A81Df434755F38Cb5f67Ad49a8bb3c8e6f72",
+        "codeKeccak": "0x48e56712deee2744d90301b4a6eb3dd3760525aec15a7c18b3200defac8d1541",
+        "bytes": 11231
+      },
+      "STRATEGY_REGISTRY": {
+        "address": "0x907cc27d644C8ea1c24B8320ad09eCF2819209A8",
+        "codeKeccak": "0x0f559b7b92ab3fa101bc64974b219a770edf5ce1dabafef0e831d17b1f1ebcfd",
+        "bytes": 4830
+      }
+    },
+    "usdgPermitDomain": {
+      "onChain": "0x7a3d7400b27830f4f91c2c16a082486d67c1befecaec2f53b33f1f35d5b62036",
+      "matches": true,
+      "name": "Global Dollar",
+      "version": "1"
+    }
+  },
+  "testAccounts": {
+    "planSigner": "0xF05728bC6607A47dcE660DDdCCDe119Acc425CB1",
+    "routerOwner": "0xacf5711F665d5d437f73b6aa5fC70d0017c4314f",
+    "deployer": "0x62E795366F2895AD931a9AcF524443c015dAFDbc",
+    "owner": "0x9331B097CeF4d5BdeD9D331826AA7f9CfE94E1c7",
+    "keeper": "0x25a45f8fc52b841E360734F00d37183181214448",
+    "attacker": "0x39D6438d78AF5b645A75198aE5CD91fcFE733129",
+    "relayer": "0x51d12186055176a07C4BE24bA6D520A169F9b842",
+    "note": "keys generated in this process and discarded at exit; none is a user wallet"
+  },
+  "purchaseVerification": {
+    "sdk": "verifyRecurringPurchase",
+    "binding": "PREPARED_INTENT (the exact execute calldata prepared by this runner)",
+    "balanceReader": "SINGLE_TRANSACTION_BLOCK",
+    "crossCheck": "the runner's own latest-state balance snapshots before/after each run",
+    "realChainReader": "not exercised here: Robinhood Chain needs ROBINHOOD_NITRO_TRANSACTION_INDEX on the qualified Nitro build"
+  },
+  "bags": {
+    "955df6e0-b6ea-44ba-a5eb-1288a80c0a06": {
+      "uuid": "955df6e0-b6ea-44ba-a5eb-1288a80c0a06",
+      "bagId": "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+      "bag": "0x8E668bf1eD1e3Eb104Dab3341F14b9CF7d55510d",
+      "version": "1",
+      "compositionHash": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+      "sdkCompositionHash": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+      "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9",
+      "strategyId": "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+      "registered": false,
+      "matches": false,
+      "docVersion": 1
+    },
+    "a3caff05-d606-486b-959f-30865a4cbfa7": {
+      "uuid": "a3caff05-d606-486b-959f-30865a4cbfa7",
+      "bagId": "0x72ec1d37c03f9bfb3dc369cf77f19841e7d0a7ca00ca3757605d97fb2f398cae",
+      "bag": "0xb6C8B277AbcD5866bBE62C5A89295a992A90F3d5",
+      "version": "2",
+      "compositionHash": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+      "sdkCompositionHash": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+      "definitionHash": "0x62e5dd238e967169064c3ccc5d34ed2c6829b3cbcb3119b76c4d3a88758e9f5a",
+      "strategyId": "0x72ec1d37c03f9bfb3dc369cf77f19841e7d0a7ca00ca3757605d97fb2f398cae",
+      "registered": true,
+      "matches": true,
+      "docVersion": 2
+    }
+  },
+  "priceLimitPolicy": {
+    "kind": "OWNER_SIGNED_MAX_PRICE",
+    "thisRun": "TEST LIMIT = best real-chain QuoterV2 quote at setup + 300 bps (A/B/C, keeper) or + 100 bps (P, K7)",
+    "isIndependentReference": false,
+    "limitsRaw": {
+      "0x1b0e319c6a659f002271b69db8a7df2f911c153e": "25719987",
+      "0x47f93d52cbec7c6d2cfc080e154002370a60daea": "1632392152",
+      "0x6330d8c3178a418788df01a47479c0ce7ccf450b": "169586191",
+      "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9": "357663012"
+    },
+    "sources": {
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x1b0e319c6a659f002271b69db8a7df2f911c153e:300": {
+        "realChainQuoteRaw": "53562429910175580",
+        "legInRaw": "1337500",
+        "bufferBps": 300
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x47f93d52cbec7c6d2cfc080e154002370a60daea:300": {
+        "realChainQuoteRaw": "820584072707883",
+        "legInRaw": "1300500",
+        "bufferBps": 300
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x6330d8c3178a418788df01a47479c0ce7ccf450b:300": {
+        "realChainQuoteRaw": "11309057606560468",
+        "legInRaw": "1862000",
+        "bufferBps": 300
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0xaf3d76f1834a1d425780943c99ea8a608f8a93f9:300": {
+        "realChainQuoteRaw": "1439904060924898",
+        "legInRaw": "500000",
+        "bufferBps": 300
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x1b0e319c6a659f002271b69db8a7df2f911c153e:100": {
+        "realChainQuoteRaw": "53561983593389302",
+        "legInRaw": "1337500",
+        "bufferBps": 100
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x47f93d52cbec7c6d2cfc080e154002370a60daea:100": {
+        "realChainQuoteRaw": "820584072707883",
+        "legInRaw": "1300500",
+        "bufferBps": 100
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x6330d8c3178a418788df01a47479c0ce7ccf450b:100": {
+        "realChainQuoteRaw": "11309057606560468",
+        "legInRaw": "1862000",
+        "bufferBps": 100
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0xaf3d76f1834a1d425780943c99ea8a608f8a93f9:100": {
+        "realChainQuoteRaw": "1439921236467678",
+        "legInRaw": "500000",
+        "bufferBps": 100
+      }
+    },
+    "note": "The executor enforces the limit the owner signed. Choosing it from the same AMM is a test convenience, not a fair-price proof."
+  },
+  "keeperPriceSkip": {
+    "summaryPriceLimit": {
+      "kind": "FIXED_MAX_PRICE_PER_ASSET",
+      "isSlippageProtection": false,
+      "windowSkippedWhileAbove": true,
+      "catchUp": false,
+      "mayEndBeforeAllRuns": true
+    },
+    "summaryDependencies": {
+      "composer": "NOT_USED",
+      "planSignerSignatureEachRun": true,
+      "keeperTransactionEachRun": true,
+      "routerOwnerAllowlist": true,
+      "canExceedSignedLimits": false,
+      "canStopOrDelayPurchases": true
+    },
+    "moveSteps": 1,
+    "waiting": {
+      "state": "WAITING_PRICE",
+      "detail": "COIN (0x6330d8c3178a418788df01a47479c0ce7ccf450b): the pool price is at or above the FIXED max price 166293255 at every allowed fee tier; no purchase in this window (not made up later).",
+      "outlook": {
+        "missedWindows": 0,
+        "runsLeft": 1,
+        "windowsLeft": 1,
+        "allRunsStillPossible": true,
+        "unspendableRaw": "0"
+      }
+    },
+    "end": {
+      "state": "EXPIRED",
+      "missed": [
+        {
+          "window": "1",
+          "reason": "WAITING_PRICE",
+          "detail": "COIN (0x6330d8c3178a418788df01a47479c0ce7ccf450b): the pool price is at or above the FIXED max price 166293255 at every allowed fee tier; no purchase in this window (not made up later)."
+        }
+      ],
+      "outlook": {
+        "missedWindows": 1,
+        "runsLeft": 1,
+        "windowsLeft": 0,
+        "allRunsStillPossible": false,
+        "unspendableRaw": "5000000"
+      }
+    }
+  },
+  "keeperPhase": {
+    "status": "RUN",
+    "authorizationId": "0x9127b9b6503c5316f46322b6271d963b2811c89d4e167ac048d73c09b7cffe9e",
+    "runs": 4,
+    "ownerDebitRaw": "25000000",
+    "expectedDebitRaw": "20000000",
+    "store": "keeper-store.redacted.json (the file store with signatures replaced by their sha256)",
+    "keeperAccounts": [
+      "0x624f886573CC192F685Da1433cA20d19b14eA82D",
+      "0xFf1bD33699c3D6d89c0bA5b0aa4505272BAC8221"
+    ],
+    "note": "keeper transactions are sent with app viem on the same fork transport; they are not in forkLocalTransactions"
+  },
+  "scenarios": [
+    {
+      "id": "B1-busy-block",
+      "gate": "RECEIPT_VERIFIER",
+      "kind": "EVIDENCE_SCOPE",
+      "expected": "an honest purchase mined in the same block as another transaction: the SINGLE_TRANSACTION_BLOCK reader cannot isolate it → INDETERMINATE (BALANCE_EVIDENCE_UNAVAILABLE), never VERIFIED; event-only verification of the same transaction is VERIFIED and labelled TRANSACTION_AND_TRANSFER_LOGS",
+      "pass": true,
+      "tx": "0xcaad7d59c4b9206e1eb31312b8a7be767c0e8c94560cbddc78c68dfd2b668c11",
+      "observed": "purchase success, same block as another tx: true; balance mode INDETERMINATE (BALANCE_EVIDENCE_UNAVAILABLE); event-only VERIFIED (TRANSACTION_AND_TRANSFER_LOGS)"
+    },
+    {
+      "id": "K1-first-run",
+      "gate": "KEEPER",
+      "kind": "KEEPER_FORK",
+      "expected": "keeper A (file store) adds the signed authorization and buys window 0; the SDK verifies the real receipt",
+      "pass": true,
+      "observed": "PENDING_TX → DONE_THIS_WINDOW, VERIFIED (PREPARED_INTENT, SINGLE_TRANSACTION_BLOCK) 0x7064ea568d6182b8955f2576de2eae977038533ac94f8a3b304774a53e68aae5",
+      "tx": "0x7064ea568d6182b8955f2576de2eae977038533ac94f8a3b304774a53e68aae5"
+    },
+    {
+      "id": "K2-restart-same-store",
+      "gate": "KEEPER",
+      "kind": "KEEPER_FORK",
+      "expected": "a new keeper process on the same file store in the same window: nothing is sent",
+      "pass": true,
+      "observed": "DONE_THIS_WINDOW, nonce unchanged, chain executions 1"
+    },
+    {
+      "id": "K3-lost-store",
+      "gate": "KEEPER",
+      "kind": "KEEPER_FORK",
+      "expected": "a keeper with an EMPTY store re-adds the authorization: the chain counters keep the window closed; the earlier run is recovered from logs",
+      "pass": true,
+      "observed": "DONE_THIS_WINDOW, confirmed recovered 1 (VERIFIED, DECODED_CALL: not prepared by this keeper), nonce unchanged"
+    },
+    {
+      "id": "K4-crash-after-send",
+      "gate": "KEEPER",
+      "kind": "KEEPER_FORK",
+      "expected": "window 1: the keeper crashes after sending, before storing the hash; the restart finds the purchase on chain and does not resend",
+      "pass": true,
+      "observed": "crashed=true, write-ahead hash=null, after restart: DONE_THIS_WINDOW, confirmed 2 (VERIFIED, PREPARED_INTENT from the write-ahead intent), chain executions 2, nonce unchanged"
+    },
+    {
+      "id": "K5-two-keepers",
+      "gate": "KEEPER",
+      "kind": "KEEPER_FORK",
+      "expected": "window 2: keeper B (own store, its node blind to A's pending tx) sends too; one purchase, B's mined revert is recorded, the owner is charged once",
+      "pass": true,
+      "observed": "both sent; chain executions 3; owner charged 5000000; reverted attempts recorded 1"
+    },
+    {
+      "id": "K6-gas-shortage",
+      "gate": "KEEPER",
+      "kind": "KEEPER_FORK",
+      "expected": "window 3: the keeper account has no ETH → GAS_SHORTAGE and nothing sent; funded again → the last run; then COMPLETED",
+      "pass": true,
+      "observed": "GAS_SHORTAGE (no tx) → confirmed 4 → COMPLETED; chain executions 4, grossUsed 20000000"
+    },
+    {
+      "id": "K7-fixed-price-skips-window",
+      "gate": "KEEPER",
+      "kind": "KEEPER_FORK",
+      "expected": "a new 2-run authorization (limits 100 bps above the real quote): run 1 in window 0; in window 1 the COIN pool is moved above the fixed max price → WAITING_PRICE stating market vs max price, nothing sent; at expiry window 1 is recorded missed (WAITING_PRICE), not made up, and one run's budget is reported unspendable",
+      "pass": true,
+      "observed": "1 × 1000 USDG moved COIN; window 1: WAITING_PRICE (COIN (0x6330d8c3178a418788df01a47479c0ce7ccf450b): the pool price is at or above the FIXED max price 166293255 at every allowed fee tier; no purchase in this wi), no tx: true; at expiry: EXPIRED, missed 1:WAITING_PRICE, runs left 1, unspendable 5000000 raw; chain executions 1"
+    }
+  ],
+  "counts": {
+    "byKind": {
+      "EVIDENCE_SCOPE": {
+        "pass": 1,
+        "fail": 0
+      },
+      "KEEPER_FORK": {
+        "pass": 7,
+        "fail": 0
+      }
+    },
+    "byGate": {
+      "RECEIPT_VERIFIER": {
+        "pass": 1,
+        "fail": 0
+      },
+      "KEEPER": {
+        "pass": 7,
+        "fail": 0
+      }
+    }
+  },
+  "exit": {
+    "code": 0,
+    "status": "COMPLETE"
+  },
+  "quoteDiagnostics": {
+    "nonRevertErrors": []
+  },
+  "network": {
+    "allowedHosts": [
+      "rpc.mainnet.chain.robinhood.com",
+      "127.0.0.1"
+    ],
+    "requestsByHost": {
+      "127.0.0.1": 54,
+      "upstream-rpc": 548
+    },
+    "refused": [],
+    "composerOrLifiRequests": 0,
+    "relay": {
+      "allowlist": [
+        "eth_chainId",
+        "net_version",
+        "eth_blockNumber",
+        "eth_getBlockByNumber",
+        "eth_getBlockByHash",
+        "eth_getCode",
+        "eth_getStorageAt",
+        "eth_getBalance",
+        "eth_getTransactionCount",
+        "eth_call",
+        "eth_getLogs",
+        "eth_getTransactionByHash",
+        "eth_getTransactionReceipt",
+        "eth_getProof"
+      ],
+      "forwardedRequests": 548,
+      "forwardedByMethod": {
+        "eth_getCode": 68,
+        "eth_getTransactionCount": 68,
+        "eth_getBlockByNumber": 4,
+        "eth_chainId": 1,
+        "eth_blockNumber": 86,
+        "net_version": 1,
+        "eth_getBalance": 67,
+        "eth_getStorageAt": 205,
+        "eth_call": 48
+      },
+      "refusedRequests": 0,
+      "refusedMethods": {},
+      "retries": 0,
+      "upstreamErrors": {},
+      "failures": 0,
+      "selfTest": {
+        "singleWriteRefused": true,
+        "batchWithWriteRefused": true
+      }
+    },
+    "forkLocalTransactions": 23,
+    "publicWrites": 0,
+    "note": "publicWrites is 0 by construction: the relay refuses every non-read method (self-tested at start) and counts refusals"
+  },
+  "forkChanges": [
+    {
+      "kind": "ARBSYS",
+      "method": "hardhat_setCode",
+      "target": "0x0000000000000000000000000000000000000064",
+      "note": "ArbSys read emulation (Nitro precompile is not in EDR)",
+      "at": 0
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xF05728bC6607A47dcE660DDdCCDe119Acc425CB1",
+      "note": "fork-only gas for a local test account",
+      "at": 1
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xacf5711F665d5d437f73b6aa5fC70d0017c4314f",
+      "note": "fork-only gas for a local test account",
+      "at": 2
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x62E795366F2895AD931a9AcF524443c015dAFDbc",
+      "note": "fork-only gas for a local test account",
+      "at": 3
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x9331B097CeF4d5BdeD9D331826AA7f9CfE94E1c7",
+      "note": "fork-only gas for a local test account",
+      "at": 4
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x25a45f8fc52b841E360734F00d37183181214448",
+      "note": "fork-only gas for a local test account",
+      "at": 5
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x39D6438d78AF5b645A75198aE5CD91fcFE733129",
+      "note": "fork-only gas for a local test account",
+      "at": 6
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x51d12186055176a07C4BE24bA6D520A169F9b842",
+      "note": "fork-only gas for a local test account",
+      "at": 7
+    },
+    {
+      "kind": "IMPERSONATE",
+      "method": "hardhat_impersonateAccount",
+      "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+      "note": "USDG for test accounts from a real holder balance (fork only)",
+      "at": 8
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+      "note": "gas for the impersonated holder",
+      "at": 9
+    },
+    {
+      "kind": "SET_CODE",
+      "method": "hardhat_setCode",
+      "target": "0x008f01d056eb06d708eaeC1e2e27B82435910CB9",
+      "note": "executor runtime from 0xed5e3bb2a55a9469f5a2bf8624c90611be7cf473 (immutables: real BagFactory, real StrategyRegistry) at the keyless address",
+      "at": 10
+    },
+    {
+      "kind": "SET_CODE",
+      "method": "hardhat_setCode",
+      "target": "0xed5e3bb2a55a9469f5a2bf8624c90611be7cf473",
+      "note": "remove the deployer-address copy so only the keyless executor exists",
+      "at": 11
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x624f886573CC192F685Da1433cA20d19b14eA82D",
+      "note": "fork-only gas for a keeper test account",
+      "at": 12
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xFf1bD33699c3D6d89c0bA5b0aa4505272BAC8221",
+      "note": "fork-only gas for a keeper test account",
+      "at": 13
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x624f886573CC192F685Da1433cA20d19b14eA82D",
+      "note": "keeper out of gas (fork only)",
+      "at": 14
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x624f886573CC192F685Da1433cA20d19b14eA82D",
+      "note": "keeper funded again (fork only)",
+      "at": 15
+    }
+  ],
+  "finishedAt": "2026-10-25T21:20:15.520Z"
+}

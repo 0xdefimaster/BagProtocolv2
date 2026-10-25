@@ -60,7 +60,7 @@ Kanıt dosyaları (bu eki ekleyen commit): `research/bag-dca-proto/results/execu
 |---|---|---|
 | G0 | Güncellendi | Bu belge |
 | G1 | **A modeli için K1 + K2 sağlandı** | Erken, tekrar, iptal sonrası ve sınır dışı alımlar reddedildi; zorunlu kontrol başarısız olunca token ve sayaçlar geri alındı (fork F1–F3, V2, V5). Bağımsız kod incelemesi yapılmadı. DELEGATION adaptörünün K2 kanıtı yok |
-| G2 | **K2 `TEST_KEY` ile sağlandı (955df6e0, v3)** | Composer/LI.FI isteği 0. Gerçek USDG, Uniswap v3, BagFactory ve StrategyRegistry. Taze rota. İşlem bazında kaynak ve alıcı bakiyeleri SDK'da doğrulandı. Commit, artifact kaynağı ve strateji hash'leri kayıtlı. Kapsam dışı: ücretli BAG'ler, v4, çok adımlı rota |
+| G2 | **Fork'ta SDK doğrulamasıyla K2 `TEST_KEY` (955df6e0, v3); gerçek zincir okuyucusu denenmedi** | Composer/LI.FI isteği 0. Gerçek USDG, Uniswap v3, BagFactory ve StrategyRegistry. Taze rota. **Düzeltme:** `ea47f31` için yazılan "bakiyeler SDK'da doğrulandı" ifadesi doğru değildi. O commit'te SDK yalnızca event ve Transfer kayıtlarına bakıyordu; bakiye kontrolleri koşucudaydı. Artık her dürüst alımı SDK `verifyRecurringPurchase` doğruluyor: hazırlanan çağrıya bayt bayt bağlı, işlem kapsamlı kaynak ve alıcı bakiyeleriyle. Sonuç koşucunun kendi bakiye okumalarıyla aynı (bölüm 8). Kapsam: okuyucu `SINGLE_TRANSACTION_BLOCK` (yalnızca bloktaki tek işlem); Robinhood Chain'in kendisi için qualified Nitro okuyucusu bu koşularda denenmedi. Kapsam dışı: ücretli BAG'ler, v4, çok adımlı rota |
 | G3 | **Açık: `HUMAN_SIGNATURE_REQUIRED`** | Başlatıcı, şartlar ve beklenen sonuç hazır (`research/bag-dca-proto/EXECUTOR_START_HERE.md`). Otomatik sayfa koşusu insan imzası yerine geçmez |
 | G4 | **K1 + K2 `TEST_KEY` ile sağlandı** | Sayaçlar zincirden okunuyor. Yeniden başlatma, kayıp store, gönderimden önce/sonra çökme, düşen işlem, iki keeper, gas ve fon yetersizliği, pencere sınırı test edildi. Kapsam dışı: üretim veritabanı ve izleme/alarm |
 | G5 | Yapılmadı | Public işlem ve gerçek fon yok |
@@ -86,5 +86,33 @@ Kanıt dosyaları (bu eki ekleyen commit): `research/bag-dca-proto/results/execu
 
 ## 7. Önceden var olan sorunlar (bu turda değiştirilmedi)
 
-- `contracts/test/BagSdkRegistry.test.ts`'deki 2 test, değiştirilmemiş `main` `82b3b29`'da da başarısız. Bu dallarda Hardhat sonucu: 231 geçen, 2 kalan (aynı ikisi).
+- `contracts/test/BagSdkRegistry.test.ts`'deki 2 test, değiştirilmemiş `main` `82b3b29`'da da başarısız (takip turunda yeniden doğrulandı). Bu dallarda Hardhat sonucu: takip turundan sonra 237 geçen, 2 kalan (aynı ikisi).
 - `npm run typecheck`, #129'un araştırma TypeScript'i yüzünden kırıktı; `eb6bafd` ile düzeltildi.
+
+## 8. Takip turu (25.10.2026 akşam): dört somut eksik
+
+İnceleme dört eksik belirtti. Düzeltmeler mevcut draft PR zincirinde yapıldı:
+
+- [#130](https://github.com/0xdefimaster/BagProtocolv2/pull/130): `claude/dca-executor`
+- [#131](https://github.com/0xdefimaster/BagProtocolv2/pull/131): `claude/dca-keeper-evidence`
+
+Kanıt klasörü: `research/bag-dca-proto/results/executor-2026-10-25-followup/`. Eski `executor-2026-10-25/` klasörü artık geçersiz olarak işaretli.
+
+| Eksik | Değişiklik | Commit | Test ve kanıt | Durum | Kalan |
+|---|---|---|---|---|---|
+| 1. BAG–içerik bağlantısı | Executor, imzalanan satırlardan (`chain:adres:sembol:ondalık:ağırlık`, `\|` ile) bileşim dizesini kurar. Bu dizenin keccak'ı `Bag.compositionHash()` ile aynı olmalıdır; değilse `CompositionMismatch(imzalanan, kayıtlı)`. İki hash'in ayrı ayrı kontrolüne güvenilmez. SDK, bag.json'un kayıtlı sırasını ve sembollerini kullanır; liste kayıtlı hash'i üretmezse imzadan önce reddeder | `8b253da` | Hardhat: gerçek kimlik ve hash ile 6 başka liste (ağırlık takası, token değişimi, sembol, sıra, ondalık, eksik varlık), iki BAG'in kimlik/liste çaprazı, ayırıcı enjeksiyonu. Hepsi reddedildi; durum değişmedi. Karşılaştırma silinince 2 test kırıldı. Fork: executor iki gerçek Bag'in kayıtlı hash'ini yeniden üretti. R7: gerçek 955df6e0 kimliği a3caff05 listesiyle → `CompositionMismatch`. R8: ağırlık takası → `CompositionMismatch`. R9: SDK reddi (a, b) | **Kapandı** (K1 + K2 `TEST_KEY`) | — |
+| 2. SDK doğrulaması | `verifyRecurringPurchase`: (a) mine edilen calldata hazırlanan çağrıyla bayt bayt aynı (`PREPARED_INTENT`), çağrı yoksa çözülen çağrı ayrıca etiketlenir (`DECODED_CALL`); (b) plan yetkiye karşı yeniden kontrol edilir; (c) `PurchaseExecuted` eşleşir; (d) kaynak borcu, alıcı teslimleri ve executor/router kalıntısı işlem kapsamlı bakiyelerden okunur ve kayıtlarla karşılaştırılır. Okunamazsa `INDETERMINATE`, hiçbir zaman `VERIFIED`. Keeper, fork koşucusu ve imza akışı bunu kullanır | `8b253da`, `786c5f0`, `02bb5f8` | SDK 308/308. Hardhat'te gerçek EVM. Fork: dürüst 7 alımın 7'si `VERIFIED/PREPARED_INTENT`; SDK borç ve teslimleri koşucunun bakiyeleriyle eşit. E0–E6: değiştirilmiş beklentiler `FAILED`, mine edilmiş revert `TRANSACTION_REVERTED`. B1: yoğun blokta `INDETERMINATE`. K1/K4 `PREPARED_INTENT`, K3 `DECODED_CALL` | **G2 fork'ta SDK ile sağlandı** (yukarıdaki kapsamla) | Gerçek zincirde alım doğrulaması için qualified Nitro okuyucusu gerekir; denenmedi |
+| 3. Bağımlılık açıklaması | SDK özeti, sayfa ve keeper iki ayrı şeyi gösterir. (a) Yetki: planSigner ve keeper imzalanan sınırları aşamaz. (b) Hizmet: her alım planSigner imzası ve keeper işlemi gerektirir; çalışmazlarsa alımlar durur veya gecikir. Composer kullanılmaz | `8b253da`, `02bb5f8` | `executor-sign-checks` testi. Sayfa otomasyonu metinleri ve onay kapısını kontrol eder | **Gösterim kapandı** | Bağımlılığın kendisi sürüyor: tek planSigner anahtarı; yedek imzalayıcı ve izleme yok |
+| 4. Fiyat davranışı | SDK reddi, sabit tavanı ve (ölçülebiliyorsa) piyasa fiyatını söyler; "kayma koruması değil, telafi yok" der. Keeper kapanan her alımsız dönemi nedeniyle kaydeder (`WAITING_PRICE` vb.). `scheduleOutlook` kalan alımları ve artık harcanamayacak bütçeyi zincir sayaçlarından hesaplar. Sayfa piyasa fiyatı ile tavanı yan yana gösterir; onay kutusu işaretlenmeden imza istenmez | `1714fae`, `786c5f0`, `02bb5f8` | Hardhat keeper testi: dönem atlandı, telafi edilmedi, harcanamayan bütçe gösterildi. Vitest `scheduleOutlook`. Fork K7, gerçek havuzlarla: COIN tavanın üstüne itildi; dönem 1 `WAITING_PRICE`, işlem yok; bitişte dönem 1 kaçırılmış kaydedildi, 1 alım ve 5 USDG harcanamaz | **Gösterim kapandı** | Politika kararı sürüyor (bölüm 5.2). Bağımsız fiyat referansı yok. Tavanı yükseltmek yeni imza ister |
+
+**Bu turda bulunan, kanıtı etkileyen sorunlar (kod sorunu değil):**
+
+- **Public RPC'nin durum penceresi:**
+  - Public Robinhood RPC, bir bloğun durumunu yaklaşık 6.000–8.000 blok (≈10 dakika) tutuyor.
+  - Tek fork'ta bütün senaryolar ≈11 dakika sürdü. Üç deneme `historical state … is not available` hatasıyla `EXTERNAL` bitti; koşucu bunu doğru sınıflandırdı.
+  - Çözüm: fork kanıtı üç aşamaya bölündü (`--phase`), her aşama kendi taze fork'unda çalışıyor (`d71d1db`).
+- **EDR snapshot davranışı:**
+  - Açık bir `evm_snapshot` altında `eth_estimateGas`, `eth_call`'dan farklı bir blok zamanı kullandı (ayrı bir çalıştırmada `QuoteExpired` olarak yeniden üretildi).
+  - Keeper bu durumda güvenli tarafta kaldı ve işlem göndermedi.
+  - K7 artık snapshot kullanmadan en sonda çalışıyor.
+- **Koşucu hataları (ilk koşu):** R9, E6 ve K7 için düzeltildi (`5b6662b`, `9ebbf24`).

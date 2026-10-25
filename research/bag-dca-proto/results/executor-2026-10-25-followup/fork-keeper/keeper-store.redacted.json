@@ -1,0 +1,220 @@
+{
+  "schema": "bag-dca-keeper-store/v1",
+  "jobs": [
+    {
+      "id": "0x9127b9b6503c5316f46322b6271d963b2811c89d4e167ac048d73c09b7cffe9e",
+      "deployment": {
+        "chainId": 4663,
+        "executor": "0x008f01d056eb06d708eaec1e2e27b82435910cb9",
+        "router": "0x1cf3eaf7375879dcc6ac7c51f868bc72510c2cdb"
+      },
+      "authorization": {
+        "owner": "0x9331b097cef4d5bded9d331826aa7f9cfe94e1c7",
+        "sourceAccount": "0x9331b097cef4d5bded9d331826aa7f9cfe94e1c7",
+        "recipient": "0x9331b097cef4d5bded9d331826aa7f9cfe94e1c7",
+        "fundingKind": 0,
+        "fundingContract": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+        "inputToken": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+        "bag": {
+          "bagId": "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+          "bagVersion": {
+            "__bigint": "1"
+          },
+          "compositionHash": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+          "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9",
+          "strategyId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "strategyVersion": 0
+        },
+        "assets": [
+          {
+            "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+            "symbol": "AAPL",
+            "weightBps": 1000,
+            "decimals": 18,
+            "maxPriceRaw": {
+              "__bigint": "357662718"
+            }
+          },
+          {
+            "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+            "symbol": "ASML",
+            "weightBps": 2601,
+            "decimals": 18,
+            "maxPriceRaw": {
+              "__bigint": "1632392152"
+            }
+          },
+          {
+            "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+            "symbol": "COIN",
+            "weightBps": 3724,
+            "decimals": 18,
+            "maxPriceRaw": {
+              "__bigint": "169586191"
+            }
+          },
+          {
+            "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+            "symbol": "GME",
+            "weightBps": 2675,
+            "decimals": 18,
+            "maxPriceRaw": {
+              "__bigint": "25719987"
+            }
+          }
+        ],
+        "schedule": {
+          "grossAmountPerRun": {
+            "__bigint": "5000000"
+          },
+          "totalBudget": {
+            "__bigint": "20000000"
+          },
+          "maxExecutions": 4,
+          "startsAt": {
+            "__bigint": "1792962839"
+          },
+          "periodSeconds": {
+            "__bigint": "86400"
+          },
+          "expiresAt": {
+            "__bigint": "1793308439"
+          }
+        },
+        "route": {
+          "router": "0x1cf3eaf7375879dcc6ac7c51f868bc72510c2cdb",
+          "swapTarget": "0xcaf681a66d020601342297493863e78c959e5cb2",
+          "allowedFees": [
+            100,
+            500,
+            3000,
+            10000
+          ]
+        },
+        "nonce": {
+          "__bigint": "30"
+        }
+      },
+      "ownerSignature": "<redacted signature sha256:77567d4d0d771409>",
+      "fundingProof": null,
+      "createdAt": 1792962838683,
+      "fromBlock": {
+        "__bigint": "97888896"
+      },
+      "state": "COMPLETED",
+      "stateDetail": null,
+      "nextDueAt": null,
+      "observed": {
+        "executions": 4,
+        "grossUsed": {
+          "__bigint": "20000000"
+        },
+        "lastWindow": {
+          "__bigint": "3"
+        },
+        "lastExecutionAt": {
+          "__bigint": "1793222289"
+        },
+        "revoked": false,
+        "at": {
+          "__bigint": "1793222289"
+        }
+      },
+      "pending": null,
+      "confirmed": [
+        {
+          "window": {
+            "__bigint": "0"
+          },
+          "executionIndex": {
+            "__bigint": "1"
+          },
+          "hash": "0x7064ea568d6182b8955f2576de2eae977038533ac94f8a3b304774a53e68aae5",
+          "blockNumber": {
+            "__bigint": "97888897"
+          },
+          "verification": "VERIFIED",
+          "binding": "PREPARED_INTENT",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+          "issues": []
+        },
+        {
+          "window": {
+            "__bigint": "1"
+          },
+          "executionIndex": {
+            "__bigint": "2"
+          },
+          "hash": "0x03e01e585993c4ef705da449f2a704a0995b2b7eca1a505b62f2c3cafeec833d",
+          "blockNumber": {
+            "__bigint": "97888899"
+          },
+          "verification": "VERIFIED",
+          "binding": "PREPARED_INTENT",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+          "issues": []
+        },
+        {
+          "window": {
+            "__bigint": "2"
+          },
+          "executionIndex": {
+            "__bigint": "3"
+          },
+          "hash": "0x1bf038a7be481efd3e1e249a90e5c140d02817e2a1617e835201acd04417b809",
+          "blockNumber": {
+            "__bigint": "97888901"
+          },
+          "verification": "INDETERMINATE",
+          "binding": "PREPARED_INTENT",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "balanceScope": null,
+          "issues": [
+            "BALANCE_EVIDENCE_UNAVAILABLE: transaction-scoped balances of 0x9331b097cef4d5bded9d331826aa7f9cfe94e1c7 are unavailable"
+          ]
+        },
+        {
+          "window": {
+            "__bigint": "3"
+          },
+          "executionIndex": {
+            "__bigint": "4"
+          },
+          "hash": "0xb5a885f68606662fd32664cb9ea32db370b7e7365b243b0214dd3c918c2a8261",
+          "blockNumber": {
+            "__bigint": "97888903"
+          },
+          "verification": "VERIFIED",
+          "binding": "PREPARED_INTENT",
+          "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+          "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+          "issues": []
+        }
+      ],
+      "attempts": [],
+      "blocker": {
+        "window": {
+          "__bigint": "3"
+        },
+        "reason": "GAS_SHORTAGE",
+        "detail": "keeper 0x624f886573CC192F685Da1433cA20d19b14eA82D needs about 1856977207317540 wei for 1855873 gas"
+      },
+      "accountedThrough": {
+        "__bigint": "3"
+      },
+      "missed": [],
+      "outlook": {
+        "missedWindows": 0,
+        "runsLeft": 0,
+        "windowsLeft": 0,
+        "allRunsStillPossible": true,
+        "unspendableRaw": {
+          "__bigint": "0"
+        }
+      },
+      "lease": null
+    }
+  ]
+}
