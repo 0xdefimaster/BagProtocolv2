@@ -20,7 +20,7 @@ const call = (method, path, body) => new Promise((resolve, reject) => {
   req.on('error', reject); if (body) req.write(JSON.stringify(body)); req.end();
 });
 const key = accounts.privateKeyToAccount(accounts.generatePrivateKey());
-await call('POST', '/api/account', { address: key.address, chainId: 4663 });
+await call('POST', '/api/account', { address: key.address, chainId: 4663, wallet: 'bag-fake-wallet (local TEST key)', automated: true });
 console.log('fake-wallet connected', key.address);
 const seen = new Set();
 for (;;) {

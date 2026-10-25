@@ -1,0 +1,77 @@
+{
+  "schema": "bag-erc7715-native-permission-trial/v1",
+  "stage": "STOPPED",
+  "owner": "0x854022c7c9de1d8a6661166184739e9719901245",
+  "request": [
+    {
+      "chainId": "0x1237",
+      "from": "0x854022c7c9de1d8a6661166184739e9719901245",
+      "to": "0x619a3ca1bb705f0c69165a60d9549341fed0c1a3",
+      "permission": {
+        "type": "erc20-token-periodic",
+        "isAdjustmentAllowed": false,
+        "data": {
+          "tokenAddress": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "periodAmount": "0xf4240",
+          "periodDuration": 60,
+          "startTime": 1792887871,
+          "justification": "BAG yerel fork denemesi: 60 saniyede en fazla 1 USDG, yalnızca iki dönem. Ana ağda alım gönderilmez."
+        }
+      },
+      "rules": [
+        {
+          "type": "expiry",
+          "data": {
+            "timestamp": 1792887990
+          }
+        },
+        {
+          "type": "redeemer",
+          "data": {
+            "addresses": [
+              "0x619A3cA1BB705F0C69165A60D9549341fEd0C1a3"
+            ]
+          }
+        },
+        {
+          "type": "payee",
+          "data": {
+            "addresses": [
+              "0x619A3cA1BB705F0C69165A60D9549341fEd0C1a3"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "preflight": {
+    "checkedAt": "2026-10-25T00:09:36.068Z",
+    "chainId": 4663,
+    "owner": "0x854022c7c9de1d8a6661166184739e9719901245",
+    "nativeBalance": "0x0",
+    "tokenBalance": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "accountCode": "0x",
+    "gate": {
+      "address": "0x619a3ca1bb705f0c69165a60d9549341fed0c1a3",
+      "code": "0x",
+      "nonce": "0x0",
+      "balance": "0x0"
+    },
+    "blockNumber": "0x5caa44a",
+    "blockTimestamp": 1792886971
+  },
+  "requestIssued": true,
+  "applicationSubmittedTransaction": false,
+  "walletInternalTransactions": "NOT_OBSERVED",
+  "nativeGrant": "NOT_GRANTED_OR_NOT_OBSERVED",
+  "forkExecution": "NOT_TESTED",
+  "dcaExecution": "NOT_TESTED",
+  "totalBudgetEnforcement": "NOT_TESTED",
+  "requestedAt": "2026-10-25T00:09:43.414Z",
+  "error": {
+    "code": -32603,
+    "message": "External signature requests cannot sign delegations for internal accounts."
+  },
+  "completedAt": "2026-10-25T00:09:58.733Z",
+  "accountCodeAfter": "0x"
+}

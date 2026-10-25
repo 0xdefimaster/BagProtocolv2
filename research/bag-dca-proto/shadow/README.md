@@ -1,45 +1,84 @@
-# Gölge ölçüm: Composer'sız yürütme kaynakları (salt okuma)
+# Gölge ölçüm: Composer'sız yürütme kaynakları (salt okuma, v2)
 
-Aynı BAG, aynı tutarlar ve tek bir sabitlenmiş fork bloğu üzerinde yürütme kaynaklarını karşılaştırır. Public ağa işlem gönderilmez. Bütün teklifler, yalnızca okuma isteklerine izin veren bir relay'in arkasındaki izole fork'ta alınır. API kaynakları yalnızca calldata döndürür; bu calldata fork'ta yürütülür.
+Aynı BAG ve aynı tutarlar için yürütme kaynaklarını karşılaştırır. Public ağa işlem gönderilmez:
 
-## Ne kullanır
-- **Graf:** Uygulamanın kendi kodu oluşturur: `calculateDepositAllocation` → `buildExecutionPlan` → `buildBagExecutionGraph` → `assertValidExecutionGraph`, `computeBagExecutionGraphHash`.
-- **Sepet yürütme:** Uygulamadaki mevcut `contracts/BagExecutionRouter.sol` değiştirilmeden, fork'ta deploy edilir. Bu deploy için iki yardımcı kullanılır: BagFactory yerine geçen `ShadowBagFactory` ve yerel bir plan imzalayan anahtarı.
-- **Kaynaklar:**
+- Bütün takaslar, salt okuma relay'inin (`lib/fork-env.mjs`) arkasındaki izole fork'ta yapılan yerel işlemlerdir.
+- Relay yalnızca okuma metotlarını kabul eder; tekli ve batch istekte bir yazma metodu varsa isteğin tamamını reddeder. Hangi metodun kaç kez iletildiği, reddedilen istekler ve yeniden denemeler raporun `relay` alanına yazılır.
 
-| Kaynak | Nasıl ölçülür | Router ile uyum |
-|---|---|---|
-| `uniswap-v3` | QuoterV2. Ücret seviyeleri 100/500/3000/10000; havuzlar resmi factory'den | SwapRouter02: çağrılan adres = onay verilen adres ✅ |
-| `uniswap-v4` | PoolManager `Initialize` olaylarından bütün havuzlar bulunur. Toplu `extsload` ile aralık içi likiditesi olanlar ayıklanır. En derin 3 havuz fork'ta takas edilir | Araştırma adaptörü `ShadowV4Adapter` ✅. Universal Router yolu Permit2 ile çeker, yani çağrılan adres ≠ onay verilen adres |
-| `kyberswap` | `/routes` + `/route/build`. Calldata fork'ta yürütülür, çıktı alıcıda ölçülür | `routerAddress` hem hedef hem harcama adresi mi, kontrol edilir |
-| `0x` | `/swap/allowance-holder/quote` (`ZEROX_API_KEY`). Calldata fork'ta yürütülür | `transaction.to` ile `issues.allowance.spender` karşılaştırılır |
-| `composer` | SDK `compileBag` (`LIFI_API_KEY`, `--sdk`). Tek işlem bütün sepeti alır | ❌ Onay proxy'ye verilir, çağrı factory ya da proxy'ye gider |
+**Gerçekleşen çıktı simülasyondan alınmaz.** Her aday fork'ta yürütülür. Çıktı, makbuz ve alıcının öncesi/sonrası bakiyesinden ölçülür; makbuzdaki Transfer loglarıyla karşılaştırılır. İşlemin izi (`callTracer`) snapshot geri alınmadan önce `traces/` altına yazılır.
 
-1inch bu sürümde yok.
-
-## Sınıflandırma
-| Durum | Anlamı |
+## Kanıt aşamaları (`stage`)
+| Aşama | Anlamı |
 |---|---|
-| `OK` | Rota var; fork'ta tam tutarla takas edildi |
-| `NO_POOL` | Bu kaynakta çift için havuz yok |
-| `NO_LIQUIDITY` | Havuz var ama takas başarısız ya da kısmi doldu (v4'te aralık içi likidite yok) |
-| `NO_ROUTE` | API rota bulamadı |
-| `BAD_PRICE` | Tam tutarın birim fiyatı, aynı rotada %1'lik deneme takasından 500 bps'ten fazla kötü (ince likidite) |
-| `UNSUPPORTED` | Hook'lu havuz reddetti, çıktı alıcıya gelmedi ya da işlem tipi desteklenmiyor |
-| `RPC_ERROR` | Taşıma hatası ya da budanmış durum (`historical state … is not available`). **"Likidite yok" sayılmaz** |
-| `API_ERROR` | HTTP ya da erişim hatası |
-| `NOT_RUN` | Anahtar ya da `--sdk` verilmediği için çalıştırılmadı; tahmin yapılmaz |
+| `QUOTED` | Yalnızca API ya da quoter rakamı |
+| `SIMULATED` | `eth_call` sonucu (örneğin v3 QuoterV2; `quotedOutRaw` alanında ayrı tutulur) |
+| `FORK_EXECUTED` | Fork'ta işlem çıktı, ama aşağıdaki kontrollerden biri tutmadı (`issues`) |
+| `RECEIPT_VERIFIED` | Bütün kontroller tuttu: makbuz başarılı, debit = amountIn (tam), alıcıya çıktı > 0, Transfer logları iki bakiye farkına eşit, target ve spender'da transit bakiye yok, onay 0'a döndü |
 
-`vsBestBps`: aynı bacakta en iyi `OK` sonuca göre fark. Sepet adımında her bacak için router'la uyumlu en iyi `OK` aday seçilir. Hepsi mevcut router'dan gerçek çağrı sırasıyla geçirilir. Minimum = tek başına alınan teklif − `min(BAG swapSlippageBps, 300)` bps. Gerçekleşen çıktı tek başına alınan teklifle karşılaştırılır.
+## Durumlar (`status`) ve uygunluk (`eligibility`) ayrı alanlar
+- **Durum:**
+  - `OK`: makbuzla doğrulandı.
+  - `NO_POOL`, `NO_LIQUIDITY`: aralık içi likidite 0.
+  - `PARTIAL_FILL`: adaptör `PartialFill`.
+  - `REVERTED`: çözülmüş hata ve revert yeri ile.
+  - `RPC_ERROR`, `PRUNED_STATE`: taşıma hatası ya da silinmiş geçmiş durum. **"Likidite yok" sayılmaz.**
+  - `API_ERROR`, `NO_ROUTE`.
+  - `NOT_RUN`: anahtar yok.
+  - `LAYOUT_UNVERIFIED`: v4 depolama yerleşimi doğrulanamadı.
+  - `EXCLUDED_UNVERIFIED`.
+- **Uygunluk:**
+  - `ELIGIBLE`.
+  - `HOOK_NOT_ALLOWLISTED`.
+  - `EXCLUDED_UNVERIFIED`: Kyber ve 0x.
+  - `NOT_ROUTER_COMPATIBLE`: Composer.
+- **Fiyat kapısı:** `gate`, `lib/price-gate.mjs` tarafından hesaplanır. Gönderilen politikayla en iyi sonuç `PRICE_POLICY_UNPROVEN`'dır (`DECISIONS.md` §4).
 
-## Çalıştırma (bakımcı makinesi)
-```powershell
-cd <BagProtocolv2 main checkout>
-npx tsx <proto>\shadow\measure.ts --app . --bag <bag.json> --amounts 5,100,1000 `
-  --sources uniswap-v3,uniswap-v4,kyberswap,0x,composer --env-file <path>\.env.local `
-  --sdk <BagProtocolv2-integ>\packages\bag-sdk
+## Blok modu
+- **`single`:** Tek fork bloğu. Her aday aynı snapshot'tan başlar. Uzun koşu boyunca eski durum okunacağı için **arşiv RPC** gerekir. `--block <n>` ile sabitlenebilir.
+- **`per-unit`:** Non-archive yedek mod. Her bacak ve her sepet için yeni bir fork açılır.
+  - Bir bacağın kaynakları ve tutarları aynı bloktadır.
+  - Farklı bacaklar ve sepet aynı blokta değildir. Rapor bunu `NON_ARCHIVE_PER_UNIT` diye etiketler.
+  - Sepet adımında seçilen rotalar sepet bloğunda yeniden yürütülür (`basketIsolated`).
+- **`auto`:** Varsayılan. RPC'nin 500.000 blok önceki durumu okuyup okuyamadığına bakar. `--block-mode single` istenip RPC arşiv değilse çıkış 2 olur (`ARCHIVE_REQUIRED`).
+
+## Kaynaklar
+| Kaynak | Nasıl | Router seçimi olabilir mi |
+|---|---|---|
+| `uniswap-v3` | Her ücret seviyesi (100/500/3000/10000) için: havuz factory'den, aralık içi likidite havuzdan okunur (ölçüm bloğunda). QuoterV2 sonucu `SIMULATED` olarak kaydedilir. Tam tutar ve %1 probe SwapRouter02 ile fork'ta yürütülür | ✅ |
+| `uniswap-v4` | Havuzlar `Initialize` loglarından bulunur (ölçüm bloğuna kadar). Likidite ve `slot0` fork'tan `extsload` ile okunur. **Yerleşim doğrulanır:** her havuzda tick'in fiyatla ve lpFee'nin key'le uyuşması kontrol edilir; son durum değiştiren olayı Swap olan havuzlarda saklanan likidite, fiyat ve tick o Swap'ın yaydığı değerlerle aynı olmalı. En derin 3 havuz `ShadowV4Adapter` ile yürütülür | ✅ hook'suz; hook'lu → `HOOK_NOT_ALLOWLISTED` |
+| `kyberswap` | Yalnızca karşılaştırma. API tek bir `routerAddress` döndürüyor; spender'ın buna eşit olduğu doğrulanmıyor | ❌ `EXCLUDED_UNVERIFIED` |
+| `0x` | Yalnızca karşılaştırma. `issues.allowance.spender` yoksa yürütülmez; `transaction.to`'ya düşülmez | ❌ `EXCLUDED_UNVERIFIED` |
+| `composer` | SDK `compileBag` ile tek işlemde bütün sepet. `LIFI_API_KEY` ve `--sdk` gerekir; yoksa `NOT_RUN` | ❌ |
+
+- **Varsayılan `--sources`:** `uniswap-v3,uniswap-v4,composer`. Bilinmeyen bir kaynak adı çıkış 2 verir.
+- **1inch:** Yok; ölçülmedi.
+
+## Sepet
+- Her bacak için uygun ve `RECEIPT_VERIFIED` olan en iyi aday seçilir. Hepsi uygulamadaki **değiştirilmemiş** `BagExecutionRouter` ile tek işlemde yürütülür.
+- Plan yerel bir test `planSigner` anahtarıyla imzalanır. Bu, router'ın mevcut güven modelidir ve kapanmadı.
+- BagFactory yerine `ShadowBagFactory` mock'u kullanılır; bu registry kanıtı değildir.
+- Minimum: tek başına gerçekleşen çıktı − `min(swapSlippageBps, 300)` bps.
+- **Sepet kanıtı:**
+  - makbuz ve `ExecutionCompleted` olayı
+  - taker'ın USDG debit'i (tam)
+  - her token için router'dan taker'a giden Transfer logları = bakiye farkı
+  - router ve target'larda transit bakiye yok
+  - onay 0
+- **Composer'sız DCA hazırlığı:** `routerDca` (`lib/router-dca-gate.mjs`). Kapılar kapalı olduğu sürece `BLOCKED`.
+
+## Çalıştırma
 ```
-- **`ROBINHOOD_RPC_URL` arşiv destekli olmalı.** Public RPC eski blok durumunu siliyor; uzun bir ölçümde sonuçlar `RPC_ERROR` olur. Kaç sonucun bundan etkilendiği raporda `prunedStateErrors` alanında görünür.
-- Anahtarlar yalnızca env dosyasından okunur ve rapora yazılmaz.
-- **KyberSwap zincir adı:** `--kyber-chain` varsayılanı `robinhood` ve doğrulanmadı. Yanlışsa sonuç `API_ERROR` olur.
-- Çıktılar: `shadow/out/<koşu>/results.json` ve `summary.md`.
+start.cmd shadow --app "C:\...\BagProtocolv2" [--env-file "C:\...\.env.local"] [--sources uniswap-v3,uniswap-v4,composer] [--block-mode auto]
+```
+- **Launcher'ın yaptıkları:**
+  - Sürüm kontrolü: bu klasördeki sabitlenmiş `tsx` 4.23.15 kullanılır; `npx` yok.
+  - `measure.ts` uygulamanın TypeScript'iyle typecheck edilir.
+  - Çıktılar: `shadow\out\<oturum>-shadow\results.json`, `summary.md`, `traces\`.
+- **Çıkış kodları:**
+  - 0: tamam
+  - 1: fatal
+  - 2: kullanım hatası ya da `ARCHIVE_REQUIRED`
+  - 3: eksik (`RPC_ERROR`, `PRUNED_STATE`, `API_ERROR`)
+  - 4: sepet yürütülemedi
+- **Rapor:** Hata olsa da yazılır; relay ve fork kapatılır.
+- **Anahtarlar:** `--env-file`'dan yalnızca `ROBINHOOD_RPC_URL`, `LIFI_API_KEY`, `ZEROX_API_KEY` ve `KYBER_CLIENT_ID` okunur; rapora yazılmaz.

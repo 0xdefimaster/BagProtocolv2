@@ -33,7 +33,8 @@ test('loopback signing server: host, origin, secret, size, step binding and sign
     const user = accounts.privateKeyToAccount(accounts.generatePrivateKey()), other = accounts.privateKeyToAccount(accounts.generatePrivateKey());
     assert.equal((await post('/api/account', { address: user.address, chainId: 1 })).status, 400, 'wrong chain refused');
     const acc = s.waitForAccount();
-    assert.equal((await post('/api/account', { address: user.address, chainId: 4663 })).status, 200); assert.equal(await acc, user.address);
+    assert.equal((await post('/api/account', { address: user.address, chainId: 4663, wallet: 'MetaMask (io.metamask)<script>' + 'x'.repeat(100) })).status, 200); assert.equal(await acc, user.address);
+    assert.deepEqual(s.state().walletClient, { name: ('MetaMask (io.metamask)script' + 'x'.repeat(100)).slice(0, 64), automated: false }, 'wallet name sanitized and capped; not automated unless declared');
     assert.equal((await post('/api/account', { address: other.address, chainId: 4663 })).status, 409, 'account cannot be replaced');
     const td = delegationTypedData({ delegationManager: '0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3', delegate: other.address, delegator: user.address, caveats: [], salt: 1n });
     const signed = s.requestSignature({ id: 'D1', kind: 'delegation', title: 't', typedData: toWire(td) });

@@ -19,7 +19,7 @@ const wire = x => JSON.stringify(x, (_k, a) => (typeof a === 'bigint' ? a.toStri
 
 export async function startSigningServer({ port = 0, pageDir, libDir, now = () => Date.now() }) {
   const secret = randomBytes(32).toString('hex');
-  const st = { phase: 'AWAITING_ACCOUNT', account: null, pending: null, history: [], status: [], rejected: null };
+  const st = { phase: 'AWAITING_ACCOUNT', account: null, walletClient: null, pending: null, history: [], status: [], rejected: null };
   let onAccount, onSignature = new Map();
   const accountPromise = new Promise(r => (onAccount = r));
   const headers = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer',
@@ -51,6 +51,7 @@ export async function startSigningServer({ port = 0, pageDir, libDir, now = () =
         if (st.phase !== 'AWAITING_ACCOUNT') return send(res, 409, { error: 'account already set' });
         if (!/^0x[0-9a-fA-F]{40}$/.test(msg.address ?? '')) return send(res, 400, { error: 'bad address' });
         if (Number(msg.chainId) !== 4663) return send(res, 400, { error: 'wallet must be on Robinhood Chain (4663)' });
+        st.walletClient = { name: String(msg.wallet ?? 'unknown').replace(/[^\w .()@+-]/g, '').slice(0, 64), automated: msg.automated === true };
         st.account = v.getAddress(msg.address); st.phase = 'PREPARING'; st.status.push({ at: now(), text: `Hesap bağlandı: ${st.account}` }); onAccount(st.account);
         return send(res, 200, { ok: true });
       }

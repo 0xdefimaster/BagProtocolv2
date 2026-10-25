@@ -31,7 +31,8 @@ $('connectBtn').onclick = async () => {
     let chainId = await provider.request({ method: 'eth_chainId' });
     if (lc(chainId) !== '0x1237') { await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x1237' }] }); chainId = await provider.request({ method: 'eth_chainId' }); }
     if (lc(chainId) !== '0x1237') throw new Error('Cüzdan Robinhood Chain (4663) ağında olmalı');
-    await api('/api/account', { address: account, chainId: parseInt(chainId, 16) });
+    // A test provider (wallet-fork/page-e2e.mjs) announces this rdns so its run is never labelled a human signature.
+    await api('/api/account', { address: account, chainId: parseInt(chainId, 16), wallet: `${w.info.name} (${w.info.rdns})`, automated: w.info.rdns === 'local.bag.test-key' });
     $('connectInfo').textContent = `Bağlı hesap: ${account} (${w.info.name}). Hazırlık sürüyor…`;
     $('connectBtn').disabled = true;
   } catch (e) { $('connectInfo').textContent = 'Hata: ' + e.message; }

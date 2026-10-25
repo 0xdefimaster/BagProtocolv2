@@ -42,7 +42,9 @@ if (arg('--env-file')) for (const line of readFileSync(resolve(arg('--env-file')
 const secrets = Object.values(env).filter(Boolean);
 const redact = x => { let s = String(x); for (const k of secrets) s = s.replaceAll(k, '<redacted>'); return s.replace(/https?:\/\/[^\s"'<>]+/g, '<url>').slice(0, 600); };
 
-const CLASS = SIGNER === 'wallet' ? 'HUMAN_SIGNATURE' : 'TEST_KEY';
+// In wallet mode the class is HUMAN_SIGNATURE unless the connected client declares itself automated
+// (wallet-fork/fake-wallet.mjs does): then the page protocol ran end to end but a TEST key signed.
+let CLASS = SIGNER === 'wallet' ? 'HUMAN_SIGNATURE' : 'TEST_KEY';
 const PROGRAM = MODE === 'live' ? 'FRESH_COMPOSER_QUOTE' : 'RECORDED_COMPOSER_REPLAY';
 const report = { schema: 'bag-dca-wallet-fork/v1', session: SESSION, signer: SIGNER, mode: MODE, evidence: { signatures: CLASS, program: PROGRAM }, startedAt: new Date().toISOString(),
   checks: [], purchases: [], userOps: [], signatures: [], forks: [], preflight: {}, status: 'RUNNING' };
@@ -99,6 +101,8 @@ try {
     console.log(`\nOpen in the browser where MetaMask/Rabby is installed (this machine only):\n  ${server.url}\n`);
     if (arg('--url-file')) { mkdirSync(dirname(resolve(arg('--url-file'))), { recursive: true }); writeFileSync(resolve(arg('--url-file')), server.url); }
     const owner = await server.waitForAccount();
+    report.walletClient = server.state().walletClient;
+    if (report.walletClient?.automated) { CLASS = 'TEST_KEY_VIA_SIGNING_PAGE'; report.evidence.signatures = CLASS; }
     signer = { address: owner, sign: step => server.requestSignature(step), status: s => server.setStatus(s) };
   }
   const owner = v.getAddress(signer.address);
