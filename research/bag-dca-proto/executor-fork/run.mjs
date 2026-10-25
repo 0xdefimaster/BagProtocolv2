@@ -18,6 +18,7 @@
 //   node research/bag-dca-proto/executor-fork/run.mjs --app . --out <new dir> [--env-file <file with ROBINHOOD_RPC_URL>]
 // Exit: 0 all scenarios as expected; 2 usage/stale build; 3 external (RPC/pruned state); 4 a scenario failed.
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
@@ -406,7 +407,8 @@ try {
     for (const a of [kA.address, kB.address]) await F.edit('GAS', 'hardhat_setBalance', [a, v.toHex(v.parseEther('10'))], 'fork-only gas for a keeper test account');
     const chainOf = acct => createViemKeeperChain({ publicClient: apc, walletClient: av.createWalletClient({ account: acct, chain: achain, transport: atransport }) });
     const signPlanK = (plan, r) => keys.planSigner.signTypedData(uni.routerPlanTypedData(plan, { chainId: CHAIN_ID, router: r }));
-    const storePath = join(out, 'keeper-store.json');
+    // The store holds the owner's authorization signature: it stays in the git-ignored cache; a redacted copy is shared.
+    const storePath = join(out, 'cache', 'keeper-store.json');
     const mk = (store, chain, holder = 'keeper-a') => new RecurringKeeper({ store, chain, signPlan: signPlanK, quoter: QUOTER_V2, holder, pendingTimeoutMs: 600_000 });
     const nonceOf = a => client.getTransactionCount({ address: a });
     const K_RUNS = 4;
@@ -481,8 +483,9 @@ try {
       return { pass: g.state === 'GAS_SHORTAGE' && noSend && d.confirmed.length === K_RUNS && c.state === 'COMPLETED' && Number(st.executions) === K_RUNS && st.grossUsed === BigInt(K_RUNS) * GROSS,
         observed: `${g.state} (no tx) → confirmed ${d.confirmed.length} → ${c.state}; chain executions ${st.executions}, grossUsed ${st.grossUsed}` };
     });
-    report.keeperPhase = { status: 'RUN', authorizationId: idK, runs: K_RUNS, ownerDebitRaw: ownerStart - (await bal(USDG, roles.owner)), expectedDebitRaw: BigInt(K_RUNS) * GROSS, store: 'keeper-store.json (file store, kept in this folder)', keeperAccounts: [kA.address, kB.address],
+    report.keeperPhase = { status: 'RUN', authorizationId: idK, runs: K_RUNS, ownerDebitRaw: ownerStart - (await bal(USDG, roles.owner)), expectedDebitRaw: BigInt(K_RUNS) * GROSS, store: 'keeper-store.redacted.json (the file store with signatures replaced by their sha256)', keeperAccounts: [kA.address, kB.address],
       note: 'keeper transactions are sent with app viem on the same fork transport; they are not in forkLocalTransactions' };
+    writeFileSync(join(out, 'keeper-store.redacted.json'), readFileSync(storePath, 'utf8').replace(/0x[0-9a-fA-F]{130,}/g, m => `<redacted signature sha256:${createHash('sha256').update(m).digest('hex').slice(0, 16)}>`));
   }
 } catch (e) {
   if (e instanceof UsageError) { report.exit = { code: 2, status: 'USAGE', detail: e.message }; exitCode = 2; }
