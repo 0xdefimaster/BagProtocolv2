@@ -1,11 +1,11 @@
 {
   "schema": "bag-dca-closing-manifest/v1",
-  "generatedAt": "2026-10-25T02:59:54.839Z",
+  "generatedAt": "2026-10-25T03:00:20.507Z",
   "secrets": "none: no API key, RPC credential, private key or usable user signature (signatures appear only as sha256; the generator checks)",
   "repository": {
     "remote": "https://github.com/0xdefimaster/bagprotocolv2",
     "branch": "claude/dca-wallet-fork-research",
-    "head": "843f5609059048f84b0c984d0848d92768f94663",
+    "head": "8d34d873fe1c1726b6c8f34fb841a365a48a49f9",
     "package": "research/bag-dca-proto",
     "evidenceCodeCommit": "746d456",
     "codeFilesChangedSinceEvidenceCommit": [
