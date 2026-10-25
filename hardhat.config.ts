@@ -7,20 +7,36 @@ import hardhatToolboxViem from '@nomicfoundation/hardhat-toolbox-viem';
 // chain. Real network RPC endpoints (base, arbitrum, ...) are read from env
 // at deploy time via lib/blockchain/evm/config.ts, not hardcoded here; see
 // that file for why.
+const SOLC_PATH = fileURLToPath(new URL('./node_modules/solc/soljson.js', import.meta.url));
+
 export default defineConfig({
   plugins: [hardhatToolboxViem],
   solidity: {
-    version: '0.8.24',
-    // Sandbox note (Phase 19.X-A): the environment that wrote this file
-    // has no network access to binaries.soliditylang.org, so Hardhat's
-    // normal solc download fails (HHE905). Pointing at the `solc` npm
-    // package's bundled WASM build lets `hardhat compile`/`hardhat test`
-    // run fully offline. Safe to remove this `path` once run somewhere
-    // with normal network access — Hardhat will just download 0.8.24
-    // itself instead.
-    // fileURLToPath, not URL.pathname: on Windows .pathname yields an invalid
-    // "/C:/..." path and the compiler cannot be loaded.
-    path: fileURLToPath(new URL('./node_modules/solc/soljson.js', import.meta.url)),
+    compilers: [
+      {
+        version: '0.8.24',
+        // Sandbox note (Phase 19.X-A): the environment that wrote this file
+        // has no network access to binaries.soliditylang.org, so Hardhat's
+        // normal solc download fails (HHE905). Pointing at the `solc` npm
+        // package's bundled WASM build lets `hardhat compile`/`hardhat test`
+        // run fully offline. Safe to remove this `path` once run somewhere
+        // with normal network access — Hardhat will just download 0.8.24
+        // itself instead.
+        // fileURLToPath, not URL.pathname: on Windows .pathname yields an invalid
+        // "/C:/..." path and the compiler cannot be loaded.
+        path: SOLC_PATH,
+      },
+    ],
+    // The DCA executor exceeds the 24 KB code-size limit unoptimized. Only it
+    // gets the optimizer; every other contract keeps the default settings
+    // above, so their bytecode is unchanged.
+    overrides: {
+      'contracts/dca/RecurringPurchaseExecutor.sol': {
+        version: '0.8.24',
+        path: SOLC_PATH,
+        settings: { optimizer: { enabled: true, runs: 200 } },
+      },
+    },
   },
   paths: {
     tests: {
