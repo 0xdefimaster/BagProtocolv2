@@ -149,16 +149,16 @@ try {
   const execute = async (x, fundingProof = '0x') => {
     let reason = null;
     try { await client.simulateContract({ account: keys.keeper, address: EXECUTOR, abi: execAbi, functionName: 'execute', args: [auth, x, sigs.AUTH, fundingProof] }); } catch (e) { if (PRUNED_RE.test(errText(e))) throw Object.assign(new Error('PRUNED_STATE'), { external: true }); reason = decode(e); }
-    let hash = null, status = 'reverted';
-    try { hash = await W.keeper.writeContract({ address: EXECUTOR, abi: execAbi, functionName: 'execute', args: [auth, x, sigs.AUTH, fundingProof], gas: 8_000_000n }); status = (await client.waitForTransactionReceipt({ hash })).status; } catch {}
-    return { reason, hash, status };
+    let hash = null, status = 'reverted', sendError = null;
+    try { hash = await W.keeper.writeContract({ address: EXECUTOR, abi: execAbi, functionName: 'execute', args: [auth, x, sigs.AUTH, fundingProof], gas: 8_000_000n }); status = (await client.waitForTransactionReceipt({ hash })).status; } catch (e) { sendError = decode(e); }
+    return { reason, hash, status, sendError };
   };
   const purchase = async (fundingProof) => {
     const before = await snap();
     const run = await buildRun();
     const x = await xOf(run);
     const t = await execute(x, fundingProof);
-    if (t.status !== 'success') return { pass: false, observed: 'execute failed: ' + t.reason };
+    if (t.status !== 'success') return { pass: false, observed: `execute failed: simulation ${t.reason ?? 'passed'}, send ${t.sendError ?? 'no error'}` };
     // SDK: the mined call is exactly the prepared one (the wallet's Authorization signature inside), balances transaction-scoped.
     const vr = await sdk.verifyRecurringPurchase({ client: evidence, transactionHash: t.hash, auth, deployment: DEP, intent: { execution: x, ownerSignature: sigs.AUTH, fundingProof: fundingProof ?? '0x' } });
     const after = await snap();
