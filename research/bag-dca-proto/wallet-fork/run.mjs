@@ -258,6 +258,7 @@ try {
   const programs = new Map();
   const programFor = async P => { if (MODE === 'live' || !programs.has(P)) programs.set(P, await ops.compileFor(P, gross)); return ops.forPlan(programs.get(P), P, planAbi, TD); };
 
+  const purchased = new Map(); // id -> the compiled program and receipt, for the SDK spend checks (X-11)
   async function purchase(id, name, cls, P, d, h, account = SA, recipient = owner) {
     return must(id, name, cls, async () => {
       const c = await programFor(P), before = await state(P, h, account);
@@ -280,7 +281,7 @@ try {
       const rec = { id, plan: P, delegationHash: h, transactionHash: hash, blockNumber: r.blockNumber, blockHash: r.blockHash, gasUsed: r.gasUsed, status: r.status,
         fundingDebitRaw: before.accountUsdg - after.accountUsdg, deliveries, countersBefore: before.counters, countersAfter: after.counters, sdk: { status: verdict.status, binding: verdict.transactionBinding, delivery: verdict.delivery },
         program: PROGRAM, trace: `traces/${id}.json` };
-      report.purchases.push(rec); return rec;
+      purchased.set(id, { c, hash, P, account, recipient }); report.purchases.push(rec); return rec;
     });
   }
   // Deepest failing frame of a call (callTracer via debug_traceCall), for failure reports.
@@ -449,6 +450,23 @@ try {
     await at((await now()) + 120n);
     const before = await bal(USDG, tsa.address); let reason = ''; try { await handle(op); } catch (e) { reason = e.message; }
     assert(reason.includes('AA32'), reason); assert.equal(await bal(USDG, tsa.address), before); return { reason, kitSignatureEqual: true };
+  });
+  // Exact spend is a plan guarantee (immutable swapAmount; _fund/_execute revert otherwise), so no real
+  // purchase can over-, under- or zero-pay. What remains is that the SDK's forwarded verification does not
+  // accept a mismatch: the real H-1 receipt is verified against a plan claiming a different swap share,
+  // and against a funding source that paid nothing.
+  await check('X-11', 'SDK forwarded verification of the real H-1 receipt refuses over-, partial- and zero-spend claims', 'TEST_KEY', async () => {
+    const p = purchased.get('H-1'); assert(p, 'H-1 did not run');
+    const verify = (compiled, fundingSource = p.account) => C.sdk.verifyPurchaseReceipt(compiled, { client: C.withReceiptEvidence(client, { deliveryAuthorization: 'BAG_DCA_PLAN_V1' }), transactionHash: p.hash,
+      minimumReceived: TD.legs.map(l => ({ token: l.token, amountRaw: l.minimum })), confirmations: 1, delivery: { caller: p.P, fundingSource, recipient: p.recipient } });
+    const withShare = x => ({ ...p.c, quote: { ...p.c.quote, plan: { ...p.c.quote.plan, swapAmountRaw: x, amountRaw: x > p.c.quote.plan.amountRaw ? x : p.c.quote.plan.amountRaw } } });
+    const baseline = await verify(p.c); assert.equal(baseline.status, 'VERIFIED', JSON.stringify(baseline.issues));
+    const over = await verify(withShare(swap - 1n)), partial = await verify(withShare(swap + 1n)), zero = await verify(p.c, tsa.address);
+    const code = r => r.issues?.[0]?.code;
+    assert.equal(over.status, 'FAILED'); assert.equal(code(over), 'INPUT_SPEND_EXCEEDS_PLAN');
+    assert.equal(partial.status, 'FAILED'); assert.equal(code(partial), 'INPUT_SPEND_BELOW_PLAN');
+    assert.notEqual(zero.status, 'VERIFIED'); // a source that paid nothing is not the plan's declared source
+    return { baseline: baseline.status, over: code(over), partial: code(partial), zero: `${zero.status} ${code(zero)}`, actualDebitRaw: baseline.spentInputRaw };
   });
   report.relayFinal = relay.stats;
   const fails = report.checks.filter(c => c.status === 'FAIL').length;
