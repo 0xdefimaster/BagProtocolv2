@@ -27,8 +27,12 @@
 - **İmza sızıntısı:** Geliştirme sırasında insan modunda alım izlerinin (`traces/H-*.json`) `run()` calldata'sı içinde delegasyon imzasını taşıdığı görüldü. Artık bu izler özel klasöre yazılıyor ve runner paylaşılan çıktıyı imzaya karşı tarıyor.
 
 ### Teslim
-- **Dal:** `claude/dca-wallet-fork-research`. Commit'ler: `71fe34f`, `74c06a6`, `6e23fb5`, `746d456`, `c5ad0b3` ve sonrasındaki doküman/kanıt commit'i.
-- **Draft PR'lar:** "Draft PR'lar" bölümüne bakın. Merge, deploy, public işlem ve gerçek fon yok.
+- **Draft PR'lar** (merge yok, sırayla incelenir):
+  1. https://github.com/0xdefimaster/BagProtocolv2/pull/128: cüzdan/fork akışı, DCA kuralları, launcher, imza sayfası (base `main`). Gölge ölçüm burada v5 halindedir.
+  2. https://github.com/0xdefimaster/BagProtocolv2/pull/129: gölge ölçüm düzeltmeleri, fiyat ve hazırlık kapıları, adaptör testleri, kapanış dokümanları (base #128).
+- **Kanıtı üreten commit'ler:** `claude/dca-wallet-fork-research` dalında, tam geçmişle (`71fe34f` → `6e23fb5` gölge → `746d456` yaşam döngüsü → `c5ad0b3` sayfa sürücüsü → kanıt ve manifest commit'leri). #129'un son ağacı bu dalla birebir aynı.
+- **SDK:** #126 ve #127'ye dokunulmadı.
+- **Merge, deploy, public işlem, gerçek fon:** yok.
 
 ---
 
