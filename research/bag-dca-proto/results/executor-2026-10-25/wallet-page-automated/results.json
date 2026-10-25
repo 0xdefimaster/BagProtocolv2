@@ -1,0 +1,483 @@
+{
+  "schema": "bag-recurring-executor-wallet/v1",
+  "session": "2026-10-25T07-51-31-5e0f11",
+  "signer": "wallet",
+  "evidenceClass": "TEST_KEY_VIA_SIGNING_PAGE",
+  "startedAt": "2026-10-25T07:51:31.929Z",
+  "notEvidenceOf": [
+    "a public-network transaction",
+    "an independent market price reference"
+  ],
+  "steps": [
+    {
+      "id": "P-1",
+      "title": "Hesap 4663 ana ağında yeni ve boş",
+      "pass": true,
+      "observed": "ETH 0, USDG 0, nonce 0, kod yok"
+    },
+    {
+      "id": "S-AUTH",
+      "title": "1/3 Yetki: dönemlik BAG alımı",
+      "pass": true,
+      "observed": "imza doğrulandı (sha256 99d05d479197c883…)",
+      "signatureSha256": "99d05d479197c88315fca599bee6359b2adb8e2199620dd807c6f0592b6b73a5"
+    },
+    {
+      "id": "S-PERMIT",
+      "title": "2/3 USDG izni (EIP-2612, işlem değil)",
+      "pass": true,
+      "observed": "imza doğrulandı (sha256 1b5289ae72a095d2…)",
+      "signatureSha256": "1b5289ae72a095d2488460525f28a89349d39acc063e7318ae5258ea6dc58c30"
+    },
+    {
+      "id": "S-REVOKE",
+      "title": "3/3 İptal imzası",
+      "pass": true,
+      "observed": "imza doğrulandı (sha256 a6d250e415f0f87e…)",
+      "signatureSha256": "a6d250e415f0f87e26539d26b652ead76fcdb710c2d14abfefccc4692ec6ffff"
+    },
+    {
+      "id": "H-1",
+      "title": "Alım 1 (permit execute içinde kullanıldı)",
+      "pass": true,
+      "tx": "0x52d4d5bcda159db21bbba8f7e46b52b659c7f88ad2ce78b6d62930cc40397ace",
+      "sdkReceipt": "VERIFIED",
+      "issues": [],
+      "deliveries": [
+        {
+          "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "receivedRaw": "53955394407005678",
+          "minimumRaw": "52383877671993895"
+        },
+        {
+          "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "receivedRaw": "828219436637885",
+          "minimumRaw": "804096540279511"
+        },
+        {
+          "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "receivedRaw": "11340547346182727",
+          "minimumRaw": "11010240085026018"
+        },
+        {
+          "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "receivedRaw": "1441216831232208",
+          "minimumRaw": "1399239639747061"
+        }
+      ],
+      "observed": "VERIFIED; USDG 20000000 → 15000000; izin 10000000; alım 1"
+    },
+    {
+      "id": "H-2",
+      "title": "Aynı dönemde ikinci deneme reddedildi",
+      "pass": true,
+      "stateUnchanged": true,
+      "observed": "reverted: NotDue(); durum değişmedi: true"
+    },
+    {
+      "id": "H-3",
+      "title": "Sonraki dönemde alım 2",
+      "pass": true,
+      "tx": "0xdc671b4cc850bf599859e32bf1fc76b0b3e2b05a38c0067a2c8eb11888ee08e1",
+      "sdkReceipt": "VERIFIED",
+      "issues": [],
+      "deliveries": [
+        {
+          "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "receivedRaw": "53955220912529189",
+          "minimumRaw": "52383877671993895"
+        },
+        {
+          "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "receivedRaw": "827844466095937",
+          "minimumRaw": "804096540279511"
+        },
+        {
+          "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "receivedRaw": "11338733820010068",
+          "minimumRaw": "11010240085026018"
+        },
+        {
+          "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "receivedRaw": "1441216517374849",
+          "minimumRaw": "1399239639747061"
+        }
+      ],
+      "observed": "VERIFIED; USDG 15000000 → 10000000; izin 5000000; alım 2"
+    },
+    {
+      "id": "H-4",
+      "title": "İptal imzası aracı tarafından zincire gönderildi (revokeBySig)",
+      "pass": true,
+      "observed": "iptal=true; kalan izin 5000000 (iptal izni sıfırlamaz; approve(0) ayrı işlemdir)"
+    },
+    {
+      "id": "H-5",
+      "title": "İptalden sonra alım reddedildi; kalan izin görünür",
+      "pass": true,
+      "stateUnchanged": true,
+      "observed": "reverted: RevokedAuthorization(0x35a338c5071c3b8b8de9ddcea844a957b0058a409b665dd479875cf88e999e19); durum değişmedi: true; kalan izin 5000000",
+      "allowanceLeft": "5000000"
+    }
+  ],
+  "build": {
+    "appCommit": "ea47f313d94ca5b9fc6295b3f02275d5fa721118",
+    "appDirtyInContractsOrSdk": "",
+    "executor": {
+      "source": "contracts/dca/RecurringPurchaseExecutor.sol",
+      "checkedSources": [
+        "project/contracts/dca/RecurringPurchaseExecutor.sol",
+        "project/contracts/BagExecutionRouter.sol",
+        "project/contracts/dca/IRecurringPurchaseExecution.sol"
+      ],
+      "sourceSha256": "0e2e513667cd22d4359ca847877b27ca0b918645a00ba31e2cb5b707ff2d84fa",
+      "buildInfoId": "solc-0_8_24-75bbc6803fa6f391ac870ffbf9230bd5ef71ed3b",
+      "solc": "0.8.24+commit.e11b9ed9",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "evmVersion": "shanghai"
+    },
+    "router": {
+      "source": "contracts/BagExecutionRouter.sol",
+      "checkedSources": [
+        "project/contracts/BagExecutionRouter.sol"
+      ],
+      "sourceSha256": "d39b6cbb41755885f25964452b7c29e6dbe2e0d2b4fd1314a36113e1cd5df210",
+      "buildInfoId": "solc-0_8_24-2c34557d043fde1a806eaea3346bc3967a93298d",
+      "solc": "0.8.24+commit.e11b9ed9",
+      "evmVersion": "shanghai"
+    },
+    "sdk": {
+      "dist": "packages/bag-sdk/dist",
+      "recurringJsSha256": "b311c4b4b56c7e9c7e1b9faa3dea74a066abd9f949fd3e69e5949118b3341723",
+      "uniswapV3JsSha256": "fd010e1b0b5a00915f41c9409ff5b6c87688e575831af02bcf942284f6cf14da"
+    }
+  },
+  "keylessExecutor": {
+    "label": "BAG RecurringPurchaseExecutor fork-only v1",
+    "address": "0x008f01d056eb06d708eaeC1e2e27B82435910CB9",
+    "mainnetCode": "0x",
+    "mainnetNonce": 0
+  },
+  "fork": {
+    "blockNumber": "97429484",
+    "blockHash": "0xc4dc044414371e268a82ea672145df2960978903196ec75ef72e9c40d2cbde0f",
+    "timestamp": "1792914691",
+    "note": "one fork block for the whole run; every leg of a purchase executes in one transaction (same block by construction)"
+  },
+  "deployment": {
+    "executor": {
+      "address": "0x008f01d056eb06d708eaeC1e2e27B82435910CB9",
+      "runtimeMatchesArtifact": true,
+      "immutables": {
+        "bagFactory": "0x7Ce5A81Df434755F38Cb5f67Ad49a8bb3c8e6f72",
+        "strategyRegistry": "0x907cc27d644C8ea1c24B8320ad09eCF2819209A8"
+      },
+      "domainSeparator": "0x821e22a46807e81583bd86d25f49a3fd765f74d722e7c4f6b879d47bbc1076f8",
+      "domainSeparatorMatchesSdk": true
+    },
+    "router": {
+      "address": "0x77c665ff2add0a2d0b40c9020243c4466e8faee5",
+      "runtimeMatchesArtifact": true,
+      "bagFactory": "0x7Ce5A81Df434755F38Cb5f67Ad49a8bb3c8e6f72",
+      "planSigner": "0x6F20b5A77a42a6EffF582cEa730Ed9Aec182CdE9",
+      "owner": "0x14c6518B41280d4522719a30dF6E6944a67e5561",
+      "allowlist": {
+        "targets": [
+          "0xCaf681a66D020601342297493863E78C959E5cb2"
+        ],
+        "tokens": "USDG + assets of both BAGs"
+      },
+      "trust": "test keys: router owner and planSigner are local; the runs treat both as compromised"
+    },
+    "realContracts": {
+      "USDG": {
+        "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+        "codeKeccak": "0x864cc9ad53b338b82da1f7cab85ab0b3d5c8861acb422b6fec63cf36234f36a6",
+        "bytes": 170,
+        "eip1967Implementation": "0x68184C449E1a8f34fA18d289737129FD27B66f8F"
+      },
+      "SWAP_ROUTER02": {
+        "address": "0xCaf681a66D020601342297493863E78C959E5cb2",
+        "codeKeccak": "0x6f36c378e272c6324c48f045182bcb54bd8ad654cf9ebd42e8893d52c4cb25dc",
+        "bytes": 24497
+      },
+      "QUOTER_V2": {
+        "address": "0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7",
+        "codeKeccak": "0x3db0868d945e9304c9bc6a8b2181948109ea617647142f3c4083e14393496a28",
+        "bytes": 8273
+      },
+      "BAG_FACTORY": {
+        "address": "0x7Ce5A81Df434755F38Cb5f67Ad49a8bb3c8e6f72",
+        "codeKeccak": "0x48e56712deee2744d90301b4a6eb3dd3760525aec15a7c18b3200defac8d1541",
+        "bytes": 11231
+      },
+      "STRATEGY_REGISTRY": {
+        "address": "0x907cc27d644C8ea1c24B8320ad09eCF2819209A8",
+        "codeKeccak": "0x0f559b7b92ab3fa101bc64974b219a770edf5ce1dabafef0e831d17b1f1ebcfd",
+        "bytes": 4830
+      }
+    },
+    "usdgPermitDomain": {
+      "onChain": "0x7a3d7400b27830f4f91c2c16a082486d67c1befecaec2f53b33f1f35d5b62036",
+      "matches": true,
+      "name": "Global Dollar",
+      "version": "1"
+    }
+  },
+  "walletClient": {
+    "name": "BAG test provider (local TEST key) (local.bag.test-key)",
+    "automated": true
+  },
+  "account": "0x1Dd3F05B0e6F0a01e1752d0140272Ac5E5b43664",
+  "accountOn4663": {
+    "eth": "0",
+    "usdg": "0",
+    "nonce": 0,
+    "code": "0x"
+  },
+  "terms": {
+    "authorizationId": "0x35a338c5071c3b8b8de9ddcea844a957b0058a409b665dd479875cf88e999e19",
+    "summary": {
+      "owner": "0x1dd3f05b0e6f0a01e1752d0140272ac5e5b43664",
+      "recipient": "0x1dd3f05b0e6f0a01e1752d0140272ac5e5b43664",
+      "funding": "ALLOWANCE",
+      "fundsStayInOwnerAddress": true,
+      "perRunRaw": "5000000",
+      "runs": 3,
+      "totalBudgetRaw": "15000000",
+      "firstWindowStart": "1792914710",
+      "periodSeconds": "86400",
+      "lastWindowStart": "1793087510",
+      "expiresAt": "1793173910",
+      "assets": [
+        {
+          "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "weightBps": 2675,
+          "legInputRaw": "1337500",
+          "maxPriceRaw": "25532665",
+          "minimumOutRaw": "52383877671993895"
+        },
+        {
+          "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "weightBps": 2601,
+          "legInputRaw": "1300500",
+          "maxPriceRaw": "1617343111",
+          "minimumOutRaw": "804096540279511"
+        },
+        {
+          "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "weightBps": 3724,
+          "legInputRaw": "1862000",
+          "maxPriceRaw": "169115295",
+          "minimumOutRaw": "11010240085026018"
+        },
+        {
+          "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "weightBps": 1000,
+          "legInputRaw": "500000",
+          "maxPriceRaw": "357336932",
+          "minimumOutRaw": "1399239639747061"
+        }
+      ],
+      "route": {
+        "router": "0x77c665ff2add0a2d0b40c9020243c4466e8faee5",
+        "swapTarget": "0xcaf681a66d020601342297493863e78c959e5cb2",
+        "allowedFees": [
+          100,
+          500,
+          3000,
+          10000
+        ]
+      },
+      "bag": {
+        "bagId": "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+        "bagVersion": "1",
+        "compositionHash": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+        "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9",
+        "strategyId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "strategyVersion": 0
+      }
+    },
+    "priceLimit": {
+      "source": "best real-chain QuoterV2 quote at setup + 300 bps (TEST choice, not a market reference)",
+      "sources": {
+        "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x1b0e319c6a659f002271b69db8a7df2f911c153e:300": {
+          "realChainQuoteRaw": "53955394407005678",
+          "legInRaw": "1337500",
+          "bufferBps": 300
+        },
+        "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x47f93d52cbec7c6d2cfc080e154002370a60daea:300": {
+          "realChainQuoteRaw": "828219436637885",
+          "legInRaw": "1300500",
+          "bufferBps": 300
+        },
+        "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x6330d8c3178a418788df01a47479c0ce7ccf450b:300": {
+          "realChainQuoteRaw": "11340547346182727",
+          "legInRaw": "1862000",
+          "bufferBps": 300
+        },
+        "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0xaf3d76f1834a1d425780943c99ea8a608f8a93f9:300": {
+          "realChainQuoteRaw": "1441216831232208",
+          "legInRaw": "500000",
+          "bufferBps": 300
+        }
+      }
+    },
+    "bag": {
+      "uuid": "955df6e0-b6ea-44ba-a5eb-1288a80c0a06",
+      "bagId": "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+      "bag": "0x8E668bf1eD1e3Eb104Dab3341F14b9CF7d55510d",
+      "version": "1",
+      "compositionHash": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+      "sdkCompositionHash": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+      "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9",
+      "strategyId": "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+      "registered": false,
+      "matches": false,
+      "docVersion": 1
+    }
+  },
+  "result": {
+    "purchases": 2,
+    "ownerUsdgOnFork": "10000000",
+    "fundsStayedInOwnerAddress": true,
+    "expected": "2 alım × 5 USDG; ret (aynı dönem); iptal; iptal sonrası ret; 5 USDG izin görünür kaldı"
+  },
+  "exit": {
+    "code": 0,
+    "status": "COMPLETE"
+  },
+  "network": {
+    "allowedHosts": [
+      "rpc.mainnet.chain.robinhood.com",
+      "127.0.0.1"
+    ],
+    "requestsByHost": {
+      "127.0.0.1": 26,
+      "upstream-rpc": 605
+    },
+    "refused": [],
+    "composerOrLifiRequests": 0,
+    "relay": {
+      "allowlist": [
+        "eth_chainId",
+        "net_version",
+        "eth_blockNumber",
+        "eth_getBlockByNumber",
+        "eth_getBlockByHash",
+        "eth_getCode",
+        "eth_getStorageAt",
+        "eth_getBalance",
+        "eth_getTransactionCount",
+        "eth_call",
+        "eth_getLogs",
+        "eth_getTransactionByHash",
+        "eth_getTransactionReceipt",
+        "eth_getProof"
+      ],
+      "forwardedRequests": 603,
+      "forwardedByMethod": {
+        "eth_getCode": 108,
+        "eth_getTransactionCount": 108,
+        "eth_getBlockByNumber": 4,
+        "eth_chainId": 1,
+        "eth_blockNumber": 67,
+        "net_version": 1,
+        "eth_getBalance": 107,
+        "eth_getStorageAt": 190,
+        "eth_call": 17
+      },
+      "refusedRequests": 0,
+      "refusedMethods": {},
+      "retries": 2,
+      "upstreamErrors": {
+        "429": 2
+      },
+      "failures": 0,
+      "selfTest": {
+        "singleWriteRefused": true,
+        "batchWithWriteRefused": true
+      }
+    },
+    "forkLocalTransactions": 19,
+    "publicWrites": 0,
+    "walletTransactions": 0
+  },
+  "forkChanges": [
+    {
+      "kind": "ARBSYS",
+      "method": "hardhat_setCode",
+      "target": "0x0000000000000000000000000000000000000064",
+      "note": "ArbSys read emulation (Nitro precompile is not in EDR)",
+      "at": 0
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x6F20b5A77a42a6EffF582cEa730Ed9Aec182CdE9",
+      "note": "fork-only gas for a local test account",
+      "at": 1
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x14c6518B41280d4522719a30dF6E6944a67e5561",
+      "note": "fork-only gas for a local test account",
+      "at": 2
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xC0D53Ae480548091647d12aD2071dccFAdc960c3",
+      "note": "fork-only gas for a local test account",
+      "at": 3
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x56774A1d356cA5A2E85c3bC1a674a004A5A114D9",
+      "note": "fork-only gas for a local test account",
+      "at": 4
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xFa452Fb33CD2b04EF08a76E4603a533014E1bA3f",
+      "note": "fork-only gas for a local test account",
+      "at": 5
+    },
+    {
+      "kind": "IMPERSONATE",
+      "method": "hardhat_impersonateAccount",
+      "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+      "note": "USDG for test accounts from a real holder balance (fork only)",
+      "at": 6
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+      "note": "gas for the impersonated holder",
+      "at": 7
+    },
+    {
+      "kind": "SET_CODE",
+      "method": "hardhat_setCode",
+      "target": "0x008f01d056eb06d708eaeC1e2e27B82435910CB9",
+      "note": "executor runtime from 0x25d830ae33192dfee06c79d454aa5bcb4c64f7cb (immutables: real BagFactory, real StrategyRegistry) at the keyless address",
+      "at": 8
+    },
+    {
+      "kind": "SET_CODE",
+      "method": "hardhat_setCode",
+      "target": "0x25d830ae33192dfee06c79d454aa5bcb4c64f7cb",
+      "note": "remove the deployer-address copy so only the keyless executor exists",
+      "at": 9
+    }
+  ],
+  "signaturesInThisFolder": false,
+  "finishedAt": "2026-10-25T07:52:40.149Z"
+}
