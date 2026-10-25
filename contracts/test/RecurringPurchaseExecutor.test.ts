@@ -15,7 +15,8 @@ import {
   type Hex,
 } from 'viem';
 import { splitByWeight } from '../../packages/bag-sdk/src/split';
-import { RECURRING_EXECUTOR_ABI, recurringAuthorizationId, recurringLegAmounts, recurringMinimumOutputs } from '../../packages/bag-sdk/src/recurring';
+import { RECURRING_EXECUTOR_ABI, recurringAuthorizationId, recurringCompositionHash, recurringLegAmounts, recurringMinimumOutputs, verifyRecurringPurchase } from '../../packages/bag-sdk/src/recurring';
+import { withReceiptEvidence } from '../../packages/bag-sdk/src/adapters/receipt-rpc';
 
 // -----------------------------------------------------------------------------
 // RecurringPurchaseExecutor on Hardhat's in-process EVM: the REAL BagFactory,
@@ -32,7 +33,9 @@ import { RECURRING_EXECUTOR_ABI, recurringAuthorizationId, recurringLegAmounts, 
 
 const PERIOD = 3600n;
 const GROSS = 5_000_000n; // 5 USDG (6 decimals)
-const COMPOSITION = keccak256(toHex('composition-v1'));
+/** The BAG app's composition hash (rows `chain:address:symbol:decimals:weightBps`, lowercase address, joined by `|`) in the given order. */
+const compositionOf = (assets: readonly { asset: Hex; symbol: string; decimals: number; weightBps: number }[]) =>
+  keccak256(toHex(assets.map((a) => `robinhood:${a.asset.toLowerCase()}:${a.symbol}:${a.decimals}:${a.weightBps}`).join('|')));
 const DEFINITION = keccak256(toHex('bag.json v1 definition'));
 const OFF_CHAIN_REF = pad('0x955df6e0', { size: 32 });
 
@@ -52,6 +55,7 @@ const AUTH_TYPES = {
   ],
   AssetLimit: [
     { name: 'asset', type: 'address' },
+    { name: 'symbol', type: 'string' },
     { name: 'weightBps', type: 'uint16' },
     { name: 'decimals', type: 'uint8' },
     { name: 'maxPriceRaw', type: 'uint256' },
@@ -141,7 +145,7 @@ const ERC20_TRANSFER_FROM_ABI = [
   },
 ] as const;
 
-type AssetLimit = { asset: Hex; weightBps: number; decimals: number; maxPriceRaw: bigint };
+type AssetLimit = { asset: Hex; symbol: string; weightBps: number; decimals: number; maxPriceRaw: bigint };
 type Authorization = {
   owner: Hex;
   sourceAccount: Hex;
@@ -203,6 +207,12 @@ async function setup() {
   await gme.write.mint([dex.address, 10n ** 30n]);
   await aapl.write.mint([dex.address, 10n ** 30n]);
 
+  // The BAG's registered content: the executor requires the signed asset list to reproduce this hash.
+  const ASSETS: AssetLimit[] = [
+    { asset: gme.address, symbol: 'GME', weightBps: 6000, decimals: 18, maxPriceRaw: 30_000_000n },
+    { asset: aapl.address, symbol: 'AAPL', weightBps: 4000, decimals: 18, maxPriceRaw: 250_000_000n },
+  ];
+  const COMPOSITION = compositionOf(ASSETS);
   const factory = await viem.deployContract('BagFactory', [deployer.account.address, deployer.account.address, 0n, 0n]);
   const factoryAsCreator = await viem.getContractAt('BagFactory', factory.address, { client: { wallet: creator } });
   await factoryAsCreator.write.createBag([OFF_CHAIN_REF, COMPOSITION, 'ipfs://bag', true]);
@@ -224,7 +234,7 @@ async function setup() {
   await router.write.setAllowedTarget([dex2.address, true]);
   for (const t of [usdg, gme, aapl]) await router.write.setAllowedToken([t.address, true]);
 
-  const executor = await viem.deployContract('RecurringPurchaseExecutor', [factory.address, registry.address]);
+  const executor = await viem.deployContract('RecurringPurchaseExecutor', [factory.address, registry.address, 'robinhood']);
   const asKeeper = await viem.getContractAt('RecurringPurchaseExecutor', executor.address, { client: { wallet: keeper } });
   const asOwner = await viem.getContractAt('RecurringPurchaseExecutor', executor.address, { client: { wallet: owner } });
   const asAttacker = await viem.getContractAt('RecurringPurchaseExecutor', executor.address, { client: { wallet: attacker } });
@@ -250,10 +260,7 @@ async function setup() {
       fundingKind: 0,
       fundingContract: usdg.address,
       inputToken: usdg.address,
-      assets: [
-        { asset: gme.address, weightBps: 6000, decimals: 18, maxPriceRaw: 30_000_000n },
-        { asset: aapl.address, weightBps: 4000, decimals: 18, maxPriceRaw: 250_000_000n },
-      ],
+      assets: ASSETS.map((x) => ({ ...x })),
       route: { router: router.address, swapTarget: dex.address, allowedFees: [500, 3000] },
       nonce: 1n,
       ...rest,
@@ -363,7 +370,7 @@ async function setup() {
   return {
     viem, publicClient, rpc, owner, keeper, keeper2, planSigner, creator, attacker, recipient, deployer,
     usdg, usdgAsOwner, gme, aapl, dex, dex2, factory, factoryAsCreator, registry, router, executor, asKeeper, asOwner, asAttacker,
-    startsAt, now, at, auth, sign, idOf, plan, execution, run, snapshot, bal, permitProof, swapCall, domain, chainId,
+    startsAt, now, at, auth, sign, idOf, plan, execution, run, snapshot, bal, permitProof, swapCall, domain, chainId, ASSETS, COMPOSITION,
   };
 }
 
@@ -406,7 +413,7 @@ describe('RecurringPurchaseExecutor — identity and split', () => {
         left -= w;
       }
       weights.push(left);
-      const assets = weights.map((w, i) => ({ asset: addresses[i], weightBps: w, decimals: 18, maxPriceRaw: 1n }));
+      const assets = weights.map((w, i) => ({ asset: addresses[i], symbol: `T${i}`, weightBps: w, decimals: 18, maxPriceRaw: 1n }));
       const amount = BigInt(1 + rnd(1_000_000_007));
       const onchain = (await t.executor.read.legAmounts([amount, assets])) as bigint[];
       const sdk = splitByWeight(amount, { assets: assets.map((x) => ({ chain: 'robinhood', address: x.asset, weightBps: x.weightBps, decimals: 18 })) as any });
@@ -719,10 +726,10 @@ describe('RecurringPurchaseExecutor — signature and terms', () => {
 
   const terms: { name: string; over: (t: Awaited<ReturnType<typeof setup>>) => Partial<Authorization> & { schedule?: Partial<Authorization['schedule']> } }[] = [
     { name: 'total budget ≠ per-run × runs', over: () => ({ schedule: { totalBudget: GROSS * 3n + 1n } }) },
-    { name: 'weights not summing to 10000', over: (t) => ({ assets: [{ asset: t.gme.address, weightBps: 6000, decimals: 18, maxPriceRaw: 30_000_000n }, { asset: t.aapl.address, weightBps: 3999, decimals: 18, maxPriceRaw: 250_000_000n }] }) },
-    { name: 'the input token as an asset', over: (t) => ({ assets: [{ asset: t.usdg.address, weightBps: 10000, decimals: 6, maxPriceRaw: 1n }] }) },
-    { name: 'a duplicate asset', over: (t) => ({ assets: [{ asset: t.gme.address, weightBps: 5000, decimals: 18, maxPriceRaw: 30_000_000n }, { asset: t.gme.address, weightBps: 5000, decimals: 18, maxPriceRaw: 30_000_000n }] }) },
-    { name: 'an unlimited price', over: (t) => ({ assets: [{ asset: t.gme.address, weightBps: 6000, decimals: 18, maxPriceRaw: 2n ** 256n - 1n }, { asset: t.aapl.address, weightBps: 4000, decimals: 18, maxPriceRaw: 250_000_000n }] }) },
+    { name: 'weights not summing to 10000', over: (t) => ({ assets: [{ asset: t.gme.address, symbol: 'GME', weightBps: 6000, decimals: 18, maxPriceRaw: 30_000_000n }, { asset: t.aapl.address, symbol: 'AAPL', weightBps: 3999, decimals: 18, maxPriceRaw: 250_000_000n }] }) },
+    { name: 'the input token as an asset', over: (t) => ({ assets: [{ asset: t.usdg.address, symbol: 'USDG', weightBps: 10000, decimals: 6, maxPriceRaw: 1n }] }) },
+    { name: 'a duplicate asset', over: (t) => ({ assets: [{ asset: t.gme.address, symbol: 'GME', weightBps: 5000, decimals: 18, maxPriceRaw: 30_000_000n }, { asset: t.gme.address, symbol: 'GME', weightBps: 5000, decimals: 18, maxPriceRaw: 30_000_000n }] }) },
+    { name: 'an unlimited price', over: (t) => ({ assets: [{ asset: t.gme.address, symbol: 'GME', weightBps: 6000, decimals: 18, maxPriceRaw: 2n ** 256n - 1n }, { asset: t.aapl.address, symbol: 'AAPL', weightBps: 4000, decimals: 18, maxPriceRaw: 250_000_000n }] }) },
     { name: 'a fee tier outside 100/500/3000/10000', over: (t) => ({ route: { router: t.router.address, swapTarget: t.dex.address, allowedFees: [2500] } }) },
     { name: 'a zero recipient', over: () => ({ recipient: zeroAddress }) },
     { name: 'the executor as recipient', over: (t) => ({ recipient: t.executor.address }) },
@@ -792,6 +799,104 @@ describe('RecurringPurchaseExecutor — concurrency and attack surface', () => {
   });
 });
 
+describe('RecurringPurchaseExecutor — the signed asset list IS the BAG\'s registered content', () => {
+  it('compositionHashOf rebuilds the BAG app composition string; the SDK computes the same; the chain label is fixed at deployment', async () => {
+    const t = await setup();
+    const a = t.auth();
+    assert.equal(await t.executor.read.compositionHashOf([a.assets]), t.COMPOSITION);
+    assert.equal(recurringCompositionHash('robinhood', a.assets), t.COMPOSITION);
+    assert.equal(await t.executor.read.chainLabel(), 'robinhood');
+    for (const label of ['', 'robin:hood', 'a|b']) {
+      await expectRevert(t.viem.deployContract('RecurringPurchaseExecutor', [t.factory.address, t.registry.address, label]), 'InvalidChainLabel', 'InvalidChainLabel()');
+    }
+  });
+
+  it('the real BAG id, version and compositionHash next to ANY other token/weight list is refused (CompositionMismatch); nothing moves', async () => {
+    const t = await setup();
+    const other = await t.viem.deployContract('DcaTestToken', ['Microsoft', 'MSFT', 18]);
+    await t.usdgAsOwner.write.approve([t.executor.address, 100n * GROSS]);
+    await t.at(t.startsAt);
+    const [g, p] = t.auth().assets;
+    const lists: [string, AssetLimit[]][] = [
+      ['weights swapped', [{ ...g, weightBps: 4000 }, { ...p, weightBps: 6000 }]],
+      ['a token replaced', [g, { ...p, asset: other.address }]],
+      ['a symbol changed', [g, { ...p, symbol: 'AAPLX' }]],
+      ['the same rows in another order', [p, g]],
+      ['decimals changed', [{ ...g, decimals: 6 }, p]],
+      ['an asset dropped, its weight moved', [{ ...g, weightBps: 10_000 }]],
+    ];
+    for (const [name, assets] of lists) {
+      const a = t.auth({ assets });
+      assert.equal(a.bag.compositionHash, t.COMPOSITION, name); // the signed hash IS the real one; only the list differs
+      const before = await t.snapshot(a);
+      await expectRevert(t.run(a, await t.sign(a), 0n, { planAuth: t.auth() }), 'CompositionMismatch', 'CompositionMismatch(bytes32,bytes32)');
+      assert.deepEqual(await t.snapshot(a), before, name);
+    }
+    // the honest list still buys in the same window
+    const honest = t.auth();
+    await t.run(honest, await t.sign(honest), 0n);
+    assert.equal(((await t.executor.read.getState([honest.owner, t.idOf(honest)])) as { executions: number }).executions, 1);
+  });
+
+  it('two registered BAGs: the identity of one with the list of the other is refused both ways; each with its own list buys', async () => {
+    const t = await setup();
+    const REF_B = pad('0xb2', { size: 32 });
+    const listB: AssetLimit[] = [{ asset: t.aapl.address, symbol: 'AAPL', weightBps: 10_000, decimals: 18, maxPriceRaw: 250_000_000n }];
+    await t.factoryAsCreator.write.createBag([REF_B, compositionOf(listB), 'ipfs://bag-b', true]);
+    const bagB = { bagId: (await t.factory.read.deriveBagId([t.creator.account.address, REF_B])) as Hex, compositionHash: compositionOf(listB), strategyId: pad('0x0', { size: 32 }), strategyVersion: 0 };
+    await t.usdgAsOwner.write.approve([t.executor.address, 100n * GROSS]);
+    await t.at(t.startsAt);
+    const idBListA = t.auth({ bag: bagB });
+    await expectRevert(t.run(idBListA, await t.sign(idBListA), 0n), 'CompositionMismatch', 'CompositionMismatch(bytes32,bytes32)');
+    const idAListB = t.auth({ assets: listB });
+    await expectRevert(t.run(idAListB, await t.sign(idAListB), 0n, { planAuth: idAListB }), 'CompositionMismatch', 'CompositionMismatch(bytes32,bytes32)');
+    const okB = t.auth({ bag: bagB, assets: listB, nonce: 7n });
+    const receipt = await t.run(okB, await t.sign(okB), 0n);
+    assert.equal(receipt.status, 'success');
+  });
+
+  it('a symbol that could forge a composition row (":" or "|") or is empty is refused before any registry read (InvalidTerms 14)', async () => {
+    const t = await setup();
+    await t.at(t.startsAt);
+    const [g, p] = t.auth().assets;
+    for (const symbol of ['', 'GME|robinhood', 'GME:18']) {
+      const a = t.auth({ assets: [{ ...g, symbol }, p] });
+      await expectRevert(t.run(a, await t.sign(a), 0n, { planAuth: t.auth() }), 'InvalidTerms', 'InvalidTerms(uint256)');
+    }
+  });
+});
+
+describe('RecurringPurchaseExecutor — SDK purchase verification on a real EVM', () => {
+  it('verifyRecurringPurchase with the SDK balance reader: VERIFIED against the prepared call; another prepared call, another authorization and a reverted purchase are not', async () => {
+    const t = await setup();
+    const a = t.auth();
+    const sig = await t.sign(a);
+    await t.usdgAsOwner.write.approve([t.executor.address, a.schedule.totalBudget]);
+    await t.at(t.startsAt);
+    const x = await t.execution(a, 0n);
+    const hash = await t.asKeeper.write.execute([a, x, sig, '0x'], { gas: 3_000_000n });
+    await t.publicClient.waitForTransactionReceipt({ hash });
+    const client = withReceiptEvidence(t.publicClient as any); // SINGLE_TRANSACTION_BLOCK: eth_call balanceOf at the parent and at this block
+    const deployment = { chainId: t.chainId, executor: t.executor.address };
+    const intent = { execution: x, ownerSignature: sig, fundingProof: '0x' as Hex };
+    const ok = await verifyRecurringPurchase({ client, transactionHash: hash, auth: a as any, deployment, intent });
+    assert.deepEqual(ok.issues, []);
+    assert.deepEqual([ok.status, ok.transactionBinding, ok.evidence, ok.balanceScope], ['VERIFIED', 'PREPARED_INTENT', 'TRANSACTION_AND_BALANCE_DELTAS', 'SINGLE_TRANSACTION_BLOCK']);
+    assert.equal(ok.source?.debitRaw, a.schedule.grossAmountPerRun);
+    assert.ok(ok.deliveries.every((d) => d.balanceAfterRaw !== null && d.receivedRaw >= d.minimumRaw && d.receivedRaw === d.logReceivedRaw));
+    // a call that was not the prepared one (same purchase, another planned minimum) is not this purchase
+    const other = { ...intent, execution: { ...x, plan: { ...x.plan, minOutputs: x.plan.minOutputs.map((m, i) => (i === 0 ? { ...m, minAmountOut: m.minAmountOut + 1n } : m)) } } };
+    assert.equal((await verifyRecurringPurchase({ client, transactionHash: hash, auth: a as any, deployment, intent: other })).issues[0].code, 'CALL_MISMATCH');
+    // checked against another authorization: the event is not for it
+    const b = t.auth({ nonce: 99n });
+    const wrong = await verifyRecurringPurchase({ client, transactionHash: hash, auth: b as any, deployment });
+    assert.equal(wrong.status, 'FAILED');
+    // a mined revert (same window again) is FAILED, never VERIFIED
+    const again = await t.asKeeper.write.execute([a, await t.execution(a, 0n), sig, '0x'], { gas: 3_000_000n }).catch(() => null);
+    if (again) assert.equal((await verifyRecurringPurchase({ client, transactionHash: again, auth: a as any, deployment, intent })).status, 'FAILED');
+  });
+});
+
 describe('RecurringPurchaseExecutor — SDK ABI', () => {
   it('every function, event and error in the SDK\'s RECURRING_EXECUTOR_ABI matches the compiled contract', async () => {
     const compiled = (await hre.artifacts.readArtifact('RecurringPurchaseExecutor')).abi as any[];
@@ -801,7 +906,7 @@ describe('RecurringPurchaseExecutor — SDK ABI', () => {
     for (const item of sdk) assert.ok(have.has(key(item)), `SDK ABI item not in the contract: ${item.type} ${item.name}`);
     // every error the contract can raise is decodable by the SDK
     const sdkErrors = new Set(sdk.filter((x) => x.type === 'error').map(key));
-    for (const e of compiled.filter((x) => x.type === 'error' && x.name !== 'ZeroAddress' && !x.name.startsWith('SafeERC20') && !x.name.startsWith('ECDSA') && x.name !== 'ReentrancyGuardReentrantCall' && x.name !== 'InvalidShortString' && x.name !== 'StringTooLong')) {
+    for (const e of compiled.filter((x) => x.type === 'error' && x.name !== 'ZeroAddress' && x.name !== 'InvalidChainLabel' && !x.name.startsWith('Strings') && !x.name.startsWith('SafeERC20') && !x.name.startsWith('ECDSA') && x.name !== 'ReentrancyGuardReentrantCall' && x.name !== 'InvalidShortString' && x.name !== 'StringTooLong')) {
       assert.ok(sdkErrors.has(key(e)), `contract error missing from the SDK ABI: ${e.name}`);
     }
   });

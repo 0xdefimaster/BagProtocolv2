@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, hashTypedData, pad, type Hex as VHex } from 'viem';
+import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, encodeFunctionData, hashTypedData, pad, type Hex as VHex } from 'viem';
 import {
   BagSdkError,
   bagFactoryCompositionHash,
@@ -17,8 +17,14 @@ import {
   recurringWindowAt,
   splitByWeight,
   summarizeRecurringAuthorization,
-  verifyRecurringPurchaseReceipt,
+  checkRecurringPlan,
+  RECURRING_EXECUTOR_ABI,
+  recurringCompositionHash,
+  recurringExecutionHash,
+  recurringRegisteredAssets,
+  verifyRecurringPurchase,
   type BagDocument,
+  type RecurringPurchaseIntent,
   type Hex,
   type RecurringAuthorization,
   type RecurringTermsInput,
@@ -71,10 +77,13 @@ const expectCode = (fn: () => unknown, code: string) => {
 };
 
 describe('buildRecurringAuthorization', () => {
-  it('5 runs × 5 USDG = 25 USDG; assets, weights and decimals come from the definition; funds stay with the owner (ALLOWANCE)', () => {
+  it('5 runs × 5 USDG = 25 USDG; the asset list is the registered composition; funds stay with the owner (ALLOWANCE)', () => {
     const auth = buildRecurringAuthorization(terms());
-    expect(auth.assets.map((a) => a.asset)).toEqual(assetsOf(BAG));
-    expect(auth.assets.map((a) => a.weightBps)).toEqual(BAG.definition.assets.map((a) => a.weightBps));
+    // registered order (sorted by symbol), weights and decimals from the definition, symbols from metadata
+    expect(auth.assets.map((a) => a.symbol)).toEqual(['AAPL', 'ASML', 'COIN', 'GME']);
+    const def = new Map(BAG.definition.assets.map((a) => [a.address.toLowerCase(), a]));
+    auth.assets.forEach((a) => expect([a.weightBps, a.decimals]).toEqual([def.get(a.asset)!.weightBps, def.get(a.asset)!.decimals]));
+    expect(recurringCompositionHash('robinhood', auth.assets)).toBe(COMPOSITION);
     expect(auth.bag.definitionHash).toBe(computeDefinitionHash(BAG.definition));
     expect(auth.schedule).toEqual({ grossAmountPerRun: BigInt(5_000_000), totalBudget: BigInt(25_000_000), maxExecutions: 5, startsAt: BigInt(1_800_000_000), periodSeconds: BigInt(604_800), expiresAt: BigInt(1_800_000_000 + 5 * 604_800) });
     expect(auth.sourceAccount).toBe(OWNER);
@@ -116,6 +125,28 @@ describe('buildRecurringAuthorization', () => {
     expectCode(() => buildRecurringAuthorization(terms({ inputToken: '0x0000000000000000000000000000000000000000' })), 'RECURRING_TERMS_INVALID');
   });
 
+  it('the token/weight list must reproduce the registered compositionHash; symbols are required and cannot break a row', () => {
+    const A3 = load('robinhood-a3caff05-d606-486b-959f-30865a4cbfa7');
+    // the real 955df6e0 identity with another BAG's registered composition, and vice versa
+    expectCode(() => buildRecurringAuthorization(terms({ registry: { bagId: BAG_ID, bagVersion: BigInt(1), compositionHash: bagFactoryCompositionHash(A3)! } })), 'RECURRING_TERMS_INVALID');
+    const swapped = { ...BAG, definition: { ...BAG.definition, assets: BAG.definition.assets.map((a, i, all) => ({ ...a, weightBps: all[(i + 1) % all.length].weightBps })) } };
+    const swappedDoc = { ...swapped, definitionHash: computeDefinitionHash(swapped.definition) };
+    expectCode(() => buildRecurringAuthorization(terms({ bag: swappedDoc })), 'RECURRING_TERMS_INVALID');
+    expectCode(() => buildRecurringAuthorization(terms({ bag: { ...BAG, metadata: undefined } as BagDocument })), 'RECURRING_TERMS_INVALID');
+    const injected = { ...BAG, metadata: { ...BAG.metadata!, assets: BAG.metadata!.assets.map((m, i) => (i === 0 ? { ...m, symbol: 'GME|robinhood' } : m)) } };
+    expectCode(() => buildRecurringAuthorization(terms({ bag: injected as BagDocument })), 'RECURRING_TERMS_INVALID');
+    // the hash depends on the order: the same rows in another order are another composition
+    const auth = buildRecurringAuthorization(terms());
+    expect(recurringCompositionHash('robinhood', [...auth.assets].reverse())).not.toBe(COMPOSITION);
+  });
+
+  it('the summary states the fixed price ceiling and what each run depends on', () => {
+    const s = summarizeRecurringAuthorization(buildRecurringAuthorization(terms()));
+    expect(s.priceLimit).toEqual({ kind: 'FIXED_MAX_PRICE_PER_ASSET', isSlippageProtection: false, windowSkippedWhileAbove: true, catchUp: false, mayEndBeforeAllRuns: true });
+    expect(s.dependencies).toEqual({ composer: 'NOT_USED', planSignerSignatureEachRun: true, keeperTransactionEachRun: true, routerOwnerAllowlist: true, canExceedSignedLimits: false, canStopOrDelayPurchases: true });
+    expect(s.assets.map((a) => a.symbol)).toEqual(['AAPL', 'ASML', 'COIN', 'GME']);
+  });
+
   it('DELEGATION funds come from a separate smart account; the summary says the funds do not stay in an EOA', () => {
     const auth = buildRecurringAuthorization(terms({ funding: { kind: 'DELEGATION', delegationManager: '0xdb9b1e94b5b69df7e401ddbede43491141047db3' } }));
     expect(auth.fundingKind).toBe(1);
@@ -152,7 +183,7 @@ describe('split, minimums and calendar', () => {
     const auth = buildRecurringAuthorization(terms({ maxPriceRaw: limits }));
     const legIn = recurringLegAmounts(auth);
     const split = splitByWeight(auth.schedule.grossAmountPerRun, BAG.definition);
-    expect(legIn).toEqual(BAG.definition.assets.map((a) => split.get(`${a.chain}:${a.address.toLowerCase()}`)));
+    expect(legIn).toEqual(auth.assets.map((a) => split.get(`robinhood:${a.asset}`))); // per asset, in the authorization's (registered) order
     expect(recurringMinimumOutputs(auth)).toEqual(auth.assets.map((a, i) => (legIn[i] * BigInt(10) ** BigInt(a.decimals) + a.maxPriceRaw - BigInt(1)) / a.maxPriceRaw));
   });
 
@@ -170,56 +201,116 @@ describe('bagFactoryCompositionHash (BAG app convention, verification helper)', 
     expect(bagFactoryCompositionHash(BAG)).toBe(COMPOSITION);
     expect(bagFactoryCompositionHash(load('robinhood-a3caff05-d606-486b-959f-30865a4cbfa7'))).toBe('0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0');
     expect(bagFactoryCompositionHash({ ...BAG, metadata: undefined })).toBeNull();
+    expect(recurringRegisteredAssets(BAG)!.map((a) => a.symbol)).toEqual(['AAPL', 'ASML', 'COIN', 'GME']);
   });
 });
 
-describe('verifyRecurringPurchaseReceipt', () => {
+describe('checkRecurringPlan and verifyRecurringPurchase (prepared intent + transaction-scoped balances)', () => {
   const auth = buildRecurringAuthorization(terms({ maxPriceRaw: Object.fromEntries(assetsOf(BAG).map((a) => [a, BigInt(500_000_000)])) }));
   const id = recurringAuthorizationId(auth, DEPLOYMENT);
   const legIn = recurringLegAmounts(auth);
-  const minOut = recurringMinimumOutputs(auth);
-  const PE_ABI = [{ type: 'event', name: 'PurchaseExecuted', inputs: [{ name: 'owner', type: 'address', indexed: true }, { name: 'authorizationId', type: 'bytes32', indexed: true }, { name: 'executionHash', type: 'bytes32', indexed: true }, { name: 'window', type: 'uint256', indexed: false }, { name: 'executionIndex', type: 'uint256', indexed: false }, { name: 'grossAmount', type: 'uint256', indexed: false }, { name: 'sourceDebit', type: 'uint256', indexed: false }] }] as const;
+  const floors = recurringMinimumOutputs(auth);
+  const KEEPER = '0x4444444444444444444444444444444444444444' as Hex;
+  const DEX = ROBINHOOD_UNISWAP_V3.swapRouter02;
+  const TX = pad('0xab', { size: 32 }) as Hex;
+  const BLOCK = pad('0xbb', { size: 32 }) as Hex;
+  let intent: RecurringPurchaseIntent;
+  beforeAll(async () => {
+    const quotes = { async simulateContract({ args }: { args: readonly unknown[] }) { const p = args[0] as { tokenOut: string }; return { result: [floors[auth.assets.findIndex((a) => a.asset === p.tokenOut)] * BigInt(2), BigInt(1), 0, BigInt(0)] }; } };
+    const run = await buildRecurringRunPlan({ client: quotes, auth, deployment: DEPLOYMENT, quoter: ROBINHOOD_UNISWAP_V3.quoterV2, nowSeconds: auth.schedule.startsAt + BigInt(10) });
+    intent = { execution: { ...run.execution, plan: run.plan, planSignature: `0x${'22'.repeat(65)}` as Hex }, ownerSignature: `0x${'11'.repeat(65)}` as Hex, fundingProof: '0x' };
+  });
+  const received = (i: number) => intent.execution.plan.minOutputs[i].minAmountOut + BigInt(5);
   const T_ABI = [{ type: 'event', name: 'Transfer', inputs: [{ name: 'from', type: 'address', indexed: true }, { name: 'to', type: 'address', indexed: true }, { name: 'value', type: 'uint256', indexed: false }] }] as const;
   const transfer = (token: Hex, from: Hex, to: Hex, value: bigint) => ({ address: token, topics: encodeEventTopics({ abi: T_ABI, eventName: 'Transfer', args: { from, to } }) as Hex[], data: encodeAbiParameters([{ type: 'uint256' }], [value]) as Hex });
-  const executed = (authorizationId: Hex = id) => ({
-    address: EXECUTOR,
-    topics: encodeEventTopics({ abi: PE_ABI, eventName: 'PurchaseExecuted', args: { owner: OWNER, authorizationId, executionHash: pad('0x01', { size: 32 }) } }) as Hex[],
-    data: encodeAbiParameters([{ type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }], [BigInt(0), BigInt(1), auth.schedule.grossAmountPerRun, auth.schedule.grossAmountPerRun]) as Hex,
-  });
-  const DEX = ROBINHOOD_UNISWAP_V3.swapRouter02;
-  const honestLogs = () => [
-    transfer(USDG, OWNER, EXECUTOR, auth.schedule.grossAmountPerRun),
-    transfer(USDG, EXECUTOR, ROUTER, auth.schedule.grossAmountPerRun),
-    ...auth.assets.flatMap((a, i) => [transfer(USDG, ROUTER, DEX, legIn[i]), transfer(a.asset, DEX, ROUTER, minOut[i] + BigInt(5)), transfer(a.asset, ROUTER, EXECUTOR, minOut[i] + BigInt(5)), transfer(a.asset, EXECUTOR, OWNER, minOut[i] + BigInt(5))]),
-    executed(),
-  ];
-  const client = (logs: ReturnType<typeof honestLogs>, over: Partial<{ status: 'success' | 'reverted'; to: string }> = {}) => ({
-    getTransactionReceipt: async () => ({ status: over.status ?? ('success' as const), to: over.to ?? EXECUTOR, blockNumber: BigInt(1), logs }),
-  });
-  const verify = (c: ReturnType<typeof client>) => verifyRecurringPurchaseReceipt({ client: c, transactionHash: pad('0xab', { size: 32 }) as Hex, auth, deployment: DEPLOYMENT });
+  type World = { execution?: RecurringPurchaseIntent['execution']; executionHash?: Hex; window?: bigint; status?: 'success' | 'reverted'; head?: bigint; balances?: Record<string, [bigint, bigint]>; logs?: (l: ReturnType<typeof transfer>[]) => ReturnType<typeof transfer>[]; reader?: boolean };
+  const key = (a: string, t: string) => `${a.toLowerCase()}:${t.toLowerCase()}`;
+  function world(w: World = {}) {
+    const execution = w.execution ?? intent.execution;
+    const input = encodeFunctionData({ abi: RECURRING_EXECUTOR_ABI, functionName: 'execute', args: [auth, execution, intent.ownerSignature, intent.fundingProof] as never });
+    const g = auth.schedule.grossAmountPerRun;
+    const base = [
+      transfer(USDG, OWNER, EXECUTOR, g),
+      transfer(USDG, EXECUTOR, ROUTER, g),
+      ...auth.assets.flatMap((a, i) => [transfer(USDG, ROUTER, DEX, legIn[i]), transfer(a.asset, DEX, ROUTER, received(i)), transfer(a.asset, ROUTER, EXECUTOR, received(i)), transfer(a.asset, EXECUTOR, OWNER, received(i))]),
+      { address: EXECUTOR, topics: encodeEventTopics({ abi: RECURRING_EXECUTOR_ABI, eventName: 'PurchaseExecuted', args: { owner: OWNER, authorizationId: id, executionHash: w.executionHash ?? recurringExecutionHash(execution.plan) } }) as Hex[],
+        data: encodeAbiParameters([{ type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }, { type: 'uint256' }], [w.window ?? execution.window, BigInt(0), g, g]) as Hex },
+    ];
+    const logs = (w.logs ? w.logs(base) : base).map((l, i) => ({ ...l, logIndex: i, transactionHash: TX, blockHash: BLOCK, blockNumber: BigInt(10), removed: false }));
+    const balances: Record<string, [bigint, bigint]> = { [key(OWNER, USDG)]: [BigInt(100_000_000), BigInt(100_000_000) - g] };
+    auth.assets.forEach((a, i) => (balances[key(OWNER, a.asset)] = [BigInt(0), received(i)]));
+    Object.assign(balances, w.balances ?? {});
+    return {
+      getChainId: async () => 4663,
+      getTransaction: async () => ({ hash: TX, from: KEEPER, to: EXECUTOR, input, value: BigInt(0), chainId: 4663, blockHash: BLOCK, blockNumber: BigInt(10) }),
+      getTransactionReceipt: async () => ({ transactionHash: TX, blockHash: BLOCK, blockNumber: BigInt(10), from: KEEPER, to: EXECUTOR, status: w.status ?? ('success' as const), logs }),
+      getBlock: async () => ({ hash: BLOCK, transactions: [TX] }),
+      getBlockNumber: async () => w.head ?? BigInt(10),
+      ...(w.reader === false ? {} : {
+        getPurchaseBalanceChanges: async (ctx: { transactionHash: Hex; blockHash: Hex; blockNumber: bigint; owner: Hex; tokens: readonly string[] }) => ({
+          ...ctx, scope: 'SINGLE_TRANSACTION_BLOCK' as const, balances: ctx.tokens.map((t) => { const b = balances[key(ctx.owner, t)] ?? [BigInt(0), BigInt(0)]; return { token: t, beforeRaw: b[0], afterRaw: b[1] }; }),
+        }),
+      }),
+    };
+  }
+  const verify = (c: ReturnType<typeof world>, over: { intent?: RecurringPurchaseIntent | null; verification?: 'BALANCE_DELTA' | 'TRANSFER_LOGS'; confirmations?: number } = {}) =>
+    verifyRecurringPurchase({ client: c, transactionHash: TX, auth, deployment: DEPLOYMENT, intent: over.intent === null ? undefined : (over.intent ?? intent), verification: over.verification, confirmations: over.confirmations });
+  const codes = async (c: ReturnType<typeof world>, over = {}) => (await verify(c, over)).issues.map((i) => i.code);
 
-  it('VERIFIED: one event for this id, exact source debit, deliveries at or above the price-limit minimum, no transit balance', async () => {
-    const r = await verify(client(honestLogs()));
+  it('checkRecurringPlan: the built plan passes; every widening is listed with the executor code', () => {
+    expect(checkRecurringPlan(auth, intent.execution.plan, DEPLOYMENT)).toEqual([]);
+    const tamper = (f: (p: RecurringPurchaseIntent['execution']['plan']) => void) => { const p = structuredClone(intent.execution.plan); f(p); return checkRecurringPlan(auth, p, DEPLOYMENT).join(' | '); };
+    expect(tamper((p) => { p.wallet = ROUTER; })).toContain('PlanMismatch(1)');
+    expect(tamper((p) => { p.inputAmount *= BigInt(2); })).toContain('PlanMismatch(3)');
+    expect(tamper((p) => { p.bagId = pad('0x99', { size: 32 }) as Hex; })).toContain('PlanMismatch(4)');
+    expect(tamper((p) => { (p.legs as unknown as { target: Hex }[])[0].target = ROUTER; })).toContain('RouteViolation(0,1)');
+    const call = (f: (a: { recipient: Hex; sqrtPriceLimitX96: bigint; fee: number }) => void) => (p: RecurringPurchaseIntent['execution']['plan']) => {
+      const { args } = decodeFunctionData({ abi: SWAP_ROUTER_02_EXACT_INPUT_SINGLE_ABI, data: p.legs[0].callData as VHex });
+      const a = { ...args[0] }; f(a as never);
+      (p.legs as unknown as { callData: Hex }[])[0].callData = encodeFunctionData({ abi: SWAP_ROUTER_02_EXACT_INPUT_SINGLE_ABI, functionName: 'exactInputSingle', args: [a] }) as Hex;
+    };
+    expect(tamper(call((a) => { a.recipient = OWNER; }))).toContain('RouteViolation(0,6)');
+    expect(tamper(call((a) => { a.sqrtPriceLimitX96 = BigInt(1); }))).toContain('RouteViolation(0,8)');
+    expect(tamper(call((a) => { a.fee = 2500; }))).toContain('RouteViolation(0,9)');
+    expect(tamper((p) => { (p.minOutputs as unknown as { minAmountOut: bigint }[])[1].minAmountOut = floors[1] - BigInt(1); })).toContain('RouteViolation(1,11)');
+  });
+
+  it('VERIFIED: the mined call is the prepared one, and balances show one run debited, deliveries at or above the limits, no transit', async () => {
+    const r = await verify(world());
     expect(r.issues).toEqual([]);
-    expect(r.status).toBe('VERIFIED');
-    expect(r.sourceDebitRaw).toBe(auth.schedule.grossAmountPerRun);
-    expect(r.deliveries.map((d) => d.receivedRaw - d.minimumRaw)).toEqual(auth.assets.map(() => BigInt(5)));
+    expect([r.status, r.transactionBinding, r.evidence, r.balanceScope]).toEqual(['VERIFIED', 'PREPARED_INTENT', 'TRANSACTION_AND_BALANCE_DELTAS', 'SINGLE_TRANSACTION_BLOCK']);
+    expect(r.source).toMatchObject({ debitRaw: auth.schedule.grossAmountPerRun, beforeRaw: BigInt(100_000_000) });
+    r.deliveries.forEach((d, i) => expect([d.receivedRaw, d.balanceAfterRaw, d.priceLimitFloorRaw]).toEqual([received(i), received(i), floors[i]]));
+    expect(r.transit.every((t) => t.netRaw === BigInt(0))).toBe(true);
+    // without a prepared intent: the mined call is decoded and checked, and labelled as the weaker binding
+    const decoded = await verify(world(), { intent: null });
+    expect([decoded.status, decoded.transactionBinding]).toEqual(['VERIFIED', 'DECODED_CALL']);
   });
 
-  it('FAILED for: another authorization id, a partial source debit, residue left with the router, a delivery below the limit, a reverted tx', async () => {
-    const codes = async (logs: ReturnType<typeof honestLogs>, over = {}) => (await verify(client(logs, over))).issues.map((i) => i.code);
-    expect(await codes([...honestLogs().slice(0, -1), executed(pad('0x99', { size: 32 }) as Hex)])).toContain('EVENT_MISSING');
-    const partial = honestLogs();
-    partial[0] = transfer(USDG, OWNER, EXECUTOR, auth.schedule.grossAmountPerRun - BigInt(1));
-    expect(await codes(partial)).toContain('SOURCE_DEBIT_MISMATCH');
-    const residue = honestLogs().filter((_l, i) => i !== 4 && i !== 5); // the router keeps the first asset; the recipient gets none
-    expect(await codes(residue)).toEqual(expect.arrayContaining(['TRANSIT_BALANCE', 'BELOW_PRICE_LIMIT']));
-    const low = honestLogs();
-    const first = auth.assets[0].asset;
-    low[5] = transfer(first, EXECUTOR, OWNER, minOut[0] - BigInt(1));
-    expect(await codes(low)).toContain('BELOW_PRICE_LIMIT');
-    expect(await codes(honestLogs(), { status: 'reverted' })).toContain('TX_FAILED');
-    expect(await codes(honestLogs(), { to: ROUTER })).toContain('NOT_EXECUTOR_TX');
+  it('FAILED: another call than the prepared one, another plan or window in the event, a plan outside the authorization, another authorization', async () => {
+    expect(await codes(world(), { intent: { ...intent, fundingProof: '0x1234' } })).toContain('CALL_MISMATCH');
+    expect(await codes(world({ executionHash: pad('0x01', { size: 32 }) as Hex }))).toContain('EXECUTION_HASH_MISMATCH');
+    expect(await codes(world({ window: BigInt(7) }))).toContain('WINDOW_MISMATCH');
+    const wide = structuredClone(intent.execution);
+    (wide.plan.minOutputs as unknown as { minAmountOut: bigint }[])[0].minAmountOut = BigInt(1);
+    expect(await codes(world({ execution: wide }), { intent: null })).toContain('PLAN_OUTSIDE_AUTHORIZATION');
+    expect(await codes(world({ execution: { ...intent.execution, authorizationId: pad('0x77', { size: 32 }) as Hex } }), { intent: null })).toContain('AUTHORIZATION_MISMATCH');
+  });
+
+  it('FAILED on balances even when the logs look right: short delivery, double debit, residue with the router', async () => {
+    const a0 = auth.assets[0].asset;
+    expect(await codes(world({ balances: { [key(OWNER, a0)]: [BigInt(0), floors[0] - BigInt(1)] } }))).toEqual(expect.arrayContaining(['BELOW_PRICE_LIMIT', 'LOG_BALANCE_MISMATCH']));
+    expect(await codes(world({ balances: { [key(OWNER, USDG)]: [BigInt(100_000_000), BigInt(100_000_000) - BigInt(2) * auth.schedule.grossAmountPerRun] } }))).toContain('SOURCE_DEBIT_MISMATCH');
+    expect(await codes(world({ balances: { [key(ROUTER, a0)]: [BigInt(0), BigInt(7)] } }))).toContain('TRANSIT_BALANCE');
+  });
+
+  it('INDETERMINATE without a balance reader unless event-only evidence is requested (and labelled); reverted is FAILED; depth is respected', async () => {
+    const none = await verify(world({ reader: false }));
+    expect([none.status, none.issues[0].code]).toEqual(['INDETERMINATE', 'BALANCE_EVIDENCE_UNAVAILABLE']);
+    const logs = await verify(world({ reader: false }), { verification: 'TRANSFER_LOGS' });
+    expect([logs.status, logs.evidence]).toEqual(['VERIFIED', 'TRANSACTION_AND_TRANSFER_LOGS']);
+    expect(await codes(world({ status: 'reverted' }))).toContain('TRANSACTION_REVERTED');
+    expect((await verify(world(), { confirmations: 3 })).issues[0].code).toBe('INSUFFICIENT_CONFIRMATIONS');
   });
 });
 

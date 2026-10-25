@@ -8,6 +8,8 @@ import {SafeERC20} from '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from '@openzeppelin/contracts/utils/ReentrancyGuard.sol';
 import {EIP712} from '@openzeppelin/contracts/utils/cryptography/EIP712.sol';
 import {SignatureChecker} from '@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol';
+import {ShortString, ShortStrings} from '@openzeppelin/contracts/utils/ShortStrings.sol';
+import {Strings} from '@openzeppelin/contracts/utils/Strings.sol';
 import {BagExecutionRouter} from '../BagExecutionRouter.sol';
 import {IRecurringPurchaseExecution} from './IRecurringPurchaseExecution.sol';
 
@@ -53,14 +55,14 @@ contract RecurringPurchaseExecutor is IRecurringPurchaseExecution, EIP712, Reent
 
     bytes32 public constant BAG_REF_TYPEHASH =
         keccak256('BagRef(bytes32 bagId,uint256 bagVersion,bytes32 compositionHash,bytes32 definitionHash,bytes32 strategyId,uint32 strategyVersion)');
-    bytes32 public constant ASSET_LIMIT_TYPEHASH = keccak256('AssetLimit(address asset,uint16 weightBps,uint8 decimals,uint256 maxPriceRaw)');
+    bytes32 public constant ASSET_LIMIT_TYPEHASH = keccak256('AssetLimit(address asset,string symbol,uint16 weightBps,uint8 decimals,uint256 maxPriceRaw)');
     bytes32 public constant SCHEDULE_TYPEHASH =
         keccak256('Schedule(uint256 grossAmountPerRun,uint256 totalBudget,uint32 maxExecutions,uint64 startsAt,uint64 periodSeconds,uint64 expiresAt)');
     bytes32 public constant ROUTE_TYPEHASH = keccak256('Route(address router,address swapTarget,uint24[] allowedFees)');
     bytes32 public constant AUTHORIZATION_TYPEHASH =
         keccak256(
             'Authorization(address owner,address sourceAccount,address recipient,uint8 fundingKind,address fundingContract,address inputToken,BagRef bag,AssetLimit[] assets,Schedule schedule,Route route,uint256 nonce)'
-            'AssetLimit(address asset,uint16 weightBps,uint8 decimals,uint256 maxPriceRaw)'
+            'AssetLimit(address asset,string symbol,uint16 weightBps,uint8 decimals,uint256 maxPriceRaw)'
             'BagRef(bytes32 bagId,uint256 bagVersion,bytes32 compositionHash,bytes32 definitionHash,bytes32 strategyId,uint32 strategyVersion)'
             'Route(address router,address swapTarget,uint24[] allowedFees)'
             'Schedule(uint256 grossAmountPerRun,uint256 totalBudget,uint32 maxExecutions,uint64 startsAt,uint64 periodSeconds,uint64 expiresAt)'
@@ -74,18 +76,22 @@ contract RecurringPurchaseExecutor is IRecurringPurchaseExecution, EIP712, Reent
     uint256 private constant TOTAL_BPS = 10_000;
 
     IBagFactoryRegistry public immutable bagFactory;
+    /// @dev The `chain` field of the BAG app's composition rows (e.g. "robinhood"), fixed per deployment.
+    ShortString private immutable _chainLabel;
     /// @notice May be the zero address; then an authorization must not name a strategyId.
     IStrategyRegistryMatcher public immutable strategyRegistry;
 
     mapping(address owner => mapping(bytes32 authorizationId => ExecutionState)) private _state;
 
     error ZeroAddress();
+    error InvalidChainLabel();
     error AuthorizationMismatch(bytes32 expected, bytes32 given);
     error InvalidOwnerSignature();
     error RevokedAuthorization(bytes32 authorizationId);
     error InvalidTerms(uint256 code);
     error UnknownBag(bytes32 bagId);
     error BagChanged(uint256 version, bytes32 compositionHash);
+    error CompositionMismatch(bytes32 signedList, bytes32 registered);
     error StrategyNotRegistered(bytes32 strategyId, uint32 version);
     error AssetDecimalsMismatch(address asset, uint8 signed, uint8 actual);
     error NotDue();
@@ -101,8 +107,11 @@ contract RecurringPurchaseExecutor is IRecurringPurchaseExecution, EIP712, Reent
     error OutputBelowLimit(address asset, uint256 received, uint256 minimum);
     error DeliveryMismatch(address asset);
 
-    constructor(address bagFactory_, address strategyRegistry_) EIP712('BagRecurringPurchase', '1') {
+    constructor(address bagFactory_, address strategyRegistry_, string memory chainLabel_) EIP712('BagRecurringPurchase', '1') {
         if (bagFactory_ == address(0)) revert ZeroAddress();
+        bytes memory label = bytes(chainLabel_);
+        if (label.length == 0 || label.length > 31 || !_isRowField(label)) revert InvalidChainLabel();
+        _chainLabel = ShortStrings.toShortString(chainLabel_);
         bagFactory = IBagFactoryRegistry(bagFactory_);
         strategyRegistry = IStrategyRegistryMatcher(strategyRegistry_);
     }
@@ -129,7 +138,7 @@ contract RecurringPurchaseExecutor is IRecurringPurchaseExecution, EIP712, Reent
         if (!SignatureChecker.isValidSignatureNow(a.owner, id, ownerSignature)) revert InvalidOwnerSignature();
         if (_state[a.owner][id].revoked) revert RevokedAuthorization(id);
         _checkTerms(a);
-        _checkRegistry(a.bag);
+        _checkRegistry(a);
     }
 
     function _purchase(Authorization calldata a, PurchaseExecution calldata x, bytes calldata fundingProof) private {
@@ -179,6 +188,17 @@ contract RecurringPurchaseExecutor is IRecurringPurchaseExecution, EIP712, Reent
         return _domainSeparatorV4();
     }
 
+    /// @notice The chain label used in composition rows.
+    function chainLabel() external view returns (string memory) {
+        return ShortStrings.toString(_chainLabel);
+    }
+
+    /// @notice keccak256 of the composition string rebuilt from `assets`, in the given order: the value
+    /// `execute` compares with the Bag's registered `compositionHash`.
+    function compositionHashOf(AssetLimit[] calldata assets) external view returns (bytes32) {
+        return _compositionHash(assets);
+    }
+
     /// @notice The exact per-asset input split (bag.json v1 largest-remainder rule, the SDK's `splitByWeight`).
     function legAmounts(uint256 amount, AssetLimit[] calldata assets) external pure returns (uint256[] memory) {
         return _legAmounts(amount, assets);
@@ -199,7 +219,7 @@ contract RecurringPurchaseExecutor is IRecurringPurchaseExecution, EIP712, Reent
         bytes32[] memory assetHashes = new bytes32[](a.assets.length);
         for (uint256 i = 0; i < a.assets.length; i++) {
             AssetLimit calldata l = a.assets[i];
-            assetHashes[i] = keccak256(abi.encode(ASSET_LIMIT_TYPEHASH, l.asset, l.weightBps, l.decimals, l.maxPriceRaw));
+            assetHashes[i] = keccak256(abi.encode(ASSET_LIMIT_TYPEHASH, l.asset, keccak256(bytes(l.symbol)), l.weightBps, l.decimals, l.maxPriceRaw));
         }
         bytes32[4] memory parts = [
             keccak256(abi.encode(BAG_REF_TYPEHASH, a.bag)),
@@ -230,7 +250,7 @@ contract RecurringPurchaseExecutor is IRecurringPurchaseExecution, EIP712, Reent
 
     /// @dev Static validity of the signed terms. Codes: 1 owner/source, 2 recipient,
     /// 3 funding, 4 schedule, 5 budget, 6 asset count, 7 asset, 8 weights, 9 price
-    /// limit, 10 duplicate asset, 11 route, 12 fee tier.
+    /// limit, 10 duplicate asset, 11 route, 12 fee tier, 13 missing BAG hash, 14 symbol.
     function _checkTerms(Authorization calldata a) private view {
         if (a.owner == address(0) || a.sourceAccount != a.owner) revert InvalidTerms(1);
         if (a.recipient == address(0) || a.recipient == address(this)) revert InvalidTerms(2);
@@ -255,6 +275,8 @@ contract RecurringPurchaseExecutor is IRecurringPurchaseExecution, EIP712, Reent
             if (l.weightBps == 0) revert InvalidTerms(8);
             if (l.maxPriceRaw == 0 || l.maxPriceRaw == type(uint256).max) revert InvalidTerms(9);
             for (uint256 j = 0; j < i; j++) if (a.assets[j].asset == l.asset) revert InvalidTerms(10);
+            bytes calldata symbol = bytes(l.symbol);
+            if (symbol.length == 0 || symbol.length > 64 || !_isRowField(symbol)) revert InvalidTerms(14);
             weights += l.weightBps;
         }
         if (weights != TOTAL_BPS) revert InvalidTerms(8);
@@ -268,18 +290,56 @@ contract RecurringPurchaseExecutor is IRecurringPurchaseExecution, EIP712, Reent
         }
     }
 
-    function _checkRegistry(BagRef calldata b) private view {
+    /// @dev The BAG named in the terms must exist, be at the signed version and composition, and the
+    /// signed asset list must BE that composition: its rows rebuilt here hash to the Bag's
+    /// registered `compositionHash`. Checking the signed hash and the signed list separately would
+    /// let a real BAG id travel with any token/weight list.
+    function _checkRegistry(Authorization calldata a) private view {
+        BagRef calldata b = a.bag;
         if (b.definitionHash == bytes32(0) || b.compositionHash == bytes32(0)) revert InvalidTerms(13);
         address bag = bagFactory.bagOf(b.bagId);
         if (bag == address(0)) revert UnknownBag(b.bagId);
         uint256 version = IBagVersioned(bag).version();
         bytes32 composition = IBagVersioned(bag).compositionHash();
         if (version != b.bagVersion || composition != b.compositionHash) revert BagChanged(version, composition);
+        bytes32 signedList = _compositionHash(a.assets);
+        if (signedList != composition) revert CompositionMismatch(signedList, composition);
         if (b.strategyId != bytes32(0)) {
             if (address(strategyRegistry) == address(0) || !strategyRegistry.matches(b.strategyId, b.strategyVersion, b.definitionHash)) {
                 revert StrategyNotRegistered(b.strategyId, b.strategyVersion);
             }
         }
+    }
+
+    /// @dev The BAG app's composition string (lib/domain/basket-protocol/version.ts): rows
+    /// `chain:address:symbol:decimals:weightBps` (lowercase hex address) joined by `|`. The order is
+    /// the caller's; only the registered order reproduces the registered hash. Symbols cannot contain
+    /// `:` or `|` (InvalidTerms 14), so a row list maps to exactly one string.
+    function _compositionHash(AssetLimit[] calldata assets) private view returns (bytes32) {
+        bytes memory chain = bytes(ShortStrings.toString(_chainLabel));
+        bytes memory s;
+        for (uint256 i = 0; i < assets.length; i++) {
+            AssetLimit calldata l = assets[i];
+            s = abi.encodePacked(
+                s,
+                i == 0 ? bytes('') : bytes('|'),
+                chain,
+                ':',
+                Strings.toHexString(l.asset),
+                ':',
+                l.symbol,
+                ':',
+                Strings.toString(l.decimals),
+                ':',
+                Strings.toString(l.weightBps)
+            );
+        }
+        return keccak256(s);
+    }
+
+    function _isRowField(bytes memory field) private pure returns (bool) {
+        for (uint256 i = 0; i < field.length; i++) if (field[i] == ':' || field[i] == '|') return false;
+        return true;
     }
 
     /// @dev Calendar window, run count and budget; the counters are updated here, before
