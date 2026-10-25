@@ -1,0 +1,7 @@
+99da9e9f048743f126b5797b85fb64208759ad1a5b8b024d4d919d495d4409c2  ./scripts/research/dca-trial/basket-wire.mjs
+f77ed80c3d85d916c0d5dd5ae3a62245052b05595ed6755d7794f570370f670a  ./scripts/research/dca-trial/fixtures/955df6e0-b6ea-44ba-a5eb-1288a80c0a06.bag.json
+bae76f3205486f1c22727c179882490027a084d262e73b9388ab09515203955e  ./scripts/research/dca-trial/fixtures/955df6e0-b6ea-44ba-a5eb-1288a80c0a06.probe-compiled.json
+c5afe32da1c75441e52bc281e372fc95d77617f22a63b834272b1f0493317d4a  ./scripts/research/dca-trial/fixtures/a3caff05-d606-486b-959f-30865a4cbfa7.bag.json
+245bec0c47022feeee3f93e7ccbf9e1b34c0e874dbda4bedd4fe976695459723  ./scripts/research/dca-trial/fixtures/a3caff05-d606-486b-959f-30865a4cbfa7.probe-compiled.json
+3943b3b139041203c571915f5071deec5ddbb62dd7c964f46cd62381dba43d3e  ./scripts/research/usdg-composer/settings.mjs
+9892b0b7eca0d46239faf5699584268a5b38cc4ba0cf109063e3c9a43dd4adfc  ./scripts/research/usdg-recurring/wire.mjs

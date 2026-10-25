@@ -1,0 +1,67 @@
+{
+  "status": "FAILED",
+  "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+  "transactionHash": "0x263c0b64276463e69dead2c16118d6ef667deda771a2f0f7f83283ba4ca1beff",
+  "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+  "spentInputRaw": "0",
+  "transactionBinding": "CALL_TRACE",
+  "chainId": 4663,
+  "blockNumber": "96966453",
+  "confirmations": "1",
+  "outputs": [
+    {
+      "token": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+      "receivedRaw": "53363009862666485",
+      "sentRaw": "53363009862666485",
+      "netReceivedRaw": "0",
+      "minimumRaw": "52773263578021479",
+      "satisfied": false,
+      "balanceBeforeRaw": "0",
+      "balanceAfterRaw": "0",
+      "balanceDeltaRaw": "0"
+    },
+    {
+      "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+      "receivedRaw": "825485490422115",
+      "sentRaw": "825485490422115",
+      "netReceivedRaw": "0",
+      "minimumRaw": "810155515299117",
+      "satisfied": false,
+      "balanceBeforeRaw": "0",
+      "balanceAfterRaw": "0",
+      "balanceDeltaRaw": "0"
+    },
+    {
+      "token": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+      "receivedRaw": "11402570002151936",
+      "sentRaw": "11402570002151936",
+      "netReceivedRaw": "0",
+      "minimumRaw": "11189011953857003",
+      "satisfied": false,
+      "balanceBeforeRaw": "0",
+      "balanceAfterRaw": "0",
+      "balanceDeltaRaw": "0"
+    },
+    {
+      "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+      "receivedRaw": "1429306247891267",
+      "sentRaw": "1429306247891267",
+      "netReceivedRaw": "0",
+      "minimumRaw": "1409377368282565",
+      "satisfied": false,
+      "balanceBeforeRaw": "0",
+      "balanceAfterRaw": "0",
+      "balanceDeltaRaw": "0"
+    }
+  ],
+  "kept": null,
+  "keptBalanceVerified": false,
+  "delivery": null,
+  "accounting": "NOT_BAG_ACCOUNTED",
+  "issues": [
+    {
+      "code": "INPUT_BALANCE_BELOW_PLAN",
+      "detail": "Pre-transaction input balance was below the planned deposit."
+    }
+  ]
+}

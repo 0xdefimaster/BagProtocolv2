@@ -1,0 +1,25 @@
+{
+  "name": "bag-dca-authorization-prototype",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "RESEARCH ONLY: DCA authorization models A (EOA + permit) and B (smart account + delegation) on an isolated Robinhood Chain fork.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "verify:bytecode": "node verify-bytecode.mjs",
+    "fork:mock": "node fork/run.mjs",
+    "composer:live": "node composer/run.mjs --mode live",
+    "composer:replay": "node composer/run.mjs --mode replay"
+  },
+  "dependencies": {
+    "@metamask/smart-accounts-kit": "2.0.0",
+    "hardhat": "3.14.0",
+    "solc": "0.8.23",
+    "viem": "2.56.0"
+  },
+  "devDependencies": {
+    "tsx": "4.23.15"
+  }
+}

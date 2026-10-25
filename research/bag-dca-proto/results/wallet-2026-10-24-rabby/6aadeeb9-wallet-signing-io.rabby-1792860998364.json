@@ -1,0 +1,367 @@
+{
+  "kind": "WALLET_SIGNING_RESULTS_NOT_FORK_RESULTS",
+  "page": "wallet/sign-test.html",
+  "exportedAt": "2026-10-24T16:56:38.363Z",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+  "results": [
+    {
+      "test": "W-PERMIT",
+      "wallet": {
+        "name": "Rabby Wallet",
+        "rdns": "io.rabby"
+      },
+      "account": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+      "chainId": "0x1237",
+      "requestedAt": "2026-10-24T16:38:51.653Z",
+      "typedData": {
+        "types": {
+          "EIP712Domain": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "type": "string"
+            },
+            {
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "name": "verifyingContract",
+              "type": "address"
+            }
+          ],
+          "Permit": [
+            {
+              "name": "owner",
+              "type": "address"
+            },
+            {
+              "name": "spender",
+              "type": "address"
+            },
+            {
+              "name": "value",
+              "type": "uint256"
+            },
+            {
+              "name": "nonce",
+              "type": "uint256"
+            },
+            {
+              "name": "deadline",
+              "type": "uint256"
+            }
+          ]
+        },
+        "primaryType": "Permit",
+        "domain": {
+          "name": "Global Dollar",
+          "version": "1",
+          "chainId": 4663,
+          "verifyingContract": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168"
+        },
+        "message": {
+          "owner": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+          "spender": "0x000000000000000000000000000000000000dEaD",
+          "value": "0",
+          "nonce": "0",
+          "deadline": "1"
+        }
+      },
+      "signature": "0x6046f45b199675f8285f3b202960fb70cc474cd4fc0d595b068af0d2bb59e4ab31feeb2215ec874eaacf0cdf9d4c77ad3b62596c7a985755480b967ed92031aa1c",
+      "outcome": "SIGNED",
+      "observations": {
+        "readable": true,
+        "warning": false,
+        "blocked": false,
+        "note": ""
+      }
+    },
+    {
+      "test": "W-DELEGATION-SA",
+      "wallet": {
+        "name": "Rabby Wallet",
+        "rdns": "io.rabby"
+      },
+      "account": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+      "chainId": "0x1237",
+      "requestedAt": "2026-10-24T16:43:27.215Z",
+      "typedData": {
+        "types": {
+          "EIP712Domain": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "type": "string"
+            },
+            {
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "name": "verifyingContract",
+              "type": "address"
+            }
+          ],
+          "Caveat": [
+            {
+              "name": "enforcer",
+              "type": "address"
+            },
+            {
+              "name": "terms",
+              "type": "bytes"
+            }
+          ],
+          "Delegation": [
+            {
+              "name": "delegate",
+              "type": "address"
+            },
+            {
+              "name": "delegator",
+              "type": "address"
+            },
+            {
+              "name": "authority",
+              "type": "bytes32"
+            },
+            {
+              "name": "caveats",
+              "type": "Caveat[]"
+            },
+            {
+              "name": "salt",
+              "type": "uint256"
+            }
+          ]
+        },
+        "primaryType": "Delegation",
+        "domain": {
+          "name": "DelegationManager",
+          "version": "1",
+          "chainId": 4663,
+          "verifyingContract": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3"
+        },
+        "message": {
+          "delegate": "0x000000000000000000000000000000000000dEaD",
+          "delegator": "0xcaFFeBB507C438b35F886cD24dB43E4d3FD2d0E8",
+          "authority": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "caveats": [
+            {
+              "enforcer": "0x1046bb45C8d673d4ea75321280DB34899413c069",
+              "terms": "0x0000000000000000000000000000000000000000000000000000000000000001"
+            }
+          ],
+          "salt": "40344326579868381513688173210300745969"
+        }
+      },
+      "signature": "0x0cc7d91a573f59ce327930e42906b1a0827af05b54ffd46cf91c3d4d941f759246e9c7f74c4c25c451eef9e2a508f174c4a26bd20a7347016fe8d8e8d30d96c41b",
+      "outcome": "SIGNED",
+      "observations": {
+        "readable": false,
+        "warning": false,
+        "blocked": false,
+        "note": ""
+      }
+    },
+    {
+      "test": "W-USEROP",
+      "wallet": {
+        "name": "Rabby Wallet",
+        "rdns": "io.rabby"
+      },
+      "account": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+      "chainId": "0x1237",
+      "requestedAt": "2026-10-24T16:46:41.077Z",
+      "typedData": {
+        "types": {
+          "EIP712Domain": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "type": "string"
+            },
+            {
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "name": "verifyingContract",
+              "type": "address"
+            }
+          ],
+          "PackedUserOperation": [
+            {
+              "name": "sender",
+              "type": "address"
+            },
+            {
+              "name": "nonce",
+              "type": "uint256"
+            },
+            {
+              "name": "initCode",
+              "type": "bytes"
+            },
+            {
+              "name": "callData",
+              "type": "bytes"
+            },
+            {
+              "name": "accountGasLimits",
+              "type": "bytes32"
+            },
+            {
+              "name": "preVerificationGas",
+              "type": "uint256"
+            },
+            {
+              "name": "gasFees",
+              "type": "bytes32"
+            },
+            {
+              "name": "paymasterAndData",
+              "type": "bytes"
+            },
+            {
+              "name": "entryPoint",
+              "type": "address"
+            }
+          ]
+        },
+        "primaryType": "PackedUserOperation",
+        "domain": {
+          "name": "MultiSigDeleGator",
+          "version": "1",
+          "chainId": 4663,
+          "verifyingContract": "0xcaFFeBB507C438b35F886cD24dB43E4d3FD2d0E8"
+        },
+        "message": {
+          "sender": "0xcaFFeBB507C438b35F886cD24dB43E4d3FD2d0E8",
+          "nonce": "57896044618658097711785492504343953926634992332820282019728792003956564819968",
+          "initCode": "0x",
+          "callData": "0x",
+          "accountGasLimits": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "preVerificationGas": "0",
+          "gasFees": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "paymasterAndData": "0x",
+          "entryPoint": "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
+        }
+      },
+      "signature": "0x8478bae75d0f26f82e8df978ccc5f4b56f1d185f996bc00992e8ea287e1296267bb5d35787f803fcf4ab49ef5f20708acb045e89cb3ee4768d19d7116cd4ef911c",
+      "outcome": "SIGNED",
+      "observations": {
+        "readable": false,
+        "warning": false,
+        "blocked": false,
+        "note": ""
+      }
+    },
+    {
+      "test": "W-USEROP",
+      "wallet": {
+        "name": "Rabby Wallet",
+        "rdns": "io.rabby"
+      },
+      "account": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+      "chainId": "0x1237",
+      "requestedAt": "2026-10-24T16:47:11.889Z",
+      "typedData": {
+        "types": {
+          "EIP712Domain": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "type": "string"
+            },
+            {
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "name": "verifyingContract",
+              "type": "address"
+            }
+          ],
+          "PackedUserOperation": [
+            {
+              "name": "sender",
+              "type": "address"
+            },
+            {
+              "name": "nonce",
+              "type": "uint256"
+            },
+            {
+              "name": "initCode",
+              "type": "bytes"
+            },
+            {
+              "name": "callData",
+              "type": "bytes"
+            },
+            {
+              "name": "accountGasLimits",
+              "type": "bytes32"
+            },
+            {
+              "name": "preVerificationGas",
+              "type": "uint256"
+            },
+            {
+              "name": "gasFees",
+              "type": "bytes32"
+            },
+            {
+              "name": "paymasterAndData",
+              "type": "bytes"
+            },
+            {
+              "name": "entryPoint",
+              "type": "address"
+            }
+          ]
+        },
+        "primaryType": "PackedUserOperation",
+        "domain": {
+          "name": "MultiSigDeleGator",
+          "version": "1",
+          "chainId": 4663,
+          "verifyingContract": "0xcaFFeBB507C438b35F886cD24dB43E4d3FD2d0E8"
+        },
+        "message": {
+          "sender": "0xcaFFeBB507C438b35F886cD24dB43E4d3FD2d0E8",
+          "nonce": "57896044618658097711785492504343953926634992332820282019728792003956564819968",
+          "initCode": "0x",
+          "callData": "0x",
+          "accountGasLimits": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "preVerificationGas": "0",
+          "gasFees": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "paymasterAndData": "0x",
+          "entryPoint": "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
+        }
+      },
+      "signature": "0x8478bae75d0f26f82e8df978ccc5f4b56f1d185f996bc00992e8ea287e1296267bb5d35787f803fcf4ab49ef5f20708acb045e89cb3ee4768d19d7116cd4ef911c",
+      "outcome": "SIGNED",
+      "observations": {
+        "readable": false,
+        "warning": false,
+        "blocked": false,
+        "note": ""
+      }
+    }
+  ]
+}

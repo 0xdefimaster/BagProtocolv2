@@ -1,0 +1,69 @@
+{
+  "scope": "SYNTHETIC_RECEIPT_FIXTURE_NOT_A_FORK_OR_MAINNET_EXPLOIT",
+  "sdkCommit": "3f85a4cf80e6d9cc4289d6d074fc7e000e0737ef",
+  "finding": "Independent exact-debit regression probe on the fixed SDK. Underfunding and net credits must be rejected.",
+  "implementationReference": "packages/bag-sdk/src/receipt.ts:435-441",
+  "policyDecision": "The fixed opt-in mode enforces exact swapped-share funding. The default mode remains a maximum-debit check.",
+  "cases": [
+    {
+      "name": "exact",
+      "plannedSwapRaw": "10000000",
+      "requestedFixtureDebitRaw": "10000000",
+      "observedStatus": "VERIFIED",
+      "spentInputRaw": "10000000",
+      "issues": []
+    },
+    {
+      "name": "half",
+      "plannedSwapRaw": "10000000",
+      "requestedFixtureDebitRaw": "5000000",
+      "observedStatus": "FAILED",
+      "spentInputRaw": "5000000",
+      "issues": [
+        {
+          "code": "INPUT_SPEND_BELOW_PLAN",
+          "detail": "Funding-source input debit is below the planned swap amount."
+        }
+      ]
+    },
+    {
+      "name": "zero",
+      "plannedSwapRaw": "10000000",
+      "requestedFixtureDebitRaw": "0",
+      "observedStatus": "FAILED",
+      "spentInputRaw": "0",
+      "issues": [
+        {
+          "code": "INPUT_SPEND_BELOW_PLAN",
+          "detail": "Funding-source input debit is below the planned swap amount."
+        }
+      ]
+    },
+    {
+      "name": "net-credit",
+      "plannedSwapRaw": "10000000",
+      "requestedFixtureDebitRaw": "-100",
+      "observedStatus": "FAILED",
+      "spentInputRaw": "-100",
+      "issues": [
+        {
+          "code": "INPUT_SPEND_BELOW_PLAN",
+          "detail": "Funding-source input debit is below the planned swap amount."
+        }
+      ]
+    },
+    {
+      "name": "excess",
+      "plannedSwapRaw": "10000000",
+      "requestedFixtureDebitRaw": "10000001",
+      "observedStatus": "FAILED",
+      "spentInputRaw": "10000001",
+      "issues": [
+        {
+          "code": "INPUT_SPEND_EXCEEDS_PLAN",
+          "detail": "Funding-source input debit exceeds the planned swap amount."
+        }
+      ]
+    }
+  ]
+}

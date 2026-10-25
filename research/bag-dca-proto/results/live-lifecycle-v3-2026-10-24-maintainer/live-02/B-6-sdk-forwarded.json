@@ -1,0 +1,68 @@
+{
+  "status": "VERIFIED",
+  "evidence": "TRANSACTION_AND_BALANCE_DELTAS",
+  "transactionHash": "0xdac78ce49c64b63dde8e2cc14e8084ef305553451ec46cfb73fe6edbf09cf37e",
+  "balanceScope": "SINGLE_TRANSACTION_BLOCK",
+  "spentInputRaw": "5000000",
+  "transactionBinding": "CALL_TRACE",
+  "chainId": 4663,
+  "blockNumber": "96971132",
+  "confirmations": "1",
+  "outputs": [
+    {
+      "token": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+      "receivedRaw": "53685762672957859",
+      "sentRaw": "0",
+      "netReceivedRaw": "53685762672957859",
+      "minimumRaw": "52773263578021479",
+      "satisfied": true,
+      "balanceBeforeRaw": "53844774592410448",
+      "balanceAfterRaw": "107530537265368307",
+      "balanceDeltaRaw": "53685762672957859"
+    },
+    {
+      "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+      "receivedRaw": "826231546505788",
+      "sentRaw": "0",
+      "netReceivedRaw": "826231546505788",
+      "minimumRaw": "810155515299117",
+      "satisfied": true,
+      "balanceBeforeRaw": "826604953881357",
+      "balanceAfterRaw": "1652836500387145",
+      "balanceDeltaRaw": "826231546505788"
+    },
+    {
+      "token": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+      "receivedRaw": "11367024920083469",
+      "sentRaw": "0",
+      "netReceivedRaw": "11367024920083469",
+      "minimumRaw": "11140896704721602",
+      "satisfied": true,
+      "balanceBeforeRaw": "11367102035222532",
+      "balanceAfterRaw": "22734126955306001",
+      "balanceDeltaRaw": "11367024920083469"
+    },
+    {
+      "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+      "receivedRaw": "1435169056593914",
+      "sentRaw": "0",
+      "netReceivedRaw": "1435169056593914",
+      "minimumRaw": "1409377368282565",
+      "satisfied": true,
+      "balanceBeforeRaw": "1437993437692650",
+      "balanceAfterRaw": "2873162494286564",
+      "balanceDeltaRaw": "1435169056593914"
+    }
+  ],
+  "kept": null,
+  "keptBalanceVerified": false,
+  "delivery": {
+    "caller": "0x2202b76832d479fE030943F8933E39Dae2E28084",
+    "fundingSource": "0xfB792077EA77946B2101cbd9326ED20458dfcB48",
+    "recipient": "0x8eBb04E30cD6925803507045BA550218d02E8Cd6",
+    "authorization": "ON_CHAIN_PLAN_READ",
+    "callerNetZero": true
+  },
+  "accounting": "NOT_BAG_ACCOUNTED",
+  "issues": []
+}
