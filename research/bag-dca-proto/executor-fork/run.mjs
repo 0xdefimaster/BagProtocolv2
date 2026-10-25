@@ -612,7 +612,7 @@ try {
           const [end] = await k.tick();
           const st = await read(EXECUTOR, EXEC_ABI, 'getState', [roles.owner, sdk.recurringAuthorizationId(auth7, DEP)]);
           report.keeperPriceSkip = { summaryPriceLimit: summary7.priceLimit, summaryDependencies: summary7.dependencies, moveSteps: steps, waiting: { state: waiting.state, detail: waiting.stateDetail, outlook: waiting.outlook }, end: { state: end.state, missed: end.missed, outlook: end.outlook } };
-          return { pass: first.confirmed.length === 1 && waiting.state === 'WAITING_PRICE' && /market price ~\d+ is above the FIXED max price \d+/.test(waiting.stateDetail ?? '') && noSend
+          return { pass: first.confirmed.length === 1 && waiting.state === 'WAITING_PRICE' && /FIXED max price \d+.*not made up later/.test(waiting.stateDetail ?? '') && noSend
               && end.state === 'EXPIRED' && end.missed.length === 1 && end.missed[0].reason === 'WAITING_PRICE' && end.outlook?.runsLeft === 1 && end.outlook?.unspendableRaw === GROSS && Number(st.executions) === 1
               && summary7.priceLimit.isSlippageProtection === false && summary7.priceLimit.catchUp === false,
             observed: `${steps} × 1000 USDG moved COIN; window 1: ${waiting.state} (${redact(waiting.stateDetail ?? '').slice(0, 160)}), no tx: ${noSend}; at expiry: ${end.state}, missed ${end.missed.map(m => m.window + ':' + m.reason).join(',')}, runs left ${end.outlook?.runsLeft}, unspendable ${end.outlook?.unspendableRaw} raw; chain executions ${st.executions}` };
