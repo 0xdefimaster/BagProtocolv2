@@ -1,0 +1,8 @@
+page-e2e connected 0x72750329D9AA5209686ec68E76b69fb82683C679
+page-e2e signed: İzin 1/2: 2 alım × 5 USDG = toplam 10 USDG (limit testi)
+page-e2e signed: İzin 2/2: 3 alım × 5 USDG = toplam 15 USDG (bütçe kalmışken iptal edilecek)
+page-e2e signed: İptal: D2 iznini kapat (bütçe kalmışken)
+page-e2e signed: Çekim: kalan 35 USDG sahibine
+page-e2e done: Bitti Bitti: bütün kontroller geçti. Rapor: /home/user/dca-close/research/bag-dca-proto/wallet-fork/out/2026-10-25T02-45-59-f8b1-wallet
+page-e2e typed data signed: Delegation, Delegation, PackedUserOperation, PackedUserOperation
+EXIT 0
