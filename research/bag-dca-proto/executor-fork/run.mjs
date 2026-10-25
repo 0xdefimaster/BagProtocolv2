@@ -156,7 +156,10 @@ try {
     const run = await buildRun(auth);
     const x = xOf(run, await signPlan(run.plan));
     const t = await sendExecute(auth, x, ownerSignature, fundingProof);
-    if (t.status !== 'success') return { pass: false, observed: 'execute failed: ' + json(t.simulated) };
+    if (t.status !== 'success') {
+      if (t.sendError && PRUNED_RE.test(json(t.sendError))) throw Object.assign(new Error('PRUNED_STATE during execute'), { external: true });
+      return { pass: false, observed: `execute failed: simulation ${json(t.simulated)}, send ${json(t.sendError ?? null)}` };
+    }
     const intent = { execution: x, ownerSignature, fundingProof };
     intents.set(t.hash, intent);
     const verify = await sdk.verifyRecurringPurchase({ client: evidence, transactionHash: t.hash, auth, deployment: DEP, intent });
