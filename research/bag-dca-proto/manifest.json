@@ -1,0 +1,1150 @@
+{
+  "schema": "bag-dca-closing-manifest/v1",
+  "generatedAt": "2026-10-25T02:59:54.839Z",
+  "secrets": "none: no API key, RPC credential, private key or usable user signature (signatures appear only as sha256; the generator checks)",
+  "repository": {
+    "remote": "https://github.com/0xdefimaster/bagprotocolv2",
+    "branch": "claude/dca-wallet-fork-research",
+    "head": "843f5609059048f84b0c984d0848d92768f94663",
+    "package": "research/bag-dca-proto",
+    "evidenceCodeCommit": "746d456",
+    "codeFilesChangedSinceEvidenceCommit": [
+      "tools/manifest.mjs",
+      "wallet-fork/page-e2e.mjs"
+    ],
+    "dirty": [],
+    "appCodeTouchedVsMain": []
+  },
+  "baseline": {
+    "verifiedAt": "2026-10-25",
+    "method": "git ls-remote origin main; GitHub REST pulls/{n} head.sha, draft, merged_at",
+    "main": "82b3b2926da467e3530eba0c9f6c38452d8511ab",
+    "pr125_fixture": {
+      "head": "e6bdd1057f4cb68d492e2c503736d7e30d24b0c0",
+      "draft": true,
+      "merged": false
+    },
+    "pr126_sdk_forwarded": {
+      "head": "3f85a4cf80e6d9cc4289d6d074fc7e000e0737ef",
+      "draft": true,
+      "merged": false
+    },
+    "pr127_sdk_negative_impact": {
+      "head": "616f49fc9d14c816809777608b17176af26dc8e0",
+      "draft": true,
+      "merged": false
+    },
+    "integration_126_127": "dadef000f9679cad9dbd2e13ce40b14a4310274e",
+    "v5ZipSha256": "21269784d4cb086208e8b6660887f5d7e13caca24a226dc92d1fc2380a37f821"
+  },
+  "sdk": {
+    "path": "<integration worktree>/packages/bag-sdk",
+    "commit": "dadef000f9679cad9dbd2e13ce40b14a4310274e",
+    "trackedChanges": false,
+    "distSha256": "7816c205bfc5fea7691349af2ea22993187fc5ce133cae149d5ca6eb1ae8e33d",
+    "receiptJsSha256": "d5fc5879cac6aa1270d11153586e09c5a3c4ac003cc49d88e6c6fe71cf19d7e7",
+    "defaultVerifyPurchaseReceiptChangedInThisDelivery": false
+  },
+  "app": {
+    "path": "<BagProtocolv2 checkout>",
+    "commit": "82b3b2926da467e3530eba0c9f6c38452d8511ab",
+    "trackedChanges": false,
+    "files": {
+      "contracts/BagExecutionRouter.sol": "d39b6cbb41755885f25964452b7c29e6dbe2e0d2b4fd1314a36113e1cd5df210",
+      "lib/execution/plan.ts": "770e43af6019223da799eaa88c001fc227248a75530573c0a92fea4e79daa785",
+      "lib/domain/basket-protocol/deposit/allocation.ts": "88a754659e81278a0c26055002a84139b4e65a4c538ca4d8f3e3647eafa725de",
+      "lib/domain/basket-protocol/deposit/execution-plan.ts": "7ad91b09421320427c413591fb8bd105b34dbd5b6a41295646e19e534ebe5fac"
+    },
+    "solc": "0.8.24",
+    "typescript": "5.9.3"
+  },
+  "tools": {
+    "nodeUsedForEvidence": "v24.22.0 (official linux-x64 tarball, sha256 cc2f601cee82d9a5a233302fe307abc600727035fd7d2c3a3571755989e95008); development runs also on v22.22.0",
+    "manifestGeneratorNode": "v22.22.0",
+    "packageLockSha256": "c346c77d1cbae450c46c72bfc65036d6f2d03ed350d0e9ee7bbdeb9db378d0b3",
+    "pinned": {
+      "hardhat": "3.14.0",
+      "viem": "2.56.0",
+      "solc": "0.8.23",
+      "tsx": "4.23.15",
+      "@metamask/smart-accounts-kit": "2.0.0"
+    },
+    "playwright": "container-provided 1.63.0 (not in package-lock); used only by wallet-fork/page-e2e.mjs"
+  },
+  "network": {
+    "chainId": 4663,
+    "rpc": "public https://rpc.mainnet.chain.robinhood.com (non-archive: state ~500k blocks old is pruned)",
+    "usdg": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+    "pins": {
+      "chainId": 4663,
+      "pinnedAtBlock": "97232427",
+      "pinnedAtBlockHash": "0x2d488e8b6fb80f573df93377cb1e41399d9dd51d067f14011ec002474de2dbd1",
+      "delegationFramework": "v1.3.0",
+      "contracts": {
+        "DelegationManager": {
+          "address": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3",
+          "codeHash": "0xe45747f90ecec2ba96ae9f4a15c36289653efdfef7690bcfb90a1945bb0fe207",
+          "bytes": 11503,
+          "sourceVerifiedV130": true
+        },
+        "MultiSigDeleGatorImpl": {
+          "address": "0x56a9EdB16a0105eb5a4C54f4C062e2868844f3A7",
+          "codeHash": "0xeac446c6d463a040ab5dcd42b0c4eb28b335452781621c40e84d3534790b35c6",
+          "bytes": 16949,
+          "sourceVerifiedV130": true
+        },
+        "ERC20PeriodTransferEnforcer": {
+          "address": "0x474e3Ae7E169e940607cC624Da8A15Eb120139aB",
+          "codeHash": "0xd9a721435a13aaa562f7e6c7f7d062170a725ffdb7dd7c1e30798194ee9e186c",
+          "bytes": 3346,
+          "sourceVerifiedV130": true
+        },
+        "ERC20TransferAmountEnforcer": {
+          "address": "0xf100b0819427117EcF76Ed94B358B1A5b5C6D2Fc",
+          "codeHash": "0xa9104d82ccfcdb251f90da0f1b49f36432d574925f72ed4cb97bec5b3a94cd54",
+          "bytes": 2078,
+          "sourceVerifiedV130": true
+        },
+        "LimitedCallsEnforcer": {
+          "address": "0x04658B29F6b82ed55274221a06Fc97D318E25416",
+          "codeHash": "0x3a07a1b31d8f8f29cde4260f88fc5011e003e4bdbd519c8274fc7092d2356468",
+          "bytes": 1257,
+          "sourceVerifiedV130": true
+        },
+        "TimestampEnforcer": {
+          "address": "0x1046bb45C8d673d4ea75321280DB34899413c069",
+          "codeHash": "0x1da353833766081398664c131a50988f6f7190d6a1a974f497607b974705900c",
+          "bytes": 1255,
+          "sourceVerifiedV130": true
+        },
+        "RedeemerEnforcer": {
+          "address": "0xE144b0b2618071B4E56f746313528a669c7E65c5",
+          "codeHash": "0x0acea3889e6bab48774ee99ed9ada1b91875bde5a15976330063e91998e84228",
+          "bytes": 1611,
+          "sourceVerifiedV130": true
+        },
+        "AllowedCalldataEnforcer": {
+          "address": "0xc2b0d624c1c4319760C96503BA27C347F3260f55",
+          "codeHash": "0x26a87ea53c698e47fbea2566d50d18964062d0c74bd0baebc60316393461bf84",
+          "bytes": 1756,
+          "sourceVerifiedV130": true
+        },
+        "EntryPointV07": {
+          "address": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+          "codeHash": "0x8db5ff695839d655407cc8490bb7a5d82337a86a6b39c3f0258aa6c3b582fc58",
+          "bytes": 16035,
+          "sourceVerifiedV130": false
+        },
+        "SimpleFactory": {
+          "address": "0x69Aa2f9fe1572F1B640E1bbc512f5c3a734fc77c",
+          "codeHash": "0x82c94f0735e1e8ea2ffc1df4186cf5d3e28877459f9ff330289b99ea851e5ae9",
+          "bytes": 751,
+          "sourceVerifiedV130": false
+        }
+      }
+    }
+  },
+  "deployments": {
+    "publicNetwork": "none",
+    "forkOnly": "see evidence[].forks[].changes (setCode/setBalance/impersonation) and the fork-local deployments named in each report"
+  },
+  "sources": {
+    ".gitignore": "bc3cadbd2bc255a00339725df46b534d1cccc73bce060137a80ed48cf8b3d595",
+    "DCA_AUTHORIZATION_SPEC.md": "f81d2ef7e647be17eab89c87284f95eaaca8272176f4c84036ebe59d76a934ab",
+    "DECISIONS.md": "b90577dee745a8b5a2772810ebb86117dc73fddbbc6fb7dbc00ca7254b6bfd03",
+    "DECISION_AB.md": "ce8fd4777d97c662f2e8a4a3373b32c4c9ae395a4c8ff294d552333efa0ad0c7",
+    "LIFI_QUESTION.md": "f932cc73c761abb18efa68682143fb155c93479cdd7a935f5e6ed62236d496ba",
+    "README.md": "adfc738c0f955eba8029a3ed7f83496eded69c0544225403c6492b053c334321",
+    "README_START_HERE.md": "1d1076e2961d85b51f7d4df1fe9cf055935eb7945f9c3c750ab8d06b7ab468c3",
+    "REPORT.md": "df71de2ff4649ce6bbecbe3e4ca89f98367ca59ce7d34fc379c412e0ab83d796",
+    "RESULTS.md": "495b55744d6eede8f2611d26ed1f0f04fe529342b1230a1a8fe8fb0577cbdb0e",
+    "RUN_LIVE.md": "c4a5105935a6ffd591a0654539ddfb9eb940a0725119ff0feb4155169496d1b4",
+    "SOURCES.md": "817bedc0b71dbfc0059be71589cc941291fc213bd9d0e6792684926165cb97f8",
+    "STATUS.md": "4aaca86602bb4fe5b76634263c7dc57633706355993236dc2aa16ba02635d103",
+    "WALLET_FORK_DESIGN.md": "3aaeb07889cdf8726d42c917c95934bf6f93bb6e43b65af35859fabb3e68ecbe",
+    "composer/analyze-signer-dependence.mjs": "5a424e8bc164430cb5a521254001ab2e606932b0aadde65e96933bed60b973fd",
+    "composer/contracts/DcaComposerPlan.sol": "bd8aa5ce2ef65c4663231004be2d66ffa84ed2becec943191b986da27f66b137",
+    "composer/contracts/ForkOnlyPaymaster.sol": "38bff7c7bffabe2ea6f668ba336520b85878963ffbc5997068d24d7cb8cfc8e7",
+    "composer/contracts/LocalArbSysRead.sol": "eac425f214fa1b28fe160bd3ff082c46c233d4fcfda8118a8a6fd2f2febef0d6",
+    "composer/run.mjs": "95c68fef42db3ffd21293ef662231c68aecb2924497a611f5214fc9f52d22eb2",
+    "fork/contracts/DcaPlan.sol": "3f16396ef028841c272358518194b2ad627fd2c783af0416c764811a39c08a97",
+    "fork/contracts/Mocks.sol": "696df521eedeef89a7b022343cfbeb23697518d5f7c780edf5ff8ae47194d7f7",
+    "fork/run.mjs": "d2e3db358c29d37e539e202f70741f6eff8506cfbb02f2c0f39d932fffb17b76",
+    "lib/composer-plan.mjs": "bd0218faa881c722241468f7381e110a3ab4200dd993f95dc9a30bd4f8154dd2",
+    "lib/dca-rules.mjs": "08518bc830f8778bea045cbe66ef2008811dc5618ee5f98758aa4de273d868a4",
+    "lib/fork-env.mjs": "0777a1f3bace076e92c6a5cda8467f18416a4797b36b9f7ae32f508bbadd736d",
+    "lib/pins.json": "48413390be7162080a821cd5b1d190248dac59dbae58a7946a960267f2dd3c0f",
+    "lib/price-gate.mjs": "caacff4e074ce0b4e92fa91a29068b768a78622c261137ae66e2f8996d1960ad",
+    "lib/router-dca-gate.mjs": "a58a61adedda80b952c366eceacebf284a557596ad68383001d44223dd1c208f",
+    "lib/sign-checks.mjs": "447fe4e7b132c2bc14723de32062c6bdea96378dbcdab4d26178c853a30b1ba4",
+    "lib/typed-data.mjs": "83a31abf809a31eb31a7f8f51c783f729158cde9a932b996fe043e8a62ace396",
+    "metamask/ISSUE_REPORT.md": "d8d44fea2126054f57461ffe11cd9e51d76a44033b7c311c05a7f4467a22bddd",
+    "package-lock.json": "c346c77d1cbae450c46c72bfc65036d6f2d03ed350d0e9ee7bbdeb9db378d0b3",
+    "package.json": "d6673e3aeeb31872bbc72e4e57740ed3f5e463a3ad48ebf0df1c53b169d559e7",
+    "shadow/README.md": "72318d1ee508a9b56d5139c6c6ab971ffc9e53ec0a84e81c756598061abbd754",
+    "shadow/RESULTS-2026-10-24.md": "0163949fd6a526904eeb125fb66cddc0c2d1c8a1f339e92b3db102ed4a970794",
+    "shadow/RESULTS-2026-10-25.md": "3379353d8bd552f9c7b45bd1705eae2f3744a2dfdd9f6a4c9d358728cf96b51b",
+    "shadow/contracts/ShadowAdapters.sol": "544f53df8fdce20c5c797fd22851fe72e2e9372510bc67e5622bc1bc440df536",
+    "shadow/contracts/test/AdapterMocks.sol": "0da227ea9255bf51a30a0fb31e43ac51835b33346816f6fbaad74f3fc9b5bd5a",
+    "shadow/measure.ts": "2d32a83e19ed5590425c2c31c24f0aac4e3c6d2b9bf6a28696e056e43df0cd40",
+    "start.cmd": "55aae63f078ede9db57a8a57e2b30d8937a08954573e035925833ff2396c0069",
+    "start.mjs": "c4adf1409aaa89d9314c2ded1159ccc1ef246b5b1cc4caa74ff2a15a9feaeb20",
+    "test/dca-rules.test.mjs": "d35ca11abf76fb28edee6def00b8580036bddf31d7957080761cc7ccfa3dd4b7",
+    "test/price-gate.test.mjs": "b56dbb89486853ef71be5b4d82688b28bfa62967bd2c95a4cc95b2b3f47bf8db",
+    "test/router-dca-gate.test.mjs": "c4b3b8abe82f53574534b1c6e68e6025ef7ee75e2465543ac8c6248d108529db",
+    "test/server.test.mjs": "9f426cc42dbc35cadc333df5853501f8accadbadab4a580062308e64756fc7fc",
+    "test/shadow-adapter.test.mjs": "13100763a121f3d19dab43962dddc6132911186c6c6bd829b80dfe039a2703a4",
+    "tools/manifest.mjs": "0ff2f353ccec6abc3ae66fe18251c0e8a2e0f291f3e6de7c5b56d0278f5157b0",
+    "tools/pin-bytecode.mjs": "4b5351b5b7c874f68f668897170d1711a481da52860c738bc7faa0cd230f8a34",
+    "vendor/e6bdd10/PROVENANCE.txt": "8b1e5c8a278e75289420af9122f170874fd50836406e0121f7e731ef8337b948",
+    "vendor/e6bdd10/SHA256SUMS": "bfb1358003d4c23ec1b0e189796f4f59523b976acb6a2d86a4a10233ae102cd7",
+    "vendor/e6bdd10/scripts/research/dca-trial/basket-wire.mjs": "99da9e9f048743f126b5797b85fb64208759ad1a5b8b024d4d919d495d4409c2",
+    "vendor/e6bdd10/scripts/research/dca-trial/fixtures/955df6e0-b6ea-44ba-a5eb-1288a80c0a06.bag.json": "f77ed80c3d85d916c0d5dd5ae3a62245052b05595ed6755d7794f570370f670a",
+    "vendor/e6bdd10/scripts/research/dca-trial/fixtures/955df6e0-b6ea-44ba-a5eb-1288a80c0a06.probe-compiled.json": "bae76f3205486f1c22727c179882490027a084d262e73b9388ab09515203955e",
+    "vendor/e6bdd10/scripts/research/dca-trial/fixtures/a3caff05-d606-486b-959f-30865a4cbfa7.bag.json": "c5afe32da1c75441e52bc281e372fc95d77617f22a63b834272b1f0493317d4a",
+    "vendor/e6bdd10/scripts/research/dca-trial/fixtures/a3caff05-d606-486b-959f-30865a4cbfa7.probe-compiled.json": "245bec0c47022feeee3f93e7ccbf9e1b34c0e874dbda4bedd4fe976695459723",
+    "vendor/e6bdd10/scripts/research/usdg-composer/settings.mjs": "3943b3b139041203c571915f5071deec5ddbb62dd7c964f46cd62381dba43d3e",
+    "vendor/e6bdd10/scripts/research/usdg-recurring/wire.mjs": "9892b0b7eca0d46239faf5699584268a5b38cc4ba0cf109063e3c9a43dd4adfc",
+    "verify-bytecode.mjs": "df392881e1a392dbe8a2738980dee23d6cf044a2fa77e07235fb0872dcb1f094",
+    "wallet-fork/fake-wallet.mjs": "a074d84431b3916784b8bc2611ac89118d7e32749e65ac9ab380e7bc6db734b0",
+    "wallet-fork/page-e2e.mjs": "0e51e139fc02d84469ac2743394d385ee44c0afb398fdf47e4e903b8b0bcccd0",
+    "wallet-fork/page/index.html": "1eb11e92532fedf6515c1728af03b3f2bf48671f50667deab5d29e20586d511c",
+    "wallet-fork/page/page.js": "29adbd65d5c2fc699f97db96923ea8a187c1cb8f5d7d1856fc32d55a2e590eee",
+    "wallet-fork/page/style.css": "9b55d03b39662c1122717f7623775bde13e0c5871bd8deeade566fdd0e8fc71a",
+    "wallet-fork/run.mjs": "6cba0545e4db354d87604df2a0574b892c22f19a732ac5e09506d0ba1a403801",
+    "wallet-fork/server.mjs": "2467eb0e82afe7c5f08f0f4d3a4c33a188f2a0d9aeee704126ac55e6a1e7c62f",
+    "wallet/print-account.mjs": "95c27d699b11c3e52655c2f741ca4f689b5e488e3d57a28815b024188a8c2f30",
+    "wallet/serve.mjs": "c996cc1f4e5718d41edf5cab20397c6ac6b72cc80da3de98f94ebbcd93141cca",
+    "wallet/sign-test.html": "fd55335b6c2126404528b46617d3fb312d76701354ba8d7a999f51c2f8b66719"
+  },
+  "evidence": [
+    {
+      "path": "results/closing-2026-10-25/shadow/results.json",
+      "sha256": "a59561baaa341989b8c477e998f3e98d262e516a8ca9752efbefd5b0b59677b9",
+      "schema": "bag-shadow-measure/v2",
+      "class": "FORK_DIRECT_EXECUTION (on-chain sources, existing router)",
+      "exit": {
+        "code": 0,
+        "status": "COMPLETE"
+      },
+      "blockMode": {
+        "mode": "per-unit",
+        "archive": {
+          "archive": false,
+          "probedBlock": "96754496",
+          "reason": "PRUNED_STATE"
+        },
+        "label": "NON_ARCHIVE_PER_UNIT",
+        "note": "non-archive RPC: one fresh fork per leg and per basket. Sources and amounts for one leg share a block; different legs and the basket do NOT. Cross-leg sums are not same-block evidence."
+      },
+      "startedAt": "2026-10-25T02:42:18.900Z",
+      "finishedAt": "2026-10-25T02:45:52.098Z",
+      "forks": [
+        {
+          "label": "leg GME",
+          "blockNumber": "97254498",
+          "blockHash": "0x6cf992fa41c9d442a4b3f2e4a290f59bfad105a1b63d999ae22c81b4bd7ae4a4",
+          "localTransactions": 48,
+          "changes": [
+            {
+              "kind": "ARBSYS",
+              "method": "hardhat_setCode",
+              "target": "0x0000000000000000000000000000000000000064",
+              "note": "ArbSys read emulation (Arbitrum precompile is not in EDR)",
+              "at": 0
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x70a911e3Cfb0Da495ab576e6E3Aa0a0dE3f7a085",
+              "note": "fork-only gas for local test accounts",
+              "at": 1
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x1bf562a7B52eA520DE525dD1D775B4562a7F2aF2",
+              "note": "fork-only gas for local test accounts",
+              "at": 2
+            },
+            {
+              "kind": "IMPERSONATE",
+              "method": "hardhat_impersonateAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "USDG for the taker from a real holder balance (fork only)",
+              "at": 3
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "gas for the impersonated holder",
+              "at": 4
+            },
+            {
+              "kind": "IMPERSONATE",
+              "method": "hardhat_stopImpersonatingAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "",
+              "at": 5
+            }
+          ]
+        },
+        {
+          "label": "leg ASML",
+          "blockNumber": "97255084",
+          "blockHash": "0x606a1ddeb780b3f5c109397c3031a3827070232f1235aaaef07e9e41f2905277",
+          "localTransactions": 44,
+          "changes": [
+            {
+              "kind": "ARBSYS",
+              "method": "hardhat_setCode",
+              "target": "0x0000000000000000000000000000000000000064",
+              "note": "ArbSys read emulation (Arbitrum precompile is not in EDR)",
+              "at": 0
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x70a911e3Cfb0Da495ab576e6E3Aa0a0dE3f7a085",
+              "note": "fork-only gas for local test accounts",
+              "at": 1
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x1bf562a7B52eA520DE525dD1D775B4562a7F2aF2",
+              "note": "fork-only gas for local test accounts",
+              "at": 2
+            },
+            {
+              "kind": "IMPERSONATE",
+              "method": "hardhat_impersonateAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "USDG for the taker from a real holder balance (fork only)",
+              "at": 3
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "gas for the impersonated holder",
+              "at": 4
+            },
+            {
+              "kind": "IMPERSONATE",
+              "method": "hardhat_stopImpersonatingAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "",
+              "at": 5
+            }
+          ]
+        },
+        {
+          "label": "leg COIN",
+          "blockNumber": "97255319",
+          "blockHash": "0x94e9cf100c61e29347624eb22dce94303411cf8d0df641740a415adc168b4a70",
+          "localTransactions": 36,
+          "changes": [
+            {
+              "kind": "ARBSYS",
+              "method": "hardhat_setCode",
+              "target": "0x0000000000000000000000000000000000000064",
+              "note": "ArbSys read emulation (Arbitrum precompile is not in EDR)",
+              "at": 0
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x70a911e3Cfb0Da495ab576e6E3Aa0a0dE3f7a085",
+              "note": "fork-only gas for local test accounts",
+              "at": 1
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x1bf562a7B52eA520DE525dD1D775B4562a7F2aF2",
+              "note": "fork-only gas for local test accounts",
+              "at": 2
+            },
+            {
+              "kind": "IMPERSONATE",
+              "method": "hardhat_impersonateAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "USDG for the taker from a real holder balance (fork only)",
+              "at": 3
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "gas for the impersonated holder",
+              "at": 4
+            },
+            {
+              "kind": "IMPERSONATE",
+              "method": "hardhat_stopImpersonatingAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "",
+              "at": 5
+            }
+          ]
+        },
+        {
+          "label": "leg AAPL",
+          "blockNumber": "97255591",
+          "blockHash": "0xc52b53aa6420bae8f820e375526d3c8516e577e05486834eb21bcd8b8c1e6ebd",
+          "localTransactions": 48,
+          "changes": [
+            {
+              "kind": "ARBSYS",
+              "method": "hardhat_setCode",
+              "target": "0x0000000000000000000000000000000000000064",
+              "note": "ArbSys read emulation (Arbitrum precompile is not in EDR)",
+              "at": 0
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x70a911e3Cfb0Da495ab576e6E3Aa0a0dE3f7a085",
+              "note": "fork-only gas for local test accounts",
+              "at": 1
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x1bf562a7B52eA520DE525dD1D775B4562a7F2aF2",
+              "note": "fork-only gas for local test accounts",
+              "at": 2
+            },
+            {
+              "kind": "IMPERSONATE",
+              "method": "hardhat_impersonateAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "USDG for the taker from a real holder balance (fork only)",
+              "at": 3
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "gas for the impersonated holder",
+              "at": 4
+            },
+            {
+              "kind": "IMPERSONATE",
+              "method": "hardhat_stopImpersonatingAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "",
+              "at": 5
+            }
+          ]
+        },
+        {
+          "label": "basket 5 USDG",
+          "blockNumber": "97256110",
+          "blockHash": "0x0bf08aa7e7f772a1a68daab3646d6d60d047becda6d80539cd02ae8c8ffe3e39",
+          "localTransactions": 23,
+          "changes": [
+            {
+              "kind": "ARBSYS",
+              "method": "hardhat_setCode",
+              "target": "0x0000000000000000000000000000000000000064",
+              "note": "ArbSys read emulation (Arbitrum precompile is not in EDR)",
+              "at": 0
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x70a911e3Cfb0Da495ab576e6E3Aa0a0dE3f7a085",
+              "note": "fork-only gas for local test accounts",
+              "at": 1
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x1bf562a7B52eA520DE525dD1D775B4562a7F2aF2",
+              "note": "fork-only gas for local test accounts",
+              "at": 2
+            },
+            {
+              "kind": "IMPERSONATE",
+              "method": "hardhat_impersonateAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "USDG for the taker from a real holder balance (fork only)",
+              "at": 3
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "gas for the impersonated holder",
+              "at": 4
+            },
+            {
+              "kind": "IMPERSONATE",
+              "method": "hardhat_stopImpersonatingAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "",
+              "at": 5
+            }
+          ]
+        },
+        {
+          "label": "basket 100 USDG",
+          "blockNumber": "97256304",
+          "blockHash": "0x44a3990bda983354d8dd5ae14f916990929a89420188d97339b5dbfee79ba120",
+          "localTransactions": 23,
+          "changes": [
+            {
+              "kind": "ARBSYS",
+              "method": "hardhat_setCode",
+              "target": "0x0000000000000000000000000000000000000064",
+              "note": "ArbSys read emulation (Arbitrum precompile is not in EDR)",
+              "at": 0
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x70a911e3Cfb0Da495ab576e6E3Aa0a0dE3f7a085",
+              "note": "fork-only gas for local test accounts",
+              "at": 1
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x1bf562a7B52eA520DE525dD1D775B4562a7F2aF2",
+              "note": "fork-only gas for local test accounts",
+              "at": 2
+            },
+            {
+              "kind": "IMPERSONATE",
+              "method": "hardhat_impersonateAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "USDG for the taker from a real holder balance (fork only)",
+              "at": 3
+            },
+            {
+              "kind": "GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "gas for the impersonated holder",
+              "at": 4
+            },
+            {
+              "kind": "IMPERSONATE",
+              "method": "hardhat_stopImpersonatingAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "",
+              "at": 5
+            }
+          ]
+        }
+      ],
+      "relay": {
+        "allowlist": [
+          "eth_chainId",
+          "net_version",
+          "eth_blockNumber",
+          "eth_getBlockByNumber",
+          "eth_getBlockByHash",
+          "eth_getCode",
+          "eth_getStorageAt",
+          "eth_getBalance",
+          "eth_getTransactionCount",
+          "eth_call",
+          "eth_getLogs",
+          "eth_getTransactionByHash",
+          "eth_getTransactionReceipt",
+          "eth_getProof"
+        ],
+        "forwardedRequests": 3885,
+        "forwardedByMethod": {
+          "eth_getBlockByNumber": 25,
+          "eth_getBalance": 631,
+          "eth_call": 1,
+          "eth_chainId": 6,
+          "eth_blockNumber": 280,
+          "net_version": 1,
+          "eth_getCode": 630,
+          "eth_getTransactionCount": 630,
+          "eth_getStorageAt": 1601,
+          "eth_getLogs": 80
+        },
+        "refusedRequests": 0,
+        "refusedMethods": {},
+        "retries": 22,
+        "upstreamErrors": {
+          "429": 22
+        },
+        "failures": 0,
+        "selfTest": {
+          "singleWriteRefused": true,
+          "batchWithWriteRefused": true
+        }
+      },
+      "sourceHashes": {
+        "measure.ts": "2d32a83e19ed5590425c2c31c24f0aac4e3c6d2b9bf6a28696e056e43df0cd40",
+        "ShadowAdapters.sol": "544f53df8fdce20c5c797fd22851fe72e2e9372510bc67e5622bc1bc440df536",
+        "lib/price-gate.mjs": "caacff4e074ce0b4e92fa91a29068b768a78622c261137ae66e2f8996d1960ad",
+        "lib/router-dca-gate.mjs": "a58a61adedda80b952c366eceacebf284a557596ad68383001d44223dd1c208f",
+        "BagExecutionRouter.sol (app)": "d39b6cbb41755885f25964452b7c29e6dbe2e0d2b4fd1314a36113e1cd5df210"
+      },
+      "statusCounts": {
+        "NO_LIQUIDITY": 8,
+        "OK": 38,
+        "PARTIAL_FILL": 4,
+        "NO_POOL": 6,
+        "NOT_RUN": 2,
+        "EXECUTED": 2
+      },
+      "routerDca": {
+        "status": "BLOCKED",
+        "closed": [
+          "PRICE_POLICY",
+          "SAME_BLOCK_EVIDENCE",
+          "PLAN_SIGNER_TRUST",
+          "ROUTER_PLAN_CONTRACT",
+          "BAG_REGISTRY",
+          "V4_ADAPTER"
+        ]
+      },
+      "baskets": [
+        {
+          "amountUsdg": "5",
+          "status": "EXECUTED",
+          "stage": "RECEIPT_VERIFIED",
+          "txHash": "0xe54dc584b0f423a4eceff712ee53942c65911aa233facab6da1fe2d596b24669",
+          "gate": "PRICE_POLICY_UNPROVEN"
+        },
+        {
+          "amountUsdg": "100",
+          "status": "EXECUTED",
+          "stage": "RECEIPT_VERIFIED",
+          "txHash": "0x263de62771067dd83466e3491791fb705bd50ff206a1c0efe68aa2459f089082",
+          "gate": "PRICE_POLICY_UNPROVEN"
+        }
+      ],
+      "sourceHashesMatchHead": {
+        "measure.ts": true,
+        "ShadowAdapters.sol": true,
+        "lib/price-gate.mjs": true,
+        "lib/router-dca-gate.mjs": true,
+        "BagExecutionRouter.sol (app)": true
+      }
+    },
+    {
+      "path": "results/closing-2026-10-25/wallet-fork-page/results.json",
+      "sha256": "e168583d5cf81e079229d4d63cb93b6daca5315561c9ed5084b82795e4b68e4f",
+      "schema": "bag-dca-wallet-fork/v1",
+      "class": {
+        "signatures": "TEST_KEY_VIA_SIGNING_PAGE",
+        "program": "RECORDED_COMPOSER_REPLAY"
+      },
+      "signer": "wallet",
+      "mode": "replay",
+      "walletClient": {
+        "name": "BAG test provider (local TEST key) (local.bag.test-key)",
+        "automated": true
+      },
+      "status": "PASSED",
+      "summary": {
+        "pass": 30,
+        "fail": 0,
+        "purchases": 3,
+        "userOps": 2
+      },
+      "startedAt": "2026-10-25T02:46:01.683Z",
+      "finishedAt": "2026-10-25T02:49:12.774Z",
+      "forks": [
+        {
+          "label": "prepare",
+          "block": {
+            "number": "97257522",
+            "hash": "0xf0adc48ab2183566ce247e61cdae3ffad427a9c2c550b057cc6c990d3c1395df",
+            "timestamp": "1792896458"
+          },
+          "changes": [
+            {
+              "kind": "ARBSYS_READ_MODEL",
+              "method": "hardhat_setCode",
+              "target": "0x0000000000000000000000000000000000000064",
+              "note": "ArbSys arbBlockNumber() read model for the Composer VM",
+              "at": 0
+            },
+            {
+              "kind": "KEYLESS_FACTORY",
+              "method": "hardhat_setCode",
+              "target": "0x7fE0cf854704Ce6f29691a75F6839233AFfDb3E6",
+              "note": "plan factory at the keyless address (no code can exist there on Robinhood Chain)",
+              "at": 1
+            },
+            {
+              "kind": "KEYLESS_PAYMASTER",
+              "method": "hardhat_setCode",
+              "target": "0x03fd2c77d32302eeF2f6F3063DbB7b899b1116D3",
+              "note": "research paymaster at the keyless address",
+              "at": 2
+            },
+            {
+              "kind": "KEEPER_ETH",
+              "method": "hardhat_setBalance",
+              "target": "0x37ca0C93dcAe11b528fC37e5cb2548E297A1cC15",
+              "note": "local keeper gas (fork only)",
+              "at": 3
+            }
+          ]
+        },
+        {
+          "label": "execute",
+          "block": {
+            "number": "97257632",
+            "hash": "0x7f43be664d0aeb01052da25957caf8cebdf55b6433e74ba8149ecf854700e4d4",
+            "timestamp": "1792896469"
+          },
+          "changes": [
+            {
+              "kind": "ARBSYS_READ_MODEL",
+              "method": "hardhat_setCode",
+              "target": "0x0000000000000000000000000000000000000064",
+              "note": "ArbSys arbBlockNumber() read model for the Composer VM",
+              "at": 0
+            },
+            {
+              "kind": "KEYLESS_FACTORY",
+              "method": "hardhat_setCode",
+              "target": "0x7fE0cf854704Ce6f29691a75F6839233AFfDb3E6",
+              "note": "plan factory at the keyless address (no code can exist there on Robinhood Chain)",
+              "at": 1
+            },
+            {
+              "kind": "KEYLESS_PAYMASTER",
+              "method": "hardhat_setCode",
+              "target": "0x03fd2c77d32302eeF2f6F3063DbB7b899b1116D3",
+              "note": "research paymaster at the keyless address",
+              "at": 2
+            },
+            {
+              "kind": "KEEPER_ETH",
+              "method": "hardhat_setBalance",
+              "target": "0xf97EAcAB55Ae28FE0A53A6250c666Fd23574BdAb",
+              "note": "local keeper gas (fork only)",
+              "at": 3
+            },
+            {
+              "kind": "IMPERSONATE",
+              "method": "hardhat_impersonateAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "USDG for the test smart account comes from a real holder balance on the fork",
+              "at": 4
+            },
+            {
+              "kind": "HOLDER_GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "gas for the impersonated holder (fork only)",
+              "at": 5
+            },
+            {
+              "kind": "STOP_IMPERSONATE",
+              "method": "hardhat_stopImpersonatingAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "",
+              "at": 6
+            },
+            {
+              "kind": "TEST_ONLY",
+              "method": "hardhat_setCode",
+              "target": "0x03fd2c77d32302eeF2f6F3063DbB7b899b1116D3",
+              "note": "reverted after this check",
+              "at": 7
+            },
+            {
+              "kind": "TEST_ONLY",
+              "method": "hardhat_setBalance",
+              "target": "0x4673d6ed44A3ba6137326Fb8cD775908A4583C9E",
+              "note": "reverted after this check",
+              "at": 8
+            },
+            {
+              "kind": "TEST_ONLY",
+              "method": "hardhat_setBalance",
+              "target": "0x4673d6ed44A3ba6137326Fb8cD775908A4583C9E",
+              "note": "reverted after this check",
+              "at": 9
+            },
+            {
+              "kind": "IMPERSONATE",
+              "method": "hardhat_impersonateAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "test-key account funding",
+              "at": 10
+            },
+            {
+              "kind": "HOLDER_GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "",
+              "at": 11
+            },
+            {
+              "kind": "STOP_IMPERSONATE",
+              "method": "hardhat_stopImpersonatingAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "",
+              "at": 12
+            },
+            {
+              "kind": "KEEPER_ETH",
+              "method": "hardhat_setBalance",
+              "target": "0x9B8D03Dc63b53f480e46261D705AeC43b0D6E802",
+              "note": "second keeper",
+              "at": 13
+            }
+          ]
+        }
+      ],
+      "inputs": {
+        "vendorDir": "./vendor/e6bdd10",
+        "sdkReceiptJsSha256": "d5fc5879cac6aa1270d11153586e09c5a3c4ac003cc49d88e6c6fe71cf19d7e7",
+        "bag": {
+          "id": "955df6e0-b6ea-44ba-a5eb-1288a80c0a06",
+          "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9"
+        }
+      },
+      "compiler": {
+        "solc": "0.8.23+commit.f704f362.Emscripten.clang",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 1
+          },
+          "viaIR": true,
+          "evmVersion": "shanghai"
+        }
+      },
+      "relay": {
+        "allowlist": [
+          "eth_chainId",
+          "net_version",
+          "eth_blockNumber",
+          "eth_getBlockByNumber",
+          "eth_getBlockByHash",
+          "eth_getCode",
+          "eth_getStorageAt",
+          "eth_getBalance",
+          "eth_getTransactionCount",
+          "eth_call",
+          "eth_getLogs",
+          "eth_getTransactionByHash",
+          "eth_getTransactionReceipt",
+          "eth_getProof"
+        ],
+        "forwardedRequests": 1038,
+        "forwardedByMethod": {
+          "eth_chainId": 3,
+          "eth_getBlockByNumber": 9,
+          "eth_call": 5,
+          "eth_getCode": 230,
+          "eth_getTransactionCount": 216,
+          "eth_getBalance": 216,
+          "eth_blockNumber": 88,
+          "net_version": 1,
+          "eth_getStorageAt": 270
+        },
+        "refusedRequests": 0,
+        "refusedMethods": {},
+        "retries": 0,
+        "upstreamErrors": {},
+        "failures": 0,
+        "selfTest": {
+          "singleWriteRefused": true,
+          "batchWithWriteRefused": true
+        }
+      },
+      "owner": "0x72750329D9AA5209686ec68E76b69fb82683C679",
+      "smartAccount": "0x4673d6ed44A3ba6137326Fb8cD775908A4583C9E",
+      "signatures": [
+        {
+          "id": "D1",
+          "class": "TEST_KEY_VIA_SIGNING_PAGE",
+          "digest": "0xf02290c04a38f09e2b2b6e6bba7f19aed52e2342fb65f10c7ef01fa94b108ecb",
+          "signatureSha256": "85beee7923dfe6ed3852465bfbca07a4dbd52ea1f4bf2bce74607ecbe293e19d"
+        },
+        {
+          "id": "D2",
+          "class": "TEST_KEY_VIA_SIGNING_PAGE",
+          "digest": "0x6041ed7f98172edf5ed5023c69e11f1a52c7620ac17a95dfe1a2d6c1dde481bc",
+          "signatureSha256": "c3f8c3c8a0a9858ac391f899fce91608794993bc7e5c72f87df1e6d368922885"
+        },
+        {
+          "id": "CANCEL",
+          "class": "TEST_KEY_VIA_SIGNING_PAGE",
+          "digest": "0xbb5aed5e3dfd808cd0b00e84930a54ff1da61ac042da8eb19a432a255e39ad4a",
+          "signatureSha256": "c07c21fdb512029ce4608d5d012735cf67332b7398a3cb26fa0cce7c31f110f4"
+        },
+        {
+          "id": "WITHDRAW",
+          "class": "TEST_KEY_VIA_SIGNING_PAGE",
+          "digest": "0xd12dc14d98a6bbfa6b94bbacc3ab65496aa1399418e8de5bef0d525245d7e65f",
+          "signatureSha256": "f63f09aa9e28c1d3de8d960a2cc6c81fa3842be935a0f27d9b59746e971502b2"
+        }
+      ]
+    },
+    {
+      "path": "results/closing-2026-10-25/wallet-fork-test/results.json",
+      "sha256": "f8b261305a0e9c3a0afdd4748c6a94d2d6d1ed14c76e8f0c917f8744036c4d3b",
+      "schema": "bag-dca-wallet-fork/v1",
+      "class": {
+        "signatures": "TEST_KEY",
+        "program": "RECORDED_COMPOSER_REPLAY"
+      },
+      "signer": "test",
+      "mode": "replay",
+      "walletClient": null,
+      "status": "PASSED",
+      "summary": {
+        "pass": 30,
+        "fail": 0,
+        "purchases": 3,
+        "userOps": 2
+      },
+      "startedAt": "2026-10-25T02:46:49.624Z",
+      "finishedAt": "2026-10-25T02:49:06.226Z",
+      "forks": [
+        {
+          "label": "prepare",
+          "block": {
+            "number": "97257477",
+            "hash": "0xabb727737e315dde82c2a192ded8cf2613a21b853cdea822f91233cf0b9f9b55",
+            "timestamp": "1792896453"
+          },
+          "changes": [
+            {
+              "kind": "ARBSYS_READ_MODEL",
+              "method": "hardhat_setCode",
+              "target": "0x0000000000000000000000000000000000000064",
+              "note": "ArbSys arbBlockNumber() read model for the Composer VM",
+              "at": 0
+            },
+            {
+              "kind": "KEYLESS_FACTORY",
+              "method": "hardhat_setCode",
+              "target": "0x7fE0cf854704Ce6f29691a75F6839233AFfDb3E6",
+              "note": "plan factory at the keyless address (no code can exist there on Robinhood Chain)",
+              "at": 1
+            },
+            {
+              "kind": "KEYLESS_PAYMASTER",
+              "method": "hardhat_setCode",
+              "target": "0x03fd2c77d32302eeF2f6F3063DbB7b899b1116D3",
+              "note": "research paymaster at the keyless address",
+              "at": 2
+            },
+            {
+              "kind": "KEEPER_ETH",
+              "method": "hardhat_setBalance",
+              "target": "0x43f7d11715c6030D5Add6ECF6B228AbAe1BbB3B7",
+              "note": "local keeper gas (fork only)",
+              "at": 3
+            }
+          ]
+        },
+        {
+          "label": "execute",
+          "block": {
+            "number": "97257525",
+            "hash": "0x5940b58d6d8e03f9ce8efda51940bc6dd47b797c214e771353f2809a2ec911d6",
+            "timestamp": "1792896458"
+          },
+          "changes": [
+            {
+              "kind": "ARBSYS_READ_MODEL",
+              "method": "hardhat_setCode",
+              "target": "0x0000000000000000000000000000000000000064",
+              "note": "ArbSys arbBlockNumber() read model for the Composer VM",
+              "at": 0
+            },
+            {
+              "kind": "KEYLESS_FACTORY",
+              "method": "hardhat_setCode",
+              "target": "0x7fE0cf854704Ce6f29691a75F6839233AFfDb3E6",
+              "note": "plan factory at the keyless address (no code can exist there on Robinhood Chain)",
+              "at": 1
+            },
+            {
+              "kind": "KEYLESS_PAYMASTER",
+              "method": "hardhat_setCode",
+              "target": "0x03fd2c77d32302eeF2f6F3063DbB7b899b1116D3",
+              "note": "research paymaster at the keyless address",
+              "at": 2
+            },
+            {
+              "kind": "KEEPER_ETH",
+              "method": "hardhat_setBalance",
+              "target": "0xcdc78C91010D3d62bAC2D4852664c385791Ce646",
+              "note": "local keeper gas (fork only)",
+              "at": 3
+            },
+            {
+              "kind": "IMPERSONATE",
+              "method": "hardhat_impersonateAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "USDG for the test smart account comes from a real holder balance on the fork",
+              "at": 4
+            },
+            {
+              "kind": "HOLDER_GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "gas for the impersonated holder (fork only)",
+              "at": 5
+            },
+            {
+              "kind": "STOP_IMPERSONATE",
+              "method": "hardhat_stopImpersonatingAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "",
+              "at": 6
+            },
+            {
+              "kind": "TEST_ONLY",
+              "method": "hardhat_setCode",
+              "target": "0x03fd2c77d32302eeF2f6F3063DbB7b899b1116D3",
+              "note": "reverted after this check",
+              "at": 7
+            },
+            {
+              "kind": "TEST_ONLY",
+              "method": "hardhat_setBalance",
+              "target": "0x29060e77b15fb9010978e3b2B2940BC52108c6E1",
+              "note": "reverted after this check",
+              "at": 8
+            },
+            {
+              "kind": "TEST_ONLY",
+              "method": "hardhat_setBalance",
+              "target": "0x29060e77b15fb9010978e3b2B2940BC52108c6E1",
+              "note": "reverted after this check",
+              "at": 9
+            },
+            {
+              "kind": "IMPERSONATE",
+              "method": "hardhat_impersonateAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "test-key account funding",
+              "at": 10
+            },
+            {
+              "kind": "HOLDER_GAS",
+              "method": "hardhat_setBalance",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "",
+              "at": 11
+            },
+            {
+              "kind": "STOP_IMPERSONATE",
+              "method": "hardhat_stopImpersonatingAccount",
+              "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+              "note": "",
+              "at": 12
+            },
+            {
+              "kind": "KEEPER_ETH",
+              "method": "hardhat_setBalance",
+              "target": "0x8657B9e4DB915C121c9EF01693Ef65D4f2dfd046",
+              "note": "second keeper",
+              "at": 13
+            }
+          ]
+        }
+      ],
+      "inputs": {
+        "vendorDir": "./vendor/e6bdd10",
+        "sdkReceiptJsSha256": "d5fc5879cac6aa1270d11153586e09c5a3c4ac003cc49d88e6c6fe71cf19d7e7",
+        "bag": {
+          "id": "955df6e0-b6ea-44ba-a5eb-1288a80c0a06",
+          "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9"
+        }
+      },
+      "compiler": {
+        "solc": "0.8.23+commit.f704f362.Emscripten.clang",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 1
+          },
+          "viaIR": true,
+          "evmVersion": "shanghai"
+        }
+      },
+      "relay": {
+        "allowlist": [
+          "eth_chainId",
+          "net_version",
+          "eth_blockNumber",
+          "eth_getBlockByNumber",
+          "eth_getBlockByHash",
+          "eth_getCode",
+          "eth_getStorageAt",
+          "eth_getBalance",
+          "eth_getTransactionCount",
+          "eth_call",
+          "eth_getLogs",
+          "eth_getTransactionByHash",
+          "eth_getTransactionReceipt",
+          "eth_getProof"
+        ],
+        "forwardedRequests": 1040,
+        "forwardedByMethod": {
+          "eth_chainId": 3,
+          "eth_getBlockByNumber": 9,
+          "eth_call": 5,
+          "eth_getCode": 235,
+          "eth_getTransactionCount": 221,
+          "eth_getBalance": 221,
+          "eth_blockNumber": 73,
+          "net_version": 1,
+          "eth_getStorageAt": 272
+        },
+        "refusedRequests": 0,
+        "refusedMethods": {},
+        "retries": 0,
+        "upstreamErrors": {},
+        "failures": 0,
+        "selfTest": {
+          "singleWriteRefused": true,
+          "batchWithWriteRefused": true
+        }
+      },
+      "owner": "0x40FAf951fF705e543894D4900ED2ae546240E2D1",
+      "smartAccount": "0x29060e77b15fb9010978e3b2B2940BC52108c6E1",
+      "signatures": [
+        {
+          "id": "D1",
+          "class": "TEST_KEY",
+          "digest": "0xa21d292ba9f1844115f385c0acd4ec934923ad89e2d096fc91cb91d0f14bc9b3",
+          "signatureSha256": "093c58a8f1009d878d19feacccc0736a682fcdf66dc3ab00bbea71e0f98b6dbe"
+        },
+        {
+          "id": "D2",
+          "class": "TEST_KEY",
+          "digest": "0x960621e3aa2c169fcc1bbcbb8fbc0d2a17235f8cace49e8d9573d2e180cfd395",
+          "signatureSha256": "2bea5809457af4334a3d48c24f533d950a2806c730fe4d968bcb9151e4d66a12"
+        },
+        {
+          "id": "CANCEL",
+          "class": "TEST_KEY",
+          "digest": "0x190dc5146ef88471372807bd08c9ff662301384a0dfd0dd331f2ad2ed738d9bf",
+          "signatureSha256": "b4cab79e744f29db1d46b14a8644e45dc18b2331179f4c450f613549e8863df0"
+        },
+        {
+          "id": "WITHDRAW",
+          "class": "TEST_KEY",
+          "digest": "0xf0a20f123ec590028fb84e2a395494363c1b224599be15bbff7ca98602c142f7",
+          "signatureSha256": "1658168f7534a27dd6c152fa757f58fb12dec254fcb0aaa4c7f243fc8b4934ec"
+        }
+      ]
+    }
+  ]
+}
