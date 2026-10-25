@@ -16,7 +16,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { v, accounts, reasonOf, json, PUBLIC_RPC, CHAIN_ID } from '../lib/fork-env.mjs';
 import { startSigningServer } from '../wallet-fork/server.mjs';
-import { checkStep } from './lib/sign-checks.mjs';
+import { checkStep, authorizationDisclosures } from './lib/sign-checks.mjs';
 import { USDG, QUOTER_V2, EXECUTOR, DEP, DAY, USDG_UNIT, PRUNED_RE, erc20, redact, installNetworkGuard, UsageError, loadBuild, startExecutorFork, bagIdentity, limitsFromRealQuotes, permitTypedData, permitProof } from '../executor-fork/setup.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -49,7 +49,7 @@ const step = async (id, title, fn) => {
 };
 try {
   const build = await loadBuild(app);
-  const { sdk, uni, execArt, BAG1 } = build;
+  const { sdk, uni, evm, execArt, BAG1 } = build;
   report.build = build.build;
   if (SIGNER === 'wallet') {
     server = await startSigningServer({ pageDir: join(here, 'page'), libDir: join(here, 'lib') });
@@ -100,6 +100,12 @@ try {
   const summary = sdk.summarizeRecurringAuthorization(auth);
   report.terms = { authorizationId: id, summary, priceLimit: { source: 'best real-chain QuoterV2 quote at setup + 300 bps (TEST choice, not a market reference)', sources: limitSources }, bag: id1 };
   const symbols = Object.fromEntries((BAG1.metadata?.assets ?? []).map(m => [m.address.toLowerCase(), m.symbol]));
+  // The market price each test limit was taken from (raw USDG per whole token), shown next to the fixed ceiling on the page.
+  const marketPriceRaw = Object.fromEntries(BAG1.definition.assets.map(a => {
+    const src = limitSources[`${BAG1.ref.strategyId}:${a.address.toLowerCase()}:300`];
+    return [a.address.toLowerCase(), src?.realChainQuoteRaw ? (src.legInRaw * 10n ** BigInt(a.decimals) + src.realChainQuoteRaw - 1n) / src.realChainQuoteRaw : null];
+  }));
+  report.terms.disclosures = authorizationDisclosures({ assets: auth.assets }, marketPriceRaw);
   const wire = x => JSON.parse(json(x));
   const nowSec = () => BigInt(Math.floor(Date.now() / 1000));
 
@@ -111,7 +117,7 @@ try {
   const requests = [
     { id: 'AUTH', title: '1/3 Yetki: dönemlik BAG alımı', kind: 'authorization', orig: authTd, typedData: wire({ ...authTd, types: { EIP712Domain: [{ name: 'name', type: 'string' }, { name: 'version', type: 'string' }, { name: 'chainId', type: 'uint256' }, { name: 'verifyingContract', type: 'address' }], ...authTd.types } }),
       expect: wire({ executor: EXECUTOR, authorization: auth }),
-      info: wire({ keyless: `"${env.keyless.label}" → ${EXECUTOR}`, priceLimitSource: 'Kurulumda gerçek zincirdeki en iyi Uniswap v3 QuoterV2 teklifi + %3 (test seçimi; bağımsız piyasa referansı değildir)', assets: summary.assets.map(a => ({ ...a, symbol: symbols[a.asset] })) }) },
+      info: wire({ keyless: `"${env.keyless.label}" → ${EXECUTOR}`, priceLimitSource: 'Kurulumda gerçek zincirdeki en iyi Uniswap v3 QuoterV2 teklifi + %3 (test seçimi; bağımsız piyasa referansı değildir)', assets: summary.assets.map(a => ({ ...a, symbol: symbols[a.asset] })), marketPriceRaw }) },
     { id: 'PERMIT', title: '2/3 USDG izni (EIP-2612, işlem değil)', kind: 'permit', orig: permitTd, typedData: wire({ ...permitTd, types: { EIP712Domain: [{ name: 'name', type: 'string' }, { name: 'version', type: 'string' }, { name: 'chainId', type: 'uint256' }, { name: 'verifyingContract', type: 'address' }], ...permitTd.types } }),
       expect: wire({ token: USDG, executor: EXECUTOR, value: auth.schedule.totalBudget, nonce: permitTd.message.nonce }) },
     { id: 'REVOKE', title: '3/3 İptal imzası', kind: 'revocation', orig: revokeTd, typedData: wire({ ...revokeTd, types: { EIP712Domain: [{ name: 'name', type: 'string' }, { name: 'version', type: 'string' }, { name: 'chainId', type: 'uint256' }, { name: 'verifyingContract', type: 'address' }], ...revokeTd.types } }),
@@ -133,6 +139,7 @@ try {
 
   // ---- Lifecycle on the fork
   const execAbi = build.CALL_ABI;
+  const evidence = evm.withReceiptEvidence(client, { balanceState: 'SINGLE_TRANSACTION_BLOCK' });
   const buildRun = async () => uni.buildRecurringRunPlan({ client, auth, deployment: DEP, quoter: QUOTER_V2, nowSeconds: (await client.getBlock()).timestamp });
   const signPlan = plan => keys.planSigner.signTypedData(uni.routerPlanTypedData(plan, { chainId: CHAIN_ID, router }));
   const xOf = async run => ({ authorizationId: id, window: run.execution.window, quoteDeadline: run.execution.quoteDeadline, plan: run.plan, planSignature: await signPlan(run.plan) });
@@ -149,12 +156,16 @@ try {
   const purchase = async (fundingProof) => {
     const before = await snap();
     const run = await buildRun();
-    const t = await execute(await xOf(run), fundingProof);
+    const x = await xOf(run);
+    const t = await execute(x, fundingProof);
     if (t.status !== 'success') return { pass: false, observed: 'execute failed: ' + t.reason };
-    const vr = await sdk.verifyRecurringPurchaseReceipt({ client, transactionHash: t.hash, auth, deployment: DEP });
+    // SDK: the mined call is exactly the prepared one (the wallet's Authorization signature inside), balances transaction-scoped.
+    const vr = await sdk.verifyRecurringPurchase({ client: evidence, transactionHash: t.hash, auth, deployment: DEP, intent: { execution: x, ownerSignature: sigs.AUTH, fundingProof: fundingProof ?? '0x' } });
     const after = await snap();
-    const ok = vr.status === 'VERIFIED' && before.usdg - after.usdg === GROSS && after.transit.every(b => b === 0n) && Number(after.state.executions) === Number(before.state.executions) + 1;
-    return { pass: ok, tx: t.hash, sdkReceipt: vr.status, issues: vr.issues, deliveries: vr.deliveries, observed: `${vr.status}; USDG ${before.usdg} → ${after.usdg}; izin ${after.allowance}; alım ${after.state.executions}` };
+    const ok = vr.status === 'VERIFIED' && vr.transactionBinding === 'PREPARED_INTENT' && vr.evidence === 'TRANSACTION_AND_BALANCE_DELTAS' && vr.source?.debitRaw === before.usdg - after.usdg
+      && before.usdg - after.usdg === GROSS && after.transit.every(b => b === 0n) && Number(after.state.executions) === Number(before.state.executions) + 1;
+    return { pass: ok, tx: t.hash, sdkVerification: { status: vr.status, binding: vr.transactionBinding, evidence: vr.evidence, balanceScope: vr.balanceScope, source: vr.source }, issues: vr.issues, deliveries: vr.deliveries,
+      observed: `${vr.status} (${vr.transactionBinding}, ${vr.balanceScope}); USDG ${before.usdg} → ${after.usdg}; izin ${after.allowance}; alım ${after.state.executions}` };
   };
   const refusedStep = async (expectName) => {
     const before = await snap();

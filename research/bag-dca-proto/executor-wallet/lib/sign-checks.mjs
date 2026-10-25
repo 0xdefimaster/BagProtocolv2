@@ -10,7 +10,7 @@ export const AUTHORIZATION_TYPES = {
     { name: 'bag', type: 'BagRef' }, { name: 'assets', type: 'AssetLimit[]' }, { name: 'schedule', type: 'Schedule' },
     { name: 'route', type: 'Route' }, { name: 'nonce', type: 'uint256' },
   ],
-  AssetLimit: [{ name: 'asset', type: 'address' }, { name: 'weightBps', type: 'uint16' }, { name: 'decimals', type: 'uint8' }, { name: 'maxPriceRaw', type: 'uint256' }],
+  AssetLimit: [{ name: 'asset', type: 'address' }, { name: 'symbol', type: 'string' }, { name: 'weightBps', type: 'uint16' }, { name: 'decimals', type: 'uint8' }, { name: 'maxPriceRaw', type: 'uint256' }],
   BagRef: [
     { name: 'bagId', type: 'bytes32' }, { name: 'bagVersion', type: 'uint256' }, { name: 'compositionHash', type: 'bytes32' },
     { name: 'definitionHash', type: 'bytes32' }, { name: 'strategyId', type: 'bytes32' }, { name: 'strategyVersion', type: 'uint32' },
@@ -63,10 +63,11 @@ export function checkAuthorizationStep(p, account) {
   const gross = big(s.grossAmountPerRun), total = big(s.totalBudget), runs = big(s.maxExecutions), start = big(s.startsAt), period = big(s.periodSeconds), end = big(s.expiresAt);
   if (gross === null || total === null || runs === null || total !== gross * runs) bad.push('total budget is not amount per run × runs');
   if ((m.assets ?? []).some(a => big(a.maxPriceRaw) === null || big(a.maxPriceRaw) <= 0n)) bad.push('an asset has no price limit');
+  if ((m.assets ?? []).some(a => typeof a.symbol !== 'string' || !/^[^:|]{1,64}$/.test(a.symbol))) bad.push('an asset symbol is missing or contains a composition separator');
   const decoded = {
     owner: m.owner, recipient: m.recipient, inputToken: m.inputToken, grossAmountPerRun: gross, totalBudget: total, runs, startsAt: start, periodSeconds: period, expiresAt: end,
     lastWindowStart: start !== null && period !== null && runs !== null ? start + period * (runs - 1n) : null,
-    assets: (m.assets ?? []).map(a => ({ asset: a.asset, weightBps: Number(a.weightBps), decimals: Number(a.decimals), maxPriceRaw: big(a.maxPriceRaw) })),
+    assets: (m.assets ?? []).map(a => ({ asset: a.asset, symbol: a.symbol, weightBps: Number(a.weightBps), decimals: Number(a.decimals), maxPriceRaw: big(a.maxPriceRaw) })),
     bag: m.bag, route: m.route, executor: td?.domain?.verifyingContract, nonce: m.nonce,
   };
   return { decoded, bad };
@@ -100,3 +101,41 @@ export function checkRevocationStep(p, account) {
 
 export const checkStep = (p, account, nowSeconds) =>
   p?.kind === 'authorization' ? checkAuthorizationStep(p, account) : p?.kind === 'permit' ? checkPermitStep(p, account, nowSeconds) : p?.kind === 'revocation' ? checkRevocationStep(p, account) : { decoded: null, bad: [`unknown step kind ${p?.kind}`] };
+
+/**
+ * What the page must say before an Authorization is signed, beyond the decoded values. Two separate facts:
+ *  - the per-asset max price is a FIXED ceiling, not slippage protection against the current market price: a window in
+ *    which any asset is above it has no purchase, is not made up later, and the plan may end with budget unused;
+ *  - every purchase needs a planSigner signature and a keeper transaction. They cannot exceed the signed limits (the
+ *    executor checks them on chain), but the service must be running for purchases to happen.
+ * `market` maps an asset to the price observed when the terms were prepared (raw input units per whole token), if any.
+ */
+export function authorizationDisclosures(decoded, market = {}) {
+  const lines = (decoded?.assets ?? []).map(a => {
+    const now = big(market[lc(a.asset)]);
+    return { asset: a.asset, symbol: a.symbol, maxPriceRaw: a.maxPriceRaw, marketPriceRaw: now, headroomBps: now && now > 0n ? Number(((a.maxPriceRaw - now) * 10_000n) / now) : null };
+  });
+  return {
+    priceLimit: {
+      kind: 'FIXED_MAX_PRICE_PER_ASSET', isSlippageProtection: false, windowSkippedWhileAbove: true, catchUp: false, mayEndBeforeAllRuns: true, assets: lines,
+      text: [
+        'Azami fiyat SABİT bir tavandır; güncel piyasa fiyatına göre kayma (slippage) koruması DEĞİLDİR.',
+        'Bir dönemde sepetteki herhangi bir hissenin fiyatı tavanının üstündeyse o dönemde HİÇ alım yapılmaz.',
+        'Atlanan dönem sonradan telafi edilmez; fiyat bitişe kadar tavanın üstünde kalırsa kalan alımlar ve bütçe hiç kullanılmaz.',
+        'Fiyat yükselince tavanı yükseltmek için yeni bir yetki imzalamak gerekir; bu yetki kendiliğinden güncellenmez.',
+      ],
+    },
+    dependency: {
+      composer: 'NOT_USED', planSignerSignatureEachRun: true, keeperTransactionEachRun: true, canExceedSignedLimits: false, canStopOrDelayPurchases: true,
+      limits: [
+        'Composer kullanılmaz. Her alım için BAG\'in plan imzalayıcısının (planSigner) o dönemin planını imzalaması ve bir keeper\'ın işlemi göndermesi gerekir.',
+        'planSigner ve keeper imzaladığın sınırları AŞAMAZ: tutar, dönem, alıcı, sepet, fiyat tavanı ve rota her alımda zincirde kontrol edilir.',
+      ],
+      availability: [
+        'Ama hizmete BAĞIMLISIN: planSigner veya keeper çalışmazsa ya da imzalamazsa alımlar durur veya gecikir. Bu, yetki sınırlarından ayrı bir risktir.',
+        'Yetkiyi istediğin an iptal edebilirsin; iptal ve USDG izninin sıfırlanması ayrı işlemlerdir.',
+      ],
+    },
+    ack: 'Sabit fiyat tavanı aşılırsa o dönemin alımının yapılmayacağını ve telafi edilmeyeceğini; her alımın planSigner ve keeper hizmetinin çalışmasına bağlı olduğunu anladım.',
+  };
+}

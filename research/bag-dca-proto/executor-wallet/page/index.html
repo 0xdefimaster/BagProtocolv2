@@ -25,6 +25,17 @@
     <p id="stepKind" class="muted"></p>
     <ul id="planSummary"></ul>
     <table id="details"><tbody></tbody></table>
+    <div id="disclosures" hidden>
+      <h3>Fiyat tavanı: sabit, kayma koruması değil</h3>
+      <ul id="priceText" class="warn"></ul>
+      <table id="priceTable"><thead><tr><th>Hisse</th><th>Hazırlanırken piyasa (bilgi)</th><th>İmzalanan azami fiyat</th><th>Tavan payı</th></tr></thead><tbody></tbody></table>
+      <h3>Hizmet bağımlılığı: planSigner ve keeper</h3>
+      <p class="muted">Yetki sınırları:</p>
+      <ul id="dependencyLimits"></ul>
+      <p class="muted">Hizmetin çalışması:</p>
+      <ul id="dependencyAvailability" class="warn"></ul>
+      <label class="ack"><input type="checkbox" id="ack"> <span id="ackText"></span></label>
+    </div>
     <div id="mismatch" class="bad" hidden></div>
     <p class="muted">İmzalamadan önce cüzdan ekranındaki değerlerin bu tabloyla aynı olduğunu kontrol et.</p>
     <button id="signBtn">Cüzdanda imzala</button>

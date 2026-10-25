@@ -1,7 +1,7 @@
 // Signing page for the RecurringPurchaseExecutor fork flow (model A). Every value shown is decoded from the
 // typed data the wallet will sign (lib/sign-checks.mjs, the same code the runner's tests use). When anything
 // differs from the prepared terms, the page lists it and does not ask for a signature.
-import { checkStep } from '/lib/sign-checks.mjs';
+import { checkStep, authorizationDisclosures } from '/lib/sign-checks.mjs';
 
 const secret = location.hash.slice(1);
 history.replaceState(null, '', location.pathname); // keep the session secret out of the address bar
@@ -23,7 +23,9 @@ window.addEventListener('eip6963:announceProvider', e => { if (!wallets.some(w =
 window.dispatchEvent(new Event('eip6963:requestProvider'));
 function renderWallets() { $('wallet').innerHTML = wallets.map((w, i) => `<option value="${i}">${esc(w.info.name)}</option>`).join('') || '<option>Cüzdan bulunamadı</option>'; }
 renderWallets();
-let provider = null, account = null, pendingId = null;
+let provider = null, account = null, pendingId = null, mismatchFree = false, needsAck = false;
+const pct = bps => (bps === null ? '?' : `${bps >= 0 ? '+' : ''}${(bps / 100).toFixed(2).replace('.', ',')}%`);
+const gate = () => { $('signBtn').disabled = !mismatchFree || (needsAck && !$('ack').checked); };
 
 $('connectBtn').onclick = async () => {
   try {
@@ -42,13 +44,27 @@ $('connectBtn').onclick = async () => {
 
 const rows = list => { $('details').querySelector('tbody').innerHTML = list.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join(''); };
 
+function renderDisclosures(d, info) {
+  const x = authorizationDisclosures(d, info?.marketPriceRaw ?? {});
+  const li = list => list.map(t => `<li>${esc(t)}</li>`).join('');
+  $('priceText').innerHTML = li(x.priceLimit.text);
+  $('priceTable').querySelector('tbody').innerHTML = x.priceLimit.assets.map(a =>
+    `<tr><td>${esc(a.symbol)}</td><td>${a.marketPriceRaw === null ? 'bilinmiyor' : usdg(a.marketPriceRaw)}</td><td><strong>${usdg(a.maxPriceRaw)}</strong></td><td>${pct(a.headroomBps)}</td></tr>`).join('');
+  $('dependencyLimits').innerHTML = li(x.dependency.limits);
+  $('dependencyAvailability').innerHTML = li(x.dependency.availability);
+  $('ackText').textContent = x.ack;
+  $('ack').checked = false;
+  $('disclosures').hidden = false;
+}
+
 function renderAuthorization(p, d) {
   const sym = Object.fromEntries((p.info?.assets ?? []).map(a => [lc(a.asset), a]));
   $('planSummary').innerHTML = [
     `Her dönem <strong>${usdg(d.grossAmountPerRun)}</strong>, en fazla <strong>${d.runs}</strong> alım, toplam <strong>${usdg(d.totalBudget)}</strong>.`,
     'USDG <strong>bu adreste kalır</strong>; her alımda yalnızca o dönemin tutarı çekilir (ALLOWANCE).',
-    'Kaçırılan dönem birikmez; aynı dönemde ikinci alım olmaz; başarısız alım bütçeyi tüketmez.',
+    'Aynı dönemde ikinci alım olmaz; başarısız alım bütçeyi tüketmez. Atlanan dönem birikmez (aşağıdaki fiyat tavanı uyarısına bak).',
   ].map(x => `<li>${x}</li>`).join('');
+  renderDisclosures(d, p.info);
   rows([
     ['Fonların kaynağı ve imzalayan', `${code(d.owner)} (bu hesap)`],
     ['Alınan hisselerin alıcısı', code(d.recipient)],
@@ -56,8 +72,8 @@ function renderAuthorization(p, d) {
     ['Dönem süresi', days(d.periodSeconds)],
     ['İlk dönem / son dönem başlangıcı', `${date(d.startsAt)} / ${date(d.lastWindowStart)}`],
     ['Bitiş (bundan sonra alım yok)', date(d.expiresAt)],
-    ['Sepet ve fiyat sınırları', d.assets.map(a => `${esc(sym[lc(a.asset)]?.symbol ?? a.asset)} %${a.weightBps / 100}: en fazla ${usdg(a.maxPriceRaw)} / adet (bu dönemde en az ${units(sym[lc(a.asset)]?.minimumOutRaw ?? 0n, a.decimals)} adet)`).join('<br>')],
-    ['BAG kimliği (zincirde kontrol edilir)', `bagId ${code(d.bag?.bagId)}, sürüm ${esc(d.bag?.bagVersion)}, bileşim ${code(d.bag?.compositionHash)}, tanım ${code(d.bag?.definitionHash)}`],
+    ['Sepet ve sabit fiyat tavanları (imzalanan)', d.assets.map(a => `${esc(a.symbol)} ${code(a.asset)} %${a.weightBps / 100}: en fazla ${usdg(a.maxPriceRaw)} / adet (bu dönemde en az ${units(sym[lc(a.asset)]?.minimumOutRaw ?? 0n, a.decimals)} adet)`).join('<br>')],
+    ['BAG kimliği (zincirde kontrol edilir)', `bagId ${code(d.bag?.bagId)}, sürüm ${esc(d.bag?.bagVersion)}, bileşim ${code(d.bag?.compositionHash)}, tanım ${code(d.bag?.definitionHash)}. Executor yukarıdaki hisse/sembol/ağırlık listesinden bileşimi yeniden hesaplar; bu BAG'in kayıtlı içeriği değilse alım reddedilir`],
     ['Rota', `router ${code(d.route?.router)}, swap ${code(d.route?.swapTarget)} (Uniswap v3), ücret seviyeleri ${esc((d.route?.allowedFees ?? []).join(', '))}`],
     ['Doğrulayan kontrat', `${code(d.executor)} — 4663 ana ağında kodu ve nonce'u yok (${esc(p.info?.keyless ?? '')}); bu imza ana ağda kullanılamaz`],
     ['Fiyat sınırının kaynağı', esc(p.info?.priceLimitSource ?? '')],
@@ -95,6 +111,7 @@ async function poll() {
     const p = s.pending;
     if (p && p.id !== pendingId) {
       pendingId = p.id; $('step').hidden = false; $('stepTitle').textContent = p.title; $('stepError').textContent = '';
+      $('disclosures').hidden = true; needsAck = p.kind === 'authorization';
       $('stepKind').textContent = { authorization: 'EIP-712 Authorization (RecurringPurchaseExecutor)', permit: 'EIP-712 Permit (USDG, EIP-2612)', revocation: 'EIP-712 Revocation (RecurringPurchaseExecutor)' }[p.kind] ?? p.kind;
       let bad;
       try {
@@ -102,7 +119,7 @@ async function poll() {
         if (p.kind === 'authorization') renderAuthorization(p, r.decoded); else if (p.kind === 'permit') renderPermit(p, r.decoded); else renderRevocation(p, r.decoded);
       } catch (e) { bad = ['decode failed: ' + e.message]; }
       $('mismatch').hidden = bad.length === 0; $('mismatch').innerHTML = bad.length ? '<strong>İmza istenmeyecek: veri hazırlanan şartlarla eşleşmiyor.</strong><br>' + bad.map(esc).join('<br>') : '';
-      $('signBtn').disabled = bad.length > 0;
+      mismatchFree = bad.length === 0; gate();
     }
     if (!p) { $('step').hidden = true; pendingId = null; }
   } catch (e) { $('phase').textContent = 'Sunucuya ulaşılamıyor: ' + e.message; }
@@ -117,5 +134,6 @@ $('signBtn').onclick = async () => {
     await api('/api/signature', { stepId: p.id, signature });
   } catch (e) { $('stepError').textContent = 'İmza alınamadı: ' + (e.message ?? e); $('signBtn').disabled = false; }
 };
+$('ack').onchange = gate;
 $('rejectBtn').onclick = async () => { if (pendingId) await api('/api/reject', { stepId: pendingId, reason: 'user rejected in page' }).catch(() => {}); };
 poll();

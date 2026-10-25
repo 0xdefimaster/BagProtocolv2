@@ -8,11 +8,15 @@
 // keyless address derived from a fixed string, so an authorization signed here cannot be used on 4663.
 //
 // Scenario kinds (reported separately, never summed):
-//   LIFECYCLE            honest runs; receipt-verified with the SDK and with absolute fork balances
+//   LIFECYCLE            honest runs; verified with the SDK's verifyRecurringPurchase against the call prepared
+//                        here (byte for byte) with transaction-scoped balances, and cross-checked with the
+//                        runner's own fork balance reads
 //   REAL_FAULT           a wrong transaction actually sent and mined on the fork (bad plan, moved market,
-//                        stale BAG version, revoked/exhausted/expired authorization); state must not change
-//   SDK_REFUSAL          the SDK run builder refuses to build (no route, price limit not met)
-//   ALTERED_EXPECTATION  the SDK receipt verifier given a deliberately wrong expectation for a GOOD receipt
+//                        stale BAG version, another asset list, revoked/exhausted/expired authorization);
+//                        state must not change
+//   SDK_REFUSAL          the SDK refuses to build (no route, price limit not met, list not the BAG's content)
+//   ALTERED_EXPECTATION  the SDK verifier given a deliberately wrong expectation for a mined transaction
+//   EVIDENCE_SCOPE       the balance reader refuses what it cannot prove (a busy block → INDETERMINATE)
 //
 // Usage (from the app checkout, after `hardhat build` and the SDK build):
 //   node research/bag-dca-proto/executor-fork/run.mjs --app . --out <new dir> [--env-file <file with ROBINHOOD_RPC_URL>]
@@ -23,7 +27,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { v, accounts, reasonOf, json, PUBLIC_RPC, CHAIN_ID } from '../lib/fork-env.mjs';
-import { USDG, SWAP_ROUTER02, QUOTER_V2, UNIVERSAL_ROUTER, EXECUTOR, DEP, DAY, USDG_UNIT, PRUNED_RE, erc20, redact, installNetworkGuard, UsageError, loadBuild, startExecutorFork, bagIdentity, limitsFromRealQuotes } from './setup.mjs';
+import { USDG, SWAP_ROUTER02, QUOTER_V2, UNIVERSAL_ROUTER, EXECUTOR, DEP, DAY, USDG_UNIT, PRUNED_RE, CHAIN_LABEL, erc20, redact, installNetworkGuard, UsageError, loadBuild, startExecutorFork, bagIdentity, limitsFromRealQuotes } from './setup.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -52,7 +56,7 @@ const quoteDiagnostics = { nonRevertErrors: [] };
 try {
   // ---- App build, relay, keyless check, fork, fork-only edits and deployment: setup.mjs (shared with executor-wallet/)
   const build = await loadBuild(app);
-  const { execArt, routerArt, sdk, uni, BAG1, BAG2, ERROR_ABI, CALL_ABI } = build;
+  const { execArt, routerArt, sdk, uni, evm, BAG1, BAG2, ERROR_ABI, CALL_ABI } = build;
   report.build = build.build;
   const EXEC_ABI = execArt.abi, ROUTER_ABI = routerArt.abi;
   const env = await startExecutorFork({ rpcUrl: RPC, out, label: 'executor-fork', build, roleNames: ['owner', 'keeper', 'attacker', 'relayer'], fund: { owner: 100n * USDG_UNIT, attacker: 50_000n * USDG_UNIT } });
@@ -60,6 +64,12 @@ try {
   const { remote, client, rpc, read, bal, keys, W, roles, send, router } = env;
   report.keylessExecutor = env.keyless; report.fork = env.fork; report.deployment = env.deployment;
   report.testAccounts = { ...roles, note: 'keys generated in this process and discarded at exit; none is a user wallet' };
+  // Purchase evidence: the SDK's reader over the fork RPC. SINGLE_TRANSACTION_BLOCK reads balanceOf at the parent block and at the
+  // purchase block, so it is only valid (and only accepted) when the purchase is the block's only transaction (automine here).
+  const evidence = evm.withReceiptEvidence(client, { balanceState: 'SINGLE_TRANSACTION_BLOCK' });
+  report.purchaseVerification = { sdk: 'verifyRecurringPurchase', binding: 'PREPARED_INTENT (the exact execute calldata prepared by this runner)', balanceReader: 'SINGLE_TRANSACTION_BLOCK',
+    crossCheck: 'the runner\'s own latest-state balance snapshots before/after each run', realChainReader: 'not exercised here: Robinhood Chain needs ROBINHOOD_NITRO_TRANSACTION_INDEX on the qualified Nitro build' };
+  const intents = new Map();
   console.log(`fork @ ${F.block.number} (${F.block.hash.slice(0, 10)}…), executor ${EXECUTOR}`);
 
   // ---- On-chain BAG identity (real BagFactory, Bag and StrategyRegistry on the fork)
@@ -138,15 +148,20 @@ try {
   async function honest(auth, ownerSignature, { fundingProof = '0x', expectedAllowanceAfter } = {}) {
     const before = await snapshot(auth);
     const run = await buildRun(auth);
-    const t = await sendExecute(auth, xOf(run, await signPlan(run.plan)), ownerSignature, fundingProof);
+    const x = xOf(run, await signPlan(run.plan));
+    const t = await sendExecute(auth, x, ownerSignature, fundingProof);
     if (t.status !== 'success') return { pass: false, observed: 'execute failed: ' + json(t.simulated) };
-    const verify = await sdk.verifyRecurringPurchaseReceipt({ client, transactionHash: t.hash, auth, deployment: DEP });
+    const intent = { execution: x, ownerSignature, fundingProof };
+    intents.set(t.hash, intent);
+    const verify = await sdk.verifyRecurringPurchase({ client: evidence, transactionHash: t.hash, auth, deployment: DEP, intent });
     const after = await snapshot(auth);
     const lc = x => x.toLowerCase(), gross = auth.schedule.grossAmountPerRun;
     const checks = {
-      sdkReceipt: verify.status === 'VERIFIED',
+      sdkVerified: verify.status === 'VERIFIED' && verify.transactionBinding === 'PREPARED_INTENT' && verify.evidence === 'TRANSACTION_AND_BALANCE_DELTAS',
+      sdkSourceDebitEqualsFork: verify.source?.debitRaw === before.balances.owner[lc(USDG)] - after.balances.owner[lc(USDG)],
       ownerDebitExact: before.balances.owner[lc(USDG)] - after.balances.owner[lc(USDG)] === gross,
-      deliveriesEqualReceipt: auth.assets.every((a, i) => after.balances.recipient[lc(a.asset)] - before.balances.recipient[lc(a.asset)] === verify.deliveries[i].receivedRaw),
+      sdkDeliveriesEqualForkBalances: auth.assets.every((a, i) => after.balances.recipient[lc(a.asset)] - before.balances.recipient[lc(a.asset)] === verify.deliveries[i].receivedRaw && verify.deliveries[i].receivedRaw === verify.deliveries[i].logReceivedRaw),
+      sdkNoTransit: verify.transit.length > 0 && verify.transit.every(tr => tr.netRaw === 0n),
       atOrAboveOwnerLimit: verify.deliveries.every(d => d.receivedRaw >= d.minimumRaw),
       noTransitBalance: ['executor', 'router'].every(k => Object.values(after.balances[k]).every(b => b === 0n)),
       allowancesBackToZero: after.executorAllowanceToRouter === 0n && after.routerAllowanceToSwapRouter === 0n,
@@ -155,8 +170,9 @@ try {
     };
     return { purchase: true, pass: Object.values(checks).every(Boolean), checks, tx: t.hash, gasUsed: t.gasUsed, window: run.execution.window,
       legs: run.legs.map((l, i) => ({ asset: l.asset, fee: l.fee, amountInRaw: l.amountInRaw, quotedOutRaw: l.quotedOutRaw, minimumOutRaw: l.minimumOutRaw, ownerLimitFloorRaw: l.priceLimitFloorRaw, receivedRaw: verify.deliveries[i].receivedRaw })),
-      sdkReceipt: { status: verify.status, issues: verify.issues }, ownerUsdgAfter: after.balances.owner[lc(USDG)], ownerAllowanceAfter: after.ownerAllowanceToExecutor,
-      observed: `${verify.status}, debit ${gross} raw, executions ${after.state.executions}, gas ${t.gasUsed}` };
+      sdkVerification: { status: verify.status, binding: verify.transactionBinding, evidence: verify.evidence, balanceScope: verify.balanceScope, source: verify.source, issues: verify.issues },
+      ownerUsdgAfter: after.balances.owner[lc(USDG)], ownerAllowanceAfter: after.ownerAllowanceToExecutor,
+      observed: `${verify.status} (${verify.transactionBinding}, ${verify.balanceScope}), debit ${verify.source?.debitRaw} raw, executions ${after.state.executions}, gas ${t.gasUsed}` };
   }
   const permitSig = async (value, deadline) => {
     const nonce = await read(USDG, erc20, 'nonces', [roles.owner]);
@@ -297,12 +313,14 @@ try {
     try { sdk.buildRecurringAuthorization({ ...terms(BAG2, id2), amountPerRunRaw: GROSS, runs: 1, totalBudgetRaw: GROSS, startsAt: regNow, periodSeconds: DAY, maxPriceRaw: RAW_LIMITS, nonce: 10n }); return { pass: false, observed: 'built' }; }
     catch (e) { return { pass: e.code === 'RECURRING_TERMS_INVALID' && /performance fee/.test(e.message), observed: `${e.code}: ${e.message}` }; }
   });
+  /** A BAG's registered rows (registered order, with symbols) as signed asset limits. */
+  const listOf = (doc, lim) => sdk.recurringRegisteredAssets(doc).map(r => ({ asset: r.asset, symbol: r.symbol, weightBps: r.weightBps, decimals: r.decimals, maxPriceRaw: lim[r.asset] ?? 10n ** 12n }));
   /** The SDK refuses a3caff05 (fee), so its authorization is assembled by hand here, ONLY to exercise the executor's on-chain
    *  registry checks; the executor cannot see a fee (the definition is not on chain). Same field set the SDK produces. */
   const rawAuth = (doc, idn, over = {}) => {
     const base = sdk.buildRecurringAuthorization({ ...terms(BAG1, id1), amountPerRunRaw: GROSS, runs: 1, totalBudgetRaw: GROSS, startsAt: regNow, periodSeconds: DAY, maxPriceRaw: limits, nonce: 10n });
     return { ...base, bag: { bagId: idn.bagId, bagVersion: idn.version, compositionHash: idn.compositionHash, definitionHash: idn.definitionHash, strategyId: idn.registered ? idn.strategyId : v.zeroHash, strategyVersion: idn.registered ? doc.ref.version : 0 },
-      assets: doc.definition.assets.map(a => ({ asset: a.address.toLowerCase(), weightBps: a.weightBps, decimals: a.decimals, maxPriceRaw: RAW_LIMITS[a.address.toLowerCase()] })), ...over };
+      assets: listOf(doc, RAW_LIMITS), ...over };
   };
   const regTerms = (over, doc = BAG2, idn = id2) => (doc === BAG2 ? rawAuth(doc, idn, over)
     : sdk.buildRecurringAuthorization({ ...terms(doc, idn), amountPerRunRaw: GROSS, runs: 1, totalBudgetRaw: GROSS, startsAt: regNow, periodSeconds: DAY, maxPriceRaw: limits, nonce: 10n, ...over }));
@@ -319,6 +337,20 @@ try {
   await registryCase('R3-a3caff05-wrong-definition', 'a3caff05 v2 with another definitionHash → StrategyNotRegistered', 'StrategyNotRegistered', () => { const a = regTerms({}); a.bag = { ...a.bag, definitionHash: id1.definitionHash }; return a; });
   await registryCase('R4-unknown-bag', 'bagId not in BagFactory → UnknownBag', 'UnknownBag', () => { const a = regTerms({}); a.bag = { ...a.bag, bagId: v.keccak256(v.toHex('not a bag')) }; return a; });
   await registryCase('R5-955df6e0-wrong-composition', '955df6e0 with a3caff05\'s composition hash → BagChanged(1, real hash)', 'BagChanged', () => { const a = regTerms({}, BAG1, id1); a.bag = { ...a.bag, compositionHash: id2.compositionHash }; return a; }, [1n, id1.compositionHash]);
+  // The signed list must BE the Bag's registered content: the real id, version and composition hash of 955df6e0 with another list.
+  const listA3 = listOf(BAG2, RAW_LIMITS);
+  const swapped = (() => { const l = listOf(BAG1, limits).map(a => ({ ...a })); const w = l[0].weightBps; l[0].weightBps = l[1].weightBps; l[1].weightBps = w; return l; })();
+  await registryCase('R7-955df6e0-with-a3caff05-list', '955df6e0 id, version and its REAL composition hash, signed with a3caff05\'s asset list (the SDK refuses to build this) → CompositionMismatch(signed list, registered)', 'CompositionMismatch',
+    () => { const a = regTerms({}, BAG1, id1); a.assets = listA3; return a; }, [sdk.recurringCompositionHash(CHAIN_LABEL, listA3), id1.compositionHash]);
+  await registryCase('R8-955df6e0-weights-swapped', '955df6e0 with its own tokens but two weights swapped (same total) → CompositionMismatch', 'CompositionMismatch',
+    () => { const a = regTerms({}, BAG1, id1); a.assets = swapped; return a; }, [sdk.recurringCompositionHash(CHAIN_LABEL, swapped), id1.compositionHash]);
+  await scenario('R9-sdk-refuses-other-list', { gate: 'BAG_REGISTRY', kind: 'SDK_REFUSAL', expected: 'a bag.json whose assets do not reproduce the registered composition (955df6e0 with two weights swapped), with 955df6e0\'s registry identity → the SDK refuses before signing' }, async () => {
+    const doc = structuredClone(BAG1);
+    const [w0, w1] = [doc.definition.assets[0].weightBps, doc.definition.assets[1].weightBps];
+    doc.definition.assets[0].weightBps = w1; doc.definition.assets[1].weightBps = w0;
+    try { sdk.buildRecurringAuthorization({ ...terms(doc, id1), amountPerRunRaw: GROSS, runs: 1, totalBudgetRaw: GROSS, startsAt: await now(), periodSeconds: DAY, maxPriceRaw: limits, nonce: 11n }); return { pass: false, observed: 'built' }; }
+    catch (e) { return { pass: e.code === 'RECURRING_TERMS_INVALID' && /compositionHash/.test(e.message), observed: `${e.code}: ${e.message}` }; }
+  });
   await registryCase('R6-955df6e0-claims-registered', '955df6e0 is not in StrategyRegistry; naming its derived strategyId → StrategyNotRegistered', 'StrategyNotRegistered', () => { const a = regTerms({}, BAG1, id1); a.bag = { ...a.bag, strategyId: id1.strategyId, strategyVersion: 1 }; return a; });
 
   // ================================================================ route scope
@@ -376,18 +408,57 @@ try {
   });
 
   await F.edit('REVERT', 'evm_revert', [beforeMove], 'undo the attacker swaps of the price-move scenarios');
-  // ================================================================ verifier fed altered expectations (good receipt, wrong expectation)
+  // ================================================================ verifier fed altered expectations (mined transaction, wrong expectation)
   const goodTx = scenarios.find(s => s.id === 'L1-permit-first-run').tx;
-  const altered = async (label, expected, mk, codes) => scenario(label, { gate: 'RECEIPT_VERIFIER', kind: 'ALTERED_EXPECTATION', expected }, async () => {
-    const { auth, deployment } = mk();
-    const r = await sdk.verifyRecurringPurchaseReceipt({ client, transactionHash: goodTx, auth, deployment });
-    const got = r.issues.map(i => i.code);
-    return { pass: r.status === 'FAILED' && codes.every(c => got.includes(c)), observed: `${r.status}: ${[...new Set(got)].join(', ')}` };
+  const goodIntent = intents.get(goodTx);
+  const otherIntent = intents.get(scenarios.find(s => s.id === 'L3-second-run-same-window-after-attacks').tx);
+  const revertedTx = scenarios.find(s => s.id === 'F1-same-window-again').tx;
+  const altered = (label, expected, variants) => scenario(label, { gate: 'RECEIPT_VERIFIER', kind: 'ALTERED_EXPECTATION', expected }, async () => {
+    const results = [];
+    for (const vr of variants) {
+      const r = await sdk.verifyRecurringPurchase({ client: evidence, transactionHash: goodTx, auth: authA, deployment: DEP, ...vr.params });
+      const codes = [...new Set(r.issues.map(i => i.code))];
+      results.push({ variant: vr.label, status: r.status, binding: r.transactionBinding, evidence: r.evidence, codes, pass: r.status === (vr.status ?? 'FAILED') && (!vr.code || codes.includes(vr.code)) && (!vr.evidence || r.evidence === vr.evidence) });
+    }
+    return { pass: results.every(r => r.pass), results, observed: results.map(r => `${r.variant}: ${r.status}${r.codes.length ? ' ' + r.codes.join(',') : ''}`).join(' | ') };
   });
-  await altered('E1-other-recipient', 'expect another recipient', () => ({ auth: { ...authA, recipient: roles.attacker.toLowerCase() }, deployment: DEP }), ['EVENT_MISSING', 'BELOW_PRICE_LIMIT']);
-  await altered('E2-other-amount', 'expect 6 USDG per run', () => ({ auth: { ...authA, schedule: { ...authA.schedule, grossAmountPerRun: 6n * USDG_UNIT } }, deployment: DEP }), ['SOURCE_DEBIT_MISMATCH']);
-  await altered('E3-other-executor', 'expect another executor address', () => ({ auth: authA, deployment: { ...DEP, executor: roles.attacker.toLowerCase() } }), ['NOT_EXECUTOR_TX']);
-  await altered('E4-tighter-limits', 'expect limits 10× tighter', () => ({ auth: { ...authA, assets: authA.assets.map(a => ({ ...a, maxPriceRaw: a.maxPriceRaw / 10n })) }, deployment: DEP }), ['BELOW_PRICE_LIMIT']);
+  const both = (params, code) => [{ label: 'prepared call', params: { ...params, intent: goodIntent }, code }, { label: 'decoded call', params, code: params.deployment ? 'NOT_EXECUTOR_TX' : code }];
+  await altered('E0-baseline', 'the good L1 transaction: VERIFIED with the prepared call and with the decoded call; event-only mode is VERIFIED but labelled TRANSACTION_AND_TRANSFER_LOGS', [
+    { label: 'prepared call', params: { intent: goodIntent }, status: 'VERIFIED', evidence: 'TRANSACTION_AND_BALANCE_DELTAS' },
+    { label: 'decoded call', params: {}, status: 'VERIFIED', evidence: 'TRANSACTION_AND_BALANCE_DELTAS' },
+    { label: 'event-only', params: { intent: goodIntent, verification: 'TRANSFER_LOGS' }, status: 'VERIFIED', evidence: 'TRANSACTION_AND_TRANSFER_LOGS' }]);
+  await altered('E1-other-recipient', 'expect another recipient (another authorization id) → AUTHORIZATION_MISMATCH', both({ auth: { ...authA, recipient: roles.attacker.toLowerCase() } }, 'AUTHORIZATION_MISMATCH'));
+  await altered('E2-other-amount', 'expect 6 USDG per run → AUTHORIZATION_MISMATCH', both({ auth: { ...authA, schedule: { ...authA.schedule, grossAmountPerRun: 6n * USDG_UNIT } } }, 'AUTHORIZATION_MISMATCH'));
+  await altered('E3-other-executor', 'expect another executor address → AUTHORIZATION_MISMATCH (prepared) / NOT_EXECUTOR_TX (decoded)', both({ deployment: { ...DEP, executor: roles.attacker.toLowerCase() } }, 'AUTHORIZATION_MISMATCH'));
+  await altered('E4-tighter-limits', 'expect limits 10× tighter → AUTHORIZATION_MISMATCH', both({ auth: { ...authA, assets: authA.assets.map(a => ({ ...a, maxPriceRaw: a.maxPriceRaw / 10n })) } }, 'AUTHORIZATION_MISMATCH'));
+  await altered('E5-other-prepared-call', 'same authorization, but the call prepared for another run (L3), or the L1 call without its permit proof → CALL_MISMATCH', [
+    { label: 'L3 intent', params: { intent: otherIntent }, code: 'CALL_MISMATCH' },
+    { label: 'permit proof dropped', params: { intent: { ...goodIntent, fundingProof: '0x' } }, code: 'CALL_MISMATCH' }]);
+  await altered('E6-mined-revert', 'F1\'s mined, reverted execute for A → FAILED TRANSACTION_REVERTED (nothing bought)', [{ label: 'decoded call', params: { transactionHash: revertedTx }, code: 'TRANSACTION_REVERTED' }]);
+
+  // ================================================================ evidence scope: the single-transaction-block reader on a busy block
+  await scenario('B1-busy-block', { gate: 'RECEIPT_VERIFIER', kind: 'EVIDENCE_SCOPE', expected: 'an honest purchase mined in the same block as another transaction: the SINGLE_TRANSACTION_BLOCK reader cannot isolate it → INDETERMINATE (BALANCE_EVIDENCE_UNAVAILABLE), never VERIFIED; event-only verification of the same transaction is VERIFIED and labelled TRANSACTION_AND_TRANSFER_LOGS' }, async () => {
+    const authQ = sdk.buildRecurringAuthorization({ ...terms(BAG1, id1), amountPerRunRaw: GROSS, runs: 1, totalBudgetRaw: GROSS, startsAt: await now(), periodSeconds: DAY, maxPriceRaw: limits, nonce: 40n });
+    const sigQ = await ownerSign(authQ);
+    await send(W.owner, USDG, erc20, 'approve', [EXECUTOR, GROSS]);
+    const run = await buildRun(authQ);
+    const x = xOf(run, await signPlan(run.plan));
+    let hash, other;
+    await rpc('evm_setAutomine', [false]);
+    try {
+      hash = await W.keeper.writeContract({ address: EXECUTOR, abi: EXEC_ABI, functionName: 'execute', args: [authQ, x, sigQ, '0x'], gas: 8_000_000n });
+      other = await W.attacker.writeContract({ address: USDG, abi: erc20, functionName: 'transfer', args: [roles.relayer, 1n], gas: 100_000n });
+      await rpc('evm_mine');
+    } finally { await rpc('evm_setAutomine', [true]); }
+    const [r1, r2] = [await client.getTransactionReceipt({ hash }), await client.getTransactionReceipt({ hash: other })];
+    const intent = { execution: x, ownerSignature: sigQ, fundingProof: '0x' };
+    const strict = await sdk.verifyRecurringPurchase({ client: evidence, transactionHash: hash, auth: authQ, deployment: DEP, intent });
+    const logs = await sdk.verifyRecurringPurchase({ client: evidence, transactionHash: hash, auth: authQ, deployment: DEP, intent, verification: 'TRANSFER_LOGS' });
+    await send(W.owner, USDG, erc20, 'approve', [EXECUTOR, 0n]);
+    const sameBlock = r1.blockHash === r2.blockHash;
+    return { pass: r1.status === 'success' && sameBlock && strict.status === 'INDETERMINATE' && strict.issues.some(i => i.code === 'BALANCE_EVIDENCE_UNAVAILABLE') && logs.status === 'VERIFIED' && logs.evidence === 'TRANSACTION_AND_TRANSFER_LOGS',
+      tx: hash, observed: `purchase ${r1.status}, same block as another tx: ${sameBlock}; balance mode ${strict.status} (${strict.issues.map(i => i.code).join(',')}); event-only ${logs.status} (${logs.evidence})` };
+  });
 
   // ================================================================ persistent keeper (app lib/dca/keeper) on the same fork
   // Needs a TypeScript loader for the app's keeper modules: run this file with the pinned tsx (start command in RESULTS).
@@ -426,7 +497,9 @@ try {
       const k = mk(new FileKeeperStore(storePath), chainA);
       await k.addJob({ authorization: authK, ownerSignature: sigK, deployment: depK });
       const [a] = await k.tick(); const [b] = await k.tick();
-      return { pass: a.state === 'PENDING_TX' && b.state === 'DONE_THIS_WINDOW' && b.confirmed.length === 1 && b.confirmed[0].verification === 'VERIFIED', observed: `${a.state} → ${b.state}, ${b.confirmed[0]?.verification} ${b.confirmed[0]?.hash}`, tx: b.confirmed[0]?.hash };
+      const c = b.confirmed[0];
+      return { pass: a.state === 'PENDING_TX' && b.state === 'DONE_THIS_WINDOW' && b.confirmed.length === 1 && c.verification === 'VERIFIED' && c.binding === 'PREPARED_INTENT' && c.evidence === 'TRANSACTION_AND_BALANCE_DELTAS' && b.pending === null,
+        observed: `${a.state} → ${b.state}, ${c?.verification} (${c?.binding}, ${c?.balanceScope}) ${c?.hash}`, tx: c?.hash };
     });
     await kscenario('K2-restart-same-store', 'a new keeper process on the same file store in the same window: nothing is sent', async () => {
       const n = await nonceOf(kA.address);
@@ -439,7 +512,8 @@ try {
       const k = mk(new MemoryKeeperStore(), chainA);
       await k.addJob({ authorization: authK, ownerSignature: sigK, deployment: depK });
       const [j] = await k.tick();
-      return { pass: j.state === 'DONE_THIS_WINDOW' && j.confirmed.length === 1 && (await nonceOf(kA.address)) === n, observed: `${j.state}, confirmed recovered ${j.confirmed.length}, nonce unchanged` };
+      return { pass: j.state === 'DONE_THIS_WINDOW' && j.confirmed.length === 1 && j.confirmed[0].verification === 'VERIFIED' && j.confirmed[0].binding === 'DECODED_CALL' && (await nonceOf(kA.address)) === n,
+        observed: `${j.state}, confirmed recovered ${j.confirmed.length} (${j.confirmed[0]?.verification}, ${j.confirmed[0]?.binding}: not prepared by this keeper), nonce unchanged` };
     });
     await increaseTime(DAY);
     await kscenario('K4-crash-after-send', 'window 1: the keeper crashes after sending, before storing the hash; the restart finds the purchase on chain and does not resend', async () => {
@@ -449,8 +523,9 @@ try {
       const n = await nonceOf(kA.address);
       const [j] = await mk(new FileKeeperStore(storePath), chainA).tick();
       const st = await chainState();
-      return { pass: crashed && stored.pending?.hash === null && j.confirmed.length === 2 && j.pending === null && (await nonceOf(kA.address)) === n && Number(st.executions) === 2,
-        observed: `crashed=${crashed}, write-ahead hash=${stored.pending?.hash}, after restart: ${j.state}, confirmed ${j.confirmed.length}, chain executions ${st.executions}, nonce unchanged` };
+      const last = j.confirmed[1];
+      return { pass: crashed && stored.pending?.hash === null && j.confirmed.length === 2 && last?.verification === 'VERIFIED' && last?.binding === 'PREPARED_INTENT' && j.pending === null && (await nonceOf(kA.address)) === n && Number(st.executions) === 2,
+        observed: `crashed=${crashed}, write-ahead hash=${stored.pending?.hash}, after restart: ${j.state}, confirmed ${j.confirmed.length} (${last?.verification}, ${last?.binding} from the write-ahead intent), chain executions ${st.executions}, nonce unchanged` };
     });
     await increaseTime(DAY);
     await kscenario('K5-two-keepers', 'window 2: keeper B (own store, its node blind to A\'s pending tx) sends too; one purchase, B\'s mined revert is recorded, the owner is charged once', async () => {
@@ -483,6 +558,36 @@ try {
       return { pass: g.state === 'GAS_SHORTAGE' && noSend && d.confirmed.length === K_RUNS && c.state === 'COMPLETED' && Number(st.executions) === K_RUNS && st.grossUsed === BigInt(K_RUNS) * GROSS,
         observed: `${g.state} (no tx) → confirmed ${d.confirmed.length} → ${c.state}; chain executions ${st.executions}, grossUsed ${st.grossUsed}` };
     });
+    // Fixed max price on real pools: a window above it is skipped, recorded, and never made up. Isolated with a snapshot.
+    await kscenario('K7-fixed-price-skips-window', 'a new 2-run authorization (limits 100 bps above the real quote): run 1 in window 0; in window 1 the COIN pool is moved above the fixed max price → WAITING_PRICE stating market vs max price, nothing sent; at expiry window 1 is recorded missed (WAITING_PRICE), not made up, and one run\'s budget is reported unspendable', async () => {
+      const snap = await F.edit('SNAPSHOT', 'evm_snapshot', [], 'isolate the K7 market move (reverted after K7)');
+      try {
+        const auth7 = sdk.buildRecurringAuthorization({ ...terms(BAG1, id1), amountPerRunRaw: GROSS, runs: 2, totalBudgetRaw: 2n * GROSS, startsAt: await now(), periodSeconds: DAY, maxPriceRaw: await limitsFromQuotes(BAG1, GROSS, 100), nonce: 31n });
+        const summary7 = sdk.summarizeRecurringAuthorization(auth7);
+        await send(W.owner, USDG, erc20, 'approve', [EXECUTOR, 2n * GROSS]);
+        const k = mk(new MemoryKeeperStore(), chainA, 'k7');
+        await k.addJob({ authorization: auth7, ownerSignature: await ownerSign(auth7), deployment: depK });
+        await k.tick(); const [first] = await k.tick();
+        await increaseTime(DAY);
+        await send(W.attacker, USDG, erc20, 'approve', [SWAP_ROUTER02, 50_000n * USDG_UNIT]);
+        let steps = 0;
+        for (; steps < 40; steps++) {
+          try { await buildRun(auth7); } catch (e) { if (e.code === 'PRICE_LIMIT_NOT_MET') break; throw e; }
+          await send(W.attacker, SWAP_ROUTER02, swapAbi, 'exactInputSingle', [{ tokenIn: USDG, tokenOut: coin, fee: move.fee, recipient: roles.attacker, amountIn: 1_000n * USDG_UNIT, amountOutMinimum: 0n, sqrtPriceLimitX96: 0n }], 1_500_000n);
+        }
+        const n = await nonceOf(kA.address);
+        const [waiting] = await k.tick();
+        const noSend = (await nonceOf(kA.address)) === n;
+        await increaseTime(DAY);
+        const [end] = await k.tick();
+        const st = await read(EXECUTOR, EXEC_ABI, 'getState', [roles.owner, sdk.recurringAuthorizationId(auth7, DEP)]);
+        report.keeperPriceSkip = { summaryPriceLimit: summary7.priceLimit, summaryDependencies: summary7.dependencies, moveSteps: steps, waiting: { state: waiting.state, detail: waiting.stateDetail, outlook: waiting.outlook }, end: { state: end.state, missed: end.missed, outlook: end.outlook } };
+        return { pass: first.confirmed.length === 1 && waiting.state === 'WAITING_PRICE' && /market price ~\d+ is above the FIXED max price \d+/.test(waiting.stateDetail ?? '') && noSend
+            && end.state === 'EXPIRED' && end.missed.length === 1 && end.missed[0].reason === 'WAITING_PRICE' && end.outlook?.runsLeft === 1 && end.outlook?.unspendableRaw === GROSS && Number(st.executions) === 1
+            && summary7.priceLimit.isSlippageProtection === false && summary7.priceLimit.catchUp === false,
+          observed: `${steps} × 1000 USDG moved COIN; window 1: ${waiting.state} (${redact(waiting.stateDetail ?? '').slice(0, 160)}), no tx: ${noSend}; at expiry: ${end.state}, missed ${end.missed.map(m => m.window + ':' + m.reason).join(',')}, runs left ${end.outlook?.runsLeft}, unspendable ${end.outlook?.unspendableRaw} raw; chain executions ${st.executions}` };
+      } finally { await F.edit('REVERT', 'evm_revert', [snap], 'undo the K7 market move'); }
+    });
     report.keeperPhase = { status: 'RUN', authorizationId: idK, runs: K_RUNS, ownerDebitRaw: ownerStart - (await bal(USDG, roles.owner)), expectedDebitRaw: BigInt(K_RUNS) * GROSS, store: 'keeper-store.redacted.json (the file store with signatures replaced by their sha256)', keeperAccounts: [kA.address, kB.address],
       note: 'keeper transactions are sent with app viem on the same fork transport; they are not in forkLocalTransactions' };
     writeFileSync(join(out, 'keeper-store.redacted.json'), readFileSync(storePath, 'utf8').replace(/0x[0-9a-fA-F]{130,}/g, m => `<redacted signature sha256:${createHash('sha256').update(m).digest('hex').slice(0, 16)}>`));
@@ -511,7 +616,7 @@ try {
 
 function summaryMd(r) {
   const cell = x => String(x ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
-  const kinds = { LIFECYCLE: 'Yaşam döngüsü (dürüst işlemler)', REAL_FAULT: 'Gerçek hatalı yürütme (fork\'ta gönderildi ve mine edildi)', SDK_REFUSAL: 'SDK reddi (plan kurulmadı)', ALTERED_EXPECTATION: 'Değiştirilmiş doğrulama beklentisi (iyi makbuz, yanlış beklenti)', KEEPER_FORK: 'Kalıcı keeper (aynı fork)' };
+  const kinds = { LIFECYCLE: 'Yaşam döngüsü (dürüst işlemler; SDK doğrulaması: hazırlanan çağrı + işlem kapsamlı bakiye)', REAL_FAULT: 'Gerçek hatalı yürütme (fork\'ta gönderildi ve mine edildi)', SDK_REFUSAL: 'SDK reddi (plan veya yetki kurulmadı)', ALTERED_EXPECTATION: 'Değiştirilmiş doğrulama beklentisi (mine edilmiş işlem, yanlış beklenti)', EVIDENCE_SCOPE: 'Kanıt kapsamı (okuyucunun kanıtlayamadığı durum)', KEEPER_FORK: 'Kalıcı keeper (aynı fork)' };
   let md = `# RecurringPurchaseExecutor fork kanıtı\n\n`;
   md += `| | |\n|---|---|\n`;
   md += `| Kanıt sınıfı | **${r.evidenceClass}**: yalnızca bu süreçte üretilen test anahtarları. Cüzdan, insan imzası veya public işlem değildir |\n`;
@@ -520,6 +625,7 @@ function summaryMd(r) {
   md += `| Fork | blok ${r.fork?.blockNumber} (\`${r.fork?.blockHash}\`), tek fork bloğu; her alımın bütün bacakları tek işlemde |\n`;
   md += `| Executor | \`${r.keylessExecutor?.address}\` (anahtarsız; 4663'te kod ${r.keylessExecutor?.mainnetCode}, nonce ${r.keylessExecutor?.mainnetNonce}). Runtime artifact ile eşleşiyor: ${r.deployment?.executor?.runtimeMatchesArtifact} |\n`;
   md += `| Gerçek kontratlar | USDG (impl \`${r.deployment?.realContracts?.USDG?.eip1967Implementation}\`), SwapRouter02, QuoterV2, BagFactory, StrategyRegistry. Router: uygulamanın BagExecutionRouter'ı, gerçek BagFactory ile; owner ve planSigner test anahtarı |\n`;
+  md += `| Alım doğrulaması | SDK \`verifyRecurringPurchase\`: mine edilen calldata bu koşucunun hazırladığı çağrıyla bayt bayt aynı (PREPARED_INTENT); kaynak borcu, alıcı teslimleri ve executor/router kalıntısı işlem kapsamlı bakiyelerden (okuyucu: ${r.purchaseVerification?.balanceReader}; yalnızca bloktaki tek işlem için geçerli). Koşucunun kendi bakiye okumaları ikinci, bağımsız kontrol. Gerçek zincir için Nitro okuyucusu bu koşuda denenmedi |\n`;
   md += `| Fiyat sınırı | Sahibin imzaladığı varlık başına azami fiyat. Testte: kurulumda gerçek zincirdeki en iyi QuoterV2 teklifi + 300 bps (A/B/C, keeper) veya + 100 bps (P). Bağımsız piyasa referansı **değildir** |\n`;
   md += `| Ağ | Composer/LI.FI isteği: **${r.network?.composerOrLifiRequests}**; reddedilen host: ${(r.network?.refused ?? []).length}; upstream okuma: ${r.network?.relay?.forwardedRequests}; relay'in reddettiği yazma: ${r.network?.relay?.refusedRequests}; public yazma: ${r.network?.publicWrites} |\n`;
   md += `| Fonlar EOA'da | ${r.fundsStayInOwnerAddress?.pass ? 'EVET' : 'HAYIR'}: ${r.fundsStayInOwnerAddress?.honestRuns} alım × 5 USDG = ${r.fundsStayInOwnerAddress?.spentRaw} ham birim; executor ve router'da bakiye kalmadı |\n\n`;

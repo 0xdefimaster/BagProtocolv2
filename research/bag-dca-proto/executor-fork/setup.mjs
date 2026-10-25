@@ -18,6 +18,8 @@ export const BAG_FACTORY = v.getAddress('0x7ce5a81df434755f38cb5f67ad49a8bb3c8e6
 export const STRATEGY_REGISTRY = v.getAddress('0x907cc27d644c8ea1c24b8320ad09ecf2819209a8');
 /** Creator of both fixture BAGs (read only; never a signer here). */
 export const BAG_CREATOR = '0xb193DE199EeB9bd1143607a11AD00999Ceb956b8';
+/** The chain label of the composition rows (`robinhood:<address>:<symbol>:<decimals>:<weightBps>`), as the BAG app registers them. */
+export const CHAIN_LABEL = 'robinhood';
 /** No key and no deployer can produce this address: an authorization for it cannot be used on 4663. */
 export const KEYLESS_LABEL = 'BAG RecurringPurchaseExecutor fork-only v1';
 export const EXECUTOR = v.getAddress(v.slice(v.keccak256(v.toHex(KEYLESS_LABEL)), 12));
@@ -84,15 +86,16 @@ export async function loadBuild(app) {
   const execArt = artifact('contracts/dca/RecurringPurchaseExecutor.sol', 'RecurringPurchaseExecutor');
   const routerArt = artifact('contracts/BagExecutionRouter.sol', 'BagExecutionRouter');
   const sdkDist = join(app, 'packages/bag-sdk/dist');
-  for (const f of ['index.js', 'recurring.js', 'adapters/uniswap-v3.js']) if (!existsSync(join(sdkDist, f))) throw new UsageError(`SDK not built (${join(sdkDist, f)}); run npm run build in packages/bag-sdk`);
+  for (const f of ['index.js', 'recurring.js', 'adapters/uniswap-v3.js', 'adapters/evm.js']) if (!existsSync(join(sdkDist, f))) throw new UsageError(`SDK not built (${join(sdkDist, f)}); run npm run build in packages/bag-sdk`);
   const sdk = await import(pathToFileURL(join(sdkDist, 'index.js')).href);
   const uni = await import(pathToFileURL(join(sdkDist, 'adapters/uniswap-v3.js')).href);
+  const evm = await import(pathToFileURL(join(sdkDist, 'adapters/evm.js')).href);
   const fixture = name => JSON.parse(readFileSync(join(app, 'packages/bag-sdk/test/fixtures', name + '.bag.json'), 'utf8'));
   const build = { appCommit: git('rev-parse', 'HEAD'), appDirtyInContractsOrSdk: git('status', '--porcelain', '--', 'contracts', 'packages/bag-sdk/src', 'lib/dca') || '', executor: execArt.provenance, router: routerArt.provenance,
     sdk: { dist: 'packages/bag-sdk/dist', recurringJsSha256: sha256(readFileSync(join(sdkDist, 'recurring.js'))), uniswapV3JsSha256: sha256(readFileSync(join(sdkDist, 'adapters/uniswap-v3.js'))) } };
   const ERROR_ABI = [...execArt.abi, ...routerArt.abi, ...ERC20_ERRORS].filter(x => x.type === 'error');
   const CALL_ABI = [...execArt.abi, ...ERROR_ABI.filter(e => !execArt.abi.some(x => x.type === 'error' && x.name === e.name))];
-  return { execArt, routerArt, sdk, uni, build, ERROR_ABI, CALL_ABI,
+  return { execArt, routerArt, sdk, uni, evm, build, ERROR_ABI, CALL_ABI,
     BAG1: fixture('robinhood-955df6e0-b6ea-44ba-a5eb-1288a80c0a06'), BAG2: fixture('robinhood-a3caff05-d606-486b-959f-30865a4cbfa7') };
 }
 
@@ -132,7 +135,7 @@ export async function startExecutorFork({ rpcUrl, out, label, build, roleNames, 
   const router = await deploy(routerArt, [BAG_FACTORY, roles.routerOwner, roles.planSigner]);
   await send(W.routerOwner, router, routerArt.abi, 'setAllowedTarget', [SWAP_ROUTER02, true]);
   for (const t of [USDG, ...BAG1.definition.assets.map(a => a.address), ...BAG2.definition.assets.map(a => a.address)]) await send(W.routerOwner, router, routerArt.abi, 'setAllowedToken', [t, true]);
-  const deployedAt = await deploy(execArt, [BAG_FACTORY, STRATEGY_REGISTRY]);
+  const deployedAt = await deploy(execArt, [BAG_FACTORY, STRATEGY_REGISTRY, CHAIN_LABEL]);
   const runtime = await client.getCode({ address: deployedAt });
   await F.edit('SET_CODE', 'hardhat_setCode', [EXECUTOR, runtime], `executor runtime from ${deployedAt} (immutables: real BagFactory, real StrategyRegistry) at the keyless address`);
   await F.edit('SET_CODE', 'hardhat_setCode', [deployedAt, '0x'], 'remove the deployer-address copy so only the keyless executor exists');
@@ -145,13 +148,23 @@ export async function startExecutorFork({ rpcUrl, out, label, build, roleNames, 
   for (const [k, a] of Object.entries({ USDG, SWAP_ROUTER02, QUOTER_V2, BAG_FACTORY, STRATEGY_REGISTRY })) { const c = await client.getCode({ address: a }); realContracts[k] = { address: a, codeKeccak: v.keccak256(c), bytes: (c.length - 2) / 2 }; }
   realContracts.USDG.eip1967Implementation = v.getAddress(v.slice(await client.getStorageAt({ address: USDG, slot: '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc' }), 12));
   const usdgDomain = await read(USDG, erc20, 'DOMAIN_SEPARATOR');
+  // The executor rebuilds the composition from the signed rows; it must reproduce each real Bag's registered hash.
+  const compositionCheck = {};
+  for (const doc of [BAG1, BAG2]) {
+    const rows = sdk.recurringRegisteredAssets(doc).map(r => ({ asset: r.asset, symbol: r.symbol, weightBps: r.weightBps, decimals: r.decimals, maxPriceRaw: 1n }));
+    const ref = offChainRef(doc);
+    const bag = await read(BAG_FACTORY, factoryAbi, 'bagOf', [await read(BAG_FACTORY, factoryAbi, 'deriveBagId', [BAG_CREATOR, ref])]);
+    const registered = await read(bag, bagAbi, 'compositionHash');
+    const onChain = await read(EXECUTOR, execArt.abi, 'compositionHashOf', [rows]);
+    compositionCheck[doc.ref.strategyId] = { registered, executorRebuilt: onChain, sdk: sdk.recurringCompositionHash(CHAIN_LABEL, rows), matches: onChain === registered && sdk.recurringCompositionHash(CHAIN_LABEL, rows) === registered };
+  }
   const deployment = {
-    executor: { address: EXECUTOR, runtimeMatchesArtifact: mask(runtime, execArt.immutableReferences) === mask(execArt.deployedBytecode, execArt.immutableReferences), immutables: { bagFactory: await read(EXECUTOR, execArt.abi, 'bagFactory'), strategyRegistry: await read(EXECUTOR, execArt.abi, 'strategyRegistry') }, domainSeparator: domainOnChain, domainSeparatorMatchesSdk: domainOnChain === domainExpected },
+    executor: { address: EXECUTOR, runtimeMatchesArtifact: mask(runtime, execArt.immutableReferences) === mask(execArt.deployedBytecode, execArt.immutableReferences), immutables: { bagFactory: await read(EXECUTOR, execArt.abi, 'bagFactory'), strategyRegistry: await read(EXECUTOR, execArt.abi, 'strategyRegistry'), chainLabel: await read(EXECUTOR, execArt.abi, 'chainLabel') }, domainSeparator: domainOnChain, domainSeparatorMatchesSdk: domainOnChain === domainExpected, compositionCheck },
     router: { address: router, runtimeMatchesArtifact: mask(routerCode, routerArt.immutableReferences) === mask(routerArt.deployedBytecode, routerArt.immutableReferences), bagFactory: BAG_FACTORY, planSigner: roles.planSigner, owner: roles.routerOwner,
       allowlist: { targets: [SWAP_ROUTER02], tokens: 'USDG + assets of both BAGs' }, trust: 'test keys: router owner and planSigner are local; the runs treat both as compromised' },
     realContracts, usdgPermitDomain: { onChain: usdgDomain, matches: usdgDomain === v.hashDomain({ domain: { name: 'Global Dollar', version: '1', chainId: CHAIN_ID, verifyingContract: USDG }, types: { EIP712Domain: EIP712_DOMAIN } }), name: 'Global Dollar', version: '1' },
   };
-  if (!deployment.executor.runtimeMatchesArtifact || !deployment.executor.domainSeparatorMatchesSdk || !deployment.router.runtimeMatchesArtifact || !deployment.usdgPermitDomain.matches) throw new Error('deployment check failed: ' + json(deployment));
+  if (!deployment.executor.runtimeMatchesArtifact || !deployment.executor.domainSeparatorMatchesSdk || deployment.executor.immutables.chainLabel !== CHAIN_LABEL || !Object.values(compositionCheck).every(c => c.matches) || !deployment.router.runtimeMatchesArtifact || !deployment.usdgPermitDomain.matches) throw new Error('deployment check failed: ' + json(deployment));
   return { relay, remote, F, client, rpc, read, bal, keys, W, roles, send, fundUsdg, holder, router, deployment, keyless,
     fork: { blockNumber: F.block.number, blockHash: F.block.hash, timestamp: F.block.timestamp, note: 'one fork block for the whole run; every leg of a purchase executes in one transaction (same block by construction)' } };
 }
