@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hex } from 'viem';
 import { deriveState, scheduleOutlook } from '../keeper/keeper';
+import { revertReasonOf } from '../keeper/chain';
 import { FileKeeperStore, MemoryKeeperStore, deserializeJobs, serializeJobs } from '../keeper/store';
 import type { KeeperJob } from '../keeper/types';
 import type { RecurringAuthorization } from '../../../packages/bag-sdk/src/recurring';
@@ -143,5 +144,13 @@ describe('scheduleOutlook (what the fixed price ceiling can cost, from chain cou
     const late = { ...done, lastWindow: BigInt(3), lastExecutionAt: BigInt(1_350) };
     expect(scheduleOutlook(auth, late, BigInt(1_399)).missedWindows).toBe(1);
     expect(scheduleOutlook(auth, { ...zero, revoked: true }, BigInt(1_150))).toMatchObject({ runsLeft: 0, windowsLeft: 0, unspendableRaw: BigInt(0) });
+  });
+});
+
+describe('revertReasonOf', () => {
+  it('a decoded executor error by name; otherwise the short message with the node\'s detail', () => {
+    expect(revertReasonOf({ shortMessage: 'reverted', cause: { data: { errorName: 'NotDue', args: [] } } })).toBe('NotDue()');
+    const rpc = { shortMessage: 'Missing or invalid parameters.\nDouble check you have provided the correct parameters.', cause: { details: 'max fee per gas less than block base fee' } };
+    expect(revertReasonOf(rpc)).toBe('Missing or invalid parameters. (max fee per gas less than block base fee)');
   });
 });

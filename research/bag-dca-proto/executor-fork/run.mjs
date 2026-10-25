@@ -123,6 +123,12 @@ try {
     try { hash = await W[from].writeContract({ address: EXECUTOR, abi: EXEC_ABI, functionName: 'execute', args: callArgs, gas: 8_000_000n }); receipt = await client.waitForTransactionReceipt({ hash }); }
     catch (e) { sendError = decodeErr(e); }
     const nonceAfter = await client.getTransactionCount({ address: keys[from].address });
+    // EDR answers a mined revert with an error instead of the hash: find the mined transaction by sender and nonce.
+    if (!hash && nonceAfter === nonceBefore + 1) {
+      const blk = await client.getBlock({ includeTransactions: true });
+      hash = blk.transactions.find(x => x.from.toLowerCase() === keys[from].address.toLowerCase() && x.nonce === nonceBefore)?.hash;
+      if (hash) receipt = await client.getTransactionReceipt({ hash });
+    }
     return { simulated, hash, status: receipt?.status ?? 'reverted', gasUsed: receipt?.gasUsed, mined: nonceAfter === nonceBefore + 1, sendError };
   }
   const same = (a, b) => json(a) === json(b);
@@ -344,12 +350,15 @@ try {
     () => { const a = regTerms({}, BAG1, id1); a.assets = listA3; return a; }, [sdk.recurringCompositionHash(CHAIN_LABEL, listA3), id1.compositionHash]);
   await registryCase('R8-955df6e0-weights-swapped', '955df6e0 with its own tokens but two weights swapped (same total) → CompositionMismatch', 'CompositionMismatch',
     () => { const a = regTerms({}, BAG1, id1); a.assets = swapped; return a; }, [sdk.recurringCompositionHash(CHAIN_LABEL, swapped), id1.compositionHash]);
-  await scenario('R9-sdk-refuses-other-list', { gate: 'BAG_REGISTRY', kind: 'SDK_REFUSAL', expected: 'a bag.json whose assets do not reproduce the registered composition (955df6e0 with two weights swapped), with 955df6e0\'s registry identity → the SDK refuses before signing' }, async () => {
-    const doc = structuredClone(BAG1);
-    const [w0, w1] = [doc.definition.assets[0].weightBps, doc.definition.assets[1].weightBps];
-    doc.definition.assets[0].weightBps = w1; doc.definition.assets[1].weightBps = w0;
-    try { sdk.buildRecurringAuthorization({ ...terms(doc, id1), amountPerRunRaw: GROSS, runs: 1, totalBudgetRaw: GROSS, startsAt: await now(), periodSeconds: DAY, maxPriceRaw: limits, nonce: 11n }); return { pass: false, observed: 'built' }; }
-    catch (e) { return { pass: e.code === 'RECURRING_TERMS_INVALID' && /compositionHash/.test(e.message), observed: `${e.code}: ${e.message}` }; }
+  await scenario('R9-sdk-refuses-other-list', { gate: 'BAG_REGISTRY', kind: 'SDK_REFUSAL', expected: 'the SDK refuses before signing when the bag.json assets do not reproduce the registered composition: (a) 955df6e0\'s document with a3caff05\'s registered hash, (b) 955df6e0 with one symbol changed in its metadata' }, async () => {
+    const attempt = (doc, registry) => { try { sdk.buildRecurringAuthorization({ ...terms(doc, id1), registry, amountPerRunRaw: GROSS, runs: 1, totalBudgetRaw: GROSS, startsAt: regNow, periodSeconds: DAY, maxPriceRaw: limits, nonce: 11n }); return 'BUILT'; } catch (e) { return `${e.code}: ${e.message}`; } };
+    regNow = await now();
+    const own = terms(BAG1, id1).registry;
+    const a = attempt(BAG1, { ...own, compositionHash: id2.compositionHash });
+    const renamed = structuredClone(BAG1); renamed.metadata.assets[0].symbol += 'X';
+    const b = attempt(renamed, own);
+    const ok = x => /^RECURRING_TERMS_INVALID: .*compositionHash/.test(x);
+    return { pass: ok(a) && ok(b), observed: `(a) ${a} | (b) ${b}` };
   });
   await registryCase('R6-955df6e0-claims-registered', '955df6e0 is not in StrategyRegistry; naming its derived strategyId → StrategyNotRegistered', 'StrategyNotRegistered', () => { const a = regTerms({}, BAG1, id1); a.bag = { ...a.bag, strategyId: id1.strategyId, strategyVersion: 1 }; return a; });
 
@@ -558,10 +567,11 @@ try {
       return { pass: g.state === 'GAS_SHORTAGE' && noSend && d.confirmed.length === K_RUNS && c.state === 'COMPLETED' && Number(st.executions) === K_RUNS && st.grossUsed === BigInt(K_RUNS) * GROSS,
         observed: `${g.state} (no tx) → confirmed ${d.confirmed.length} → ${c.state}; chain executions ${st.executions}, grossUsed ${st.grossUsed}` };
     });
-    // Fixed max price on real pools: a window above it is skipped, recorded, and never made up. Isolated with a snapshot.
+    // Fixed max price on real pools: a window above it is skipped, recorded, and never made up. Runs LAST and moves the market
+    // for good (no snapshot: under an open evm_snapshot, EDR's eth_estimateGas used another block time than eth_call, reproduced
+    // as QuoteExpired in the keeper's pre-flight; the keeper failed closed and sent nothing).
     await kscenario('K7-fixed-price-skips-window', 'a new 2-run authorization (limits 100 bps above the real quote): run 1 in window 0; in window 1 the COIN pool is moved above the fixed max price → WAITING_PRICE stating market vs max price, nothing sent; at expiry window 1 is recorded missed (WAITING_PRICE), not made up, and one run\'s budget is reported unspendable', async () => {
-      const snap = await F.edit('SNAPSHOT', 'evm_snapshot', [], 'isolate the K7 market move (reverted after K7)');
-      try {
+      {
         const auth7 = sdk.buildRecurringAuthorization({ ...terms(BAG1, id1), amountPerRunRaw: GROSS, runs: 2, totalBudgetRaw: 2n * GROSS, startsAt: await now(), periodSeconds: DAY, maxPriceRaw: await limitsFromQuotes(BAG1, GROSS, 100), nonce: 31n });
         const summary7 = sdk.summarizeRecurringAuthorization(auth7);
         await send(W.owner, USDG, erc20, 'approve', [EXECUTOR, 2n * GROSS]);
@@ -586,7 +596,7 @@ try {
             && end.state === 'EXPIRED' && end.missed.length === 1 && end.missed[0].reason === 'WAITING_PRICE' && end.outlook?.runsLeft === 1 && end.outlook?.unspendableRaw === GROSS && Number(st.executions) === 1
             && summary7.priceLimit.isSlippageProtection === false && summary7.priceLimit.catchUp === false,
           observed: `${steps} × 1000 USDG moved COIN; window 1: ${waiting.state} (${redact(waiting.stateDetail ?? '').slice(0, 160)}), no tx: ${noSend}; at expiry: ${end.state}, missed ${end.missed.map(m => m.window + ':' + m.reason).join(',')}, runs left ${end.outlook?.runsLeft}, unspendable ${end.outlook?.unspendableRaw} raw; chain executions ${st.executions}` };
-      } finally { await F.edit('REVERT', 'evm_revert', [snap], 'undo the K7 market move'); }
+      }
     });
     report.keeperPhase = { status: 'RUN', authorizationId: idK, runs: K_RUNS, ownerDebitRaw: ownerStart - (await bal(USDG, roles.owner)), expectedDebitRaw: BigInt(K_RUNS) * GROSS, store: 'keeper-store.redacted.json (the file store with signatures replaced by their sha256)', keeperAccounts: [kA.address, kB.address],
       note: 'keeper transactions are sent with app viem on the same fork transport; they are not in forkLocalTransactions' };

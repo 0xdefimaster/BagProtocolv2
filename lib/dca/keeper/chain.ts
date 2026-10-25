@@ -64,7 +64,11 @@ export function revertReasonOf(e: unknown): string {
       }
     }
   }
-  return String((e as { shortMessage?: string })?.shortMessage ?? (e as Error)?.message ?? e).slice(0, 200);
+  // Not a decodable revert: the short message plus the node's own detail (e.g. an RPC input error), so the record says why.
+  let details: string | undefined;
+  for (let x: any = e; x; x = x.cause) if (typeof x?.details === 'string' && x.details) details = x.details;
+  const short = String((e as { shortMessage?: string })?.shortMessage ?? (e as Error)?.message ?? e).split('\n')[0];
+  return (details && !short.includes(details) ? `${short} (${details})` : short).slice(0, 300);
 }
 
 const isRevert = (e: unknown) => {
