@@ -128,12 +128,18 @@ if (cmd === 'test' || cmd === 'wallet') {
 if (cmd === 'executor' || cmd === 'executor-wallet') {
   const app = resolve(opt('--app'));
   if (cmd === 'executor') {
-    const out = join(here, 'executor-fork', 'out', `${session}-executor`);
-    // tsx: the keeper phase imports the app's TypeScript keeper (lib/dca/keeper)
-    const r = await run('executor fork (test keys)', [join(here, 'node_modules', 'tsx', 'dist', 'cli.mjs'), join(here, 'executor-fork', 'run.mjs'), '--app', app, '--out', out, ...envArgs()], { cwd: app });
-    log.output = out;
-    say(`\nResult: ${join(out, 'summary.md')} (exit ${r.code}: ${['COMPLETE', 'FATAL', 'USAGE', 'EXTERNAL', 'SCENARIO_FAILED'][r.code] ?? 'ERROR'})`);
-    finish(r.code);
+    // One fork per phase: the public RPC keeps the fork block's state for ~10 minutes, shorter than one run of every phase.
+    const phases = opt('--phase') ? [opt('--phase')] : ['lifecycle', 'registry', 'keeper'];
+    const results = [];
+    for (const phase of phases) {
+      const out = join(here, 'executor-fork', 'out', `${session}-executor-${phase}`);
+      // tsx: the keeper phase imports the app's TypeScript keeper (lib/dca/keeper)
+      const r = await run(`executor fork, ${phase} (test keys)`, [join(here, 'node_modules', 'tsx', 'dist', 'cli.mjs'), join(here, 'executor-fork', 'run.mjs'), '--app', app, '--out', out, '--phase', phase, ...envArgs()], { cwd: app });
+      results.push({ phase, out, code: r.code });
+      say(`Result (${phase}): ${join(out, 'summary.md')} (exit ${r.code}: ${['COMPLETE', 'FATAL', 'USAGE', 'EXTERNAL', 'SCENARIO_FAILED'][r.code] ?? 'ERROR'})`);
+    }
+    log.output = results;
+    finish(results.find(x => x.code !== 0)?.code ?? 0);
   }
   const out = join(here, 'executor-wallet', 'out', `${session}-wallet`), urlFile = resolve(opt('--url-file', join(here, 'executor-wallet', 'private', session, 'url.txt')));
   let opened = false;
