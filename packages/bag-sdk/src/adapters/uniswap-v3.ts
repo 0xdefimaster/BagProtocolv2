@@ -20,6 +20,13 @@ import type { Hex } from '../types';
 // The result is UNSIGNED: the router's planSigner signs `routerPlanTypedData`,
 // and the executor re-checks the plan against the owner's authorization before
 // anything moves. A quote below the owner's signed price limit builds nothing.
+//
+// Quotes stop at the owner's limit: each QuoterV2 call carries the pool price
+// of the owner's maxPrice as `sqrtPriceLimitX96`, so a thin or empty pool is
+// not walked tick by tick to the end of the range, and a tier whose marginal
+// price reaches the limit is unusable (conservative: its average price could
+// still be inside). The swap itself is built with sqrtPriceLimitX96 = 0, which
+// the executor requires (no partial fills).
 // -----------------------------------------------------------------------------
 
 /** Robinhood Chain Uniswap v3 contracts, as verified in the BAG app (lib/config/robinhood-chain.ts). */
@@ -122,6 +129,9 @@ export interface QuoteClient {
   simulateContract(args: { address: Hex; abi: readonly unknown[]; functionName: string; args: readonly unknown[] }): Promise<{ result: unknown }>;
 }
 
+/** QUOTED: full amount within the limit; PRICE_LIMIT_REACHED: the marginal price hit the owner's limit (or was past it); NO_QUOTE: no pool or no liquidity. */
+export type RecurringQuoteStatus = 'QUOTED' | 'PRICE_LIMIT_REACHED' | 'NO_QUOTE';
+
 export interface RecurringRunLeg {
   asset: Hex;
   amountInRaw: bigint;
@@ -131,7 +141,9 @@ export interface RecurringRunLeg {
   priceLimitFloorRaw: bigint;
   /** What the plan requires: max(price-limit floor, quote − slippage). */
   minimumOutRaw: bigint;
-  alternatives: { fee: number; quotedOutRaw: bigint | null }[];
+  /** The quote bound used for every tier of this asset (the owner's maxPrice as a pool price). */
+  quoteSqrtPriceLimitX96: bigint;
+  alternatives: { fee: number; quotedOutRaw: bigint | null; status: RecurringQuoteStatus }[];
 }
 
 export interface RecurringRunPlan {
@@ -147,12 +159,49 @@ const isRevert = (e: unknown): boolean => {
   for (let x: any = e; x; x = x.cause) if (x?.name === 'ContractFunctionRevertedError') return true;
   return false;
 };
+const revertReason = (e: unknown): string | undefined => {
+  for (let x: any = e; x; x = x.cause) if (x?.name === 'ContractFunctionRevertedError') return typeof x.reason === 'string' ? x.reason : undefined;
+  return undefined;
+};
+
+const MIN_SQRT_RATIO = BigInt('4295128739');
+const MAX_SQRT_RATIO = BigInt('1461446703485210103287273052203988822378723970342');
+const Q192 = BigInt(1) << BigInt(192);
+function isqrt(n: bigint): bigint {
+  if (n < BigInt(2)) return n;
+  let x = BigInt(1) << BigInt(Math.ceil(n.toString(2).length / 2));
+  for (;;) {
+    const y = (x + n / x) >> BigInt(1);
+    if (y >= x) return x;
+    x = y;
+  }
+}
 
 /**
- * Builds one run of an authorization: fresh QuoterV2 quotes for every allowed fee tier, the best tier per
- * asset, and a BagExecutionRouter plan the executor accepts. Throws `NO_ROUTE` when an asset has no quote,
- * `PRICE_LIMIT_NOT_MET` when the best quote is below the owner's limit, `RECURRING_TERMS_INVALID` outside the
- * calendar, `RPC_READ_FAILED` for transport errors (never read as "no liquidity").
+ * The owner's maxPrice (input raw units per whole asset) as a Uniswap v3 sqrtPriceLimitX96 for an
+ * input→asset swap, rounded so the bound is never looser than the limit. Clamped inside the pool's range.
+ */
+export function ownerLimitSqrtPriceX96(inputToken: string, asset: string, decimals: number, maxPriceRaw: bigint): bigint {
+  if (maxPriceRaw <= BigInt(0)) throw new BagSdkError('INVALID_ARGUMENT', 'maxPriceRaw must be positive.');
+  const unit = BigInt(10) ** BigInt(decimals);
+  if (inputToken.toLowerCase() < asset.toLowerCase()) {
+    // input is token0: price (asset per input) falls; lowest acceptable = unit / maxPrice, rounded up
+    const q = (unit * Q192 + maxPriceRaw - BigInt(1)) / maxPriceRaw;
+    let r = isqrt(q);
+    if (r * r < q) r += BigInt(1);
+    return r <= MIN_SQRT_RATIO ? MIN_SQRT_RATIO + BigInt(1) : r;
+  }
+  // input is token1: price (input per asset) rises; highest acceptable = maxPrice / unit, rounded down
+  const r = isqrt((maxPriceRaw * Q192) / unit);
+  return r >= MAX_SQRT_RATIO ? MAX_SQRT_RATIO - BigInt(1) : r;
+}
+
+/**
+ * Builds one run of an authorization: fresh QuoterV2 quotes (bounded by the owner's limit) for every allowed
+ * fee tier, the best tier per asset, and a BagExecutionRouter plan the executor accepts. Throws `NO_ROUTE` when
+ * an asset has no pool or liquidity at any allowed tier, `PRICE_LIMIT_NOT_MET` when every quotable tier reaches
+ * the owner's limit or the best average is below it, `RECURRING_TERMS_INVALID` outside the calendar, and
+ * `RPC_READ_FAILED` for transport errors (never read as "no liquidity").
  */
 export async function buildRecurringRunPlan(params: {
   client: QuoteClient;
@@ -174,7 +223,8 @@ export async function buildRecurringRunPlan(params: {
 
   const legs: RecurringRunLeg[] = [];
   for (let i = 0; i < auth.assets.length; i++) {
-    const asset = auth.assets[i].asset;
+    const { asset, decimals, maxPriceRaw } = auth.assets[i];
+    const limit = ownerLimitSqrtPriceX96(auth.inputToken, asset, decimals, maxPriceRaw);
     const alternatives: RecurringRunLeg['alternatives'] = [];
     for (const fee of auth.route.allowedFees) {
       try {
@@ -182,22 +232,28 @@ export async function buildRecurringRunPlan(params: {
           address: params.quoter,
           abi: UNISWAP_V3_QUOTER_V2_ABI,
           functionName: 'quoteExactInputSingle',
-          args: [{ tokenIn: auth.inputToken, tokenOut: asset, amountIn: legIn[i], fee, sqrtPriceLimitX96: BigInt(0) }],
+          args: [{ tokenIn: auth.inputToken, tokenOut: asset, amountIn: legIn[i], fee, sqrtPriceLimitX96: limit }],
         });
-        const out = (result as readonly bigint[])[0];
-        alternatives.push({ fee, quotedOutRaw: typeof out === 'bigint' && out > BigInt(0) ? out : null });
+        const [out, priceAfter] = result as readonly bigint[];
+        if (priceAfter === limit) alternatives.push({ fee, quotedOutRaw: null, status: 'PRICE_LIMIT_REACHED' }); // stopped at the limit: partial
+        else if (typeof out === 'bigint' && out > BigInt(0)) alternatives.push({ fee, quotedOutRaw: out, status: 'QUOTED' });
+        else alternatives.push({ fee, quotedOutRaw: null, status: 'NO_QUOTE' });
       } catch (e) {
         if (!isRevert(e)) throw new BagSdkError('RPC_READ_FAILED');
-        alternatives.push({ fee, quotedOutRaw: null }); // no pool or no liquidity at this tier
+        // 'SPL': the pool price is already past the owner's limit; anything else: no pool or no liquidity
+        alternatives.push({ fee, quotedOutRaw: null, status: revertReason(e) === 'SPL' ? 'PRICE_LIMIT_REACHED' : 'NO_QUOTE' });
       }
     }
     const best = alternatives.filter((a) => a.quotedOutRaw !== null).sort((a, b) => (b.quotedOutRaw! > a.quotedOutRaw! ? 1 : b.quotedOutRaw! < a.quotedOutRaw! ? -1 : 0))[0];
+    if (!best && alternatives.some((a) => a.status === 'PRICE_LIMIT_REACHED')) {
+      throw new BagSdkError('PRICE_LIMIT_NOT_MET', `${asset}: every quotable fee tier reaches the owner's price limit.`);
+    }
     if (!best) throw new BagSdkError('NO_ROUTE', `No allowed Uniswap v3 fee tier quoted ${asset}.`);
     if (best.quotedOutRaw! < floors[i]) {
       throw new BagSdkError('PRICE_LIMIT_NOT_MET', `${asset}: best quote ${best.quotedOutRaw} is below the owner's limit ${floors[i]}.`);
     }
     const afterSlippage = best.quotedOutRaw! - (best.quotedOutRaw! * BigInt(slippageBps)) / BigInt(10_000);
-    legs.push({ asset, amountInRaw: legIn[i], fee: best.fee, quotedOutRaw: best.quotedOutRaw!, priceLimitFloorRaw: floors[i], minimumOutRaw: afterSlippage > floors[i] ? afterSlippage : floors[i], alternatives });
+    legs.push({ asset, amountInRaw: legIn[i], fee: best.fee, quotedOutRaw: best.quotedOutRaw!, priceLimitFloorRaw: floors[i], minimumOutRaw: afterSlippage > floors[i] ? afterSlippage : floors[i], quoteSqrtPriceLimitX96: limit, alternatives });
   }
 
   const authorizationId = recurringAuthorizationId(auth, deployment);

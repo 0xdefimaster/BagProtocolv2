@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { network } from 'hardhat';
+import hre, { network } from 'hardhat';
 import {
   encodeAbiParameters,
   encodeFunctionData,
@@ -8,13 +8,14 @@ import {
   keccak256,
   pad,
   parseSignature,
+  toEventSelector,
   toFunctionSelector,
   toHex,
   zeroAddress,
   type Hex,
 } from 'viem';
 import { splitByWeight } from '../../packages/bag-sdk/src/split';
-import { recurringAuthorizationId, recurringLegAmounts, recurringMinimumOutputs } from '../../packages/bag-sdk/src/recurring';
+import { RECURRING_EXECUTOR_ABI, recurringAuthorizationId, recurringLegAmounts, recurringMinimumOutputs } from '../../packages/bag-sdk/src/recurring';
 
 // -----------------------------------------------------------------------------
 // RecurringPurchaseExecutor on Hardhat's in-process EVM: the REAL BagFactory,
@@ -788,5 +789,20 @@ describe('RecurringPurchaseExecutor — concurrency and attack surface', () => {
     const routerAsAttacker = await t.viem.getContractAt('BagExecutionRouter', t.router.address, { client: { wallet: t.attacker } });
     await expectRevert(routerAsAttacker.write.execute([p, planSignature], { gas: 3_000_000n }), 'WalletMismatch', 'WalletMismatch(address,address)');
     assert.equal(await t.bal(t.usdg, t.owner.account.address), before);
+  });
+});
+
+describe('RecurringPurchaseExecutor — SDK ABI', () => {
+  it('every function, event and error in the SDK\'s RECURRING_EXECUTOR_ABI matches the compiled contract', async () => {
+    const compiled = (await hre.artifacts.readArtifact('RecurringPurchaseExecutor')).abi as any[];
+    const key = (x: any) => (x.type === 'event' ? `event:${toEventSelector(x)}:${x.inputs.map((i: any) => !!i.indexed).join()}` : `${x.type}:${toFunctionSelector(x)}:${(x.outputs ?? []).map((o: any) => o.type).join()}`);
+    const have = new Set(compiled.filter((x) => x.type !== 'constructor').map(key));
+    const sdk = (RECURRING_EXECUTOR_ABI as readonly any[]).filter((x) => x.type !== 'struct');
+    for (const item of sdk) assert.ok(have.has(key(item)), `SDK ABI item not in the contract: ${item.type} ${item.name}`);
+    // every error the contract can raise is decodable by the SDK
+    const sdkErrors = new Set(sdk.filter((x) => x.type === 'error').map(key));
+    for (const e of compiled.filter((x) => x.type === 'error' && x.name !== 'ZeroAddress' && !x.name.startsWith('SafeERC20') && !x.name.startsWith('ECDSA') && x.name !== 'ReentrancyGuardReentrantCall' && x.name !== 'InvalidShortString' && x.name !== 'StringTooLong')) {
+      assert.ok(sdkErrors.has(key(e)), `contract error missing from the SDK ABI: ${e.name}`);
+    }
   });
 });

@@ -3,6 +3,7 @@ import { compileBag, getSdkErrorInfo, parseBag, type Hex, type PurchaseReceiptCl
 import { fetchBag } from '@bagprotocol/sdk/http';
 import { encodeAbiParameters, keccak256, stringToHex } from 'viem';
 import { createIntent, restoreIntent, verifySubmitted } from './purchase.js';
+import { recurringOfflineDemo } from './recurring.js';
 
 const A = ('0x' + 'a'.repeat(40)) as Hex;
 const B = ('0x' + 'b'.repeat(40)) as Hex;
@@ -63,7 +64,8 @@ async function main() {
   const aborted = new AbortController(); aborted.abort('private reason');
   const cancelled = await fetchBag('https://fixture.invalid', { signal: aborted.signal }).then(() => null, getSdkErrorInfo);
   assert(cancelled?.code === 'HTTP_ABORTED' && !JSON.stringify(cancelled).includes('private reason'), 'Cancellation was not safe');
+  const recurring = await recurringOfflineDemo();
   console.log(JSON.stringify({ status: 'OFFLINE_DEMO_OK', evidence: 'SYNTHETIC_ONLY', receiptVerification: result.status,
-    snapshotIntegrity: 'CHECKED', httpDeadline: deadline?.code, bodyDeadline: bodyDeadline?.code, cancellation: cancelled?.code }));
+    snapshotIntegrity: 'CHECKED', httpDeadline: deadline?.code, bodyDeadline: bodyDeadline?.code, cancellation: cancelled?.code, recurring }));
 }
 main().catch(error => { console.error(JSON.stringify(getSdkErrorInfo(error))); process.exitCode = 1; });

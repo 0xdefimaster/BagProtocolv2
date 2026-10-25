@@ -1,9 +1,11 @@
-import { decodeEventLog, hashTypedData, keccak256, stringToHex } from 'viem';
-import { chainIdOf, normalizeAddress } from './chains';
+import { decodeEventLog, hashTypedData, keccak256, parseAbi, stringToHex } from 'viem';
+import { chainIdOf, isNativeToken, normalizeAddress } from './chains';
 import { computeDefinitionHash } from './definition';
 import { BagSdkError } from './errors';
+import { resolveV1Rules } from './rules';
 import { splitByWeight } from './split';
 import type { BagDocument, Hex } from './types';
+import { validateBag } from './validate';
 
 // -----------------------------------------------------------------------------
 // Recurring (DCA) purchases through RecurringPurchaseExecutor
@@ -75,6 +77,51 @@ export const RECURRING_REVOCATION_TYPES = {
   ],
 } as const;
 
+/**
+ * RecurringPurchaseExecutor ABI (the calls a keeper or wallet needs, its event and its errors), so a consumer
+ * needs no build artifacts. contracts/test/RecurringPurchaseExecutor.test.ts checks it against the compiled contract.
+ */
+export const RECURRING_EXECUTOR_ABI = parseAbi([
+  'struct BagRef { bytes32 bagId; uint256 bagVersion; bytes32 compositionHash; bytes32 definitionHash; bytes32 strategyId; uint32 strategyVersion; }',
+  'struct AssetLimit { address asset; uint16 weightBps; uint8 decimals; uint256 maxPriceRaw; }',
+  'struct Schedule { uint256 grossAmountPerRun; uint256 totalBudget; uint32 maxExecutions; uint64 startsAt; uint64 periodSeconds; uint64 expiresAt; }',
+  'struct Route { address router; address swapTarget; uint24[] allowedFees; }',
+  'struct Authorization { address owner; address sourceAccount; address recipient; uint8 fundingKind; address fundingContract; address inputToken; BagRef bag; AssetLimit[] assets; Schedule schedule; Route route; uint256 nonce; }',
+  'struct Leg { address target; bytes callData; uint256 value; address approveToken; uint256 approveAmount; }',
+  'struct OutputCheck { address token; uint256 minAmountOut; }',
+  'struct ExecutionPlan { bytes32 bagId; bytes32 executionPlanHash; address wallet; address inputToken; uint256 inputAmount; uint256 deadline; Leg[] legs; OutputCheck[] minOutputs; }',
+  'struct PurchaseExecution { bytes32 authorizationId; uint64 window; uint64 quoteDeadline; ExecutionPlan plan; bytes planSignature; }',
+  'struct ExecutionState { uint32 executions; uint256 grossUsed; uint64 lastWindow; uint64 lastExecutionAt; bool revoked; }',
+  'function execute(Authorization a, PurchaseExecution x, bytes ownerSignature, bytes fundingProof) returns (uint256 executionIndex)',
+  'function revoke(bytes32 authorizationId)',
+  'function revokeBySig(address owner, bytes32 authorizationId, bytes signature)',
+  'function getState(address owner, bytes32 authorizationId) view returns (ExecutionState)',
+  'function authorizationIdOf(Authorization a) view returns (bytes32)',
+  'function domainSeparator() view returns (bytes32)',
+  'event PurchaseExecuted(address indexed owner, bytes32 indexed authorizationId, bytes32 indexed executionHash, uint256 window, uint256 executionIndex, uint256 grossAmount, uint256 sourceDebit)',
+  'event AuthorizationRevoked(address indexed owner, bytes32 indexed authorizationId)',
+  'error AuthorizationMismatch(bytes32 expected, bytes32 given)',
+  'error InvalidOwnerSignature()',
+  'error RevokedAuthorization(bytes32 authorizationId)',
+  'error InvalidTerms(uint256 code)',
+  'error UnknownBag(bytes32 bagId)',
+  'error BagChanged(uint256 version, bytes32 compositionHash)',
+  'error StrategyNotRegistered(bytes32 strategyId, uint32 version)',
+  'error AssetDecimalsMismatch(address asset, uint8 signed, uint8 actual)',
+  'error NotDue()',
+  'error Expired()',
+  'error QuoteExpired(uint256 deadline)',
+  'error WrongWindow(uint256 current, uint256 planned)',
+  'error Exhausted()',
+  'error BudgetExceeded()',
+  'error PlanMismatch(uint256 code)',
+  'error RouteViolation(uint256 leg, uint256 code)',
+  'error FundingMismatch()',
+  'error InputNotFullySpent(uint256 refunded)',
+  'error OutputBelowLimit(address asset, uint256 received, uint256 minimum)',
+  'error DeliveryMismatch(address asset)',
+]);
+
 export const FUNDING_KINDS = Object.freeze({ ALLOWANCE: 0, DELEGATION: 1 } as const);
 /** Uniswap v3 fee tiers the executor accepts (hundredths of a bip). 10000 = 1 %. */
 export const RECURRING_ALLOWED_FEE_TIERS = Object.freeze([100, 500, 3000, 10000] as const);
@@ -117,6 +164,8 @@ export interface RecurringTermsInput {
   funding: { kind: 'ALLOWANCE' } | { kind: 'DELEGATION'; delegationManager: string };
   /** The input token the user pays with (e.g. USDG); its decimals must be verified on chain by the caller. */
   inputToken: string;
+  /** Input token precision. Required when the strategy sets a positive `minInvestment` (each run is one purchase). */
+  inputTokenDecimals?: number;
   /** On-chain BAG identity, read from BagFactory/Bag (and StrategyRegistry when registered). */
   registry: { bagId: string; bagVersion: bigint | number; compositionHash: string; strategyId?: string | null; strategyVersion?: number | null };
   amountPerRunRaw: bigint;
@@ -145,21 +194,43 @@ const bytes32 = (value: string, label: string): Hex => {
   return value.toLowerCase() as Hex;
 };
 
+/** ceil(amount × 10^decimals) for a canonical decimal string: the smallest raw amount that is not below it. */
+function decimalToRawCeil(amount: string, decimals: number): bigint {
+  const [whole, fraction = ''] = amount.split('.');
+  const kept = fraction.slice(0, decimals).padEnd(decimals, '0');
+  const raw = BigInt(whole) * BigInt(10) ** BigInt(decimals) + BigInt(kept === '' ? '0' : kept);
+  return /[1-9]/.test(fraction.slice(decimals)) ? raw + BigInt(1) : raw;
+}
+
 /**
  * Builds the authorization a user signs from a bag.json and the chosen DCA terms. Asset order, weights and
- * decimals come from the definition; nothing is inferred from metadata. Throws `RECURRING_TERMS_INVALID` for
- * anything the executor would refuse.
+ * decimals come from the definition; nothing is inferred from metadata. Each run is one bag.json v1 purchase,
+ * so the v1 rules apply per run: a valid document, `minInvestment`, the BLOCK no-route policy and no
+ * performance fee (fee accounting is not part of this version). Throws `RECURRING_TERMS_INVALID` for anything
+ * the executor would refuse or bag.json v1 does not allow.
  */
 export function buildRecurringAuthorization(input: RecurringTermsInput): RecurringAuthorization {
   const { bag } = input;
+  const validation = validateBag(bag);
+  if (!validation.valid) fail(`the bag.json is not valid: ${validation.errors.map((e) => e.code).join(', ')}.`);
+  const rules = resolveV1Rules(bag.definition);
+  if (rules.performanceFeeBps.value !== 0) fail('strategies with a performance fee are not supported by recurring purchases yet.');
+  if (rules.noRouteAssetPolicy.value !== 'BLOCK') fail(`noRouteAssetPolicy ${rules.noRouteAssetPolicy.value} is not supported; a recurring run buys every asset or nothing (BLOCK).`);
   const owner = addr(input.owner, 'owner');
   const recipient = input.recipient === undefined ? owner : addr(input.recipient, 'recipient');
   const inputToken = addr(input.inputToken, 'inputToken');
+  if (isNativeToken(inputToken)) fail('the native token cannot fund a recurring purchase; use an ERC-20 the owner approves.');
   const fundingKind = input.funding.kind === 'ALLOWANCE' ? FUNDING_KINDS.ALLOWANCE : input.funding.kind === 'DELEGATION' ? FUNDING_KINDS.DELEGATION : fail('funding.kind must be ALLOWANCE or DELEGATION.');
   const fundingContract = input.funding.kind === 'DELEGATION' ? addr(input.funding.delegationManager, 'funding.delegationManager') : inputToken;
 
   if (!Number.isInteger(input.runs) || input.runs < 1 || input.runs > 0xffffffff) fail('runs must be a positive integer.');
   if (typeof input.amountPerRunRaw !== 'bigint' || input.amountPerRunRaw <= BigInt(0)) fail('amountPerRunRaw must be a positive bigint.');
+  const minInvestment = rules.minInvestmentAmount.value;
+  if (minInvestment !== '0') {
+    const d = input.inputTokenDecimals;
+    if (d === undefined || !Number.isInteger(d) || d < 0 || d > 255) fail(`inputTokenDecimals is required to enforce the strategy minimum of ${minInvestment} per run.`);
+    if (input.amountPerRunRaw < decimalToRawCeil(minInvestment, d as number)) fail(`amountPerRunRaw is below the strategy minimum of ${minInvestment} payment-token units per purchase.`);
+  }
   if (input.totalBudgetRaw !== input.amountPerRunRaw * BigInt(input.runs)) {
     fail(`totalBudgetRaw ${input.totalBudgetRaw} does not equal amountPerRunRaw × runs (${input.amountPerRunRaw * BigInt(input.runs)}).`);
   }
@@ -169,6 +240,7 @@ export function buildRecurringAuthorization(input: RecurringTermsInput): Recurri
 
   const assets: RecurringAssetLimit[] = bag.definition.assets.map((a, i) => {
     const asset = addr(a.address, `definition.assets[${i}].address`);
+    if (isNativeToken(asset)) fail('native-token basket assets are not supported (ERC-20 assets only, as in the v1 purchase executor).');
     if (asset === inputToken) fail('the input token cannot be a BAG asset in a recurring purchase (no kept share in this version).');
     const limit = Object.entries(input.maxPriceRaw).find(([k]) => k.toLowerCase() === asset)?.[1];
     if (typeof limit !== 'bigint' || limit <= BigInt(0) || limit >= MAX_UINT256) fail(`a finite positive maxPriceRaw is required for ${asset}.`);
@@ -181,6 +253,8 @@ export function buildRecurringAuthorization(input: RecurringTermsInput): Recurri
   if (allowedFees.length === 0 || allowedFees.some((f) => !(RECURRING_ALLOWED_FEE_TIERS as readonly number[]).includes(f))) fail('allowedFees must be a non-empty subset of 100/500/3000/10000.');
 
   const strategyId = input.registry.strategyId ? bytes32(input.registry.strategyId, 'registry.strategyId') : ZERO32;
+  const legIn = recurringLegAmounts({ assets, schedule: { grossAmountPerRun: input.amountPerRunRaw } as RecurringAuthorization['schedule'] });
+  legIn.forEach((x, i) => x <= BigInt(0) && fail(`amountPerRunRaw gives ${assets[i].asset} nothing to buy; increase the amount per run.`));
   return {
     owner,
     sourceAccount: owner,

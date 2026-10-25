@@ -11,6 +11,8 @@ This candidate contains changes after the npm 0.2.1 publication. bag.json v1 def
 - Preserve quote timing/deadlines, actual fee recipient addresses and structured provider warnings; reject known expired quotes.
 - Add stable SDK-owned error codes, safe diagnostic summaries and bounded/cancellable strategy HTTP retrieval.
 - Add the independent public-package consumer starter and clean tarball installation checks.
+- Add recurring (DCA) authorizations for RecurringPurchaseExecutor: EIP-712 Authorization/Revocation typed data and id, the executor's leg split and price-limit minimums, calendar windows, typed-data decode/compare, a log-based receipt verifier and the executor ABI. Each run applies the bag.json v1 rules (valid document, minInvestment, BLOCK no-route policy); strategies with a performance fee are refused in this version.
+- Add `@bagprotocol/sdk/uniswap-v3`: a Composer-free run builder from QuoterV2 eth_call quotes (no HTTP, no API key), bounded by the owner's signed price limit, producing an unsigned BagExecutionRouter plan.
 
 ### Integration changes
 

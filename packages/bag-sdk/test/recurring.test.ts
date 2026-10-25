@@ -23,7 +23,7 @@ import {
   type RecurringAuthorization,
   type RecurringTermsInput,
 } from '../src';
-import { buildRecurringRunPlan, routerPlanTypedData, ROBINHOOD_UNISWAP_V3, SWAP_ROUTER_02_EXACT_INPUT_SINGLE_ABI } from '../src/adapters/uniswap-v3';
+import { buildRecurringRunPlan, ownerLimitSqrtPriceX96, routerPlanTypedData, ROBINHOOD_UNISWAP_V3, SWAP_ROUTER_02_EXACT_INPUT_SINGLE_ABI } from '../src/adapters/uniswap-v3';
 
 const load = (name: string): BagDocument => {
   const r = parseBag(JSON.parse(readFileSync(new URL(`./fixtures/${name}.bag.json`, import.meta.url), 'utf8')));
@@ -95,6 +95,25 @@ describe('buildRecurringAuthorization', () => {
     expectCode(() => buildRecurringAuthorization(terms({ maxPriceRaw: Object.fromEntries(assetsOf(BAG).map((a) => [a, (BigInt(1) << BigInt(256)) - BigInt(1)])) })), 'RECURRING_TERMS_INVALID');
     expectCode(() => buildRecurringAuthorization(terms({ route: { router: ROUTER, swapTarget: ROUTER, allowedFees: [2500] } })), 'RECURRING_TERMS_INVALID');
     expectCode(() => buildRecurringAuthorization(terms({ inputToken: assetsOf(BAG)[0] })), 'RECURRING_TERMS_INVALID');
+  });
+
+  it('applies the bag.json v1 rules to every run: valid document, minInvestment, no performance fee, BLOCK, no zero leg', () => {
+    const withRules = (rules: Partial<BagDocument['definition']['rules']>): BagDocument => {
+      const definition = { ...BAG.definition, rules: { ...BAG.definition.rules, ...rules } };
+      return { ...BAG, definition, definitionHash: computeDefinitionHash(definition) };
+    };
+    expectCode(() => buildRecurringAuthorization(terms({ bag: { ...BAG, definitionHash: COMPOSITION } })), 'RECURRING_TERMS_INVALID');
+    expectCode(() => buildRecurringAuthorization(terms({ bag: withRules({ performanceFeeBps: 100 }) })), 'RECURRING_TERMS_INVALID');
+    expectCode(() => buildRecurringAuthorization(terms({ bag: withRules({ noRouteAssetPolicy: 'HOLD_INPUT' }) })), 'RECURRING_TERMS_INVALID');
+    expect(buildRecurringAuthorization(terms({ bag: withRules({ noRouteAssetPolicy: null, performanceFeeBps: null }) })).bag.definitionHash).not.toBe(computeDefinitionHash(BAG.definition));
+    const min10 = withRules({ minInvestment: { amount: '10', measuredAs: 'PAYMENT_TOKEN_AMOUNT' } });
+    expectCode(() => buildRecurringAuthorization(terms({ bag: min10 })), 'RECURRING_TERMS_INVALID'); // decimals needed
+    expectCode(() => buildRecurringAuthorization(terms({ bag: min10, inputTokenDecimals: 6 })), 'RECURRING_TERMS_INVALID'); // 5 < 10 per run
+    expect(buildRecurringAuthorization(terms({ bag: min10, inputTokenDecimals: 6, amountPerRunRaw: BigInt(10_000_000), totalBudgetRaw: BigInt(50_000_000) })).schedule.grossAmountPerRun).toBe(BigInt(10_000_000));
+    const minFrac = withRules({ minInvestment: { amount: '5.0000001', measuredAs: 'PAYMENT_TOKEN_AMOUNT' } });
+    expectCode(() => buildRecurringAuthorization(terms({ bag: minFrac, inputTokenDecimals: 6 })), 'RECURRING_TERMS_INVALID'); // rounds up to 5.000001
+    expectCode(() => buildRecurringAuthorization(terms({ amountPerRunRaw: BigInt(3), totalBudgetRaw: BigInt(15) })), 'RECURRING_TERMS_INVALID'); // some asset gets 0
+    expectCode(() => buildRecurringAuthorization(terms({ inputToken: '0x0000000000000000000000000000000000000000' })), 'RECURRING_TERMS_INVALID');
   });
 
   it('DELEGATION funds come from a separate smart account; the summary says the funds do not stay in an EOA', () => {
@@ -213,10 +232,12 @@ describe('buildRecurringRunPlan (Composer-free, on-chain quotes through the call
   /** Quotes: tier 500 best for asset 0, tier 3000 best otherwise; tier 100 has no pool (revert). */
   const quoteClient = (factor = BigInt(2)) => ({
     calls: 0,
+    limits: [] as bigint[],
     async simulateContract({ args }: { args: readonly unknown[] }) {
       this.calls++;
-      const p = args[0] as { tokenOut: string; amountIn: bigint; fee: number };
+      const p = args[0] as { tokenOut: string; amountIn: bigint; fee: number; sqrtPriceLimitX96: bigint };
       const i = auth.assets.findIndex((a) => a.asset === p.tokenOut);
+      this.limits[i] = p.sqrtPriceLimitX96;
       if (p.fee === 100) throw revert();
       const base = floors[i] * factor;
       const best = i === 0 ? 500 : 3000;
@@ -228,6 +249,9 @@ describe('buildRecurringRunPlan (Composer-free, on-chain quotes through the call
     const c = quoteClient();
     const r = await buildRecurringRunPlan({ client: c, auth, deployment: DEPLOYMENT, quoter: ROBINHOOD_UNISWAP_V3.quoterV2, nowSeconds: NOW, slippageBps: 100 });
     expect(c.calls).toBe(auth.assets.length * auth.route.allowedFees.length);
+    // every quote is bounded by the owner's limit; the swap itself is not (sqrtPriceLimitX96 = 0 below)
+    auth.assets.forEach((a, i) => expect(c.limits[i]).toBe(ownerLimitSqrtPriceX96(USDG, a.asset, a.decimals, a.maxPriceRaw)));
+    expect(r.legs.map((l) => l.quoteSqrtPriceLimitX96)).toEqual(c.limits);
     expect(r.evidence).toBe('SIMULATED_ON_CHAIN_QUOTE');
     expect(r.legs.map((l) => l.fee)).toEqual(auth.assets.map((_, i) => (i === 0 ? 500 : 3000)));
     expect(r.execution).toEqual({ authorizationId: recurringAuthorizationId(auth, DEPLOYMENT), window: BigInt(0), quoteDeadline: NOW + BigInt(300) });
@@ -252,6 +276,45 @@ describe('buildRecurringRunPlan (Composer-free, on-chain quotes through the call
     const none = { async simulateContract() { throw revert(); } };
     await expect(buildRecurringRunPlan({ client: none, auth, deployment: DEPLOYMENT, quoter: ROBINHOOD_UNISWAP_V3.quoterV2, nowSeconds: NOW })).rejects.toMatchObject({ code: 'NO_ROUTE' });
     await expect(buildRecurringRunPlan({ client: quoteClient(), auth, deployment: DEPLOYMENT, quoter: ROBINHOOD_UNISWAP_V3.quoterV2, nowSeconds: auth.schedule.startsAt - BigInt(1) })).rejects.toMatchObject({ code: 'RECURRING_TERMS_INVALID' });
+  });
+
+  it('a quote that stops at the owner limit (or a pool already past it) is unusable; another tier can still serve', async () => {
+    const run = (mode: 'stop' | 'spl' | 'mixed') =>
+      buildRecurringRunPlan({
+        client: {
+          async simulateContract({ args }: { args: readonly unknown[] }) {
+            const p = args[0] as { tokenOut: string; fee: number; sqrtPriceLimitX96: bigint };
+            const i = auth.assets.findIndex((a) => a.asset === p.tokenOut);
+            if (mode === 'spl' && i === 1) throw Object.assign(new Error('reverted'), { name: 'ContractFunctionExecutionError', cause: Object.assign(new Error('SPL'), { name: 'ContractFunctionRevertedError', reason: 'SPL' }) });
+            const stops = (mode === 'stop' && i === 1) || (mode === 'mixed' && i === 1 && p.fee !== 10000);
+            return { result: [floors[i] * BigInt(2), stops ? p.sqrtPriceLimitX96 : BigInt(1), 0, BigInt(0)] };
+          },
+        },
+        auth,
+        deployment: DEPLOYMENT,
+        quoter: ROBINHOOD_UNISWAP_V3.quoterV2,
+        nowSeconds: NOW,
+      });
+    await expect(run('stop')).rejects.toMatchObject({ code: 'PRICE_LIMIT_NOT_MET' });
+    await expect(run('spl')).rejects.toMatchObject({ code: 'PRICE_LIMIT_NOT_MET' });
+    const mixed = await run('mixed');
+    expect(mixed.legs[1].fee).toBe(10000);
+    expect(mixed.legs[1].alternatives.filter((a) => a.status === 'PRICE_LIMIT_REACHED').map((a) => a.fee)).toEqual([100, 500, 3000]);
+  });
+
+  it('ownerLimitSqrtPriceX96: the pool price of the owner limit, never looser, for either token order', () => {
+    const unit = BigInt(10) ** BigInt(18);
+    const max = BigInt(25_000_000); // 25 USDG (6 decimals) per whole token
+    const Q = BigInt(1) << BigInt(192);
+    // input is token0 (0x11 < 0x22): price = asset/input falls to unit/max; the bound is at or above it
+    const lo = ownerLimitSqrtPriceX96('0x1100000000000000000000000000000000000000', '0x2200000000000000000000000000000000000000', 18, max);
+    expect(lo * lo * max >= unit * Q).toBe(true);
+    expect((lo - BigInt(1)) * (lo - BigInt(1)) * max < unit * Q).toBe(true);
+    // input is token1: price = input/asset rises to max/unit; the bound is at or below it
+    const hi = ownerLimitSqrtPriceX96('0x2200000000000000000000000000000000000000', '0x1100000000000000000000000000000000000000', 18, max);
+    expect(hi * hi * unit <= max * Q).toBe(true);
+    expect((hi + BigInt(1)) * (hi + BigInt(1)) * unit > max * Q).toBe(true);
+    expectCode(() => ownerLimitSqrtPriceX96(USDG, ROUTER, 18, BigInt(0)), 'INVALID_ARGUMENT');
   });
 
   it('a transport failure is RPC_READ_FAILED, never "no liquidity"', async () => {
