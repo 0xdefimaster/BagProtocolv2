@@ -2,6 +2,14 @@
 
 Kod commit'i: `ea47f31` (dal `claude/dca-keeper-evidence`). Her `results.json` dosyası kendi `build.appCommit` değerini ve artifact kaynak hash'lerini kaydeder.
 
+> **Bu klasör eski kanıttır; güncel kanıt [`../executor-2026-10-25-followup/`](../executor-2026-10-25-followup/README.md) klasöründedir.**
+>
+> `ea47f31`'deki eksikler:
+> - SDK doğrulayıcısı (`verifyRecurringPurchaseReceipt`) yalnızca event ve Transfer kayıtlarına bakıyordu. Gerçek kaynak/alıcı bakiye kontrolleri yalnızca bu koşucudaydı.
+> - Executor, imzalanan token/ağırlık listesini BAG'in kayıtlı içeriğine bağlamıyordu.
+>
+> Buradaki G2 ifadesi ("işlem bazında bakiyeler SDK'da doğrulandı") bu commit için doğru değildi.
+
 | Klasör | Ne | Kanıt sınıfı | Yeniden çalıştırma |
 |---|---|---|---|
 | `fork/` | Gerçek USDG, Uniswap v3 (SwapRouter02/QuoterV2), BagFactory ve StrategyRegistry ile fork. Composer/LI.FI erişilemez. Yaşam döngüsü, gerçek hatalı yürütmeler, SDK retleri, değiştirilmiş doğrulama beklentileri ve aynı fork'ta uygulamanın keeper'ı | `TEST_KEY_FORK` (K2) | `node research/bag-dca-proto/start.mjs executor --app .` |
