@@ -223,7 +223,7 @@ export async function buildRecurringRunPlan(params: {
 
   const legs: RecurringRunLeg[] = [];
   for (let i = 0; i < auth.assets.length; i++) {
-    const { asset, decimals, maxPriceRaw } = auth.assets[i];
+    const { asset, symbol, decimals, maxPriceRaw } = auth.assets[i];
     const limit = ownerLimitSqrtPriceX96(auth.inputToken, asset, decimals, maxPriceRaw);
     const alternatives: RecurringRunLeg['alternatives'] = [];
     for (const fee of auth.route.allowedFees) {
@@ -246,11 +246,13 @@ export async function buildRecurringRunPlan(params: {
     }
     const best = alternatives.filter((a) => a.quotedOutRaw !== null).sort((a, b) => (b.quotedOutRaw! > a.quotedOutRaw! ? 1 : b.quotedOutRaw! < a.quotedOutRaw! ? -1 : 0))[0];
     if (!best && alternatives.some((a) => a.status === 'PRICE_LIMIT_REACHED')) {
-      throw new BagSdkError('PRICE_LIMIT_NOT_MET', `${asset}: every quotable fee tier reaches the owner's price limit.`);
+      throw new BagSdkError('PRICE_LIMIT_NOT_MET', `${symbol} (${asset}): the pool price is at or above the FIXED max price ${maxPriceRaw} at every allowed fee tier; no purchase in this window (not made up later).`);
     }
     if (!best) throw new BagSdkError('NO_ROUTE', `No allowed Uniswap v3 fee tier quoted ${asset}.`);
     if (best.quotedOutRaw! < floors[i]) {
-      throw new BagSdkError('PRICE_LIMIT_NOT_MET', `${asset}: best quote ${best.quotedOutRaw} is below the owner's limit ${floors[i]}.`);
+      // Average price of this leg at the best quote, in raw input units per whole token (rounded up, as the floor is).
+      const marketPriceRaw = (legIn[i] * BigInt(10) ** BigInt(decimals) + best.quotedOutRaw! - BigInt(1)) / best.quotedOutRaw!;
+      throw new BagSdkError('PRICE_LIMIT_NOT_MET', `${symbol} (${asset}): market price ~${marketPriceRaw} is above the FIXED max price ${maxPriceRaw} (best quote ${best.quotedOutRaw} < floor ${floors[i]}); no purchase in this window (not made up later).`);
     }
     const afterSlippage = best.quotedOutRaw! - (best.quotedOutRaw! * BigInt(slippageBps)) / BigInt(10_000);
     legs.push({ asset, amountInRaw: legIn[i], fee: best.fee, quotedOutRaw: best.quotedOutRaw!, priceLimitFloorRaw: floors[i], minimumOutRaw: afterSlippage > floors[i] ? afterSlippage : floors[i], quoteSqrtPriceLimitX96: limit, alternatives });
