@@ -363,7 +363,7 @@ describe('buildRecurringRunPlan (Composer-free, on-chain quotes through the call
 
   it('builds nothing below the price limit (PRICE_LIMIT_NOT_MET), without any pool (NO_ROUTE), or outside the calendar', async () => {
     const tooLow = { async simulateContract({ args }: { args: readonly unknown[] }) { const p = args[0] as { tokenOut: string }; const i = auth.assets.findIndex((a) => a.asset === p.tokenOut); return { result: [floors[i] - BigInt(1)] }; } };
-    await expect(buildRecurringRunPlan({ client: tooLow, auth, deployment: DEPLOYMENT, quoter: ROBINHOOD_UNISWAP_V3.quoterV2, nowSeconds: NOW })).rejects.toMatchObject({ code: 'PRICE_LIMIT_NOT_MET' });
+    await expect(buildRecurringRunPlan({ client: tooLow, auth, deployment: DEPLOYMENT, quoter: ROBINHOOD_UNISWAP_V3.quoterV2, nowSeconds: NOW })).rejects.toMatchObject({ code: 'PRICE_LIMIT_NOT_MET', message: expect.stringMatching(/market price ~\d+ is above the FIXED max price \d+.*not made up later/) });
     const none = { async simulateContract() { throw revert(); } };
     await expect(buildRecurringRunPlan({ client: none, auth, deployment: DEPLOYMENT, quoter: ROBINHOOD_UNISWAP_V3.quoterV2, nowSeconds: NOW })).rejects.toMatchObject({ code: 'NO_ROUTE' });
     await expect(buildRecurringRunPlan({ client: quoteClient(), auth, deployment: DEPLOYMENT, quoter: ROBINHOOD_UNISWAP_V3.quoterV2, nowSeconds: auth.schedule.startsAt - BigInt(1) })).rejects.toMatchObject({ code: 'RECURRING_TERMS_INVALID' });
