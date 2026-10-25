@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BAG DCA imzası (model A)</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <h1>BAG DCA — fonlar kendi adresinde kalır (model A), yerel fork</h1>
+  <p class="note">Bu sayfa yalnızca bu bilgisayarda çalışır. Cüzdandan <strong>hiçbir işlem gönderilmez</strong>: üç imza istenir (yetki, USDG permit, iptal).
+    İmzalar yalnızca yerel fork'ta kullanılır. <strong>Yeni ve boş bir hesap</strong> kullan (ETH ve USDG bakiyesi 0, hiç işlem yapılmamış). Parası olan hesabını kullanma.</p>
+
+  <section id="connect">
+    <h2>1. Cüzdanı bağla</h2>
+    <label for="wallet">Cüzdan</label>
+    <select id="wallet"></select>
+    <button id="connectBtn">Bağlan</button>
+    <p id="connectInfo" class="muted"></p>
+  </section>
+
+  <section id="step" hidden>
+    <h2 id="stepTitle"></h2>
+    <p id="stepKind" class="muted"></p>
+    <ul id="planSummary"></ul>
+    <table id="details"><tbody></tbody></table>
+    <div id="mismatch" class="bad" hidden></div>
+    <p class="muted">İmzalamadan önce cüzdan ekranındaki değerlerin bu tabloyla aynı olduğunu kontrol et.</p>
+    <button id="signBtn">Cüzdanda imzala</button>
+    <button id="rejectBtn" class="secondary">Reddet</button>
+    <p id="stepError" class="bad"></p>
+  </section>
+
+  <section>
+    <h2>Durum</h2>
+    <p id="phase" class="muted">Bağlantı bekleniyor…</p>
+    <ol id="history"></ol>
+    <ul id="status"></ul>
+  </section>
+</main>
+<script type="module" src="/page.js"></script>
+</body>
+</html>

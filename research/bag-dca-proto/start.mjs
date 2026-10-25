@@ -6,6 +6,8 @@
 //   node start.mjs test   --sdk <dir> [--env-file <f>]     unit tests + fork lifecycle with a local TEST key
 //   node start.mjs wallet --sdk <dir> [--env-file <f>]     fork lifecycle with YOUR wallet: opens the signing page
 //   node start.mjs shadow --app <app checkout> [--sources ...] [--env-file <f>] [--block-mode ...]
+//   node start.mjs executor        --app <app checkout>    RecurringPurchaseExecutor on the fork, TEST keys (+ keeper)
+//   node start.mjs executor-wallet --app <app checkout>    the same executor with YOUR wallet: 3 signatures, no transaction
 //   node start.mjs preflight [--sdk <dir>] [--app <dir>]   checks only
 // Options: --live (fresh Composer quotes; needs LIFI_API_KEY in --env-file), --no-open, --allow-other-sdk,
 //          --url-file <f> (wallet: where the page URL is written; default the private session folder)
@@ -28,8 +30,8 @@ const check = (id, ok, detail, fatal = true) => { log.checks.push({ id, ok, deta
 const git = (dir, ...a) => { const r = spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' }); return r.status === 0 ? r.stdout.trim() : null; };
 const sha256 = f => createHash('sha256').update(readFileSync(f)).digest('hex');
 
-if (!['unit', 'test', 'wallet', 'shadow', 'preflight'].includes(cmd)) {
-  say(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 12).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
+if (!['unit', 'test', 'wallet', 'shadow', 'executor', 'executor-wallet', 'preflight'].includes(cmd)) {
+  say(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 14).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
   process.exit(cmd ? 2 : 0);
 }
 
@@ -66,7 +68,13 @@ function preflight() {
       if (dirty) ok &= check('sdk clean', false, 'the SDK checkout has tracked changes; results would not be reproducible', !flag('--allow-other-sdk'));
     }
   }
-  if (cmd === 'shadow' || opt('--app')) {
+  if (['executor', 'executor-wallet'].includes(cmd)) {
+    const app = opt('--app');
+    const need = ['artifacts/contracts/dca/RecurringPurchaseExecutor.sol/RecurringPurchaseExecutor.json', 'artifacts/contracts/BagExecutionRouter.sol/BagExecutionRouter.json', 'packages/bag-sdk/dist/recurring.js', 'lib/dca/keeper/keeper.ts'];
+    const missing = app ? need.filter(f => !existsSync(join(app, f))) : need;
+    ok &= check('app build', !!app && missing.length === 0, !app ? '--app <BagProtocolv2 checkout> is required' : missing.length ? `missing in ${resolve(app)}: ${missing.join(', ')} (run "npx hardhat build" and "npm run build" in packages/bag-sdk)` : `${resolve(app)} @ ${git(app, 'rev-parse', '--short', 'HEAD') ?? '?'}`);
+  }
+  if (cmd === 'shadow' || (opt('--app') && !['executor', 'executor-wallet'].includes(cmd))) {
     const app = opt('--app');
     const okApp = !!app && existsSync(join(app, 'contracts', 'BagExecutionRouter.sol')) && existsSync(join(app, 'lib', 'execution', 'plan.ts'));
     ok &= check('app checkout', okApp, app ? resolve(app) : '--app <BagProtocolv2 checkout> is required');
@@ -115,6 +123,25 @@ if (cmd === 'test' || cmd === 'wallet') {
     onLine: l => { if (cmd === 'wallet' && !opened && existsSync(urlFile)) { opened = true; const url = readFileSync(urlFile, 'utf8').trim(); say('\n>>> Signing page: ' + url + '\n>>> Use a NEW, EMPTY account. Four signatures; each screen shows what you sign.\n'); openBrowser(url); } } });
   log.output = out;
   say(`\nResult: ${existsSync(join(out, 'results.json')) ? join(out, 'results.json') : '(no results.json)'} (exit ${r.code}: ${['PASSED', 'FAILED', 'NOT_RUN'][r.code] ?? 'ERROR'})`);
+  finish(r.code);
+}
+if (cmd === 'executor' || cmd === 'executor-wallet') {
+  const app = resolve(opt('--app'));
+  if (cmd === 'executor') {
+    const out = join(here, 'executor-fork', 'out', `${session}-executor`);
+    // tsx: the keeper phase imports the app's TypeScript keeper (lib/dca/keeper)
+    const r = await run('executor fork (test keys)', [join(here, 'node_modules', 'tsx', 'dist', 'cli.mjs'), join(here, 'executor-fork', 'run.mjs'), '--app', app, '--out', out, ...envArgs()], { cwd: app });
+    log.output = out;
+    say(`\nResult: ${join(out, 'summary.md')} (exit ${r.code}: ${['COMPLETE', 'FATAL', 'USAGE', 'EXTERNAL', 'SCENARIO_FAILED'][r.code] ?? 'ERROR'})`);
+    finish(r.code);
+  }
+  const out = join(here, 'executor-wallet', 'out', `${session}-wallet`), urlFile = resolve(opt('--url-file', join(here, 'executor-wallet', 'private', session, 'url.txt')));
+  let opened = false;
+  const r = await run('executor with your wallet', [join(here, 'executor-wallet', 'run.mjs'), '--app', app, '--signer', 'wallet', '--out', out, '--url-file', urlFile, '--keep-open', '600000', ...envArgs()], {
+    cwd: app,
+    onLine: () => { if (!opened && existsSync(urlFile)) { opened = true; const url = readFileSync(urlFile, 'utf8').trim(); say('\n>>> Signing page: ' + url + '\n>>> Use a NEW, EMPTY account on Robinhood Chain (4663). Three signatures, no transaction; each screen shows what you sign.\n'); openBrowser(url); } } });
+  log.output = out;
+  say(`\nResult: ${existsSync(join(out, 'results.json')) ? join(out, 'results.json') : '(no results.json)'} (exit ${r.code}: ${['COMPLETE', 'FATAL', 'USAGE (e.g. account not empty)', 'EXTERNAL', 'STEP_FAILED', 'REJECTED_IN_PAGE'][r.code] ?? 'ERROR'})`);
   finish(r.code);
 }
 if (cmd === 'shadow') {
