@@ -63,6 +63,37 @@ contract DcaMockSwapRouter02 {
 }
 
 /// A minimal smart account: ERC-1271 for its EOA owner, and token calls only from its DelegationManager.
+/// @notice QuoterV2 `quoteExactInputSingle` shape over DcaMockSwapRouter02's rates (no pool, no price movement).
+/// `sqrtPriceX96After` is 1, never a caller's limit, so a quote is always a full fill unless `limited` is set.
+contract DcaMockQuoterV2 {
+    struct QuoteExactInputSingleParams {
+        address tokenIn;
+        address tokenOut;
+        uint256 amountIn;
+        uint24 fee;
+        uint160 sqrtPriceLimitX96;
+    }
+
+    DcaMockSwapRouter02 public immutable dex;
+    bool public limited;
+
+    constructor(DcaMockSwapRouter02 dex_) {
+        dex = dex_;
+    }
+
+    function setLimited(bool limited_) external {
+        limited = limited_;
+    }
+
+    function quoteExactInputSingle(QuoteExactInputSingleParams memory p) external view returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32, uint256) {
+        uint256 den = dex.rateDen(p.tokenOut);
+        require(den != 0, 'no pool');
+        amountOut = (p.amountIn * dex.rateNum(p.tokenOut)) / den;
+        sqrtPriceX96After = limited ? p.sqrtPriceLimitX96 : 1;
+        return (amountOut, sqrtPriceX96After, 0, 0);
+    }
+}
+
 contract DcaMockSmartAccount {
     address public immutable owner;
     address public immutable delegationManager;
