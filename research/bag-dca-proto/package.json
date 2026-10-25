@@ -11,7 +11,10 @@
     "verify:bytecode": "node verify-bytecode.mjs",
     "fork:mock": "node fork/run.mjs",
     "composer:live": "node composer/run.mjs --mode live",
-    "composer:replay": "node composer/run.mjs --mode replay"
+    "composer:replay": "node composer/run.mjs --mode replay",
+    "test": "node start.mjs unit",
+    "wallet-fork:test": "node start.mjs test",
+    "wallet-fork:wallet": "node start.mjs wallet"
   },
   "dependencies": {
     "@metamask/smart-accounts-kit": "2.0.0",

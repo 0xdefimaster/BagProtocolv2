@@ -11,7 +11,7 @@
 // Nothing is sent to a public network: the upstream relay refuses every write method.
 import assert from 'node:assert/strict';
 import { randomBytes, createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startRelay, createFork, compileProto, chainFor, v, accounts, aa, kit, reasonOf, revertIs, json, PUBLIC_RPC } from '../lib/fork-env.mjs';
@@ -28,7 +28,10 @@ const SESSION = new Date().toISOString().replaceAll(':', '-').slice(0, 19) + '-'
 const out = resolve(arg('--out', join(here, 'out', `${SESSION}-${SIGNER}-${MODE}`)));
 const privateDir = join(here, 'private', SESSION);
 if (existsSync(out)) throw new Error('Use a new --out directory.');
-mkdirSync(join(out, 'traces'), { recursive: true });
+// A purchase trace carries the permission context (with the user's delegation signature) in its
+// calldata, so in human-signature mode traces stay in the private folder, next to the signatures.
+const traceDir = SIGNER === 'wallet' ? join(privateDir, 'traces') : join(out, 'traces');
+mkdirSync(out, { recursive: true }); mkdirSync(traceDir, { recursive: true });
 
 // Only allowlisted keys are read from the env file; values are never logged or written.
 const env = {};
@@ -263,7 +266,7 @@ try {
         throw new Error(`${redact(reasonOf(e)).slice(0, 200)} | revert site: ${JSON.stringify(await revertSite(P, v.encodeFunctionData({ abi: planAbi, functionName: 'run', args: runArgs })))}`);
       });
       const r = await client.waitForTransactionReceipt({ hash });
-      writeFileSync(join(out, 'traces', id + '.json'), json(await rpc('debug_traceTransaction', [hash, { tracer: 'callTracer' }])));
+      writeFileSync(join(traceDir, id + '.json'), json(await rpc('debug_traceTransaction', [hash, { tracer: 'callTracer' }])));
       const after = await state(P, h, account), proxy = await read(F, P, planAbi, 'proxy');
       assert.equal(r.status, 'success'); assert.equal(after.runs, before.runs + 1n);
       assert.equal(before.accountUsdg - after.accountUsdg, swap, 'funding debit is not exactly the swap amount');
@@ -460,7 +463,15 @@ try {
   report.publicTransactions = { relayRefusedWriteRequests: relay?.stats.refusedRequests ?? null, relayForwardedMethods: relay?.stats.forwardedByMethod ?? null,
     note: 'Every upstream request is checked against a read-only allowlist (single and batch); fork transactions are local and listed under forks[].localTransactions.' };
   report.summary = { pass: report.checks.filter(c => c.status === 'PASS').length, fail: report.checks.filter(c => c.status === 'FAIL').length, purchases: report.purchases.length, userOps: report.userOps.length };
+  report.traceLocation = SIGNER === 'wallet' ? 'private folder (traces carry the delegation signatures)' : 'out/traces';
   writeFileSync(join(out, 'results.json'), json(report));
+  // Human-signature mode: nothing under --out may contain a signature (the out folder is what gets shared).
+  if (SIGNER === 'wallet' && sigFile.length) {
+    const walk = d => readdirSync(d, { withFileTypes: true }).flatMap(e => (e.isDirectory() ? (e.name === 'cache' ? [] : walk(join(d, e.name))) : [join(d, e.name)]));
+    const leaks = walk(out).filter(f => { const t = readFileSync(f, 'utf8').toLowerCase(); return sigFile.some(x => t.includes(x.signature.slice(2).toLowerCase())); });
+    if (leaks.length) { console.log('FAIL signature found in shareable output: ' + leaks.join(', ')); report.status = 'FAILED'; report.signatureLeak = leaks; exitCode = 1; writeFileSync(join(out, 'results.json'), json(report)); }
+    else console.log('PASS no signature in the shareable output folder');
+  }
   console.log(`\nSUMMARY status=${report.status} signer=${SIGNER} mode=${MODE} pass=${report.summary.pass} fail=${report.summary.fail} purchases=${report.summary.purchases} userOps=${report.summary.userOps} -> ${out}`);
   try { await F?.close?.(); } catch {}
   try { await relay?.close(); } catch {}
