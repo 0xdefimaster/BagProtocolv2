@@ -36,7 +36,7 @@ await page.addInitScript(address => {
   window.addEventListener('eip6963:requestProvider', announce); announce();
 }, key.address);
 await page.goto(url);
-await page.waitForSelector('#wallet option');
+await page.waitForSelector('#wallet option', { state: 'attached' });
 if (shots) await page.screenshot({ path: join(shots, '0-connect.png'), fullPage: true });
 await page.click('#connectBtn');
 console.log('page-e2e connected', key.address);
