@@ -1,0 +1,116 @@
+{
+  "bagJson": 1,
+  "definition": {
+    "kind": "STATIC_BASKET",
+    "chain": "robinhood",
+    "mutability": "MUTABLE",
+    "assets": [
+      {
+        "chain": "robinhood",
+        "address": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+        "decimals": 18,
+        "weightBps": 2675
+      },
+      {
+        "chain": "robinhood",
+        "address": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+        "decimals": 18,
+        "weightBps": 2601
+      },
+      {
+        "chain": "robinhood",
+        "address": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+        "decimals": 18,
+        "weightBps": 3724
+      },
+      {
+        "chain": "robinhood",
+        "address": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+        "decimals": 18,
+        "weightBps": 1000
+      }
+    ],
+    "rules": {
+      "weightBounds": {
+        "minBps": 100,
+        "maxBps": 7000
+      },
+      "maxAssets": 10,
+      "minInvestment": {
+        "amount": "0",
+        "measuredAs": "PAYMENT_TOKEN_AMOUNT"
+      },
+      "swapSlippageBps": 100,
+      "rebalance": {
+        "frequency": "MANUAL",
+        "driftThresholdBps": 500
+      },
+      "performanceFeeBps": 0,
+      "noRouteAssetPolicy": null
+    }
+  },
+  "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9",
+  "ref": {
+    "strategyId": "955df6e0-b6ea-44ba-a5eb-1288a80c0a06",
+    "version": 1,
+    "parentVersion": null,
+    "createdAt": "2026-10-19T02:51:51.787728+00:00"
+  },
+  "network": {
+    "chainId": 4663
+  },
+  "metadata": {
+    "name": "asdas (Fork)",
+    "symbol": "ASDASFOR",
+    "description": "asdasda",
+    "assets": [
+      {
+        "chain": "robinhood",
+        "address": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+        "symbol": "GME"
+      },
+      {
+        "chain": "robinhood",
+        "address": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+        "symbol": "ASML"
+      },
+      {
+        "chain": "robinhood",
+        "address": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+        "symbol": "COIN"
+      },
+      {
+        "chain": "robinhood",
+        "address": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+        "symbol": "AAPL"
+      }
+    ]
+  },
+  "commitments": {
+    "onchainCompositionHash": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+    "onchainTxHash": "0xe2159e68437bd9866a2b7312aa05ec70793932211112997d6014867e9845e5bb",
+    "onchainComposition": {
+      "status": "MATCHES_RECORDED",
+      "recordedFrom": "VERIFIED_TX_RECEIPT",
+      "comparedBy": "BAG",
+      "readFromChainThisRequest": false
+    },
+    "registry": {
+      "status": "NOT_REGISTERED",
+      "chainId": null,
+      "registryAddress": null,
+      "registryStrategyId": null,
+      "creator": null,
+      "txHash": null,
+      "blockNumber": null,
+      "forkOf": null,
+      "recordedFrom": null,
+      "verifiedBy": null,
+      "readFromChainThisRequest": false
+    }
+  },
+  "forkedFrom": {
+    "strategyId": "d855d1e6-abb4-49de-ab63-a52dc366dccc",
+    "version": 6
+  }
+}

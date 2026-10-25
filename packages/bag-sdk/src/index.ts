@@ -79,6 +79,35 @@ export {
 } from './execution';
 
 export {
+  bagFactoryCompositionHash,
+  buildRecurringAuthorization,
+  compareRecurringAuthorization,
+  decodeRecurringAuthorizationTypedData,
+  FUNDING_KINDS,
+  RECURRING_ALLOWED_FEE_TIERS,
+  RECURRING_AUTHORIZATION_TYPES,
+  RECURRING_MAX_ASSETS,
+  RECURRING_PURCHASE_DOMAIN,
+  RECURRING_REVOCATION_TYPES,
+  recurringAuthorizationId,
+  recurringAuthorizationTypedData,
+  recurringChainIdOf,
+  recurringLegAmounts,
+  recurringMinimumOutputs,
+  recurringRevocationTypedData,
+  recurringWindowAt,
+  summarizeRecurringAuthorization,
+  verifyRecurringPurchaseReceipt,
+  type RecurringAssetLimit,
+  type RecurringAuthorization,
+  type RecurringDeployment,
+  type RecurringReceiptClient,
+  type RecurringReceiptVerification,
+  type RecurringSummary,
+  type RecurringTermsInput,
+} from './recurring';
+
+export {
   verifyPurchaseReceipt,
   type PurchaseReceiptClient,
   type PurchaseReceiptLog,

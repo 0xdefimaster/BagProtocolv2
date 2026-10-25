@@ -22,6 +22,10 @@
       "types": "./dist/adapters/lifi.d.ts",
       "import": "./dist/adapters/lifi.js"
     },
+    "./uniswap-v3": {
+      "types": "./dist/adapters/uniswap-v3.d.ts",
+      "import": "./dist/adapters/uniswap-v3.js"
+    },
     "./schema": "./schema/bag.v1.schema.json"
   },
   "files": [

@@ -14,6 +14,7 @@ import {
   type Hex,
 } from 'viem';
 import { splitByWeight } from '../../packages/bag-sdk/src/split';
+import { recurringAuthorizationId, recurringLegAmounts, recurringMinimumOutputs } from '../../packages/bag-sdk/src/recurring';
 
 // -----------------------------------------------------------------------------
 // RecurringPurchaseExecutor on Hardhat's in-process EVM: the REAL BagFactory,
@@ -377,6 +378,15 @@ describe('RecurringPurchaseExecutor — identity and split', () => {
     // any field change changes the id
     for (const b of [t.auth({ recipient: t.attacker.account.address }), t.auth({ nonce: 2n }), t.auth({ schedule: { maxExecutions: 4, totalBudget: GROSS * 4n } }), t.auth({ route: { router: t.router.address, swapTarget: t.dex.address, allowedFees: [3000] } })]) {
       assert.notEqual(await t.executor.read.authorizationIdOf([b]), t.idOf(a));
+    }
+  });
+
+  it('the SDK (packages/bag-sdk recurring.ts) computes the same id, split and minimums as the contract', async () => {
+    const t = await setup();
+    for (const a of [t.auth(), t.auth({ schedule: { grossAmountPerRun: 7_777_777n, totalBudget: 7_777_777n * 3n } }), t.auth({ recipient: t.attacker.account.address, nonce: 42n })]) {
+      assert.equal(recurringAuthorizationId(a, { chainId: t.chainId, executor: t.executor.address }), await t.executor.read.authorizationIdOf([a]));
+      assert.deepEqual(recurringLegAmounts(a), await t.executor.read.legAmounts([a.schedule.grossAmountPerRun, a.assets]));
+      assert.deepEqual(recurringMinimumOutputs(a), await t.executor.read.minimumOutputs([a.schedule.grossAmountPerRun, a.assets]));
     }
   });
 
