@@ -3,7 +3,7 @@ import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hex } from 'viem';
-import { deriveState } from '../keeper/keeper';
+import { deriveState, scheduleOutlook } from '../keeper/keeper';
 import { FileKeeperStore, MemoryKeeperStore, deserializeJobs, serializeJobs } from '../keeper/store';
 import type { KeeperJob } from '../keeper/types';
 import type { RecurringAuthorization } from '../../../packages/bag-sdk/src/recurring';
@@ -17,7 +17,7 @@ const auth: RecurringAuthorization = {
   fundingContract: A,
   inputToken: A,
   bag: { bagId: `0x${'aa'.repeat(32)}` as Hex, bagVersion: BigInt(1), compositionHash: `0x${'bb'.repeat(32)}` as Hex, definitionHash: `0x${'cc'.repeat(32)}` as Hex, strategyId: `0x${'00'.repeat(32)}` as Hex, strategyVersion: 0 },
-  assets: [{ asset: '0x2222222222222222222222222222222222222222' as Hex, weightBps: 10_000, decimals: 18, maxPriceRaw: BigInt(25_000_000) }],
+  assets: [{ asset: '0x2222222222222222222222222222222222222222' as Hex, symbol: 'GME', weightBps: 10_000, decimals: 18, maxPriceRaw: BigInt(25_000_000) }],
   schedule: { grossAmountPerRun: BigInt(5_000_000), totalBudget: BigInt(15_000_000), maxExecutions: 3, startsAt: BigInt(1_000), periodSeconds: BigInt(100), expiresAt: BigInt(1_400) },
   route: { router: A, swapTarget: A, allowedFees: [500] },
   nonce: BigInt(1),
@@ -34,9 +34,23 @@ const job = (id: string): KeeperJob => ({
   stateDetail: null,
   nextDueAt: null,
   observed: null,
-  pending: { window: BigInt(2), from: A, nonce: 3, hash: null, preparedAt: 4 },
+  pending: {
+    window: BigInt(2), from: A, nonce: 3, hash: null, preparedAt: 4,
+    intent: {
+      execution: {
+        authorizationId: `0x${'dd'.repeat(32)}` as Hex, window: BigInt(2), quoteDeadline: BigInt(1_260), planSignature: '0x34' as Hex,
+        plan: { bagId: auth.bag.bagId, executionPlanHash: `0x${'00'.repeat(32)}` as Hex, wallet: A, inputToken: A, inputAmount: BigInt(5_000_000), deadline: BigInt(1_260), legs: [], minOutputs: [] },
+      },
+      ownerSignature: '0x12' as Hex,
+      fundingProof: '0x' as Hex,
+    },
+  },
   confirmed: [],
   attempts: [],
+  blocker: { window: BigInt(2), reason: 'WAITING_PRICE', detail: 'GME: market price ~31000000 is above the FIXED max price 25000000' },
+  accountedThrough: BigInt(2),
+  missed: [{ window: BigInt(1), reason: 'NOT_OBSERVED', detail: null }],
+  outlook: null,
   lease: null,
 });
 const zero = { executions: 0, grossUsed: BigInt(0), lastWindow: BigInt(0), lastExecutionAt: BigInt(0), revoked: false };
@@ -104,5 +118,30 @@ describe('deriveState (the executor\'s calendar, from chain counters)', () => {
     expect(deriveState(auth, { ...once, revoked: true }, BigInt(1_150)).state).toBe('REVOKED');
     // the last purchase window passed and the next one would open at/after expiry
     expect(deriveState(auth, { ...once, executions: 2, lastWindow: BigInt(3), lastExecutionAt: BigInt(1_350) }, BigInt(1_360)).state).toBe('EXPIRED');
+  });
+});
+
+describe('scheduleOutlook (what the fixed price ceiling can cost, from chain counters)', () => {
+  // 4 windows of 100 s from 1000 to 1400, 3 runs of 5 USDG
+  it('skipped windows are not made up: once fewer windows remain than runs, part of the budget cannot be spent', () => {
+    expect(scheduleOutlook(auth, zero, BigInt(999))).toEqual({ missedWindows: 0, runsLeft: 3, windowsLeft: 4, allRunsStillPossible: true, unspendableRaw: BigInt(0) });
+    const once = { ...zero, executions: 1, grossUsed: BigInt(5_000_000), lastWindow: BigInt(0), lastExecutionAt: BigInt(1_050) };
+    // window 1 has no purchase yet: it still counts as open
+    expect(scheduleOutlook(auth, once, BigInt(1_150))).toEqual({ missedWindows: 0, runsLeft: 2, windowsLeft: 3, allRunsStillPossible: true, unspendableRaw: BigInt(0) });
+    // windows 1 and 2 closed above the ceiling: 2 runs left, only window 3 remains
+    expect(scheduleOutlook(auth, once, BigInt(1_350))).toEqual({ missedWindows: 2, runsLeft: 2, windowsLeft: 1, allRunsStillPossible: false, unspendableRaw: BigInt(5_000_000) });
+    // after expiry with 2 of 3 runs: one run's budget was never spent
+    const twice = { ...once, executions: 2, grossUsed: BigInt(10_000_000), lastWindow: BigInt(3), lastExecutionAt: BigInt(1_350) };
+    expect(scheduleOutlook(auth, twice, BigInt(1_400))).toEqual({ missedWindows: 2, runsLeft: 1, windowsLeft: 0, allRunsStillPossible: false, unspendableRaw: BigInt(5_000_000) });
+    // bought in the current window: it is not open any more
+    expect(scheduleOutlook(auth, twice, BigInt(1_360))).toMatchObject({ missedWindows: 2, windowsLeft: 0, unspendableRaw: BigInt(5_000_000) });
+  });
+
+  it('completed or revoked: windows after the last purchase are not missed and nothing is reported unspendable', () => {
+    const done = { ...zero, executions: 3, grossUsed: BigInt(15_000_000), lastWindow: BigInt(2), lastExecutionAt: BigInt(1_250) };
+    expect(scheduleOutlook(auth, done, BigInt(1_399))).toEqual({ missedWindows: 0, runsLeft: 0, windowsLeft: 0, allRunsStillPossible: true, unspendableRaw: BigInt(0) });
+    const late = { ...done, lastWindow: BigInt(3), lastExecutionAt: BigInt(1_350) };
+    expect(scheduleOutlook(auth, late, BigInt(1_399)).missedWindows).toBe(1);
+    expect(scheduleOutlook(auth, { ...zero, revoked: true }, BigInt(1_150))).toMatchObject({ runsLeft: 0, windowsLeft: 0, unspendableRaw: BigInt(0) });
   });
 });

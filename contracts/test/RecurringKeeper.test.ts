@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { network } from 'hardhat';
 import { keccak256, pad, toHex, type Hex } from 'viem';
-import { recurringAuthorizationTypedData, type RecurringAuthorization } from '../../packages/bag-sdk/src/recurring';
+import { recurringAuthorizationTypedData, recurringCompositionHash, type RecurringAuthorization } from '../../packages/bag-sdk/src/recurring';
 import { routerPlanTypedData } from '../../packages/bag-sdk/src/adapters/uniswap-v3';
 import { createViemKeeperChain, type KeeperChain } from '../../lib/dca/keeper/chain';
 import { RecurringKeeper } from '../../lib/dca/keeper/keeper';
@@ -24,7 +24,6 @@ import { FileKeeperStore, MemoryKeeperStore, type KeeperStore } from '../../lib/
 const PERIOD = 3600n;
 const GROSS = 5_000_000n;
 const RUNS = 3;
-const COMPOSITION = keccak256(toHex('composition-v1'));
 const DEFINITION = keccak256(toHex('bag.json v1 definition'));
 const OFF_CHAIN_REF = pad('0x955df6e0', { size: 32 });
 
@@ -45,6 +44,12 @@ async function setup() {
   await aapl.write.mint([dex.address, 10n ** 30n]);
   const quoter = await viem.deployContract('DcaMockQuoterV2', [dex.address]);
 
+  // The BAG's registered content, in its registered (symbol) order; the authorization signs exactly these rows.
+  const assets = [
+    { asset: aapl.address.toLowerCase() as Hex, symbol: 'AAPL', weightBps: 4000, decimals: 18, maxPriceRaw: 250_000_000n },
+    { asset: gme.address.toLowerCase() as Hex, symbol: 'GME', weightBps: 6000, decimals: 18, maxPriceRaw: 30_000_000n },
+  ];
+  const COMPOSITION = recurringCompositionHash('robinhood', assets);
   const factory = await viem.deployContract('BagFactory', [deployer.account.address, deployer.account.address, 0n, 0n]);
   await (await viem.getContractAt('BagFactory', factory.address, { client: { wallet: creator } })).write.createBag([OFF_CHAIN_REF, COMPOSITION, 'ipfs://bag', true]);
   const bagId = (await factory.read.deriveBagId([creator.account.address, OFF_CHAIN_REF])) as Hex;
@@ -54,7 +59,7 @@ async function setup() {
   const router = await viem.deployContract('BagExecutionRouter', [factory.address, deployer.account.address, planSigner.account.address]);
   await router.write.setAllowedTarget([dex.address, true]);
   for (const t of [usdg, gme, aapl]) await router.write.setAllowedToken([t.address, true]);
-  const executor = await viem.deployContract('RecurringPurchaseExecutor', [factory.address, registry.address]);
+  const executor = await viem.deployContract('RecurringPurchaseExecutor', [factory.address, registry.address, 'robinhood']);
 
   await usdg.write.mint([owner.account.address, 1_000_000_000n]);
   const usdgAsOwner = await viem.getContractAt('DcaTestToken', usdg.address, { client: { wallet: owner } });
@@ -72,10 +77,7 @@ async function setup() {
     fundingContract: usdg.address.toLowerCase() as Hex,
     inputToken: usdg.address.toLowerCase() as Hex,
     bag: { bagId, bagVersion: 1n, compositionHash: COMPOSITION, definitionHash: DEFINITION, strategyId, strategyVersion: 1 },
-    assets: [
-      { asset: gme.address.toLowerCase() as Hex, weightBps: 6000, decimals: 18, maxPriceRaw: 30_000_000n },
-      { asset: aapl.address.toLowerCase() as Hex, weightBps: 4000, decimals: 18, maxPriceRaw: 250_000_000n },
-    ],
+    assets,
     schedule: { grossAmountPerRun: GROSS, totalBudget: GROSS * BigInt(RUNS), maxExecutions: RUNS, startsAt, periodSeconds: PERIOD, expiresAt: startsAt + BigInt(RUNS + 1) * PERIOD },
     route: { router: router.address.toLowerCase() as Hex, swapTarget: dex.address.toLowerCase() as Hex, allowedFees: [500, 3000] },
     nonce: 1n,
@@ -97,7 +99,7 @@ async function setup() {
     await rpc('evm_mine');
   };
   const add = (k: RecurringKeeper) => k.addJob({ authorization: auth, ownerSignature, deployment });
-  return { rpc, publicClient, keeperA, keeperB, owner, usdgAsOwner, executorAsOwner, quoter, auth, deployment, chainFor, makeKeeper, tmpStore, state, ownerUsdg, nonceOf, toWindow, add };
+  return { rpc, publicClient, keeperA, keeperB, owner, usdgAsOwner, executorAsOwner, quoter, dex, gme, auth, deployment, chainFor, makeKeeper, tmpStore, state, ownerUsdg, nonceOf, toWindow, add };
 }
 
 describe('RecurringKeeper (persistent, chain counters as truth)', () => {
@@ -113,6 +115,9 @@ describe('RecurringKeeper (persistent, chain counters as truth)', () => {
     assert.equal(after1.state, 'DONE_THIS_WINDOW');
     assert.equal(after1.confirmed.length, 1);
     assert.equal(after1.confirmed[0].verification, 'VERIFIED', JSON.stringify(after1.confirmed[0].issues));
+    // the SDK verified the mined call against the call this keeper prepared, and the balances of this transaction
+    assert.deepEqual([after1.confirmed[0].binding, after1.confirmed[0].evidence, after1.confirmed[0].balanceScope], ['PREPARED_INTENT', 'TRANSACTION_AND_BALANCE_DELTAS', 'SINGLE_TRANSACTION_BLOCK']);
+    assert.equal(after1.pending, null, 'the prepared call (with its plan signature) is not kept after confirmation');
     assert.equal(before - (await t.ownerUsdg()), GROSS);
 
     // restart: a new process with the same durable store
@@ -143,6 +148,8 @@ describe('RecurringKeeper (persistent, chain counters as truth)', () => {
     const [job] = await k2.tick();
     assert.equal(job.state, 'DONE_THIS_WINDOW');
     assert.equal(job.confirmed.length, 1, 'the earlier run is recovered from PurchaseExecuted logs');
+    // this keeper did not prepare that call: it is verified from the decoded call and balances, and labelled weaker
+    assert.deepEqual([job.confirmed[0].verification, job.confirmed[0].binding], ['VERIFIED', 'DECODED_CALL']);
     for (const w of [1n, 2n, 3n]) {
       await t.toWindow(w);
       await k2.tick();
@@ -185,6 +192,7 @@ describe('RecurringKeeper (persistent, chain counters as truth)', () => {
     assert.equal(job.state, 'DONE_THIS_WINDOW');
     assert.equal(job.confirmed.length, 1);
     assert.equal(job.pending, null);
+    assert.deepEqual([job.confirmed[0].verification, job.confirmed[0].binding], ['VERIFIED', 'PREPARED_INTENT'], 'the write-ahead intent identifies the call even without its hash');
     assert.equal(await t.nonceOf(t.keeperA), nonce, 'nothing re-sent');
     assert.equal((await t.state()).executions, 1);
   });
@@ -248,6 +256,7 @@ describe('RecurringKeeper (persistent, chain counters as truth)', () => {
     assert.equal(before - (await t.ownerUsdg()), GROSS, 'charged once');
     assert.equal(ja.confirmed.length + jb.confirmed.length, 2, 'both record the one purchase');
     assert.equal(ja.confirmed[0].hash, jb.confirmed[0].hash);
+    assert.deepEqual([ja.confirmed[0].binding, jb.confirmed[0].binding].sort(), ['DECODED_CALL', 'PREPARED_INTENT'], 'only the winner holds the prepared call');
     assert.equal([...ja.attempts, ...jb.attempts].filter((x) => x.outcome === 'REVERTED').length, 1, 'the loser\'s mined revert is on record');
   });
 
@@ -299,6 +308,44 @@ describe('RecurringKeeper (persistent, chain counters as truth)', () => {
     const [job] = await k.tick();
     assert.equal(job.state, 'REVOKED');
     assert.equal((await t.state()).executions, 1);
+  });
+
+  it('the FIXED max price skips windows: they are recorded with the market price, never made up, and the unspendable budget is shown', async () => {
+    const t = await setup();
+    const k = t.makeKeeper(new MemoryKeeperStore(), t.chainFor(t.keeperA));
+    await t.add(k);
+    const start = await t.ownerUsdg();
+    await t.toWindow(0n);
+    await k.tick();
+    assert.equal((await k.tick())[0].confirmed.length, 1);
+    // window 1: no keeper step at all
+    await t.toWindow(2n);
+    // window 2: GME trades at 40 USDG, above the signed ceiling of 30 (not a slippage bound on the current price)
+    await t.dex.write.setRate([t.gme.address, 10n ** 18n, 40_000_000n]);
+    const [waiting] = await k.tick();
+    assert.equal(waiting.state, 'WAITING_PRICE');
+    assert.match(waiting.stateDetail ?? '', /GME .*market price ~40000000 is above the FIXED max price 30000000.*not made up later/);
+    assert.deepEqual(waiting.missed.map((m) => [m.window, m.reason]), [[1n, 'NOT_OBSERVED']]);
+    assert.deepEqual(waiting.outlook, { missedWindows: 1, runsLeft: 2, windowsLeft: 2, allRunsStillPossible: true, unspendableRaw: 0n });
+    // window 3: the price is back; one purchase, not two (no catch-up)
+    await t.toWindow(3n);
+    await t.dex.write.setRate([t.gme.address, 10n ** 18n, 25_000_000n]);
+    const [late] = await k.tick();
+    assert.deepEqual(late.missed.map((m) => [m.window, m.reason]), [[1n, 'NOT_OBSERVED'], [2n, 'WAITING_PRICE']]);
+    assert.match(late.missed[1].detail ?? '', /market price ~40000000/);
+    assert.deepEqual(late.outlook, { missedWindows: 2, runsLeft: 2, windowsLeft: 1, allRunsStillPossible: false, unspendableRaw: GROSS });
+    await k.tick();
+    const [bought] = await k.tick();
+    // that was the last window: the job is over with a run and its budget left unused
+    assert.deepEqual([bought.state, bought.confirmed.length, bought.outlook?.unspendableRaw], ['EXPIRED', 2, GROSS]);
+    assert.equal((await t.state()).executions, 2);
+    // expiry: 2 of 3 runs; one run's budget is never spent, and nothing more is taken
+    await t.toWindow(BigInt(RUNS + 1));
+    const [end] = await k.tick();
+    assert.equal(end.state, 'EXPIRED');
+    assert.deepEqual(end.outlook, { missedWindows: 2, runsLeft: 1, windowsLeft: 0, allRunsStillPossible: false, unspendableRaw: GROSS });
+    assert.equal(end.missed.length, 2);
+    assert.equal(start - (await t.ownerUsdg()), 2n * GROSS);
   });
 
   it('does not send within the inclusion slack before a window boundary; sends after it', async () => {

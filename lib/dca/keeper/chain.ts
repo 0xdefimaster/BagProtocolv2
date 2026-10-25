@@ -1,6 +1,8 @@
 import { decodeErrorResult, type Account, type Chain, type Hex, type PublicClient, type Transport, type WalletClient } from 'viem';
-import { RECURRING_EXECUTOR_ABI, type recurringAuthorizationTypedData, type RecurringAuthorization, type RecurringReceiptClient } from '../../../packages/bag-sdk/src/recurring';
+import { RECURRING_EXECUTOR_ABI, type recurringAuthorizationTypedData, type RecurringAuthorization } from '../../../packages/bag-sdk/src/recurring';
 import type { QuoteClient } from '../../../packages/bag-sdk/src/adapters/uniswap-v3';
+import { withReceiptEvidence, type ReceiptEvidenceOptions } from '../../../packages/bag-sdk/src/adapters/receipt-rpc';
+import type { PurchaseReceiptClient } from '../../../packages/bag-sdk/src/receipt';
 import type { ChainExecutionState } from './types';
 
 /** `execute` arguments, as the executor ABI takes them. */
@@ -23,7 +25,8 @@ export interface KeeperChain {
   /** The keeper account that pays gas. */
   readonly keeper: Hex;
   readonly quoteClient: QuoteClient;
-  readonly receiptClient: RecurringReceiptClient;
+  /** Transaction, receipt and transaction-scoped balance reads for `verifyRecurringPurchase`. */
+  readonly receiptClient: PurchaseReceiptClient;
   /** EOA or ERC-1271 (smart account) check of the owner's EIP-712 signature, through the chain. */
   verifyOwnerSignature(owner: Hex, typedData: ReturnType<typeof recurringAuthorizationTypedData>, signature: Hex): Promise<boolean>;
   latestTimestamp(): Promise<bigint>;
@@ -80,8 +83,13 @@ export class KeeperRpcError extends Error {
   }
 }
 
-/** viem implementation. The wallet client holds the KEEPER key only; it never holds a user's or the planSigner's key. */
-export function createViemKeeperChain(params: { publicClient: PublicClient<Transport, Chain | undefined>; walletClient: WalletClient<Transport, Chain | undefined, Account> }): KeeperChain {
+/**
+ * viem implementation. The wallet client holds the KEEPER key only; it never holds a user's or the planSigner's key.
+ * `evidence.balanceState` selects how purchase balances are read (default SINGLE_TRANSACTION_BLOCK: correct only when
+ * the purchase is the block's only transaction touching those balances, otherwise INDETERMINATE). On Robinhood Chain
+ * use ROBINHOOD_NITRO_TRANSACTION_INDEX with a qualified Nitro reader.
+ */
+export function createViemKeeperChain(params: { publicClient: PublicClient<Transport, Chain | undefined>; walletClient: WalletClient<Transport, Chain | undefined, Account>; evidence?: ReceiptEvidenceOptions }): KeeperChain {
   const { publicClient: pc, walletClient: wc } = params;
   const keeper = wc.account.address;
   const read = async <T>(operation: string, fn: () => Promise<T>): Promise<T> => {
@@ -95,7 +103,7 @@ export function createViemKeeperChain(params: { publicClient: PublicClient<Trans
   return {
     keeper,
     quoteClient: pc as unknown as QuoteClient,
-    receiptClient: pc as unknown as RecurringReceiptClient,
+    receiptClient: withReceiptEvidence(pc as unknown as Parameters<typeof withReceiptEvidence>[0], params.evidence),
     verifyOwnerSignature: (owner, typedData, signature) => read('verifyTypedData', () => pc.verifyTypedData({ address: owner, ...(typedData as any), signature })),
     latestTimestamp: () => read('getBlock', async () => (await pc.getBlock()).timestamp),
     latestBlock: () => read('getBlockNumber', () => pc.getBlockNumber()),
