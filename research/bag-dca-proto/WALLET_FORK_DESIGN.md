@@ -1,5 +1,11 @@
 # Gerçek cüzdan imzalı dönemlik izin: yalnızca yerel fork'ta kullanılabilir (tasarım, B modeli)
 
+> **Durum (25.10.2026): uygulandı.**
+> - Kod: `wallet-fork/run.mjs`, `wallet-fork/server.mjs`, `wallet-fork/page/`.
+> - Kanıt: `results/closing-2026-10-25/`. Durum: `STATUS.md`.
+> - Gerçek cüzdan imzası hâlâ kullanıcıda (`HUMAN_SIGNATURE_REQUIRED`).
+> - Aşağıdaki tasarım metni değiştirilmedi. Uygulamadaki fark: dönem uzunluğu fork'ta 2 dakika. Kayıtlı Composer programı süre atlamasında bayatladığı için 1 günlük dönem kullanılamadı.
+
 **Durum:** tasarım. UserOp ayrımı (paymaster) fork'ta yerel test anahtarıyla sınandı (PM-0…PM-7). Gerçek cüzdan akışının kodu henüz yazılmadı.
 **Kısıtlar:** gerçek para yok, public işlem yok, `0xb193…56b8` kullanılmaz. Kullanıcı yeni ve boş bir MetaMask hesabı açar.
 

@@ -1,5 +1,11 @@
 # DCA yetki prototipi (A: EOA + permit, B: smart account + delegasyon)
 
+> **Kapanış (25.10.2026):**
+> - Başlamak için `README_START_HERE.md`. Tek giriş noktası `start.cmd` / `node start.mjs`.
+> - Durum `STATUS.md`'de, kararlar `DECISIONS.md`'de, kanıt `results/closing-2026-10-25/` altında, hash'ler `manifest.json`'da.
+> - Gerçek cüzdan imzalı, kullanılabilir izin akışı `wallet-fork/` altında.
+> - Aşağıdaki tablodaki `wallet/serve.mjs`, **bilerek kullanılamayan** imzaları ölçen eski sayfadır; yeni akışın yerine geçmez.
+
 **Yalnızca araştırma amaçlı.** Audit edilmedi. `main`'e ve mevcut alım/satım akışlarına dokunmaz. Gerçek para kullanmaz ve public ağa işlem göndermez: fork'un upstream bağlantısı yalnızca okuma metotlarını kabul eden bir relay üzerinden geçiyor. Zip'te API anahtarı ya da özel anahtar yok. Fork anahtarları her çalıştırmada rastgele üretiliyor.
 
 ## Kurulum

@@ -1,0 +1,1204 @@
+{
+  "schema": "bag-dca-wallet-fork/v1",
+  "session": "2026-10-25T02-46-49-6184f1",
+  "signer": "test",
+  "mode": "replay",
+  "evidence": {
+    "signatures": "TEST_KEY",
+    "program": "RECORDED_COMPOSER_REPLAY"
+  },
+  "startedAt": "2026-10-25T02:46:49.624Z",
+  "checks": [
+    {
+      "id": "P-1",
+      "name": "preflight: chain, USDG definition, pinned bytecode, keyless addresses, empty test account",
+      "class": "READ_ONLY_MAINNET",
+      "status": "PASS",
+      "details": {
+        "block": {
+          "number": "97257459",
+          "hash": "0x9dcdfffed9511ca1ed3706aa1f798e15528946d72f2a1f0fcce18c07c9154dcd",
+          "timestamp": "1792896451"
+        },
+        "usdg": {
+          "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "decimals": 6,
+          "symbol": "USDG",
+          "name": "Global Dollar"
+        },
+        "keyless": {
+          "factory": {
+            "address": "0x7fE0cf854704Ce6f29691a75F6839233AFfDb3E6",
+            "code": "0x",
+            "nonce": 0,
+            "balance": "0"
+          },
+          "paymaster": {
+            "address": "0x03fd2c77d32302eeF2f6F3063DbB7b899b1116D3",
+            "code": "0x",
+            "nonce": 0,
+            "balance": "0"
+          }
+        },
+        "owner": {
+          "address": "0x40FAf951fF705e543894D4900ED2ae546240E2D1",
+          "eth": "0",
+          "usdg": "0",
+          "code": "0x",
+          "nonce": 0
+        }
+      }
+    },
+    {
+      "id": "P-2",
+      "name": "plan addresses recomputed from factory + salt + initCodeHash; programs for them match the signer-independent template",
+      "class": "FORK_PREPARE",
+      "status": "PASS",
+      "details": {
+        "P1": "0x77c678b32c02d89256DC7FA101ff845d4f8b3c54",
+        "P2": "0x78d6c836C5Ac96506924E76151812eEBFc1e2FE1",
+        "swapAmountRaw": "5000000",
+        "templateCommandsHash": "0xf202f7222be31f87204d846dfd2b668f071dfe0db5f7a9e91250e18561778eaf"
+      }
+    },
+    {
+      "id": "E-1",
+      "name": "fork setup: pinned bytecode, keyless factory/paymaster code, paymaster deposit, smart account deployed and funded on the fork only",
+      "class": "FORK_SETUP",
+      "status": "PASS",
+      "details": {
+        "smartAccount": "0x29060e77b15fb9010978e3b2B2940BC52108c6E1",
+        "fundedUsdgRaw": "50000000",
+        "fundingMethod": "IMPERSONATED_HOLDER_TRANSFER_ON_FORK",
+        "holder": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+        "plans": {
+          "P1": "0x77c678b32c02d89256DC7FA101ff845d4f8b3c54",
+          "P2": "0x78d6c836C5Ac96506924E76151812eEBFc1e2FE1"
+        },
+        "paymasterDeposit": "100000000000000000"
+      }
+    },
+    {
+      "id": "E-2",
+      "name": "the account accepts the user signatures (ERC-1271) and their digests equal the DelegationManager hash",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "erc1271": "VALID",
+        "delegations": 2
+      }
+    },
+    {
+      "id": "H-1",
+      "name": "D1 window 0: purchase with the user-signed periodic permission",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "id": "H-1",
+        "plan": "0x77c678b32c02d89256DC7FA101ff845d4f8b3c54",
+        "delegationHash": "0xe2b51f332b650a0f17fd3ffb3cb5a0395a89dd83f19bc67dd3ee3c526c1086b8",
+        "transactionHash": "0x4028ce7daf5faabd78e317888ad621df8e6ed72cef3ee897e74b854c1eca626c",
+        "blockNumber": "97257533",
+        "blockHash": "0xdda95d3a2db62a7120836adfd03ff7c07f96c9dfa2cd0de223ab5f0048bc1acc",
+        "gasUsed": "11350247",
+        "status": "success",
+        "fundingDebitRaw": "5000000",
+        "deliveries": [
+          {
+            "token": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+            "minimum": "52899853936185328",
+            "delivered": "53767152694278771",
+            "planResidue": "0"
+          },
+          {
+            "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+            "minimum": "805148675807850",
+            "delivered": "821464437620736",
+            "planResidue": "0"
+          },
+          {
+            "token": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+            "minimum": "11075561916784779",
+            "delivered": "11248304618329151",
+            "planResidue": "0"
+          },
+          {
+            "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+            "minimum": "1404443333431392",
+            "delivered": "1432959221948161",
+            "planResidue": "0"
+          }
+        ],
+        "countersBefore": {
+          "periodSpent": "0",
+          "totalSpent": "0",
+          "calls": "0",
+          "disabled": false
+        },
+        "countersAfter": {
+          "periodSpent": "5000000",
+          "totalSpent": "5000000",
+          "calls": "1",
+          "disabled": false
+        },
+        "sdk": {
+          "status": "VERIFIED",
+          "binding": "CALL_TRACE",
+          "delivery": {
+            "caller": "0x77c678b32c02d89256DC7FA101ff845d4f8b3c54",
+            "fundingSource": "0x29060e77b15fb9010978e3b2B2940BC52108c6E1",
+            "recipient": "0x40FAf951fF705e543894D4900ED2ae546240E2D1",
+            "authorization": "ON_CHAIN_PLAN_READ",
+            "callerNetZero": true
+          }
+        },
+        "program": "RECORDED_COMPOSER_REPLAY",
+        "trace": "traces/H-1.json"
+      }
+    },
+    {
+      "id": "H-2",
+      "name": "D2 window 0: purchase with the second user-signed permission",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "id": "H-2",
+        "plan": "0x78d6c836C5Ac96506924E76151812eEBFc1e2FE1",
+        "delegationHash": "0x35f8739686b6f736b611c86191dbe33957bb2108ebed724eacc634742b08e4d3",
+        "transactionHash": "0xcbcd4d5934cc34001dff63654f7cced5b6169d3930a80925c3dc195374487e0e",
+        "blockNumber": "97257534",
+        "blockHash": "0x7860a4254fc1299aaf873dad490cd1bd6f96c3c5447ce2e328792f78b2c440eb",
+        "gasUsed": "11231199",
+        "status": "success",
+        "fundingDebitRaw": "5000000",
+        "deliveries": [
+          {
+            "token": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+            "minimum": "52899853936185328",
+            "delivered": "53767015945631780",
+            "planResidue": "0"
+          },
+          {
+            "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+            "minimum": "805148675807850",
+            "delivered": "821464437620736",
+            "planResidue": "0"
+          },
+          {
+            "token": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+            "minimum": "11075561916784779",
+            "delivered": "11248202264113515",
+            "planResidue": "0"
+          },
+          {
+            "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+            "minimum": "1404443333431392",
+            "delivered": "1432632166278038",
+            "planResidue": "0"
+          }
+        ],
+        "countersBefore": {
+          "periodSpent": "0",
+          "totalSpent": "0",
+          "calls": "0",
+          "disabled": false
+        },
+        "countersAfter": {
+          "periodSpent": "5000000",
+          "totalSpent": "5000000",
+          "calls": "1",
+          "disabled": false
+        },
+        "sdk": {
+          "status": "VERIFIED",
+          "binding": "CALL_TRACE",
+          "delivery": {
+            "caller": "0x78d6c836C5Ac96506924E76151812eEBFc1e2FE1",
+            "fundingSource": "0x29060e77b15fb9010978e3b2B2940BC52108c6E1",
+            "recipient": "0x40FAf951fF705e543894D4900ED2ae546240E2D1",
+            "authorization": "ON_CHAIN_PLAN_READ",
+            "callerNetZero": true
+          }
+        },
+        "program": "RECORDED_COMPOSER_REPLAY",
+        "trace": "traces/H-2.json"
+      }
+    },
+    {
+      "id": "H-3",
+      "name": "D1 same window: second purchase refused by the plan (NotDue)",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "reason": "The contract function \"run\" reverted. | VM Exception while processing transaction: reverted with an unrecognized custom error (return data: 0x47a2375f) | The contract function \"run\" reverted. | VM Exc",
+        "unchanged": [
+          "runs",
+          "balances",
+          "allowance",
+          "counters",
+          "nonce"
+        ]
+      }
+    },
+    {
+      "id": "H-4",
+      "name": "D1 same window, plan bypassed: the permission itself refuses (ERC20PeriodTransferEnforcer)",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "reason": "The contract function \"redeemDelegations\" reverted with the following reason:\nERC20PeriodTransferEnforcer:transfer-amount-exceeded | VM Exception while processing transaction: reverted with reason str",
+        "unchanged": [
+          "runs",
+          "balances",
+          "allowance",
+          "counters",
+          "nonce"
+        ]
+      }
+    },
+    {
+      "id": "H-5a",
+      "name": "cancel op under the mainnet condition (paymaster has no code; deposit and account ETH present): cannot execute, nothing changes",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "refused": true
+      }
+    },
+    {
+      "id": "H-5b",
+      "name": "cancel op with the paymaster removed or replaced: the same signature no longer validates (AA24)",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "stripped": "EntryPoint FailedOp(0, AA24 signature error)",
+        "replaced": "EntryPoint FailedOp(0, AA31 paymaster deposit too low)"
+      }
+    },
+    {
+      "id": "H-5c",
+      "name": "cancel op executes on the fork via EntryPoint.handleOps; the account pays no gas; D2 disabled",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x11cdbaf2e15480b15d09a51e36d7d4b6d3e095e65bacf1e236cd7aeec6c53d0e",
+        "blockNumber": "97257537",
+        "gasUsed": "186295",
+        "actualGasCost": "1276870594338",
+        "userOpHash": "0x275f7e77adb70189e6084765d257c9a431e74b4c33851a2f12f4b5c6a313abb4"
+      }
+    },
+    {
+      "id": "H-5d",
+      "name": "replaying the executed cancel op is refused (AA25 nonce)",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "reason": "EntryPoint FailedOp(0, AA25 invalid account nonce)",
+        "unchanged": [
+          "runs",
+          "balances",
+          "allowance",
+          "counters",
+          "nonce"
+        ]
+      }
+    },
+    {
+      "id": "H-6",
+      "name": "D1 window 1: second purchase (total reaches the budget)",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "id": "H-6",
+        "plan": "0x77c678b32c02d89256DC7FA101ff845d4f8b3c54",
+        "delegationHash": "0xe2b51f332b650a0f17fd3ffb3cb5a0395a89dd83f19bc67dd3ee3c526c1086b8",
+        "transactionHash": "0x73395112d2debf6511a91da95de9c3f6ce58d4cc7c059b08e1d814582e0d0bb9",
+        "blockNumber": "97257540",
+        "blockHash": "0x0e2d9c3de130fcd77f33ba19ffc70732a8f6d8ef32f5c35a1143e8ec30a7a80f",
+        "gasUsed": "10472412",
+        "status": "success",
+        "fundingDebitRaw": "5000000",
+        "deliveries": [
+          {
+            "token": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+            "minimum": "52899853936185328",
+            "delivered": "53766879197506488",
+            "planResidue": "0"
+          },
+          {
+            "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+            "minimum": "805148675807850",
+            "delivered": "821464437620736",
+            "planResidue": "0"
+          },
+          {
+            "token": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+            "minimum": "11075561916784779",
+            "delivered": "11248099911294935",
+            "planResidue": "0"
+          },
+          {
+            "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+            "minimum": "1404443333431392",
+            "delivered": "1429704039181931",
+            "planResidue": "0"
+          }
+        ],
+        "countersBefore": {
+          "periodSpent": "5000000",
+          "totalSpent": "5000000",
+          "calls": "1",
+          "disabled": false
+        },
+        "countersAfter": {
+          "periodSpent": "5000000",
+          "totalSpent": "10000000",
+          "calls": "2",
+          "disabled": false
+        },
+        "sdk": {
+          "status": "VERIFIED",
+          "binding": "CALL_TRACE",
+          "delivery": {
+            "caller": "0x77c678b32c02d89256DC7FA101ff845d4f8b3c54",
+            "fundingSource": "0x29060e77b15fb9010978e3b2B2940BC52108c6E1",
+            "recipient": "0x40FAf951fF705e543894D4900ED2ae546240E2D1",
+            "authorization": "ON_CHAIN_PLAN_READ",
+            "callerNetZero": true
+          }
+        },
+        "program": "RECORDED_COMPOSER_REPLAY",
+        "trace": "traces/H-6.json"
+      }
+    },
+    {
+      "id": "H-7",
+      "name": "D2 window 1 after cancel: purchase refused (CannotUseADisabledDelegation) while budget remained",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "reason": "The contract function \"run\" reverted with the following signature:\n0x05baa052 | VM Exception while processing transaction: reverted with an unrecognized custom error (return data: 0x05baa052) | The co",
+        "unchanged": [
+          "runs",
+          "balances",
+          "allowance",
+          "counters",
+          "nonce"
+        ]
+      }
+    },
+    {
+      "id": "H-8",
+      "name": "D1 window 2: plan refuses (Inactive: runs/expiry)",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "reason": "The contract function \"run\" reverted. | VM Exception while processing transaction: reverted with an unrecognized custom error (return data: 0x2e8acb0d) | The contract function \"run\" reverted. | VM Exc",
+        "unchanged": [
+          "runs",
+          "balances",
+          "allowance",
+          "counters",
+          "nonce"
+        ]
+      }
+    },
+    {
+      "id": "H-9",
+      "name": "D1 window 2, plan bypassed: total budget enforced by the permission (ERC20TransferAmountEnforcer)",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "reason": "The contract function \"redeemDelegations\" reverted with the following reason:\nERC20TransferAmountEnforcer:allowance-exceeded | VM Exception while processing transaction: reverted with reason string 'E",
+        "unchanged": [
+          "runs",
+          "balances",
+          "allowance",
+          "counters",
+          "nonce"
+        ]
+      }
+    },
+    {
+      "id": "H-10",
+      "name": "withdraw op: remaining USDG returns to the owner EOA via handleOps; account pays no gas",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "transactionHash": "0x390fe0d1a835a2822fc32185fff5bfa2a0d11627bb4d12d4ad99309a7461c0a6",
+        "blockNumber": "97257545",
+        "gasUsed": "131602",
+        "actualGasCost": "417599384205",
+        "userOpHash": "0xff6e6682ad208ceb417da25a951d5792d60a8adcc4f9ee5a989e0343dbda9b54",
+        "withdrawnRaw": "35000000"
+      }
+    },
+    {
+      "id": "H-11",
+      "name": "replaying the executed withdraw op is refused (AA25 nonce)",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "reason": "EntryPoint FailedOp(0, AA25 invalid account nonce)",
+        "unchanged": [
+          "runs",
+          "balances",
+          "allowance",
+          "counters",
+          "nonce"
+        ]
+      }
+    },
+    {
+      "id": "P-3",
+      "name": "explicit Delegation typed data signs to the same signature as Smart Accounts Kit (same account, same delegation)",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "equal": true
+      }
+    },
+    {
+      "id": "X-1",
+      "name": "two keepers in the same block, same window: exactly one purchase; the other reverts; counters move once",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "statuses": [
+          "success",
+          "reverted"
+        ]
+      }
+    },
+    {
+      "id": "X-2",
+      "name": "failed swap (router payload corrupted, plan validation passes): reverts; balances, runs and enforcer counters unchanged",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "reverted": true
+      }
+    },
+    {
+      "id": "X-3",
+      "name": "modified Composer program (a pinned state slot changed): plan validation refuses",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "reason": "The contract function \"run\" reverted. | VM Exception while processing transaction: reverted with an unrecognized custom error (return data: 0x775e666d00000000000000000000000000000000000000000000000000",
+        "unchanged": [
+          "runs",
+          "balances",
+          "allowance",
+          "counters",
+          "nonce"
+        ]
+      }
+    },
+    {
+      "id": "X-4",
+      "name": "wrong plan: another plan presents this permission (InvalidDelegate)",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "reason": "The contract function \"run\" reverted with the following signature:\n0xb5863604 | VM Exception while processing transaction: reverted with an unrecognized custom error (return data: 0xb5863604) | The co",
+        "unchanged": [
+          "runs",
+          "balances",
+          "allowance",
+          "counters",
+          "nonce"
+        ]
+      }
+    },
+    {
+      "id": "X-5",
+      "name": "wrong recipient: transfer to an address other than the plan (AllowedCalldataEnforcer)",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "reason": "The contract function \"redeemDelegations\" reverted with the following reason:\nAllowedCalldataEnforcer:invalid-calldata | VM Exception while processing transaction: reverted with reason string 'Allowed",
+        "unchanged": [
+          "runs",
+          "balances",
+          "allowance",
+          "counters",
+          "nonce"
+        ]
+      }
+    },
+    {
+      "id": "X-6",
+      "name": "wrong token: a different token through the permission (ERC20PeriodTransferEnforcer)",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "reason": "The contract function \"redeemDelegations\" reverted with the following reason:\nERC20PeriodTransferEnforcer:invalid-contract | VM Exception while processing transaction: reverted with reason string 'ERC",
+        "unchanged": [
+          "runs",
+          "balances",
+          "allowance",
+          "counters",
+          "nonce"
+        ]
+      }
+    },
+    {
+      "id": "X-7",
+      "name": "over-spend: more than the per-period amount (transfer-amount-exceeded)",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "reason": "The contract function \"redeemDelegations\" reverted with the following reason:\nERC20PeriodTransferEnforcer:transfer-amount-exceeded | VM Exception while processing transaction: reverted with reason str",
+        "unchanged": [
+          "runs",
+          "balances",
+          "allowance",
+          "counters",
+          "nonce"
+        ]
+      }
+    },
+    {
+      "id": "X-8",
+      "name": "call-count limit: a permission with maxCalls 1 works once, then LimitedCallsEnforcer refuses",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "reason": "The contract function \"redeemDelegations\" reverted with the following reason:\nLimitedCallsEnforcer:limit-exceeded | VM E"
+      }
+    },
+    {
+      "id": "X-9",
+      "name": "expired permission: TimestampEnforcer refuses after notAfter",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "reason": "The contract function \"redeemDelegations\" reverted with the following reason:\nTimestampEnforcer:expired-delegation | VM ",
+        "notAfter": "1792897177",
+        "now": "1792897323"
+      }
+    },
+    {
+      "id": "X-10",
+      "name": "user operation after its paymaster validUntil: refused (AA32), nothing changes",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "reason": "EntryPoint FailedOp(0, AA32 paymaster expired or not due)",
+        "kitSignatureEqual": true
+      }
+    },
+    {
+      "id": "X-11",
+      "name": "SDK forwarded verification of the real H-1 receipt refuses over-, partial- and zero-spend claims",
+      "class": "TEST_KEY",
+      "status": "PASS",
+      "details": {
+        "baseline": "VERIFIED",
+        "over": "INPUT_SPEND_EXCEEDS_PLAN",
+        "partial": "INPUT_SPEND_BELOW_PLAN",
+        "zero": "FAILED DELIVERY_AUTHORIZATION_MISMATCH",
+        "actualDebitRaw": "5000000"
+      }
+    }
+  ],
+  "purchases": [
+    {
+      "id": "H-1",
+      "plan": "0x77c678b32c02d89256DC7FA101ff845d4f8b3c54",
+      "delegationHash": "0xe2b51f332b650a0f17fd3ffb3cb5a0395a89dd83f19bc67dd3ee3c526c1086b8",
+      "transactionHash": "0x4028ce7daf5faabd78e317888ad621df8e6ed72cef3ee897e74b854c1eca626c",
+      "blockNumber": "97257533",
+      "blockHash": "0xdda95d3a2db62a7120836adfd03ff7c07f96c9dfa2cd0de223ab5f0048bc1acc",
+      "gasUsed": "11350247",
+      "status": "success",
+      "fundingDebitRaw": "5000000",
+      "deliveries": [
+        {
+          "token": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "minimum": "52899853936185328",
+          "delivered": "53767152694278771",
+          "planResidue": "0"
+        },
+        {
+          "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "minimum": "805148675807850",
+          "delivered": "821464437620736",
+          "planResidue": "0"
+        },
+        {
+          "token": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "minimum": "11075561916784779",
+          "delivered": "11248304618329151",
+          "planResidue": "0"
+        },
+        {
+          "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "minimum": "1404443333431392",
+          "delivered": "1432959221948161",
+          "planResidue": "0"
+        }
+      ],
+      "countersBefore": {
+        "periodSpent": "0",
+        "totalSpent": "0",
+        "calls": "0",
+        "disabled": false
+      },
+      "countersAfter": {
+        "periodSpent": "5000000",
+        "totalSpent": "5000000",
+        "calls": "1",
+        "disabled": false
+      },
+      "sdk": {
+        "status": "VERIFIED",
+        "binding": "CALL_TRACE",
+        "delivery": {
+          "caller": "0x77c678b32c02d89256DC7FA101ff845d4f8b3c54",
+          "fundingSource": "0x29060e77b15fb9010978e3b2B2940BC52108c6E1",
+          "recipient": "0x40FAf951fF705e543894D4900ED2ae546240E2D1",
+          "authorization": "ON_CHAIN_PLAN_READ",
+          "callerNetZero": true
+        }
+      },
+      "program": "RECORDED_COMPOSER_REPLAY",
+      "trace": "traces/H-1.json"
+    },
+    {
+      "id": "H-2",
+      "plan": "0x78d6c836C5Ac96506924E76151812eEBFc1e2FE1",
+      "delegationHash": "0x35f8739686b6f736b611c86191dbe33957bb2108ebed724eacc634742b08e4d3",
+      "transactionHash": "0xcbcd4d5934cc34001dff63654f7cced5b6169d3930a80925c3dc195374487e0e",
+      "blockNumber": "97257534",
+      "blockHash": "0x7860a4254fc1299aaf873dad490cd1bd6f96c3c5447ce2e328792f78b2c440eb",
+      "gasUsed": "11231199",
+      "status": "success",
+      "fundingDebitRaw": "5000000",
+      "deliveries": [
+        {
+          "token": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "minimum": "52899853936185328",
+          "delivered": "53767015945631780",
+          "planResidue": "0"
+        },
+        {
+          "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "minimum": "805148675807850",
+          "delivered": "821464437620736",
+          "planResidue": "0"
+        },
+        {
+          "token": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "minimum": "11075561916784779",
+          "delivered": "11248202264113515",
+          "planResidue": "0"
+        },
+        {
+          "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "minimum": "1404443333431392",
+          "delivered": "1432632166278038",
+          "planResidue": "0"
+        }
+      ],
+      "countersBefore": {
+        "periodSpent": "0",
+        "totalSpent": "0",
+        "calls": "0",
+        "disabled": false
+      },
+      "countersAfter": {
+        "periodSpent": "5000000",
+        "totalSpent": "5000000",
+        "calls": "1",
+        "disabled": false
+      },
+      "sdk": {
+        "status": "VERIFIED",
+        "binding": "CALL_TRACE",
+        "delivery": {
+          "caller": "0x78d6c836C5Ac96506924E76151812eEBFc1e2FE1",
+          "fundingSource": "0x29060e77b15fb9010978e3b2B2940BC52108c6E1",
+          "recipient": "0x40FAf951fF705e543894D4900ED2ae546240E2D1",
+          "authorization": "ON_CHAIN_PLAN_READ",
+          "callerNetZero": true
+        }
+      },
+      "program": "RECORDED_COMPOSER_REPLAY",
+      "trace": "traces/H-2.json"
+    },
+    {
+      "id": "H-6",
+      "plan": "0x77c678b32c02d89256DC7FA101ff845d4f8b3c54",
+      "delegationHash": "0xe2b51f332b650a0f17fd3ffb3cb5a0395a89dd83f19bc67dd3ee3c526c1086b8",
+      "transactionHash": "0x73395112d2debf6511a91da95de9c3f6ce58d4cc7c059b08e1d814582e0d0bb9",
+      "blockNumber": "97257540",
+      "blockHash": "0x0e2d9c3de130fcd77f33ba19ffc70732a8f6d8ef32f5c35a1143e8ec30a7a80f",
+      "gasUsed": "10472412",
+      "status": "success",
+      "fundingDebitRaw": "5000000",
+      "deliveries": [
+        {
+          "token": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "minimum": "52899853936185328",
+          "delivered": "53766879197506488",
+          "planResidue": "0"
+        },
+        {
+          "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "minimum": "805148675807850",
+          "delivered": "821464437620736",
+          "planResidue": "0"
+        },
+        {
+          "token": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "minimum": "11075561916784779",
+          "delivered": "11248099911294935",
+          "planResidue": "0"
+        },
+        {
+          "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "minimum": "1404443333431392",
+          "delivered": "1429704039181931",
+          "planResidue": "0"
+        }
+      ],
+      "countersBefore": {
+        "periodSpent": "5000000",
+        "totalSpent": "5000000",
+        "calls": "1",
+        "disabled": false
+      },
+      "countersAfter": {
+        "periodSpent": "5000000",
+        "totalSpent": "10000000",
+        "calls": "2",
+        "disabled": false
+      },
+      "sdk": {
+        "status": "VERIFIED",
+        "binding": "CALL_TRACE",
+        "delivery": {
+          "caller": "0x77c678b32c02d89256DC7FA101ff845d4f8b3c54",
+          "fundingSource": "0x29060e77b15fb9010978e3b2B2940BC52108c6E1",
+          "recipient": "0x40FAf951fF705e543894D4900ED2ae546240E2D1",
+          "authorization": "ON_CHAIN_PLAN_READ",
+          "callerNetZero": true
+        }
+      },
+      "program": "RECORDED_COMPOSER_REPLAY",
+      "trace": "traces/H-6.json"
+    }
+  ],
+  "userOps": [
+    {
+      "id": "CANCEL",
+      "transactionHash": "0x11cdbaf2e15480b15d09a51e36d7d4b6d3e095e65bacf1e236cd7aeec6c53d0e",
+      "blockNumber": "97257537",
+      "gasUsed": "186295",
+      "actualGasCost": "1276870594338",
+      "userOpHash": "0x275f7e77adb70189e6084765d257c9a431e74b4c33851a2f12f4b5c6a313abb4"
+    },
+    {
+      "id": "WITHDRAW",
+      "transactionHash": "0x390fe0d1a835a2822fc32185fff5bfa2a0d11627bb4d12d4ad99309a7461c0a6",
+      "blockNumber": "97257545",
+      "gasUsed": "131602",
+      "actualGasCost": "417599384205",
+      "userOpHash": "0xff6e6682ad208ceb417da25a951d5792d60a8adcc4f9ee5a989e0343dbda9b54",
+      "withdrawnRaw": "35000000"
+    }
+  ],
+  "signatures": [
+    {
+      "id": "D1",
+      "kind": "delegation",
+      "class": "TEST_KEY",
+      "digest": "0xa21d292ba9f1844115f385c0acd4ec934923ad89e2d096fc91cb91d0f14bc9b3",
+      "signatureSha256": "093c58a8f1009d878d19feacccc0736a682fcdf66dc3ab00bbea71e0f98b6dbe",
+      "recovered": "0x40FAf951fF705e543894D4900ED2ae546240E2D1"
+    },
+    {
+      "id": "D2",
+      "kind": "delegation",
+      "class": "TEST_KEY",
+      "digest": "0x960621e3aa2c169fcc1bbcbb8fbc0d2a17235f8cace49e8d9573d2e180cfd395",
+      "signatureSha256": "2bea5809457af4334a3d48c24f533d950a2806c730fe4d968bcb9151e4d66a12",
+      "recovered": "0x40FAf951fF705e543894D4900ED2ae546240E2D1"
+    },
+    {
+      "id": "CANCEL",
+      "kind": "userop",
+      "class": "TEST_KEY",
+      "digest": "0x190dc5146ef88471372807bd08c9ff662301384a0dfd0dd331f2ad2ed738d9bf",
+      "signatureSha256": "b4cab79e744f29db1d46b14a8644e45dc18b2331179f4c450f613549e8863df0",
+      "recovered": "0x40FAf951fF705e543894D4900ED2ae546240E2D1"
+    },
+    {
+      "id": "WITHDRAW",
+      "kind": "userop",
+      "class": "TEST_KEY",
+      "digest": "0xf0a20f123ec590028fb84e2a395494363c1b224599be15bbff7ca98602c142f7",
+      "signatureSha256": "1658168f7534a27dd6c152fa757f58fb12dec254fcb0aaa4c7f243fc8b4934ec",
+      "recovered": "0x40FAf951fF705e543894D4900ED2ae546240E2D1"
+    }
+  ],
+  "forks": [
+    {
+      "label": "prepare",
+      "block": {
+        "number": "97257477",
+        "hash": "0xabb727737e315dde82c2a192ded8cf2613a21b853cdea822f91233cf0b9f9b55",
+        "timestamp": "1792896453"
+      },
+      "changes": [
+        {
+          "kind": "ARBSYS_READ_MODEL",
+          "method": "hardhat_setCode",
+          "target": "0x0000000000000000000000000000000000000064",
+          "note": "ArbSys arbBlockNumber() read model for the Composer VM",
+          "at": 0
+        },
+        {
+          "kind": "KEYLESS_FACTORY",
+          "method": "hardhat_setCode",
+          "target": "0x7fE0cf854704Ce6f29691a75F6839233AFfDb3E6",
+          "note": "plan factory at the keyless address (no code can exist there on Robinhood Chain)",
+          "at": 1
+        },
+        {
+          "kind": "KEYLESS_PAYMASTER",
+          "method": "hardhat_setCode",
+          "target": "0x03fd2c77d32302eeF2f6F3063DbB7b899b1116D3",
+          "note": "research paymaster at the keyless address",
+          "at": 2
+        },
+        {
+          "kind": "KEEPER_ETH",
+          "method": "hardhat_setBalance",
+          "target": "0x43f7d11715c6030D5Add6ECF6B228AbAe1BbB3B7",
+          "note": "local keeper gas (fork only)",
+          "at": 3
+        }
+      ],
+      "localTransactions": {
+        "sent": 0
+      }
+    },
+    {
+      "label": "execute",
+      "block": {
+        "number": "97257525",
+        "hash": "0x5940b58d6d8e03f9ce8efda51940bc6dd47b797c214e771353f2809a2ec911d6",
+        "timestamp": "1792896458"
+      },
+      "changes": [
+        {
+          "kind": "ARBSYS_READ_MODEL",
+          "method": "hardhat_setCode",
+          "target": "0x0000000000000000000000000000000000000064",
+          "note": "ArbSys arbBlockNumber() read model for the Composer VM",
+          "at": 0
+        },
+        {
+          "kind": "KEYLESS_FACTORY",
+          "method": "hardhat_setCode",
+          "target": "0x7fE0cf854704Ce6f29691a75F6839233AFfDb3E6",
+          "note": "plan factory at the keyless address (no code can exist there on Robinhood Chain)",
+          "at": 1
+        },
+        {
+          "kind": "KEYLESS_PAYMASTER",
+          "method": "hardhat_setCode",
+          "target": "0x03fd2c77d32302eeF2f6F3063DbB7b899b1116D3",
+          "note": "research paymaster at the keyless address",
+          "at": 2
+        },
+        {
+          "kind": "KEEPER_ETH",
+          "method": "hardhat_setBalance",
+          "target": "0xcdc78C91010D3d62bAC2D4852664c385791Ce646",
+          "note": "local keeper gas (fork only)",
+          "at": 3
+        },
+        {
+          "kind": "IMPERSONATE",
+          "method": "hardhat_impersonateAccount",
+          "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+          "note": "USDG for the test smart account comes from a real holder balance on the fork",
+          "at": 4
+        },
+        {
+          "kind": "HOLDER_GAS",
+          "method": "hardhat_setBalance",
+          "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+          "note": "gas for the impersonated holder (fork only)",
+          "at": 5
+        },
+        {
+          "kind": "STOP_IMPERSONATE",
+          "method": "hardhat_stopImpersonatingAccount",
+          "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+          "note": "",
+          "at": 6
+        },
+        {
+          "kind": "TEST_ONLY",
+          "method": "hardhat_setCode",
+          "target": "0x03fd2c77d32302eeF2f6F3063DbB7b899b1116D3",
+          "note": "reverted after this check",
+          "at": 7
+        },
+        {
+          "kind": "TEST_ONLY",
+          "method": "hardhat_setBalance",
+          "target": "0x29060e77b15fb9010978e3b2B2940BC52108c6E1",
+          "note": "reverted after this check",
+          "at": 8
+        },
+        {
+          "kind": "TEST_ONLY",
+          "method": "hardhat_setBalance",
+          "target": "0x29060e77b15fb9010978e3b2B2940BC52108c6E1",
+          "note": "reverted after this check",
+          "at": 9
+        },
+        {
+          "kind": "IMPERSONATE",
+          "method": "hardhat_impersonateAccount",
+          "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+          "note": "test-key account funding",
+          "at": 10
+        },
+        {
+          "kind": "HOLDER_GAS",
+          "method": "hardhat_setBalance",
+          "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+          "note": "",
+          "at": 11
+        },
+        {
+          "kind": "STOP_IMPERSONATE",
+          "method": "hardhat_stopImpersonatingAccount",
+          "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+          "note": "",
+          "at": 12
+        },
+        {
+          "kind": "KEEPER_ETH",
+          "method": "hardhat_setBalance",
+          "target": "0x8657B9e4DB915C121c9EF01693Ef65D4f2dfd046",
+          "note": "second keeper",
+          "at": 13
+        }
+      ],
+      "localTransactions": {
+        "sent": 36
+      }
+    }
+  ],
+  "preflight": {
+    "block": {
+      "number": "97257459",
+      "hash": "0x9dcdfffed9511ca1ed3706aa1f798e15528946d72f2a1f0fcce18c07c9154dcd",
+      "timestamp": "1792896451"
+    },
+    "usdg": {
+      "address": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "decimals": 6,
+      "symbol": "USDG",
+      "name": "Global Dollar"
+    },
+    "keyless": {
+      "factory": {
+        "address": "0x7fE0cf854704Ce6f29691a75F6839233AFfDb3E6",
+        "code": "0x",
+        "nonce": 0,
+        "balance": "0"
+      },
+      "paymaster": {
+        "address": "0x03fd2c77d32302eeF2f6F3063DbB7b899b1116D3",
+        "code": "0x",
+        "nonce": 0,
+        "balance": "0"
+      }
+    },
+    "owner": {
+      "address": "0x40FAf951fF705e543894D4900ED2ae546240E2D1",
+      "eth": "0",
+      "usdg": "0",
+      "code": "0x",
+      "nonce": 0
+    }
+  },
+  "status": "PASSED",
+  "inputs": {
+    "vendorDir": "./vendor/e6bdd10",
+    "sdkReceiptJsSha256": "d5fc5879cac6aa1270d11153586e09c5a3c4ac003cc49d88e6c6fe71cf19d7e7",
+    "bag": {
+      "id": "955df6e0-b6ea-44ba-a5eb-1288a80c0a06",
+      "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9"
+    }
+  },
+  "compiler": {
+    "solc": "0.8.23+commit.f704f362.Emscripten.clang",
+    "settings": {
+      "optimizer": {
+        "enabled": true,
+        "runs": 1
+      },
+      "viaIR": true,
+      "evmVersion": "shanghai"
+    }
+  },
+  "relay": {
+    "allowlist": [
+      "eth_chainId",
+      "net_version",
+      "eth_blockNumber",
+      "eth_getBlockByNumber",
+      "eth_getBlockByHash",
+      "eth_getCode",
+      "eth_getStorageAt",
+      "eth_getBalance",
+      "eth_getTransactionCount",
+      "eth_call",
+      "eth_getLogs",
+      "eth_getTransactionByHash",
+      "eth_getTransactionReceipt",
+      "eth_getProof"
+    ],
+    "forwardedRequests": 1040,
+    "forwardedByMethod": {
+      "eth_chainId": 3,
+      "eth_getBlockByNumber": 9,
+      "eth_call": 5,
+      "eth_getCode": 235,
+      "eth_getTransactionCount": 221,
+      "eth_getBalance": 221,
+      "eth_blockNumber": 73,
+      "net_version": 1,
+      "eth_getStorageAt": 272
+    },
+    "refusedRequests": 0,
+    "refusedMethods": {},
+    "retries": 0,
+    "upstreamErrors": {},
+    "failures": 0,
+    "selfTest": {
+      "singleWriteRefused": true,
+      "batchWithWriteRefused": true
+    }
+  },
+  "owner": "0x40FAf951fF705e543894D4900ED2ae546240E2D1",
+  "smartAccount": {
+    "address": "0x29060e77b15fb9010978e3b2B2940BC52108c6E1",
+    "implementation": "MultiSigDeleGator v1.3.0 (threshold 1, owner = test EOA, salt 0x)",
+    "mainnet": {
+      "code": "0x",
+      "usdg": "0"
+    }
+  },
+  "plans": {
+    "D1": {
+      "summary": {
+        "tr": [
+          "2 alım × 5 USDG = toplam 10 USDG",
+          "Her 2 dakika en fazla bir alım (120 sn'lik sabit takvim pencereleri; kayan 24 saat sınırı değil). Plan ayrıca iki alım arasında en az bir periyot bekler",
+          "İlk alım seçilen başlangıçta: 2026-10-25T02:52:31Z",
+          "Son pencere: 2026-10-25T02:54:31Z – 2026-10-25T02:56:30Z; izin 2026-10-25T02:56:31Z itibarıyla sona erer",
+          "Kaçırılan pencere birikmez; yapılamayan alımın parası fonlama hesabında kalır",
+          "Alınan hisselerin alıcısı: 0x40FAf951fF705e543894D4900ED2ae546240E2D1"
+        ],
+        "startUtc": "2026-10-25T02:52:31Z",
+        "expiryUtc": "2026-10-25T02:56:31Z"
+      },
+      "totalRaw": "10000000",
+      "runs": 2
+    },
+    "D2": {
+      "summary": {
+        "tr": [
+          "3 alım × 5 USDG = toplam 15 USDG",
+          "Her 2 dakika en fazla bir alım (120 sn'lik sabit takvim pencereleri; kayan 24 saat sınırı değil). Plan ayrıca iki alım arasında en az bir periyot bekler",
+          "İlk alım seçilen başlangıçta: 2026-10-25T02:52:31Z",
+          "Son pencere: 2026-10-25T02:56:31Z – 2026-10-25T02:58:30Z; izin 2026-10-25T02:58:31Z itibarıyla sona erer",
+          "Kaçırılan pencere birikmez; yapılamayan alımın parası fonlama hesabında kalır",
+          "Alınan hisselerin alıcısı: 0x40FAf951fF705e543894D4900ED2ae546240E2D1"
+        ],
+        "startUtc": "2026-10-25T02:52:31Z",
+        "expiryUtc": "2026-10-25T02:58:31Z"
+      },
+      "totalRaw": "15000000",
+      "runs": 3
+    }
+  },
+  "cancelWithBudget": {
+    "d2TotalSpent": "5000000",
+    "d2Budget": "15000000"
+  },
+  "relayFinal": {
+    "allowlist": [
+      "eth_chainId",
+      "net_version",
+      "eth_blockNumber",
+      "eth_getBlockByNumber",
+      "eth_getBlockByHash",
+      "eth_getCode",
+      "eth_getStorageAt",
+      "eth_getBalance",
+      "eth_getTransactionCount",
+      "eth_call",
+      "eth_getLogs",
+      "eth_getTransactionByHash",
+      "eth_getTransactionReceipt",
+      "eth_getProof"
+    ],
+    "forwardedRequests": 1040,
+    "forwardedByMethod": {
+      "eth_chainId": 3,
+      "eth_getBlockByNumber": 9,
+      "eth_call": 5,
+      "eth_getCode": 235,
+      "eth_getTransactionCount": 221,
+      "eth_getBalance": 221,
+      "eth_blockNumber": 73,
+      "net_version": 1,
+      "eth_getStorageAt": 272
+    },
+    "refusedRequests": 0,
+    "refusedMethods": {},
+    "retries": 0,
+    "upstreamErrors": {},
+    "failures": 0,
+    "selfTest": {
+      "singleWriteRefused": true,
+      "batchWithWriteRefused": true
+    }
+  },
+  "finishedAt": "2026-10-25T02:49:06.226Z",
+  "publicTransactions": {
+    "relayRefusedWriteRequests": 0,
+    "relayForwardedMethods": {
+      "eth_chainId": 3,
+      "eth_getBlockByNumber": 9,
+      "eth_call": 5,
+      "eth_getCode": 235,
+      "eth_getTransactionCount": 221,
+      "eth_getBalance": 221,
+      "eth_blockNumber": 73,
+      "net_version": 1,
+      "eth_getStorageAt": 272
+    },
+    "note": "Every upstream request is checked against a read-only allowlist (single and batch); fork transactions are local and listed under forks[].localTransactions."
+  },
+  "summary": {
+    "pass": 30,
+    "fail": 0,
+    "purchases": 3,
+    "userOps": 2
+  },
+  "traceLocation": "out/traces"
+}

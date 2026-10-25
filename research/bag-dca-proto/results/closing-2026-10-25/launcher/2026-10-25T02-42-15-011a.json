@@ -1,0 +1,90 @@
+{
+  "schema": "bag-dca-launcher/v1",
+  "session": "2026-10-25T02-42-15-011a",
+  "command": "shadow",
+  "platform": "linux",
+  "node": "v24.22.0",
+  "packageDir": "/home/user/dca-close/research/bag-dca-proto",
+  "checks": [
+    {
+      "id": "node",
+      "ok": true,
+      "detail": "Node v24.22.0 (needs >= 24)",
+      "fatal": true
+    },
+    {
+      "id": "dep hardhat",
+      "ok": true,
+      "detail": "3.14.0 (pinned 3.14.0)",
+      "fatal": true
+    },
+    {
+      "id": "dep viem",
+      "ok": true,
+      "detail": "2.56.0 (pinned 2.56.0)",
+      "fatal": true
+    },
+    {
+      "id": "dep solc",
+      "ok": true,
+      "detail": "0.8.23 (pinned 0.8.23)",
+      "fatal": true
+    },
+    {
+      "id": "dep tsx",
+      "ok": true,
+      "detail": "4.23.15 (pinned 4.23.15)",
+      "fatal": true
+    },
+    {
+      "id": "dep @metamask/smart-accounts-kit",
+      "ok": true,
+      "detail": "2.0.0 (pinned 2.0.0)",
+      "fatal": true
+    },
+    {
+      "id": "vendor e6bdd10",
+      "ok": true,
+      "detail": "all vendored files match SHA256SUMS",
+      "fatal": true
+    },
+    {
+      "id": "app checkout",
+      "ok": true,
+      "detail": "/home/user/bagprotocolv2",
+      "fatal": true
+    },
+    {
+      "id": "app deps",
+      "ok": true,
+      "detail": "node_modules present",
+      "fatal": true
+    },
+    {
+      "id": "app commit",
+      "ok": true,
+      "detail": "82b3b29",
+      "fatal": false
+    }
+  ],
+  "steps": [
+    {
+      "id": "typecheck shadow/measure.ts (app TypeScript)",
+      "code": 0,
+      "seconds": 2
+    },
+    {
+      "id": "shadow measurement",
+      "code": 0,
+      "seconds": 374
+    }
+  ],
+  "app": {
+    "path": "/home/user/bagprotocolv2",
+    "commit": "82b3b29",
+    "dirty": false
+  },
+  "output": "/home/user/dca-close/research/bag-dca-proto/shadow/out/2026-10-25T02-42-15-011a-shadow",
+  "exitCode": 0,
+  "finishedAt": "2026-10-25T02:48:31.237Z"
+}

@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { join, dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const here = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2), arg = (n, d) => (args.includes(n) ? args[args.indexOf(n) + 1] : d);
@@ -56,7 +57,7 @@ const manifest = {
   repository: { remote: git(here, 'remote', 'get-url', 'origin')?.replace(/\/\/[^@/]*@/, '//'), branch: git(here, 'rev-parse', '--abbrev-ref', 'HEAD'), head, package: pkgRel,
     evidenceCodeCommit: codeCommit, codeFilesChangedSinceEvidenceCommit: codeDrift,
     dirty: (git(here, 'status', '--porcelain', '--', '.') || '').split('\n').filter(Boolean),
-    appCodeTouchedVsMain: (git(here, 'diff', '--name-only', 'origin/main', 'HEAD', '--', ':!research') || '').split('\n').filter(Boolean) },
+    appCodeTouchedVsMain: (git(here, 'diff', '--name-only', 'origin/main', 'HEAD', '--', ':(top,exclude)research') || '').split('\n').filter(Boolean) },
   baseline: {
     verifiedAt: '2026-10-25', method: 'git ls-remote origin main; GitHub REST pulls/{n} head.sha, draft, merged_at',
     main: '82b3b2926da467e3530eba0c9f6c38452d8511ab',
@@ -73,8 +74,8 @@ const manifest = {
     solc: JSON.parse(readFileSync(join(app, 'node_modules', 'solc', 'package.json'), 'utf8')).version, typescript: JSON.parse(readFileSync(join(app, 'node_modules', 'typescript', 'package.json'), 'utf8')).version } : null,
   tools: { nodeUsedForEvidence: 'v24.22.0 (official linux-x64 tarball' + (arg('--node24-tarball-sha256') ? `, sha256 ${arg('--node24-tarball-sha256')}` : '') + '); development runs also on v22.22.0',
     manifestGeneratorNode: process.version, packageLockSha256: fileSha(join(here, 'package-lock.json')),
-    pinned: Object.fromEntries(['hardhat', 'viem', 'solc', 'tsx', '@metamask/smart-accounts-kit', 'playwright'].map(p => [p, version(p)])),
-    playwright: 'container-provided (not in package-lock); used only by wallet-fork/page-e2e.mjs' },
+    pinned: Object.fromEntries(['hardhat', 'viem', 'solc', 'tsx', '@metamask/smart-accounts-kit'].map(p => [p, version(p)])),
+    playwright: (() => { try { return `container-provided ${createRequire(import.meta.url)('playwright/package.json').version} (not in package-lock); used only by wallet-fork/page-e2e.mjs`; } catch { return 'not installed'; } })() },
   network: { chainId: 4663, rpc: 'public https://rpc.mainnet.chain.robinhood.com (non-archive: state ~500k blocks old is pruned)', usdg: '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168',
     pins: JSON.parse(readFileSync(join(here, 'lib', 'pins.json'), 'utf8')) },
   deployments: { publicNetwork: 'none', forkOnly: 'see evidence[].forks[].changes (setCode/setBalance/impersonation) and the fork-local deployments named in each report' },

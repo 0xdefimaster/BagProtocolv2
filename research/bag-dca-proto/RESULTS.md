@@ -1,4 +1,38 @@
-# Sonuçlar: dört ayrı kategori
+# Sonuçlar
+
+## Kapanış koşuları: 25.10.2026
+
+**Ortak bilgiler:**
+- Node 24.22.0 (resmi linux-x64 tarball). Fork: Robinhood Chain 4663, public RPC (arşiv değil), salt okuma relay'i.
+- Girdi fixture'ı BAG `955df6e0…`:
+  - `bag.json` sha256 `f77ed80c3d85d916…`
+  - `probe-compiled.json` sha256 `bae76f3205486f1c…`
+  - definitionHash `0x5d6118db…`
+- SDK `dadef00` (#126 + #127, build edilmiş). Uygulama `82b3b29`.
+- Ham dosyalar `results/closing-2026-10-25/` altında, hash'leri `manifest.json`'da. **Bu sayılar yalnızca belirtilen commit'in sonucudur;** eski sayılar buraya kopyalanmadı.
+
+| Kanıt sınıfı | Commit | Komut | Zaman (UTC) | Sonuç | Ham sonuç |
+|---|---|---|---|---|---|
+| Birim (saf JS + yerel EDR'de mock'lar) | `746d456` | `node start.mjs test …` içindeki birim adımı | 02:46 | **30/30** | `unit/node-test.txt` |
+| Kayıtlı Composer replay + test anahtarı + fork'ta gerçek EntryPoint `handleOps` | `746d456` | `node start.mjs test --sdk <dadef00>/packages/bag-sdk` | 02:46:49–02:49:06 | **30 PASS / 0 FAIL**, 3 alım, 2 userOp | `wallet-fork-test/results.json`, `traces/` |
+| Gerçek imza sayfası (`page.js`, Chromium, enjekte test sağlayıcı) + aynı yaşam döngüsü. Sınıf `TEST_KEY_VIA_SIGNING_PAGE` | `746d456`; sürücü `page-e2e.mjs` `c5ad0b3`'teki tek satırlık bekleme düzeltmesiyle | `node start.mjs wallet --sdk … --no-open --url-file …` + `node wallet-fork/page-e2e.mjs --url-file … --shots …` | 02:46:01–02:49:12 | **30 PASS / 0 FAIL**; 4 imza sayfa üzerinden; paylaşılan çıktıda imza yok | `wallet-fork-page/` (`results.json`, `screens/`) |
+| Fork'ta doğrudan yürütme: zincir üstü kaynaklar + mevcut router (gölge v2) | `6e23fb5` | `node start.mjs shadow --app <BagProtocolv2 @82b3b29>` | 02:42:18–02:45:52 | **COMPLETE (çıkış 0)**; iki sepet `RECEIPT_VERIFIED`; kapı `PRICE_POLICY_UNPROVEN`; Composer'sız DCA `BLOCKED` | `shadow/` (`results.json`, `summary.md`) · `shadow/RESULTS-2026-10-25.md` |
+| Gerçek MetaMask/Rabby imzası | — | `start.cmd wallet …` (kullanıcı) | — | **HUMAN_SIGNATURE_REQUIRED** | — |
+| Taze Composer teklifi (yeni runner, `--live`) | — | `start.cmd test --live --env-file …` | — | **NOT_RUN** (`LIFI_API_KEY` yok) | — |
+| MetaMask native ERC-7715 | — | (kullanıcının 25.10 denemesi) | — | **BLOCKED_EXTERNAL** | `results/metamask-native/` |
+
+**Notlar:**
+- **Önceki stand-in koşusu:** `6e23fb5`'teki `fake-wallet.mjs` koşusu da 30/30 geçti. O sürüm otomatik imzalayanı `HUMAN_SIGNATURE` diye etiketliyordu. Etiket düzeltildi (`746d456`), o koşu kanıta alınmadı; yerine gerçek sayfayla yapılan koşu konuldu.
+- **Geliştirme koşuları:** Node 22.22.0'da da geçti (`dev-run5`: test 29/29; `k4b`: stand-in 29/29). X-11 o koşulardan sonra eklendi.
+- **İmza sızıntısı:** Geliştirme sırasında insan modunda alım izlerinin (`traces/H-*.json`) `run()` calldata'sı içinde delegasyon imzasını taşıdığı görüldü. Artık bu izler özel klasöre yazılıyor ve runner paylaşılan çıktıyı imzaya karşı tarıyor.
+
+### Teslim
+- **Dal:** `claude/dca-wallet-fork-research`. Commit'ler: `71fe34f`, `74c06a6`, `6e23fb5`, `746d456`, `c5ad0b3` ve sonrasındaki doküman/kanıt commit'i.
+- **Draft PR'lar:** "Draft PR'lar" bölümüne bakın. Merge, deploy, public işlem ve gerçek fon yok.
+
+---
+
+# Önceki sonuçlar (değiştirilmedi): dört ayrı kategori
 
 Her kategorinin kanıtı ayrı. Birinin sonucu ötekinin yerine geçmez.
 
