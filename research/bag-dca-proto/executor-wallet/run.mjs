@@ -140,7 +140,9 @@ try {
   // ---- Lifecycle on the fork
   const execAbi = build.CALL_ABI;
   const evidence = evm.withReceiptEvidence(client, { balanceState: 'SINGLE_TRANSACTION_BLOCK' });
-  const buildRun = async () => uni.buildRecurringRunPlan({ client, auth, deployment: DEP, quoter: QUOTER_V2, nowSeconds: (await client.getBlock()).timestamp });
+  // The fork mines nothing while the person signs; its latest block would be minutes old and a plan quoted from that time
+  // would expire before the purchase is mined (QuoteExpired). One fork-only block brings the clock to now.
+  const buildRun = async () => { await rpc('evm_mine'); return uni.buildRecurringRunPlan({ client, auth, deployment: DEP, quoter: QUOTER_V2, nowSeconds: (await client.getBlock()).timestamp }); };
   const signPlan = plan => keys.planSigner.signTypedData(uni.routerPlanTypedData(plan, { chainId: CHAIN_ID, router }));
   const xOf = async run => ({ authorizationId: id, window: run.execution.window, quoteDeadline: run.execution.quoteDeadline, plan: run.plan, planSignature: await signPlan(run.plan) });
   const decode = e => { for (let x = e; x; x = x.cause) if (x.data?.errorName) return `${x.data.errorName}(${(x.data.args ?? []).map(String).join(',')})`; return redact(errText(e)).slice(0, 200); };
