@@ -1,0 +1,182 @@
+{
+  "schema": "bag-dca-keeper-store/v1",
+  "jobs": [
+    {
+      "id": "0x83628f4756d2b78b2afab1d2a11f5bf03970f5fbd2b8b7cf78421c36c0223386",
+      "deployment": {
+        "chainId": 4663,
+        "executor": "0x008f01d056eb06d708eaec1e2e27b82435910cb9",
+        "router": "0xa0a1839e998e544ba84bd05ed9d0be2c88491950"
+      },
+      "authorization": {
+        "owner": "0xad877a216e0643a905fd2ef1be10e6818ec301b9",
+        "sourceAccount": "0xad877a216e0643a905fd2ef1be10e6818ec301b9",
+        "recipient": "0xad877a216e0643a905fd2ef1be10e6818ec301b9",
+        "fundingKind": 0,
+        "fundingContract": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+        "inputToken": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+        "bag": {
+          "bagId": "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+          "bagVersion": {
+            "__bigint": "1"
+          },
+          "compositionHash": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+          "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9",
+          "strategyId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "strategyVersion": 0
+        },
+        "assets": [
+          {
+            "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+            "weightBps": 2675,
+            "decimals": 18,
+            "maxPriceRaw": {
+              "__bigint": "25532665"
+            }
+          },
+          {
+            "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+            "weightBps": 2601,
+            "decimals": 18,
+            "maxPriceRaw": {
+              "__bigint": "1617343111"
+            }
+          },
+          {
+            "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+            "weightBps": 3724,
+            "decimals": 18,
+            "maxPriceRaw": {
+              "__bigint": "169115295"
+            }
+          },
+          {
+            "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+            "weightBps": 1000,
+            "decimals": 18,
+            "maxPriceRaw": {
+              "__bigint": "357336932"
+            }
+          }
+        ],
+        "schedule": {
+          "grossAmountPerRun": {
+            "__bigint": "5000000"
+          },
+          "totalBudget": {
+            "__bigint": "20000000"
+          },
+          "maxExecutions": 4,
+          "startsAt": {
+            "__bigint": "1793346971"
+          },
+          "periodSeconds": {
+            "__bigint": "86400"
+          },
+          "expiresAt": {
+            "__bigint": "1793692571"
+          }
+        },
+        "route": {
+          "router": "0xa0a1839e998e544ba84bd05ed9d0be2c88491950",
+          "swapTarget": "0xcaf681a66d020601342297493863e78c959e5cb2",
+          "allowedFees": [
+            100,
+            500,
+            3000,
+            10000
+          ]
+        },
+        "nonce": {
+          "__bigint": "30"
+        }
+      },
+      "ownerSignature": "<redacted signature sha256:99330d37325ed71b>",
+      "fundingProof": null,
+      "createdAt": 1792915024212,
+      "fromBlock": {
+        "__bigint": "97429555"
+      },
+      "state": "COMPLETED",
+      "stateDetail": null,
+      "nextDueAt": null,
+      "observed": {
+        "executions": 4,
+        "grossUsed": {
+          "__bigint": "20000000"
+        },
+        "lastWindow": {
+          "__bigint": "3"
+        },
+        "lastExecutionAt": {
+          "__bigint": "1793606527"
+        },
+        "revoked": false,
+        "at": {
+          "__bigint": "1793606527"
+        }
+      },
+      "pending": null,
+      "confirmed": [
+        {
+          "window": {
+            "__bigint": "0"
+          },
+          "executionIndex": {
+            "__bigint": "1"
+          },
+          "hash": "0x65301564e78b755095ef26d80623622e3f08c5b59f612c5d8c71bba0ca4f848f",
+          "blockNumber": {
+            "__bigint": "97429556"
+          },
+          "verification": "VERIFIED",
+          "issues": []
+        },
+        {
+          "window": {
+            "__bigint": "1"
+          },
+          "executionIndex": {
+            "__bigint": "2"
+          },
+          "hash": "0x2bc699a5563e7a0006d59b1c28fb872a38376f54dcd66e974a2397e6a41e9e10",
+          "blockNumber": {
+            "__bigint": "97429558"
+          },
+          "verification": "VERIFIED",
+          "issues": []
+        },
+        {
+          "window": {
+            "__bigint": "2"
+          },
+          "executionIndex": {
+            "__bigint": "3"
+          },
+          "hash": "0xae85d429481bba7b00a9187c8dfafe6b8a67d54ad5812d7c551c227311a955a3",
+          "blockNumber": {
+            "__bigint": "97429560"
+          },
+          "verification": "VERIFIED",
+          "issues": []
+        },
+        {
+          "window": {
+            "__bigint": "3"
+          },
+          "executionIndex": {
+            "__bigint": "4"
+          },
+          "hash": "0x8f398b71a30e77db8846215981444989dc80248c1e63184919eac6c57def43c2",
+          "blockNumber": {
+            "__bigint": "97429562"
+          },
+          "verification": "VERIFIED",
+          "issues": []
+        }
+      ],
+      "attempts": [],
+      "lease": null
+    }
+  ]
+}

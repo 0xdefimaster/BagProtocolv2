@@ -49,6 +49,16 @@ for (let i = 0; i < 3000; i++) {
   if (visible && title && !seen.has(title)) {
     const mismatch = await page.isVisible('#mismatch');
     if (mismatch) { console.log('page-e2e: page REFUSED to ask for a signature:', await page.textContent('#mismatch')); process.exitCode = 1; break; }
+    // Executor page: the fixed-price and planSigner disclosures must be on screen, and signing waits for the acknowledgement.
+    if (await page.isVisible('#disclosures')) {
+      const text = await page.textContent('#disclosures');
+      const required = [/kayma \(slippage\) koruması DEĞİLDİR/, /telafi edilmez/, /planSigner/, /AŞAMAZ/, /BAĞIMLISIN/];
+      const missing = required.filter(r => !r.test(text ?? '')).map(String);
+      if (missing.length) { console.log('page-e2e: disclosure missing:', missing.join(', ')); process.exitCode = 1; break; }
+      if (!(await page.isDisabled('#signBtn'))) { console.log('page-e2e: sign button enabled before the acknowledgement'); process.exitCode = 1; break; }
+      await page.check('#ack');
+      console.log('page-e2e: disclosures shown and acknowledged');
+    }
     await page.waitForSelector('#signBtn:not([disabled])');
     seen.add(title);
     if (shots) await page.screenshot({ path: join(shots, `${seen.size}-${title.split(':')[0].replace(/[^\w]+/g, '_')}.png`), fullPage: true });

@@ -1,0 +1,696 @@
+{
+  "schema": "bag-recurring-executor-fork/v1",
+  "evidenceClass": "TEST_KEY_FORK",
+  "phases": [
+    "registry"
+  ],
+  "startedAt": "2026-10-25T21:00:25.614Z",
+  "args": [
+    "--app",
+    "/home/user/dca-close",
+    "--out",
+    "--phase",
+    "registry"
+  ],
+  "notEvidenceOf": [
+    "a wallet (MetaMask/Rabby) signature",
+    "a human signature",
+    "a public-network transaction",
+    "an independent market price reference"
+  ],
+  "build": {
+    "appCommit": "7008d18df6b4aeaf31bf7060f7a22872b619a802",
+    "appDirtyInContractsOrSdk": "",
+    "executor": {
+      "source": "contracts/dca/RecurringPurchaseExecutor.sol",
+      "checkedSources": [
+        "project/contracts/dca/RecurringPurchaseExecutor.sol",
+        "project/contracts/BagExecutionRouter.sol",
+        "project/contracts/dca/IRecurringPurchaseExecution.sol"
+      ],
+      "sourceSha256": "f3d4e1857ff43e8ce8cc9eaba487bf34a4b38214c9e72a5adb2f61918bfc839b",
+      "buildInfoId": "solc-0_8_24-6ca3a1208bc6c6febb4839902d0be4fa277fd88c",
+      "solc": "0.8.24+commit.e11b9ed9",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "evmVersion": "shanghai"
+    },
+    "router": {
+      "source": "contracts/BagExecutionRouter.sol",
+      "checkedSources": [
+        "project/contracts/BagExecutionRouter.sol"
+      ],
+      "sourceSha256": "d39b6cbb41755885f25964452b7c29e6dbe2e0d2b4fd1314a36113e1cd5df210",
+      "buildInfoId": "solc-0_8_24-2c34557d043fde1a806eaea3346bc3967a93298d",
+      "solc": "0.8.24+commit.e11b9ed9",
+      "evmVersion": "shanghai"
+    },
+    "sdk": {
+      "dist": "packages/bag-sdk/dist",
+      "recurringJsSha256": "4b1769de93a57eb8931fc43d826132f24629b330518da9a8bd20353fa84be181",
+      "uniswapV3JsSha256": "83ed25b268fd25693e41b970a7a3342e43b16ac02764a5b1fb2ec565b20bec11"
+    }
+  },
+  "keylessExecutor": {
+    "label": "BAG RecurringPurchaseExecutor fork-only v1",
+    "address": "0x008f01d056eb06d708eaeC1e2e27B82435910CB9",
+    "mainnetCode": "0x",
+    "mainnetNonce": 0
+  },
+  "fork": {
+    "blockNumber": "97881875",
+    "blockHash": "0xe918ae99a2f586589e8f099a8802430c19f976d94e6c588851c27051da46dab3",
+    "timestamp": "1792962026",
+    "note": "one fork block for the whole run; every leg of a purchase executes in one transaction (same block by construction)"
+  },
+  "deployment": {
+    "executor": {
+      "address": "0x008f01d056eb06d708eaeC1e2e27B82435910CB9",
+      "runtimeMatchesArtifact": true,
+      "immutables": {
+        "bagFactory": "0x7Ce5A81Df434755F38Cb5f67Ad49a8bb3c8e6f72",
+        "strategyRegistry": "0x907cc27d644C8ea1c24B8320ad09eCF2819209A8",
+        "chainLabel": "robinhood"
+      },
+      "domainSeparator": "0x821e22a46807e81583bd86d25f49a3fd765f74d722e7c4f6b879d47bbc1076f8",
+      "domainSeparatorMatchesSdk": true,
+      "compositionCheck": {
+        "955df6e0-b6ea-44ba-a5eb-1288a80c0a06": {
+          "registered": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+          "executorRebuilt": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+          "sdk": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+          "matches": true
+        },
+        "a3caff05-d606-486b-959f-30865a4cbfa7": {
+          "registered": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+          "executorRebuilt": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+          "sdk": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+          "matches": true
+        }
+      }
+    },
+    "router": {
+      "address": "0x1775db6d908da3357c1c8ff90aa656d049a6e531",
+      "runtimeMatchesArtifact": true,
+      "bagFactory": "0x7Ce5A81Df434755F38Cb5f67Ad49a8bb3c8e6f72",
+      "planSigner": "0x22308D98cDb55598188cD65E7407A71fc1939B84",
+      "owner": "0x3fAb9aa7A46744300d4A00dcAD84B0AB135F8a72",
+      "allowlist": {
+        "targets": [
+          "0xCaf681a66D020601342297493863E78C959E5cb2"
+        ],
+        "tokens": "USDG + assets of both BAGs"
+      },
+      "trust": "test keys: router owner and planSigner are local; the runs treat both as compromised"
+    },
+    "realContracts": {
+      "USDG": {
+        "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+        "codeKeccak": "0x864cc9ad53b338b82da1f7cab85ab0b3d5c8861acb422b6fec63cf36234f36a6",
+        "bytes": 170,
+        "eip1967Implementation": "0x68184C449E1a8f34fA18d289737129FD27B66f8F"
+      },
+      "SWAP_ROUTER02": {
+        "address": "0xCaf681a66D020601342297493863E78C959E5cb2",
+        "codeKeccak": "0x6f36c378e272c6324c48f045182bcb54bd8ad654cf9ebd42e8893d52c4cb25dc",
+        "bytes": 24497
+      },
+      "QUOTER_V2": {
+        "address": "0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7",
+        "codeKeccak": "0x3db0868d945e9304c9bc6a8b2181948109ea617647142f3c4083e14393496a28",
+        "bytes": 8273
+      },
+      "BAG_FACTORY": {
+        "address": "0x7Ce5A81Df434755F38Cb5f67Ad49a8bb3c8e6f72",
+        "codeKeccak": "0x48e56712deee2744d90301b4a6eb3dd3760525aec15a7c18b3200defac8d1541",
+        "bytes": 11231
+      },
+      "STRATEGY_REGISTRY": {
+        "address": "0x907cc27d644C8ea1c24B8320ad09eCF2819209A8",
+        "codeKeccak": "0x0f559b7b92ab3fa101bc64974b219a770edf5ce1dabafef0e831d17b1f1ebcfd",
+        "bytes": 4830
+      }
+    },
+    "usdgPermitDomain": {
+      "onChain": "0x7a3d7400b27830f4f91c2c16a082486d67c1befecaec2f53b33f1f35d5b62036",
+      "matches": true,
+      "name": "Global Dollar",
+      "version": "1"
+    }
+  },
+  "testAccounts": {
+    "planSigner": "0x22308D98cDb55598188cD65E7407A71fc1939B84",
+    "routerOwner": "0x3fAb9aa7A46744300d4A00dcAD84B0AB135F8a72",
+    "deployer": "0xa3B4fb6391C414eB78c2F979fB10d8501DE67E70",
+    "owner": "0x4442FB6E7A28BB7CfEDc338382ea3eEff2b7c836",
+    "keeper": "0x83D1d5c19BBafeE2ECf0f724C68337cb36C6eF83",
+    "attacker": "0x6D76072dc51500AB1a5966FA5A51dB7B7a0B81fa",
+    "relayer": "0xF71919Bb1aa1A279c0eF55e36eeD6a2AAbd88D21",
+    "note": "keys generated in this process and discarded at exit; none is a user wallet"
+  },
+  "purchaseVerification": {
+    "sdk": "verifyRecurringPurchase",
+    "binding": "PREPARED_INTENT (the exact execute calldata prepared by this runner)",
+    "balanceReader": "SINGLE_TRANSACTION_BLOCK",
+    "crossCheck": "the runner's own latest-state balance snapshots before/after each run",
+    "realChainReader": "not exercised here: Robinhood Chain needs ROBINHOOD_NITRO_TRANSACTION_INDEX on the qualified Nitro build"
+  },
+  "bags": {
+    "955df6e0-b6ea-44ba-a5eb-1288a80c0a06": {
+      "uuid": "955df6e0-b6ea-44ba-a5eb-1288a80c0a06",
+      "bagId": "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+      "bag": "0x8E668bf1eD1e3Eb104Dab3341F14b9CF7d55510d",
+      "version": "1",
+      "compositionHash": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+      "sdkCompositionHash": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+      "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9",
+      "strategyId": "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+      "registered": false,
+      "matches": false,
+      "docVersion": 1
+    },
+    "a3caff05-d606-486b-959f-30865a4cbfa7": {
+      "uuid": "a3caff05-d606-486b-959f-30865a4cbfa7",
+      "bagId": "0x72ec1d37c03f9bfb3dc369cf77f19841e7d0a7ca00ca3757605d97fb2f398cae",
+      "bag": "0xb6C8B277AbcD5866bBE62C5A89295a992A90F3d5",
+      "version": "2",
+      "compositionHash": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+      "sdkCompositionHash": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+      "definitionHash": "0x62e5dd238e967169064c3ccc5d34ed2c6829b3cbcb3119b76c4d3a88758e9f5a",
+      "strategyId": "0x72ec1d37c03f9bfb3dc369cf77f19841e7d0a7ca00ca3757605d97fb2f398cae",
+      "registered": true,
+      "matches": true,
+      "docVersion": 2
+    }
+  },
+  "priceLimitPolicy": {
+    "kind": "OWNER_SIGNED_MAX_PRICE",
+    "thisRun": "TEST LIMIT = best real-chain QuoterV2 quote at setup + 300 bps (A/B/C, keeper) or + 100 bps (P, K7)",
+    "isIndependentReference": false,
+    "limitsRaw": {
+      "0x1b0e319c6a659f002271b69db8a7df2f911c153e": "25713751",
+      "0x47f93d52cbec7c6d2cfc080e154002370a60daea": "1632392152",
+      "0x6330d8c3178a418788df01a47479c0ce7ccf450b": "169586191",
+      "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9": "357676775"
+    },
+    "sources": {
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x1b0e319c6a659f002271b69db8a7df2f911c153e:300": {
+        "realChainQuoteRaw": "53575420924961044",
+        "legInRaw": "1337500",
+        "bufferBps": 300
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x47f93d52cbec7c6d2cfc080e154002370a60daea:300": {
+        "realChainQuoteRaw": "820584072707883",
+        "legInRaw": "1300500",
+        "bufferBps": 300
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x6330d8c3178a418788df01a47479c0ce7ccf450b:300": {
+        "realChainQuoteRaw": "11309057606560468",
+        "legInRaw": "1862000",
+        "bufferBps": 300
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0xaf3d76f1834a1d425780943c99ea8a608f8a93f9:300": {
+        "realChainQuoteRaw": "1439847473030488",
+        "legInRaw": "500000",
+        "bufferBps": 300
+      },
+      "a3caff05-d606-486b-959f-30865a4cbfa7:0x020bfc650a365f8bb26819deaabf3e21291018b4:300": {
+        "realChainQuoteRaw": "4847109012299665860",
+        "legInRaw": "468500",
+        "bufferBps": 300
+      },
+      "a3caff05-d606-486b-959f-30865a4cbfa7:0x39dbed3a2bd333467115de45665cc57f813c4571:300": {
+        "realChainQuoteRaw": "6067763643098848016",
+        "legInRaw": "1472500",
+        "bufferBps": 300
+      },
+      "a3caff05-d606-486b-959f-30865a4cbfa7:0x75742c18bc1f1c5c5f448f4c9d9c6f66dafaaa38:300": {
+        "realChainQuoteRaw": "987992651268091",
+        "legInRaw": "468500",
+        "bufferBps": 300
+      },
+      "a3caff05-d606-486b-959f-30865a4cbfa7:0xacef2e09adb47ad6abebad9ff06689e60615c2b6:300": {
+        "realChainQuoteRaw": "13965261811942471",
+        "legInRaw": "650000",
+        "bufferBps": 300
+      },
+      "a3caff05-d606-486b-959f-30865a4cbfa7:0xeb61c0ed490a367d4e3631ccf8a74b3bfc7e775d:300": {
+        "realChainQuoteRaw": null,
+        "fallbackMaxPriceRaw": "1000000000000"
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x1b0e319c6a659f002271b69db8a7df2f911c153e:100": {
+        "realChainQuoteRaw": "53565790380892928",
+        "legInRaw": "1337500",
+        "bufferBps": 100
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x47f93d52cbec7c6d2cfc080e154002370a60daea:100": {
+        "realChainQuoteRaw": "820584072707883",
+        "legInRaw": "1300500",
+        "bufferBps": 100
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x6330d8c3178a418788df01a47479c0ce7ccf450b:100": {
+        "realChainQuoteRaw": "11309057606560468",
+        "legInRaw": "1862000",
+        "bufferBps": 100
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0xaf3d76f1834a1d425780943c99ea8a608f8a93f9:100": {
+        "realChainQuoteRaw": "1439847473030488",
+        "legInRaw": "500000",
+        "bufferBps": 100
+      }
+    },
+    "note": "The executor enforces the limit the owner signed. Choosing it from the same AMM is a test convenience, not a fair-price proof."
+  },
+  "priceMove": {
+    "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+    "fee": 500,
+    "usdgSpentRaw": "1000000000",
+    "steps": 1
+  },
+  "scenarios": [
+    {
+      "id": "R0-sdk-refuses-fee-bearing-bag",
+      "gate": "FEE_SCOPE",
+      "kind": "SDK_REFUSAL",
+      "expected": "a3caff05 declares performanceFeeBps 1000: the SDK refuses to build an authorization (fee-bearing BAGs are outside the first scope)",
+      "pass": true,
+      "observed": "RECURRING_TERMS_INVALID: strategies with a performance fee are not supported by recurring purchases yet."
+    },
+    {
+      "id": "R1-a3caff05-signed-for-v1",
+      "gate": "BAG_REGISTRY",
+      "kind": "REAL_FAULT",
+      "expected": "authorization for a3caff05 version 1 (BagFactory history, block 92213308); the creator recorded v2 → BagChanged(2, current hash)",
+      "observed": "reverted (mined): BagChanged(2,0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0)",
+      "reason": {
+        "name": "BagChanged",
+        "args": [
+          "2",
+          "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0"
+        ]
+      },
+      "tx": "0x08602a5c12aa12d67ad0c55506cfbb3e90111b649a29d72d4a4bd43470e55338",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "R2-a3caff05-v2-registry-passes",
+      "gate": "BAG_REGISTRY",
+      "kind": "REAL_FAULT",
+      "expected": "a3caff05 v2 with the registered strategyId and definitionHash: BagFactory and StrategyRegistry checks pass; the call stops at the plan check → PlanMismatch(5)",
+      "observed": "reverted (mined): PlanMismatch(5)",
+      "reason": {
+        "name": "PlanMismatch",
+        "args": [
+          "5"
+        ]
+      },
+      "tx": "0x7566302c8687ebdbf55515be765e490db8a87827f060ba5dde5b1ca2d5ceb1f3",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "R3-a3caff05-wrong-definition",
+      "gate": "BAG_REGISTRY",
+      "kind": "REAL_FAULT",
+      "expected": "a3caff05 v2 with another definitionHash → StrategyNotRegistered",
+      "observed": "reverted (mined): StrategyNotRegistered(0x72ec1d37c03f9bfb3dc369cf77f19841e7d0a7ca00ca3757605d97fb2f398cae,2)",
+      "reason": {
+        "name": "StrategyNotRegistered",
+        "args": [
+          "0x72ec1d37c03f9bfb3dc369cf77f19841e7d0a7ca00ca3757605d97fb2f398cae",
+          "2"
+        ]
+      },
+      "tx": "0x77cd94ee7ad6f7a1e9fce4b6e5e86223daa828de035df58e1a7fb4d6565d9a58",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "R4-unknown-bag",
+      "gate": "BAG_REGISTRY",
+      "kind": "REAL_FAULT",
+      "expected": "bagId not in BagFactory → UnknownBag",
+      "observed": "reverted (mined): UnknownBag(0x7d3114750f8342b1f512067eb9c9460beebdd01cbd9988ca7d89a5649e4398f4)",
+      "reason": {
+        "name": "UnknownBag",
+        "args": [
+          "0x7d3114750f8342b1f512067eb9c9460beebdd01cbd9988ca7d89a5649e4398f4"
+        ]
+      },
+      "tx": "0xb470ed7681c0b24de250f4b2d16ef141053fc2a2f5f93dd40dfb3d97be69b9a5",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "R5-955df6e0-wrong-composition",
+      "gate": "BAG_REGISTRY",
+      "kind": "REAL_FAULT",
+      "expected": "955df6e0 with a3caff05's composition hash → BagChanged(1, real hash)",
+      "observed": "reverted (mined): BagChanged(1,0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148)",
+      "reason": {
+        "name": "BagChanged",
+        "args": [
+          "1",
+          "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148"
+        ]
+      },
+      "tx": "0xcd4fc775d8ba2b596cc0cb099d1174119e9d4c7d072d5bab0ee16b60c8c3e353",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "R7-955df6e0-with-a3caff05-list",
+      "gate": "BAG_REGISTRY",
+      "kind": "REAL_FAULT",
+      "expected": "955df6e0 id, version and its REAL composition hash, signed with a3caff05's asset list (the SDK refuses to build this) → CompositionMismatch(signed list, registered)",
+      "observed": "reverted (mined): CompositionMismatch(0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0,0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148)",
+      "reason": {
+        "name": "CompositionMismatch",
+        "args": [
+          "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+          "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148"
+        ]
+      },
+      "tx": "0xa386af5aa743d160eab7c16bc1c1949b1d92cdfc6124da7be30dbe4247b1112f",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "R8-955df6e0-weights-swapped",
+      "gate": "BAG_REGISTRY",
+      "kind": "REAL_FAULT",
+      "expected": "955df6e0 with its own tokens but two weights swapped (same total) → CompositionMismatch",
+      "observed": "reverted (mined): CompositionMismatch(0xf3f18771f1773c893c28bd00701d7268fded80cc9b36aac0d337177e298a1478,0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148)",
+      "reason": {
+        "name": "CompositionMismatch",
+        "args": [
+          "0xf3f18771f1773c893c28bd00701d7268fded80cc9b36aac0d337177e298a1478",
+          "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148"
+        ]
+      },
+      "tx": "0xc03174e3b31608b6adabacf082eaab10e76078c0500bbe790ae2b138632ebd0b",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "R9-sdk-refuses-other-list",
+      "gate": "BAG_REGISTRY",
+      "kind": "SDK_REFUSAL",
+      "expected": "the SDK refuses before signing when the bag.json assets do not reproduce the registered composition: (a) 955df6e0's document with a3caff05's registered hash, (b) 955df6e0 with one symbol changed in its metadata",
+      "pass": true,
+      "observed": "(a) RECURRING_TERMS_INVALID: the bag.json assets do not reproduce registry.compositionHash: this document is not the registered content of that Bag version. | (b) RECURRING_TERMS_INVALID: the bag.json assets do not reproduce registry.compositionHash: this document is not the registered content of that Bag version."
+    },
+    {
+      "id": "R6-955df6e0-claims-registered",
+      "gate": "BAG_REGISTRY",
+      "kind": "REAL_FAULT",
+      "expected": "955df6e0 is not in StrategyRegistry; naming its derived strategyId → StrategyNotRegistered",
+      "observed": "reverted (mined): StrategyNotRegistered(0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb,1)",
+      "reason": {
+        "name": "StrategyNotRegistered",
+        "args": [
+          "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+          "1"
+        ]
+      },
+      "tx": "0x3348e66ee17ca3a6526af04df0118b864df454b81773c799437e1ee54d78d46c",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "S1-a3caff05-no-v3-route",
+      "gate": "ROUTE_SCOPE",
+      "kind": "SDK_REFUSAL",
+      "expected": "a3caff05 v2 cannot be bought with v3 exactInputSingle: some asset has no USDG pool at any allowed tier → NO_ROUTE",
+      "pass": true,
+      "observed": "NO_ROUTE: No allowed Uniswap v3 fee tier quoted 0xeb61c0ed490a367d4e3631ccf8a74b3bfc7e775d."
+    },
+    {
+      "id": "M1-pre-move-plan-after-move",
+      "gate": "PRICE_POLICY",
+      "kind": "REAL_FAULT",
+      "expected": "the plan quoted before the move, honestly signed, is submitted after it: the swap cannot meet the minimum → reverted, nothing changes",
+      "observed": "reverted (mined): Error(Too little received)",
+      "reason": {
+        "name": "Error",
+        "args": [
+          "Too little received"
+        ]
+      },
+      "tx": "0x1a41d6584a4b50c95b3878f692ffe4a3bc277b5e6d9d61ea1c0e85c56eebea55",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true,
+      "planDeadlineStillValid": true
+    },
+    {
+      "id": "M2-sdk-refuses-after-move",
+      "gate": "PRICE_POLICY",
+      "kind": "SDK_REFUSAL",
+      "expected": "fresh quotes are below the owner limit → PRICE_LIMIT_NOT_MET, no plan",
+      "pass": true,
+      "observed": "PRICE_LIMIT_NOT_MET: COIN (0x6330d8c3178a418788df01a47479c0ce7ccf450b): the pool price is at or above the FIXED max price 166293255 at every allowed fee tier; no purchase in this window (not made up later)."
+    },
+    {
+      "id": "M3-planSigner-accepts-market",
+      "gate": "PRICE_POLICY",
+      "kind": "REAL_FAULT",
+      "expected": "planSigner signs the post-move market price as the COIN minimum (below the owner limit) → RouteViolation(coin,11)",
+      "observed": "reverted (mined): RouteViolation(2,11)",
+      "reason": {
+        "name": "RouteViolation",
+        "args": [
+          "2",
+          "11"
+        ]
+      },
+      "tx": "0x0ebe102bab177ff16df23ea84fc600f5971a3fa2d5ead2cee72db9007ee10eb4",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true,
+      "marketOutRaw": "10398044732306698",
+      "ownerFloorRaw": "11197086736921471"
+    },
+    {
+      "id": "M4-calldata-min-zero",
+      "gate": "PRICE_POLICY",
+      "kind": "REAL_FAULT",
+      "expected": "planSigner keeps the router minimum at the owner floor but sets calldata amountOutMinimum = 0: the swap executes at the moved price and the measured-output check reverts it",
+      "observed": "reverted (mined): InsufficientOutput(0x6330D8C3178a418788dF01a47479c0ce7CCF450b,10398044732306698,11197086736921471)",
+      "reason": {
+        "name": "InsufficientOutput",
+        "args": [
+          "0x6330D8C3178a418788dF01a47479c0ce7CCF450b",
+          "10398044732306698",
+          "11197086736921471"
+        ]
+      },
+      "tx": "0x3fcaaf8f181ce416a8c65e6abdb47a0051b7979a3e574855d63353874324fcbe",
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    }
+  ],
+  "counts": {
+    "byKind": {
+      "SDK_REFUSAL": {
+        "pass": 4,
+        "fail": 0
+      },
+      "REAL_FAULT": {
+        "pass": 11,
+        "fail": 0
+      }
+    },
+    "byGate": {
+      "FEE_SCOPE": {
+        "pass": 1,
+        "fail": 0
+      },
+      "BAG_REGISTRY": {
+        "pass": 9,
+        "fail": 0
+      },
+      "ROUTE_SCOPE": {
+        "pass": 1,
+        "fail": 0
+      },
+      "PRICE_POLICY": {
+        "pass": 4,
+        "fail": 0
+      }
+    }
+  },
+  "exit": {
+    "code": 0,
+    "status": "COMPLETE"
+  },
+  "quoteDiagnostics": {
+    "nonRevertErrors": []
+  },
+  "network": {
+    "allowedHosts": [
+      "rpc.mainnet.chain.robinhood.com",
+      "127.0.0.1"
+    ],
+    "requestsByHost": {
+      "127.0.0.1": 58,
+      "upstream-rpc": 654
+    },
+    "refused": [],
+    "composerOrLifiRequests": 0,
+    "relay": {
+      "allowlist": [
+        "eth_chainId",
+        "net_version",
+        "eth_blockNumber",
+        "eth_getBlockByNumber",
+        "eth_getBlockByHash",
+        "eth_getCode",
+        "eth_getStorageAt",
+        "eth_getBalance",
+        "eth_getTransactionCount",
+        "eth_call",
+        "eth_getLogs",
+        "eth_getTransactionByHash",
+        "eth_getTransactionReceipt",
+        "eth_getProof"
+      ],
+      "forwardedRequests": 654,
+      "forwardedByMethod": {
+        "eth_getCode": 78,
+        "eth_getTransactionCount": 78,
+        "eth_getBlockByNumber": 4,
+        "eth_chainId": 1,
+        "eth_blockNumber": 107,
+        "net_version": 1,
+        "eth_getBalance": 77,
+        "eth_getStorageAt": 256,
+        "eth_call": 52
+      },
+      "refusedRequests": 0,
+      "refusedMethods": {},
+      "retries": 0,
+      "upstreamErrors": {},
+      "failures": 0,
+      "selfTest": {
+        "singleWriteRefused": true,
+        "batchWithWriteRefused": true
+      }
+    },
+    "forkLocalTransactions": 29,
+    "publicWrites": 0,
+    "note": "publicWrites is 0 by construction: the relay refuses every non-read method (self-tested at start) and counts refusals"
+  },
+  "forkChanges": [
+    {
+      "kind": "ARBSYS",
+      "method": "hardhat_setCode",
+      "target": "0x0000000000000000000000000000000000000064",
+      "note": "ArbSys read emulation (Nitro precompile is not in EDR)",
+      "at": 0
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x22308D98cDb55598188cD65E7407A71fc1939B84",
+      "note": "fork-only gas for a local test account",
+      "at": 1
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x3fAb9aa7A46744300d4A00dcAD84B0AB135F8a72",
+      "note": "fork-only gas for a local test account",
+      "at": 2
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xa3B4fb6391C414eB78c2F979fB10d8501DE67E70",
+      "note": "fork-only gas for a local test account",
+      "at": 3
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x4442FB6E7A28BB7CfEDc338382ea3eEff2b7c836",
+      "note": "fork-only gas for a local test account",
+      "at": 4
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x83D1d5c19BBafeE2ECf0f724C68337cb36C6eF83",
+      "note": "fork-only gas for a local test account",
+      "at": 5
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x6D76072dc51500AB1a5966FA5A51dB7B7a0B81fa",
+      "note": "fork-only gas for a local test account",
+      "at": 6
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xF71919Bb1aa1A279c0eF55e36eeD6a2AAbd88D21",
+      "note": "fork-only gas for a local test account",
+      "at": 7
+    },
+    {
+      "kind": "IMPERSONATE",
+      "method": "hardhat_impersonateAccount",
+      "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+      "note": "USDG for test accounts from a real holder balance (fork only)",
+      "at": 8
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+      "note": "gas for the impersonated holder",
+      "at": 9
+    },
+    {
+      "kind": "SET_CODE",
+      "method": "hardhat_setCode",
+      "target": "0x008f01d056eb06d708eaeC1e2e27B82435910CB9",
+      "note": "executor runtime from 0x6df9a53fd033c285284e49c0b73a24f6c12f172b (immutables: real BagFactory, real StrategyRegistry) at the keyless address",
+      "at": 10
+    },
+    {
+      "kind": "SET_CODE",
+      "method": "hardhat_setCode",
+      "target": "0x6df9a53fd033c285284e49c0b73a24f6c12f172b",
+      "note": "remove the deployer-address copy so only the keyless executor exists",
+      "at": 11
+    },
+    {
+      "kind": "SNAPSHOT",
+      "method": "evm_snapshot",
+      "note": "isolate the price-move scenarios (reverted after M4)",
+      "at": 12
+    },
+    {
+      "kind": "REVERT",
+      "method": "evm_revert",
+      "target": "0x18",
+      "note": "undo the attacker swaps of the price-move scenarios",
+      "at": 13
+    }
+  ],
+  "finishedAt": "2026-10-25T21:03:37.460Z"
+}

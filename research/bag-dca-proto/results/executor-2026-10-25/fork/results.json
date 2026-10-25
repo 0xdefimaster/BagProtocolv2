@@ -1,0 +1,1567 @@
+{
+  "schema": "bag-recurring-executor-fork/v1",
+  "evidenceClass": "TEST_KEY_FORK",
+  "startedAt": "2026-10-25T07:51:32.305Z",
+  "args": [
+    "--app",
+    ".",
+    "--out",
+    "research/bag-dca-proto/results/executor-2026-10-25/fork"
+  ],
+  "notEvidenceOf": [
+    "a wallet (MetaMask/Rabby) signature",
+    "a human signature",
+    "a public-network transaction",
+    "an independent market price reference"
+  ],
+  "build": {
+    "appCommit": "ea47f313d94ca5b9fc6295b3f02275d5fa721118",
+    "appDirtyInContractsOrSdk": "",
+    "executor": {
+      "source": "contracts/dca/RecurringPurchaseExecutor.sol",
+      "checkedSources": [
+        "project/contracts/dca/RecurringPurchaseExecutor.sol",
+        "project/contracts/BagExecutionRouter.sol",
+        "project/contracts/dca/IRecurringPurchaseExecution.sol"
+      ],
+      "sourceSha256": "0e2e513667cd22d4359ca847877b27ca0b918645a00ba31e2cb5b707ff2d84fa",
+      "buildInfoId": "solc-0_8_24-75bbc6803fa6f391ac870ffbf9230bd5ef71ed3b",
+      "solc": "0.8.24+commit.e11b9ed9",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "evmVersion": "shanghai"
+    },
+    "router": {
+      "source": "contracts/BagExecutionRouter.sol",
+      "checkedSources": [
+        "project/contracts/BagExecutionRouter.sol"
+      ],
+      "sourceSha256": "d39b6cbb41755885f25964452b7c29e6dbe2e0d2b4fd1314a36113e1cd5df210",
+      "buildInfoId": "solc-0_8_24-2c34557d043fde1a806eaea3346bc3967a93298d",
+      "solc": "0.8.24+commit.e11b9ed9",
+      "evmVersion": "shanghai"
+    },
+    "sdk": {
+      "dist": "packages/bag-sdk/dist",
+      "recurringJsSha256": "b311c4b4b56c7e9c7e1b9faa3dea74a066abd9f949fd3e69e5949118b3341723",
+      "uniswapV3JsSha256": "fd010e1b0b5a00915f41c9409ff5b6c87688e575831af02bcf942284f6cf14da"
+    }
+  },
+  "keylessExecutor": {
+    "label": "BAG RecurringPurchaseExecutor fork-only v1",
+    "address": "0x008f01d056eb06d708eaeC1e2e27B82435910CB9",
+    "mainnetCode": "0x",
+    "mainnetNonce": 0
+  },
+  "fork": {
+    "blockNumber": "97429487",
+    "blockHash": "0x276086b70744eaa1e92523010f9fe76e0dd0c11b022a6ddeda6c23c0169cde58",
+    "timestamp": "1792914692",
+    "note": "one fork block for the whole run; every leg of a purchase executes in one transaction (same block by construction)"
+  },
+  "deployment": {
+    "executor": {
+      "address": "0x008f01d056eb06d708eaeC1e2e27B82435910CB9",
+      "runtimeMatchesArtifact": true,
+      "immutables": {
+        "bagFactory": "0x7Ce5A81Df434755F38Cb5f67Ad49a8bb3c8e6f72",
+        "strategyRegistry": "0x907cc27d644C8ea1c24B8320ad09eCF2819209A8"
+      },
+      "domainSeparator": "0x821e22a46807e81583bd86d25f49a3fd765f74d722e7c4f6b879d47bbc1076f8",
+      "domainSeparatorMatchesSdk": true
+    },
+    "router": {
+      "address": "0xa0a1839e998e544ba84bd05ed9d0be2c88491950",
+      "runtimeMatchesArtifact": true,
+      "bagFactory": "0x7Ce5A81Df434755F38Cb5f67Ad49a8bb3c8e6f72",
+      "planSigner": "0xcB9CA62Aa702a93A6E239458Ee9eCBed7BA9A4bc",
+      "owner": "0x0C78Ecf7101190DcC19B907A78b6240DB20000D9",
+      "allowlist": {
+        "targets": [
+          "0xCaf681a66D020601342297493863E78C959E5cb2"
+        ],
+        "tokens": "USDG + assets of both BAGs"
+      },
+      "trust": "test keys: router owner and planSigner are local; the runs treat both as compromised"
+    },
+    "realContracts": {
+      "USDG": {
+        "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+        "codeKeccak": "0x864cc9ad53b338b82da1f7cab85ab0b3d5c8861acb422b6fec63cf36234f36a6",
+        "bytes": 170,
+        "eip1967Implementation": "0x68184C449E1a8f34fA18d289737129FD27B66f8F"
+      },
+      "SWAP_ROUTER02": {
+        "address": "0xCaf681a66D020601342297493863E78C959E5cb2",
+        "codeKeccak": "0x6f36c378e272c6324c48f045182bcb54bd8ad654cf9ebd42e8893d52c4cb25dc",
+        "bytes": 24497
+      },
+      "QUOTER_V2": {
+        "address": "0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7",
+        "codeKeccak": "0x3db0868d945e9304c9bc6a8b2181948109ea617647142f3c4083e14393496a28",
+        "bytes": 8273
+      },
+      "BAG_FACTORY": {
+        "address": "0x7Ce5A81Df434755F38Cb5f67Ad49a8bb3c8e6f72",
+        "codeKeccak": "0x48e56712deee2744d90301b4a6eb3dd3760525aec15a7c18b3200defac8d1541",
+        "bytes": 11231
+      },
+      "STRATEGY_REGISTRY": {
+        "address": "0x907cc27d644C8ea1c24B8320ad09eCF2819209A8",
+        "codeKeccak": "0x0f559b7b92ab3fa101bc64974b219a770edf5ce1dabafef0e831d17b1f1ebcfd",
+        "bytes": 4830
+      }
+    },
+    "usdgPermitDomain": {
+      "onChain": "0x7a3d7400b27830f4f91c2c16a082486d67c1befecaec2f53b33f1f35d5b62036",
+      "matches": true,
+      "name": "Global Dollar",
+      "version": "1"
+    }
+  },
+  "testAccounts": {
+    "planSigner": "0xcB9CA62Aa702a93A6E239458Ee9eCBed7BA9A4bc",
+    "routerOwner": "0x0C78Ecf7101190DcC19B907A78b6240DB20000D9",
+    "deployer": "0x68e688eC8a950E535f1B5bCEFb1E345f516C8AD2",
+    "owner": "0xAD877a216e0643A905fd2eF1bE10e6818eC301B9",
+    "keeper": "0xd6f636559D5fE1A70B04c5DF30585947e0153BCb",
+    "attacker": "0x1809624C64FFfbFf473e1B76C944F7BAD30d1d17",
+    "relayer": "0x062d71DF841B7EDfc350782F550e3DD678c078Af",
+    "note": "keys generated in this process and discarded at exit; none is a user wallet"
+  },
+  "bags": {
+    "955df6e0-b6ea-44ba-a5eb-1288a80c0a06": {
+      "uuid": "955df6e0-b6ea-44ba-a5eb-1288a80c0a06",
+      "bagId": "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+      "bag": "0x8E668bf1eD1e3Eb104Dab3341F14b9CF7d55510d",
+      "version": "1",
+      "compositionHash": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+      "sdkCompositionHash": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+      "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9",
+      "strategyId": "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+      "registered": false,
+      "matches": false,
+      "docVersion": 1
+    },
+    "a3caff05-d606-486b-959f-30865a4cbfa7": {
+      "uuid": "a3caff05-d606-486b-959f-30865a4cbfa7",
+      "bagId": "0x72ec1d37c03f9bfb3dc369cf77f19841e7d0a7ca00ca3757605d97fb2f398cae",
+      "bag": "0xb6C8B277AbcD5866bBE62C5A89295a992A90F3d5",
+      "version": "2",
+      "compositionHash": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+      "sdkCompositionHash": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+      "definitionHash": "0x62e5dd238e967169064c3ccc5d34ed2c6829b3cbcb3119b76c4d3a88758e9f5a",
+      "strategyId": "0x72ec1d37c03f9bfb3dc369cf77f19841e7d0a7ca00ca3757605d97fb2f398cae",
+      "registered": true,
+      "matches": true,
+      "docVersion": 2
+    }
+  },
+  "priceLimitPolicy": {
+    "kind": "OWNER_SIGNED_MAX_PRICE",
+    "thisRun": "TEST LIMIT = best real-chain QuoterV2 quote at setup + 300 bps (A/B/C) or + 100 bps (P)",
+    "isIndependentReference": false,
+    "limitsRaw": {
+      "0x1b0e319c6a659f002271b69db8a7df2f911c153e": "25532665",
+      "0x47f93d52cbec7c6d2cfc080e154002370a60daea": "1617343111",
+      "0x6330d8c3178a418788df01a47479c0ce7ccf450b": "169115295",
+      "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9": "357336932"
+    },
+    "sources": {
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x1b0e319c6a659f002271b69db8a7df2f911c153e:300": {
+        "realChainQuoteRaw": "53955394407005678",
+        "legInRaw": "1337500",
+        "bufferBps": 300
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x47f93d52cbec7c6d2cfc080e154002370a60daea:300": {
+        "realChainQuoteRaw": "828219436637885",
+        "legInRaw": "1300500",
+        "bufferBps": 300
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x6330d8c3178a418788df01a47479c0ce7ccf450b:300": {
+        "realChainQuoteRaw": "11340547346182727",
+        "legInRaw": "1862000",
+        "bufferBps": 300
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0xaf3d76f1834a1d425780943c99ea8a608f8a93f9:300": {
+        "realChainQuoteRaw": "1441216831232208",
+        "legInRaw": "500000",
+        "bufferBps": 300
+      },
+      "a3caff05-d606-486b-959f-30865a4cbfa7:0x020bfc650a365f8bb26819deaabf3e21291018b4:300": {
+        "realChainQuoteRaw": "4992569974950221880",
+        "legInRaw": "468500",
+        "bufferBps": 300
+      },
+      "a3caff05-d606-486b-959f-30865a4cbfa7:0x39dbed3a2bd333467115de45665cc57f813c4571:300": {
+        "realChainQuoteRaw": "6492715942815053161",
+        "legInRaw": "1472500",
+        "bufferBps": 300
+      },
+      "a3caff05-d606-486b-959f-30865a4cbfa7:0x75742c18bc1f1c5c5f448f4c9d9c6f66dafaaa38:300": {
+        "realChainQuoteRaw": "982953839067636",
+        "legInRaw": "468500",
+        "bufferBps": 300
+      },
+      "a3caff05-d606-486b-959f-30865a4cbfa7:0xacef2e09adb47ad6abebad9ff06689e60615c2b6:300": {
+        "realChainQuoteRaw": "13965261811942471",
+        "legInRaw": "650000",
+        "bufferBps": 300
+      },
+      "a3caff05-d606-486b-959f-30865a4cbfa7:0xeb61c0ed490a367d4e3631ccf8a74b3bfc7e775d:300": {
+        "realChainQuoteRaw": null,
+        "fallbackMaxPriceRaw": "1000000000000"
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x1b0e319c6a659f002271b69db8a7df2f911c153e:100": {
+        "realChainQuoteRaw": "53955394407005678",
+        "legInRaw": "1337500",
+        "bufferBps": 100
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x47f93d52cbec7c6d2cfc080e154002370a60daea:100": {
+        "realChainQuoteRaw": "828219436637885",
+        "legInRaw": "1300500",
+        "bufferBps": 100
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0x6330d8c3178a418788df01a47479c0ce7ccf450b:100": {
+        "realChainQuoteRaw": "11340547346182727",
+        "legInRaw": "1862000",
+        "bufferBps": 100
+      },
+      "955df6e0-b6ea-44ba-a5eb-1288a80c0a06:0xaf3d76f1834a1d425780943c99ea8a608f8a93f9:100": {
+        "realChainQuoteRaw": "1441216831232208",
+        "legInRaw": "500000",
+        "bufferBps": 100
+      }
+    },
+    "note": "The executor enforces the limit the owner signed. Choosing it from the same AMM is a test convenience, not a fair-price proof."
+  },
+  "authorizations": {
+    "A": {
+      "id": "0x0a773b3cb66dd34cb504d7764919f66f589c71d571bd4091cafd85b193441385",
+      "summary": {
+        "owner": "0xad877a216e0643a905fd2ef1be10e6818ec301b9",
+        "recipient": "0xad877a216e0643a905fd2ef1be10e6818ec301b9",
+        "funding": "ALLOWANCE",
+        "fundsStayInOwnerAddress": true,
+        "perRunRaw": "5000000",
+        "runs": 3,
+        "totalBudgetRaw": "15000000",
+        "firstWindowStart": "1792914708",
+        "periodSeconds": "86400",
+        "lastWindowStart": "1793087508",
+        "expiresAt": "1793346708",
+        "assets": [
+          {
+            "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+            "weightBps": 2675,
+            "legInputRaw": "1337500",
+            "maxPriceRaw": "25532665",
+            "minimumOutRaw": "52383877671993895"
+          },
+          {
+            "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+            "weightBps": 2601,
+            "legInputRaw": "1300500",
+            "maxPriceRaw": "1617343111",
+            "minimumOutRaw": "804096540279511"
+          },
+          {
+            "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+            "weightBps": 3724,
+            "legInputRaw": "1862000",
+            "maxPriceRaw": "169115295",
+            "minimumOutRaw": "11010240085026018"
+          },
+          {
+            "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+            "weightBps": 1000,
+            "legInputRaw": "500000",
+            "maxPriceRaw": "357336932",
+            "minimumOutRaw": "1399239639747061"
+          }
+        ],
+        "route": {
+          "router": "0xa0a1839e998e544ba84bd05ed9d0be2c88491950",
+          "swapTarget": "0xcaf681a66d020601342297493863e78c959e5cb2",
+          "allowedFees": [
+            100,
+            500,
+            3000,
+            10000
+          ]
+        },
+        "bag": {
+          "bagId": "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+          "bagVersion": "1",
+          "compositionHash": "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148",
+          "definitionHash": "0x5d6118dbe3072743e0997af5c2266c57a2775c71fc337e8fd82b97a92fc2fbb9",
+          "strategyId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "strategyVersion": 0
+        }
+      },
+      "onChainIdMatchesSdk": true
+    },
+    "B": {
+      "id": "0x15fe1608976793de11f2379c645be99ee802ac7473d594af839dd20eeec722be"
+    },
+    "C": {
+      "id": "0x6ad355e8baf6f6fc79b02402b4741c4471227bc927a13d2598197af1e717f2a2"
+    }
+  },
+  "fundsStayInOwnerAddress": {
+    "mode": "ALLOWANCE",
+    "ownerAddress": "0xAD877a216e0643A905fd2eF1bE10e6818eC301B9",
+    "ownerUsdgStart": "100000000",
+    "ownerUsdgEnd": "70000000",
+    "spentRaw": "30000000",
+    "honestRuns": 6,
+    "expectedSpentRaw": "30000000",
+    "pass": true,
+    "note": "USDG stayed in the owner EOA except the exact per-run debits; the executor and router held nothing between runs (checked after every run). Trust that remains: the immutable executor is the spender of the remaining allowance, shared by all of the owner's authorizations."
+  },
+  "priceMove": {
+    "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+    "fee": 500,
+    "usdgSpentRaw": "1000000000",
+    "steps": 1
+  },
+  "keeperPhase": {
+    "status": "RUN",
+    "authorizationId": "0x83628f4756d2b78b2afab1d2a11f5bf03970f5fbd2b8b7cf78421c36c0223386",
+    "runs": 4,
+    "ownerDebitRaw": "20000000",
+    "expectedDebitRaw": "20000000",
+    "store": "keeper-store.json (file store, kept in this folder)",
+    "keeperAccounts": [
+      "0xAe4eA4dD53CEBdBaEbe2C31D3e75C371b188C000",
+      "0x5121b54D9D8E82Ed719Ef9968Fb28E54FA837946"
+    ],
+    "note": "keeper transactions are sent with app viem on the same fork transport; they are not in forkLocalTransactions"
+  },
+  "scenarios": [
+    {
+      "id": "L1-permit-first-run",
+      "gate": "LIFECYCLE",
+      "kind": "LIFECYCLE",
+      "expected": "run 1 of A; EIP-2612 permit for exactly the total budget is consumed inside execute (real USDG)",
+      "purchase": true,
+      "pass": true,
+      "checks": {
+        "sdkReceipt": true,
+        "ownerDebitExact": true,
+        "deliveriesEqualReceipt": true,
+        "atOrAboveOwnerLimit": true,
+        "noTransitBalance": true,
+        "allowancesBackToZero": true,
+        "ownerAllowanceUsedExactly": true,
+        "countersAdvanced": true
+      },
+      "tx": "0x11463699e1a49c8fd822a6acd996c4e0647008a042cd366db68bd192df3d23e4",
+      "gasUsed": "1236621",
+      "window": "0",
+      "legs": [
+        {
+          "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "fee": 500,
+          "amountInRaw": "1337500",
+          "quotedOutRaw": "53955394407005678",
+          "minimumOutRaw": "53415840462935622",
+          "ownerLimitFloorRaw": "52383877671993895",
+          "receivedRaw": "53955394407005678"
+        },
+        {
+          "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "fee": 3000,
+          "amountInRaw": "1300500",
+          "quotedOutRaw": "828219436637885",
+          "minimumOutRaw": "819937242271507",
+          "ownerLimitFloorRaw": "804096540279511",
+          "receivedRaw": "828219436637885"
+        },
+        {
+          "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "fee": 500,
+          "amountInRaw": "1862000",
+          "quotedOutRaw": "11340547346182727",
+          "minimumOutRaw": "11227141872720900",
+          "ownerLimitFloorRaw": "11010240085026018",
+          "receivedRaw": "11340547346182727"
+        },
+        {
+          "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "fee": 500,
+          "amountInRaw": "500000",
+          "quotedOutRaw": "1441216831232208",
+          "minimumOutRaw": "1426804662919886",
+          "ownerLimitFloorRaw": "1399239639747061",
+          "receivedRaw": "1441216831232208"
+        }
+      ],
+      "sdkReceipt": {
+        "status": "VERIFIED",
+        "issues": []
+      },
+      "ownerUsdgAfter": "95000000",
+      "ownerAllowanceAfter": "10000000",
+      "observed": "VERIFIED, debit 5000000 raw, executions 1, gas 1236621"
+    },
+    {
+      "id": "F1-same-window-again",
+      "gate": "SCHEDULE",
+      "kind": "REAL_FAULT",
+      "expected": "NotDue; nothing changes",
+      "observed": "reverted (mined): NotDue()",
+      "reason": {
+        "name": "NotDue",
+        "args": []
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "L2-approve-first-run-B",
+      "gate": "LIFECYCLE",
+      "kind": "LIFECYCLE",
+      "expected": "run 1 of B with a standard approve (no permit)",
+      "purchase": true,
+      "pass": true,
+      "checks": {
+        "sdkReceipt": true,
+        "ownerDebitExact": true,
+        "deliveriesEqualReceipt": true,
+        "atOrAboveOwnerLimit": true,
+        "noTransitBalance": true,
+        "allowancesBackToZero": true,
+        "ownerAllowanceUsedExactly": true,
+        "countersAdvanced": true
+      },
+      "tx": "0x994f66efd6415e4e9a4f141c4b28853f1fe5b1ba8ca5e7c9b5c71e88ac9dbf0a",
+      "gasUsed": "1116880",
+      "window": "0",
+      "legs": [
+        {
+          "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "fee": 500,
+          "amountInRaw": "1337500",
+          "quotedOutRaw": "53955220912529189",
+          "minimumOutRaw": "53415668703403898",
+          "ownerLimitFloorRaw": "52383877671993895",
+          "receivedRaw": "53955220912529189"
+        },
+        {
+          "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "fee": 3000,
+          "amountInRaw": "1300500",
+          "quotedOutRaw": "827844466095937",
+          "minimumOutRaw": "819566021434978",
+          "ownerLimitFloorRaw": "804096540279511",
+          "receivedRaw": "827844466095937"
+        },
+        {
+          "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "fee": 500,
+          "amountInRaw": "1862000",
+          "quotedOutRaw": "11338733820010068",
+          "minimumOutRaw": "11225346481809968",
+          "ownerLimitFloorRaw": "11010240085026018",
+          "receivedRaw": "11338733820010068"
+        },
+        {
+          "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "fee": 500,
+          "amountInRaw": "500000",
+          "quotedOutRaw": "1441216517374849",
+          "minimumOutRaw": "1426804352201101",
+          "ownerLimitFloorRaw": "1399239639747061",
+          "receivedRaw": "1441216517374849"
+        }
+      ],
+      "sdkReceipt": {
+        "status": "VERIFIED",
+        "issues": []
+      },
+      "ownerUsdgAfter": "90000000",
+      "ownerAllowanceAfter": "10000000",
+      "observed": "VERIFIED, debit 5000000 raw, executions 1, gas 1116880"
+    },
+    {
+      "id": "V1-revoke-B",
+      "gate": "REVOCATION",
+      "kind": "LIFECYCLE",
+      "expected": "owner revoke(idB) on chain; allowance untouched by revoke",
+      "pass": true,
+      "observed": "revoked=true, allowance 10000000 → 10000000 (revoke does not reset allowance)"
+    },
+    {
+      "id": "V2-revoked-B-with-restored-allowance",
+      "gate": "REVOCATION",
+      "kind": "REAL_FAULT",
+      "expected": "after revoke and approve(0), a third party submits B's unused permit (allowance restored); execute → RevokedAuthorization",
+      "observed": "reverted (mined): RevokedAuthorization(0x15fe1608976793de11f2379c645be99ee802ac7473d594af839dd20eeec722be)",
+      "reason": {
+        "name": "RevokedAuthorization",
+        "args": [
+          "0x15fe1608976793de11f2379c645be99ee802ac7473d594af839dd20eeec722be"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true,
+      "allowanceWhenRefused": "15000000"
+    },
+    {
+      "id": "U1-permit-front-run-C",
+      "gate": "FUNDING",
+      "kind": "REAL_FAULT",
+      "expected": "a third party submits the permit first; execute still succeeds (the try/catch only skips the used nonce)",
+      "purchase": true,
+      "pass": true,
+      "checks": {
+        "sdkReceipt": true,
+        "ownerDebitExact": true,
+        "deliveriesEqualReceipt": true,
+        "atOrAboveOwnerLimit": true,
+        "noTransitBalance": true,
+        "allowancesBackToZero": true,
+        "ownerAllowanceUsedExactly": true,
+        "countersAdvanced": true
+      },
+      "tx": "0x392dab855038e349f83b7fd8216ca4475db3269b918bc5b0e41c2e4e2b391825",
+      "gasUsed": "1138180",
+      "window": "0",
+      "legs": [
+        {
+          "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "fee": 500,
+          "amountInRaw": "1337500",
+          "quotedOutRaw": "53955047418889510",
+          "minimumOutRaw": "53415496944700615",
+          "ownerLimitFloorRaw": "52383877671993895",
+          "receivedRaw": "53955047418889510"
+        },
+        {
+          "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "fee": 3000,
+          "amountInRaw": "1300500",
+          "quotedOutRaw": "827469750144282",
+          "minimumOutRaw": "819195052642840",
+          "ownerLimitFloorRaw": "804096540279511",
+          "receivedRaw": "827469750144282"
+        },
+        {
+          "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "fee": 500,
+          "amountInRaw": "1862000",
+          "quotedOutRaw": "11336920728818296",
+          "minimumOutRaw": "11223551521530114",
+          "ownerLimitFloorRaw": "11010240085026018",
+          "receivedRaw": "11336920728818296"
+        },
+        {
+          "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "fee": 500,
+          "amountInRaw": "500000",
+          "quotedOutRaw": "1441216203517593",
+          "minimumOutRaw": "1426804041482418",
+          "ownerLimitFloorRaw": "1399239639747061",
+          "receivedRaw": "1441216203517593"
+        }
+      ],
+      "sdkReceipt": {
+        "status": "VERIFIED",
+        "issues": []
+      },
+      "ownerUsdgAfter": "85000000",
+      "ownerAllowanceAfter": "10000000",
+      "observed": "VERIFIED, debit 5000000 raw, executions 1, gas 1138180"
+    },
+    {
+      "id": "P1-recipient-to-attacker",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "leg output sent to the attacker instead of the router → RouteViolation(0,6)",
+      "observed": "reverted (mined): RouteViolation(0,6)",
+      "reason": {
+        "name": "RouteViolation",
+        "args": [
+          "0",
+          "6"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P2-min-below-owner-limit",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "leg 1 minimum set to 1 (calldata and router check) → RouteViolation(1,11)",
+      "observed": "reverted (mined): RouteViolation(1,11)",
+      "reason": {
+        "name": "RouteViolation",
+        "args": [
+          "1",
+          "11"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P3-spend-more",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "inputAmount doubled → PlanMismatch(3)",
+      "observed": "reverted (mined): PlanMismatch(3)",
+      "reason": {
+        "name": "PlanMismatch",
+        "args": [
+          "3"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P4-other-bag",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "plan for another bagId → PlanMismatch(4)",
+      "observed": "reverted (mined): PlanMismatch(4)",
+      "reason": {
+        "name": "PlanMismatch",
+        "args": [
+          "4"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P5-other-target",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "leg 0 sent to UniversalRouter (allowlisted by the malicious router owner) → RouteViolation(0,1)",
+      "observed": "reverted (mined): RouteViolation(0,1)",
+      "reason": {
+        "name": "RouteViolation",
+        "args": [
+          "0",
+          "1"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P6-other-token",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "leg 2 buys USDG→GME instead of COIN → RouteViolation(2,5)",
+      "observed": "reverted (mined): RouteViolation(2,5)",
+      "reason": {
+        "name": "RouteViolation",
+        "args": [
+          "2",
+          "5"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P7-price-limit-partial-fill",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "sqrtPriceLimitX96 set on leg 0 (partial fill) → RouteViolation(0,8)",
+      "observed": "reverted (mined): RouteViolation(0,8)",
+      "reason": {
+        "name": "RouteViolation",
+        "args": [
+          "0",
+          "8"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P8-shift-leg-amounts",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "leg 0 +1 raw, leg 1 −1 raw (same total) → RouteViolation(0,3)",
+      "observed": "reverted (mined): RouteViolation(0,3)",
+      "reason": {
+        "name": "RouteViolation",
+        "args": [
+          "0",
+          "3"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P9-wrong-window",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "execution claims window 2 while window 1 is current → WrongWindow",
+      "observed": "reverted (mined): WrongWindow(1,2)",
+      "reason": {
+        "name": "WrongWindow",
+        "args": [
+          "1",
+          "2"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P10-stale-quote",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "quoteDeadline in the past → QuoteExpired",
+      "observed": "reverted (mined): QuoteExpired(1792997962)",
+      "reason": {
+        "name": "QuoteExpired",
+        "args": [
+          "1792997962"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P11-forged-owner-signature",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "authorization signature from another key → InvalidOwnerSignature",
+      "observed": "reverted (mined): InvalidOwnerSignature()",
+      "reason": {
+        "name": "InvalidOwnerSignature",
+        "args": []
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "P12-terms-swapped-recipient",
+      "gate": "PLAN_SIGNER_TRUST",
+      "kind": "REAL_FAULT",
+      "expected": "keeper swaps the recipient in the terms, keeps the owner signature and id → AuthorizationMismatch",
+      "observed": "reverted (mined): AuthorizationMismatch(0xac1c145b2574ce33f59eb42d03e1e56741bc1a9b2baef056d7c5754d39a6d5fd,0x0a773b3cb66dd34cb504d7764919f66f589c71d571bd4091cafd85b193441385)",
+      "reason": {
+        "name": "AuthorizationMismatch",
+        "args": [
+          "0xac1c145b2574ce33f59eb42d03e1e56741bc1a9b2baef056d7c5754d39a6d5fd",
+          "0x0a773b3cb66dd34cb504d7764919f66f589c71d571bd4091cafd85b193441385"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "L3-second-run-same-window-after-attacks",
+      "gate": "LIFECYCLE",
+      "kind": "LIFECYCLE",
+      "expected": "run 2 of A in window 1: the refusals above did not consume the window",
+      "purchase": true,
+      "pass": true,
+      "checks": {
+        "sdkReceipt": true,
+        "ownerDebitExact": true,
+        "deliveriesEqualReceipt": true,
+        "atOrAboveOwnerLimit": true,
+        "noTransitBalance": true,
+        "allowancesBackToZero": true,
+        "ownerAllowanceUsedExactly": true,
+        "countersAdvanced": true
+      },
+      "tx": "0x068bcc5ff9f5697e387887e3d8b5b8f44de8b5c63681ea483b4360099580bb35",
+      "gasUsed": "1076361",
+      "window": "1",
+      "legs": [
+        {
+          "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "fee": 500,
+          "amountInRaw": "1337500",
+          "quotedOutRaw": "53954873926086636",
+          "minimumOutRaw": "53415325186825770",
+          "ownerLimitFloorRaw": "52383877671993895",
+          "receivedRaw": "53954873926086636"
+        },
+        {
+          "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "fee": 3000,
+          "amountInRaw": "1300500",
+          "quotedOutRaw": "827095288552496",
+          "minimumOutRaw": "818824335666972",
+          "ownerLimitFloorRaw": "804096540279511",
+          "receivedRaw": "827095288552496"
+        },
+        {
+          "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "fee": 500,
+          "amountInRaw": "1862000",
+          "quotedOutRaw": "11335108072468313",
+          "minimumOutRaw": "11221756991743630",
+          "ownerLimitFloorRaw": "11010240085026018",
+          "receivedRaw": "11335108072468313"
+        },
+        {
+          "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "fee": 500,
+          "amountInRaw": "500000",
+          "quotedOutRaw": "1441215889660440",
+          "minimumOutRaw": "1426803730763836",
+          "ownerLimitFloorRaw": "1399239639747061",
+          "receivedRaw": "1441215889660440"
+        }
+      ],
+      "sdkReceipt": {
+        "status": "VERIFIED",
+        "issues": []
+      },
+      "ownerUsdgAfter": "80000000",
+      "ownerAllowanceAfter": "5000000",
+      "observed": "VERIFIED, debit 5000000 raw, executions 2, gas 1076361"
+    },
+    {
+      "id": "V3-allowance-reset-is-not-revocation",
+      "gate": "REVOCATION",
+      "kind": "REAL_FAULT",
+      "expected": "C has allowance 0 (approve(0) on day 0) → the transfer fails; C is NOT revoked",
+      "observed": "reverted (mined): InsufficientAllowance()",
+      "reason": {
+        "name": "InsufficientAllowance",
+        "args": []
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true,
+      "revoked": false,
+      "note": "the token's own allowance error; C stays valid (see L4)"
+    },
+    {
+      "id": "L4-C-after-reapprove",
+      "gate": "LIFECYCLE",
+      "kind": "LIFECYCLE",
+      "expected": "C runs again after the owner re-approves one run",
+      "purchase": true,
+      "pass": true,
+      "checks": {
+        "sdkReceipt": true,
+        "ownerDebitExact": true,
+        "deliveriesEqualReceipt": true,
+        "atOrAboveOwnerLimit": true,
+        "noTransitBalance": true,
+        "allowancesBackToZero": true,
+        "ownerAllowanceUsedExactly": true,
+        "countersAdvanced": true
+      },
+      "tx": "0x48509aed3e6d2fa88256b83ca8678278893b38802ce592d81ce24f532d4df3f9",
+      "gasUsed": "1076363",
+      "window": "1",
+      "legs": [
+        {
+          "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "fee": 500,
+          "amountInRaw": "1337500",
+          "quotedOutRaw": "53954700434120562",
+          "minimumOutRaw": "53415153429779357",
+          "ownerLimitFloorRaw": "52383877671993895",
+          "receivedRaw": "53954700434120562"
+        },
+        {
+          "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "fee": 3000,
+          "amountInRaw": "1300500",
+          "quotedOutRaw": "826721081090417",
+          "minimumOutRaw": "818453870279513",
+          "ownerLimitFloorRaw": "804096540279511",
+          "receivedRaw": "826721081090417"
+        },
+        {
+          "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "fee": 500,
+          "amountInRaw": "1862000",
+          "quotedOutRaw": "11333295850821077",
+          "minimumOutRaw": "11219962892312867",
+          "ownerLimitFloorRaw": "11010240085026018",
+          "receivedRaw": "11333295850821077"
+        },
+        {
+          "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "fee": 500,
+          "amountInRaw": "500000",
+          "quotedOutRaw": "1441215575803389",
+          "minimumOutRaw": "1426803420045356",
+          "ownerLimitFloorRaw": "1399239639747061",
+          "receivedRaw": "1441215575803389"
+        }
+      ],
+      "sdkReceipt": {
+        "status": "VERIFIED",
+        "issues": []
+      },
+      "ownerUsdgAfter": "75000000",
+      "ownerAllowanceAfter": "0",
+      "observed": "VERIFIED, debit 5000000 raw, executions 2, gas 1076363"
+    },
+    {
+      "id": "V4-revokeBySig-C",
+      "gate": "REVOCATION",
+      "kind": "LIFECYCLE",
+      "expected": "owner signs Revocation off chain; a third party submits revokeBySig",
+      "pass": true,
+      "observed": "revoked=true (submitted by 0x062d71DF841B7EDfc350782F550e3DD678c078Af)"
+    },
+    {
+      "id": "V5-revoked-C",
+      "gate": "REVOCATION",
+      "kind": "REAL_FAULT",
+      "expected": "C has allowance again but is revoked → RevokedAuthorization",
+      "observed": "reverted (mined): RevokedAuthorization(0x6ad355e8baf6f6fc79b02402b4741c4471227bc927a13d2598197af1e717f2a2)",
+      "reason": {
+        "name": "RevokedAuthorization",
+        "args": [
+          "0x6ad355e8baf6f6fc79b02402b4741c4471227bc927a13d2598197af1e717f2a2"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "L5-third-run-A",
+      "gate": "LIFECYCLE",
+      "kind": "LIFECYCLE",
+      "expected": "run 3 of A (last), window 2",
+      "purchase": true,
+      "pass": true,
+      "checks": {
+        "sdkReceipt": true,
+        "ownerDebitExact": true,
+        "deliveriesEqualReceipt": true,
+        "atOrAboveOwnerLimit": true,
+        "noTransitBalance": true,
+        "allowancesBackToZero": true,
+        "ownerAllowanceUsedExactly": true,
+        "countersAdvanced": true
+      },
+      "tx": "0x36e123cd91ffa7c6b6c8b809d5340ec6a6726e38aacc1e4517b143ae3490de6d",
+      "gasUsed": "1076344",
+      "window": "2",
+      "legs": [
+        {
+          "asset": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+          "fee": 500,
+          "amountInRaw": "1337500",
+          "quotedOutRaw": "53954526942991281",
+          "minimumOutRaw": "53414981673561369",
+          "ownerLimitFloorRaw": "52383877671993895",
+          "receivedRaw": "53954526942991281"
+        },
+        {
+          "asset": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+          "fee": 3000,
+          "amountInRaw": "1300500",
+          "quotedOutRaw": "826347127528141",
+          "minimumOutRaw": "818083656252860",
+          "ownerLimitFloorRaw": "804096540279511",
+          "receivedRaw": "826347127528141"
+        },
+        {
+          "asset": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+          "fee": 500,
+          "amountInRaw": "1862000",
+          "quotedOutRaw": "11331484063737601",
+          "minimumOutRaw": "11218169223100225",
+          "ownerLimitFloorRaw": "11010240085026018",
+          "receivedRaw": "11331484063737601"
+        },
+        {
+          "asset": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+          "fee": 500,
+          "amountInRaw": "500000",
+          "quotedOutRaw": "1441215261946440",
+          "minimumOutRaw": "1426803109326976",
+          "ownerLimitFloorRaw": "1399239639747061",
+          "receivedRaw": "1441215261946440"
+        }
+      ],
+      "sdkReceipt": {
+        "status": "VERIFIED",
+        "issues": []
+      },
+      "ownerUsdgAfter": "70000000",
+      "ownerAllowanceAfter": "0",
+      "observed": "VERIFIED, debit 5000000 raw, executions 3, gas 1076344"
+    },
+    {
+      "id": "F2-exhausted",
+      "gate": "SCHEDULE",
+      "kind": "REAL_FAULT",
+      "expected": "A after 3 of 3 runs, allowance available → Exhausted",
+      "observed": "reverted (mined): Exhausted()",
+      "reason": {
+        "name": "Exhausted",
+        "args": []
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "F3-expired",
+      "gate": "SCHEDULE",
+      "kind": "REAL_FAULT",
+      "expected": "A at/after expiresAt → Expired (the SDK refuses to build first; the plan is built for the last valid second)",
+      "observed": "reverted (mined): Expired()",
+      "reason": {
+        "name": "Expired",
+        "args": []
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true,
+      "sdkRefusal": "RECURRING_TERMS_INVALID"
+    },
+    {
+      "id": "R0-sdk-refuses-fee-bearing-bag",
+      "gate": "FEE_SCOPE",
+      "kind": "SDK_REFUSAL",
+      "expected": "a3caff05 declares performanceFeeBps 1000: the SDK refuses to build an authorization (fee-bearing BAGs are outside the first scope)",
+      "pass": true,
+      "observed": "RECURRING_TERMS_INVALID: strategies with a performance fee are not supported by recurring purchases yet."
+    },
+    {
+      "id": "R1-a3caff05-signed-for-v1",
+      "gate": "BAG_REGISTRY",
+      "kind": "REAL_FAULT",
+      "expected": "authorization for a3caff05 version 1 (BagFactory history, block 92213308); the creator recorded v2 → BagChanged(2, current hash)",
+      "observed": "reverted (mined): BagChanged(2,0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0)",
+      "reason": {
+        "name": "BagChanged",
+        "args": [
+          "2",
+          "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "R2-a3caff05-v2-registry-passes",
+      "gate": "BAG_REGISTRY",
+      "kind": "REAL_FAULT",
+      "expected": "a3caff05 v2 with the registered strategyId and definitionHash: BagFactory and StrategyRegistry checks pass; the call stops at the plan check → PlanMismatch(5)",
+      "observed": "reverted (mined): PlanMismatch(5)",
+      "reason": {
+        "name": "PlanMismatch",
+        "args": [
+          "5"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "R3-a3caff05-wrong-definition",
+      "gate": "BAG_REGISTRY",
+      "kind": "REAL_FAULT",
+      "expected": "a3caff05 v2 with another definitionHash → StrategyNotRegistered",
+      "observed": "reverted (mined): StrategyNotRegistered(0x72ec1d37c03f9bfb3dc369cf77f19841e7d0a7ca00ca3757605d97fb2f398cae,2)",
+      "reason": {
+        "name": "StrategyNotRegistered",
+        "args": [
+          "0x72ec1d37c03f9bfb3dc369cf77f19841e7d0a7ca00ca3757605d97fb2f398cae",
+          "2"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "R4-unknown-bag",
+      "gate": "BAG_REGISTRY",
+      "kind": "REAL_FAULT",
+      "expected": "bagId not in BagFactory → UnknownBag",
+      "observed": "reverted (mined): UnknownBag(0x7d3114750f8342b1f512067eb9c9460beebdd01cbd9988ca7d89a5649e4398f4)",
+      "reason": {
+        "name": "UnknownBag",
+        "args": [
+          "0x7d3114750f8342b1f512067eb9c9460beebdd01cbd9988ca7d89a5649e4398f4"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "R5-955df6e0-wrong-composition",
+      "gate": "BAG_REGISTRY",
+      "kind": "REAL_FAULT",
+      "expected": "955df6e0 with a3caff05's composition hash → BagChanged(1, real hash)",
+      "observed": "reverted (mined): BagChanged(1,0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148)",
+      "reason": {
+        "name": "BagChanged",
+        "args": [
+          "1",
+          "0xb01f70750ffa0fbcecf99958683aac3ceca89ff55e18f09913ecbf3dde5e0148"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "R6-955df6e0-claims-registered",
+      "gate": "BAG_REGISTRY",
+      "kind": "REAL_FAULT",
+      "expected": "955df6e0 is not in StrategyRegistry; naming its derived strategyId → StrategyNotRegistered",
+      "observed": "reverted (mined): StrategyNotRegistered(0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb,1)",
+      "reason": {
+        "name": "StrategyNotRegistered",
+        "args": [
+          "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+          "1"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "S1-a3caff05-no-v3-route",
+      "gate": "ROUTE_SCOPE",
+      "kind": "SDK_REFUSAL",
+      "expected": "a3caff05 v2 cannot be bought with v3 exactInputSingle: some asset has no USDG pool at any allowed tier → NO_ROUTE",
+      "pass": true,
+      "observed": "NO_ROUTE: No allowed Uniswap v3 fee tier quoted 0xeb61c0ed490a367d4e3631ccf8a74b3bfc7e775d."
+    },
+    {
+      "id": "M1-pre-move-plan-after-move",
+      "gate": "PRICE_POLICY",
+      "kind": "REAL_FAULT",
+      "expected": "the plan quoted before the move, honestly signed, is submitted after it: the swap cannot meet the minimum → reverted, nothing changes",
+      "observed": "reverted (mined): Error(Too little received)",
+      "reason": {
+        "name": "Error",
+        "args": [
+          "Too little received"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true,
+      "planDeadlineStillValid": true
+    },
+    {
+      "id": "M2-sdk-refuses-after-move",
+      "gate": "PRICE_POLICY",
+      "kind": "SDK_REFUSAL",
+      "expected": "fresh quotes are below the owner limit → PRICE_LIMIT_NOT_MET, no plan",
+      "pass": true,
+      "observed": "PRICE_LIMIT_NOT_MET: 0x6330d8c3178a418788df01a47479c0ce7ccf450b: every quotable fee tier reaches the owner's price limit."
+    },
+    {
+      "id": "M3-planSigner-accepts-market",
+      "gate": "PRICE_POLICY",
+      "kind": "REAL_FAULT",
+      "expected": "planSigner signs the post-move market price as the COIN minimum (below the owner limit) → RouteViolation(coin,11)",
+      "observed": "reverted (mined): RouteViolation(2,11)",
+      "reason": {
+        "name": "RouteViolation",
+        "args": [
+          "2",
+          "11"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true,
+      "marketOutRaw": "10416218669662688",
+      "ownerFloorRaw": "11228264631961999"
+    },
+    {
+      "id": "M4-calldata-min-zero",
+      "gate": "PRICE_POLICY",
+      "kind": "REAL_FAULT",
+      "expected": "planSigner keeps the router minimum at the owner floor but sets calldata amountOutMinimum = 0: the swap executes at the moved price and the measured-output check reverts it",
+      "observed": "reverted (mined): InsufficientOutput(0x6330D8C3178a418788dF01a47479c0ce7CCF450b,10416218669662688,11228264631961999)",
+      "reason": {
+        "name": "InsufficientOutput",
+        "args": [
+          "0x6330D8C3178a418788dF01a47479c0ce7CCF450b",
+          "10416218669662688",
+          "11228264631961999"
+        ]
+      },
+      "mined": true,
+      "stateUnchanged": true,
+      "pass": true
+    },
+    {
+      "id": "E1-other-recipient",
+      "gate": "RECEIPT_VERIFIER",
+      "kind": "ALTERED_EXPECTATION",
+      "expected": "expect another recipient",
+      "pass": true,
+      "observed": "FAILED: EVENT_MISSING, BELOW_PRICE_LIMIT"
+    },
+    {
+      "id": "E2-other-amount",
+      "gate": "RECEIPT_VERIFIER",
+      "kind": "ALTERED_EXPECTATION",
+      "expected": "expect 6 USDG per run",
+      "pass": true,
+      "observed": "FAILED: EVENT_MISSING, SOURCE_DEBIT_MISMATCH, BELOW_PRICE_LIMIT"
+    },
+    {
+      "id": "E3-other-executor",
+      "gate": "RECEIPT_VERIFIER",
+      "kind": "ALTERED_EXPECTATION",
+      "expected": "expect another executor address",
+      "pass": true,
+      "observed": "FAILED: NOT_EXECUTOR_TX, EVENT_MISSING, BELOW_PRICE_LIMIT"
+    },
+    {
+      "id": "E4-tighter-limits",
+      "gate": "RECEIPT_VERIFIER",
+      "kind": "ALTERED_EXPECTATION",
+      "expected": "expect limits 10× tighter",
+      "pass": true,
+      "observed": "FAILED: EVENT_MISSING, BELOW_PRICE_LIMIT"
+    },
+    {
+      "id": "K1-first-run",
+      "gate": "KEEPER",
+      "kind": "KEEPER_FORK",
+      "expected": "keeper A (file store) adds the signed authorization and buys window 0; the SDK verifies the real receipt",
+      "pass": true,
+      "observed": "PENDING_TX → DONE_THIS_WINDOW, VERIFIED 0x65301564e78b755095ef26d80623622e3f08c5b59f612c5d8c71bba0ca4f848f",
+      "tx": "0x65301564e78b755095ef26d80623622e3f08c5b59f612c5d8c71bba0ca4f848f"
+    },
+    {
+      "id": "K2-restart-same-store",
+      "gate": "KEEPER",
+      "kind": "KEEPER_FORK",
+      "expected": "a new keeper process on the same file store in the same window: nothing is sent",
+      "pass": true,
+      "observed": "DONE_THIS_WINDOW, nonce unchanged, chain executions 1"
+    },
+    {
+      "id": "K3-lost-store",
+      "gate": "KEEPER",
+      "kind": "KEEPER_FORK",
+      "expected": "a keeper with an EMPTY store re-adds the authorization: the chain counters keep the window closed; the earlier run is recovered from logs",
+      "pass": true,
+      "observed": "DONE_THIS_WINDOW, confirmed recovered 1, nonce unchanged"
+    },
+    {
+      "id": "K4-crash-after-send",
+      "gate": "KEEPER",
+      "kind": "KEEPER_FORK",
+      "expected": "window 1: the keeper crashes after sending, before storing the hash; the restart finds the purchase on chain and does not resend",
+      "pass": true,
+      "observed": "crashed=true, write-ahead hash=null, after restart: DONE_THIS_WINDOW, confirmed 2, chain executions 2, nonce unchanged"
+    },
+    {
+      "id": "K5-two-keepers",
+      "gate": "KEEPER",
+      "kind": "KEEPER_FORK",
+      "expected": "window 2: keeper B (own store, its node blind to A's pending tx) sends too; one purchase, B's mined revert is recorded, the owner is charged once",
+      "pass": true,
+      "observed": "both sent; chain executions 3; owner charged 5000000; reverted attempts recorded 1"
+    },
+    {
+      "id": "K6-gas-shortage",
+      "gate": "KEEPER",
+      "kind": "KEEPER_FORK",
+      "expected": "window 3: the keeper account has no ETH → GAS_SHORTAGE and nothing sent; funded again → the last run; then COMPLETED",
+      "pass": true,
+      "observed": "GAS_SHORTAGE (no tx) → confirmed 4 → COMPLETED; chain executions 4, grossUsed 20000000"
+    }
+  ],
+  "counts": {
+    "byKind": {
+      "LIFECYCLE": {
+        "pass": 7,
+        "fail": 0
+      },
+      "REAL_FAULT": {
+        "pass": 28,
+        "fail": 0
+      },
+      "SDK_REFUSAL": {
+        "pass": 3,
+        "fail": 0
+      },
+      "ALTERED_EXPECTATION": {
+        "pass": 4,
+        "fail": 0
+      },
+      "KEEPER_FORK": {
+        "pass": 6,
+        "fail": 0
+      }
+    },
+    "byGate": {
+      "LIFECYCLE": {
+        "pass": 5,
+        "fail": 0
+      },
+      "SCHEDULE": {
+        "pass": 3,
+        "fail": 0
+      },
+      "REVOCATION": {
+        "pass": 5,
+        "fail": 0
+      },
+      "FUNDING": {
+        "pass": 1,
+        "fail": 0
+      },
+      "PLAN_SIGNER_TRUST": {
+        "pass": 12,
+        "fail": 0
+      },
+      "FEE_SCOPE": {
+        "pass": 1,
+        "fail": 0
+      },
+      "BAG_REGISTRY": {
+        "pass": 6,
+        "fail": 0
+      },
+      "ROUTE_SCOPE": {
+        "pass": 1,
+        "fail": 0
+      },
+      "PRICE_POLICY": {
+        "pass": 4,
+        "fail": 0
+      },
+      "RECEIPT_VERIFIER": {
+        "pass": 4,
+        "fail": 0
+      },
+      "KEEPER": {
+        "pass": 6,
+        "fail": 0
+      }
+    }
+  },
+  "exit": {
+    "code": 0,
+    "status": "COMPLETE"
+  },
+  "quoteDiagnostics": {
+    "nonRevertErrors": []
+  },
+  "network": {
+    "allowedHosts": [
+      "rpc.mainnet.chain.robinhood.com",
+      "127.0.0.1"
+    ],
+    "requestsByHost": {
+      "127.0.0.1": 74,
+      "upstream-rpc": 1045
+    },
+    "refused": [],
+    "composerOrLifiRequests": 0,
+    "relay": {
+      "allowlist": [
+        "eth_chainId",
+        "net_version",
+        "eth_blockNumber",
+        "eth_getBlockByNumber",
+        "eth_getBlockByHash",
+        "eth_getCode",
+        "eth_getStorageAt",
+        "eth_getBalance",
+        "eth_getTransactionCount",
+        "eth_call",
+        "eth_getLogs",
+        "eth_getTransactionByHash",
+        "eth_getTransactionReceipt",
+        "eth_getProof"
+      ],
+      "forwardedRequests": 1042,
+      "forwardedByMethod": {
+        "eth_getCode": 145,
+        "eth_getTransactionCount": 145,
+        "eth_getBlockByNumber": 4,
+        "eth_chainId": 1,
+        "eth_blockNumber": 145,
+        "net_version": 1,
+        "eth_getBalance": 144,
+        "eth_getStorageAt": 389,
+        "eth_call": 68
+      },
+      "refusedRequests": 0,
+      "refusedMethods": {},
+      "retries": 3,
+      "upstreamErrors": {
+        "429": 3
+      },
+      "failures": 0,
+      "selfTest": {
+        "singleWriteRefused": true,
+        "batchWithWriteRefused": true
+      }
+    },
+    "forkLocalTransactions": 69,
+    "publicWrites": 0,
+    "note": "publicWrites is 0 by construction: the relay refuses every non-read method (self-tested at start) and counts refusals"
+  },
+  "forkChanges": [
+    {
+      "kind": "ARBSYS",
+      "method": "hardhat_setCode",
+      "target": "0x0000000000000000000000000000000000000064",
+      "note": "ArbSys read emulation (Nitro precompile is not in EDR)",
+      "at": 0
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xcB9CA62Aa702a93A6E239458Ee9eCBed7BA9A4bc",
+      "note": "fork-only gas for a local test account",
+      "at": 1
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x0C78Ecf7101190DcC19B907A78b6240DB20000D9",
+      "note": "fork-only gas for a local test account",
+      "at": 2
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x68e688eC8a950E535f1B5bCEFb1E345f516C8AD2",
+      "note": "fork-only gas for a local test account",
+      "at": 3
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xAD877a216e0643A905fd2eF1bE10e6818eC301B9",
+      "note": "fork-only gas for a local test account",
+      "at": 4
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xd6f636559D5fE1A70B04c5DF30585947e0153BCb",
+      "note": "fork-only gas for a local test account",
+      "at": 5
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x1809624C64FFfbFf473e1B76C944F7BAD30d1d17",
+      "note": "fork-only gas for a local test account",
+      "at": 6
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x062d71DF841B7EDfc350782F550e3DD678c078Af",
+      "note": "fork-only gas for a local test account",
+      "at": 7
+    },
+    {
+      "kind": "IMPERSONATE",
+      "method": "hardhat_impersonateAccount",
+      "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+      "note": "USDG for test accounts from a real holder balance (fork only)",
+      "at": 8
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+      "note": "gas for the impersonated holder",
+      "at": 9
+    },
+    {
+      "kind": "SET_CODE",
+      "method": "hardhat_setCode",
+      "target": "0x008f01d056eb06d708eaeC1e2e27B82435910CB9",
+      "note": "executor runtime from 0xb50b04626e87c7d34bb58d816944e822f8a4a457 (immutables: real BagFactory, real StrategyRegistry) at the keyless address",
+      "at": 10
+    },
+    {
+      "kind": "SET_CODE",
+      "method": "hardhat_setCode",
+      "target": "0xb50b04626e87c7d34bb58d816944e822f8a4a457",
+      "note": "remove the deployer-address copy so only the keyless executor exists",
+      "at": 11
+    },
+    {
+      "kind": "SNAPSHOT",
+      "method": "evm_snapshot",
+      "note": "isolate the price-move scenarios (reverted after M4)",
+      "at": 12
+    },
+    {
+      "kind": "REVERT",
+      "method": "evm_revert",
+      "target": "0x3f",
+      "note": "undo the attacker swaps of the price-move scenarios",
+      "at": 13
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xAe4eA4dD53CEBdBaEbe2C31D3e75C371b188C000",
+      "note": "fork-only gas for a keeper test account",
+      "at": 14
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0x5121b54D9D8E82Ed719Ef9968Fb28E54FA837946",
+      "note": "fork-only gas for a keeper test account",
+      "at": 15
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xAe4eA4dD53CEBdBaEbe2C31D3e75C371b188C000",
+      "note": "keeper out of gas (fork only)",
+      "at": 16
+    },
+    {
+      "kind": "GAS",
+      "method": "hardhat_setBalance",
+      "target": "0xAe4eA4dD53CEBdBaEbe2C31D3e75C371b188C000",
+      "note": "keeper funded again (fork only)",
+      "at": 17
+    }
+  ],
+  "finishedAt": "2026-10-25T08:00:56.923Z"
+}

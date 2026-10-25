@@ -4,3 +4,4 @@ src-v130/
 **/*-trace.json
 # Human signatures stay local; never commit or ship them.
 wallet-fork/private/
+executor-wallet/private/
