@@ -113,6 +113,18 @@ The Composer path can stay as an alternative provider; nothing has to be removed
 2. **Gasless/agent submission.** Relayer-submitted `settleWithPermit`; a fee leg pays the relayer.
 3. **Intent filling.** Publish `BagPurchase` as an order that any filler can satisfy by delivering `tokensOut ≥ minOut` (UniswapX/CoW shape): the user signs outcomes, not routes. Cross-chain baskets via ERC-7683 order data later.
 
+## Alternative considered: general composable router (ERC-8211 + diamond)
+
+Proposal: a router that executes ERC-8211 "smart batching" programs (runtime-resolved parameters, predicates, return values written to state), with target/selector allowlists, delegatecall/CALL contexts and a diamond proxy with ERC-7201 storage. Rejected for this purpose:
+
+- It rebuilds Composer, Weiroll or Biconomy's MEE, which already ships an audited ERC-8211 implementation. BAG would own a general VM without being differentiated by it.
+- A general program is what forces trace-based receipt verification today. BagSettler's value is that one fixed code path plus one event proves the outcome.
+- An upgradeable diamond with facets is LI.FI's architecture: the 2024 loss came from a newly added facet. Upgradeability also brings back an owner that agents must trust, which is the factory-policy/deployment-pin gate in another form.
+- Delegatecall belongs in the user's own account (7702/7579), not in a shared router whose storage and balances all users touch.
+- Target/selector allowlists did not stop the cited incidents and block arbitrary bag.json assets and quoters.
+
+What to keep: ERC-8211 is a reasonable account-side encoding. The SDK can later emit an ERC-8211 or EIP-5792 batch (exact approve → `BagSettler.settle`) for smart accounts. Its predicates duplicate checks the settler already enforces, so they are optional.
+
 ## Risks and open questions
 
 - **Audit cost and blast radius.** Small (estimated <300 lines), but it moves user funds. Immutability means a bug is fixed by deploying a new version and moving the SDK pin.
