@@ -24,7 +24,7 @@ const NOT_BLOCKING = new Set(['REGISTRY_NOT_CONFIGURED', 'FORK_PARENT_VERSION_UN
 
 interface PrepareResponse {
   transaction?: { to: string; data: string; chainId: number };
-  kind?: 'REGISTER' | 'REGISTER_FORK' | 'PUBLISH_VERSIONS';
+  kind?: 'REGISTER' | 'REGISTER_FORK' | 'PUBLISH_VERSIONS' | 'PUBLISH_COMPOSITION';
   covers?: { version: number }[];
   error?: string;
   code?: string;
@@ -74,7 +74,15 @@ export function useStrategyRegistration(bagId: string) {
           return json.code && NOT_BLOCKING.has(json.code) ? 'skipped' : 'failed';
         }
         const versions = (json.covers ?? []).map((c) => `v${c.version}`).join(', ');
-        setStep(json.kind === 'PUBLISH_VERSIONS' ? `Publishing ${versions}` : json.kind === 'REGISTER_FORK' ? 'Registering the fork (v1)' : 'Registering v1');
+        setStep(
+          json.kind === 'PUBLISH_COMPOSITION'
+            ? `Publishing ${versions} weights`
+            : json.kind === 'PUBLISH_VERSIONS'
+              ? `Publishing ${versions}`
+              : json.kind === 'REGISTER_FORK'
+                ? 'Registering the fork (v1)'
+                : 'Registering v1'
+        );
         let txHash: string;
         try {
           setPhase('awaiting_signature');
