@@ -224,9 +224,13 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
     fail('an ERC-20 purchase must not send native value.');
   }
 
+  const seenSpenders = new Set<string>();
   const approvals = r.approvals.map((a) => {
     if (normalizeAddress(a.token) !== plan.inputToken) fail(`approval requested for ${a.token}, not the input token.`, 'APPROVAL_INVALID');
     if (!ADDRESS_RE.test(a.spender) || !UINT_RE.test(a.amountRaw)) fail('malformed approval.', 'APPROVAL_INVALID');
+    // One input token: a second approval to the same spender is not a plan, it only overwrites the first allowance.
+    if (seenSpenders.has(a.spender.toLowerCase())) fail(`duplicate approval for spender ${a.spender}.`, 'APPROVAL_INVALID');
+    seenSpenders.add(a.spender.toLowerCase());
     if (!trusted.spenders.has(a.spender.toLowerCase())) fail(`approval spender ${a.spender} is not in the caller's trusted spender allowlist.`, 'UNTRUSTED_SPENDER');
     if (BigInt(a.amountRaw) > plan.swapAmountRaw) fail('approval above the swapped amount.', 'APPROVAL_INVALID');
     return { token: plan.inputToken as Hex, spender: a.spender as Hex, amountRaw: BigInt(a.amountRaw) };
@@ -343,9 +347,10 @@ export async function compileBag(bag: BagDocument, req: PurchaseRequest, options
   return checked(plan, options.provider.name, result, trusted, requestedAtMs, Date.now(), signedUsdImpactProviders.has(options.provider));
 }
 
-/** Anything with viem's `readContract` and `call` (a viem PublicClient on the strategy's chain); `getBalance` for a native purchase. */
+/** Anything with viem's `getCode`, `readContract` and `call` (a viem PublicClient on the strategy's chain); `getBalance` for a native purchase. */
 export interface SimulationClient {
   getChainId(): Promise<number>;
+  getCode(args: { address: Hex }): Promise<Hex | undefined>;
   getBalance?(args: { address: Hex }): Promise<bigint>;
   readContract(args: { address: Hex; abi: readonly unknown[]; functionName: string; args?: readonly unknown[] }): Promise<unknown>;
   call(args: { account: Hex; to: Hex; data: Hex; value?: bigint }): Promise<unknown>;
@@ -354,6 +359,7 @@ export interface SimulationClient {
 export type SimulationResult =
   | { status: 'OK' }
   | { status: 'QUOTE_EXPIRED'; source: 'PROVIDER' | 'LOCAL_MAX_AGE'; expiresAtMs: number; checkedAtMs: number }
+  | { status: 'INVALID_TARGET'; address: Hex }
   | { status: 'NEEDS_APPROVAL'; missing: CompiledPurchase['approvals'] }
   | { status: 'INSUFFICIENT_BALANCE'; balanceRaw: bigint; requiredRaw: bigint }
   | { status: 'REVERTED'; reason: string };
@@ -371,8 +377,8 @@ const ERC20_READ_ABI = [
 
 /**
  * Dry-runs a compiled purchase from the signer with `eth_call` on the caller's client. Read-only. Checks, in
- * order: the client is on the plan's chain, the signer holds the full input budget (including any kept share), the approvals are in place, then the
- * call itself. Known provider deadlines and an optional local maximum age are checked before reads, before
+ * order: the client is on the plan's chain, the transaction target is a contract, the signer holds the full input budget (including any kept
+ * share), the approvals are in place, then the call itself. Known provider deadlines and an optional local maximum age are checked before reads, before
  * eth_call and after it. A simulation is a point-in-time check, not a guarantee: prices and routes move.
  */
 export async function simulateBag(compiled: CompiledPurchase, options: SimulateBagOptions): Promise<SimulationResult> {
@@ -401,6 +407,11 @@ export async function simulateBag(compiled: CompiledPurchase, options: SimulateB
   const chainId = await client.getChainId();
   if (chainId !== plan.chainId) throw new BagSdkError('CHAIN_MISMATCH', `simulateBag: client is on chain ${chainId}, the purchase is for ${plan.chainId}.`);
   const signer = plan.signer as Hex;
+
+  // An eth_call to an address without code succeeds and returns nothing, so a missing contract would read as OK.
+  // Approval spenders are not checked: Composer's first purchase approves the user's proxy before it is deployed.
+  const targetCode = await client.getCode({ address: compiled.transaction.to });
+  if (!targetCode || targetCode === '0x') return expired() ?? { status: 'INVALID_TARGET', address: compiled.transaction.to };
 
   let balance: bigint;
   if (plan.inputKind === 'native') {
