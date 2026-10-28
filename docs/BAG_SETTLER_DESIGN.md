@@ -4,7 +4,7 @@ Status: design proposal, 2026-10-28. Nothing here is deployed or audited. It doe
 
 ## Problem
 
-The SDK can only execute a purchase through LI.FI Composer. Three of the four 0.3.0 release gates (`packages/bag-sdk/release-gates.json`) exist only because of that: the production factory policy, the deployment pin and the trace-based receipt readers (Geth 1.16 / Nitro) that reconstruct what a Composer VM program did. A BAG-owned settlement contract would remove the execution monopoly and most of that verification machinery.
+The SDK can only execute a purchase through LI.FI Composer. On Base and Arbitrum that purchase also cannot be verified in practice: the Nitro balance reader accepts only Robinhood's chain id, the Geth reader requires a `Geth/v1.16.` client string, and the remaining mode refuses blocks with more than one transaction (`packages/bag-sdk/src/adapters/receipt-rpc.ts`). Three of the four 0.3.0 release gates (`packages/bag-sdk/release-gates.json`) exist only because of that: the production factory policy, the deployment pin and the trace-based receipt readers (Geth 1.16 / Nitro) that reconstruct what a Composer VM program did. A BAG-owned settlement contract would remove the execution monopoly and most of that verification machinery.
 
 `contracts/BagExecutionRouter.sol` already exists, but it is built for the app, not for the SDK:
 
@@ -91,7 +91,7 @@ Only `legsHash` goes into the witness, so the Permit2 signature stays small. The
 The router does not route. The SDK's existing provider seam (`ComposerProvider.compile`) becomes a per-leg `LegQuoter`:
 
 - **Aggregator legs:** 0x, 1inch, Odos, KyberSwap, ParaSwap, with taker/recipient set to the router. Quotes are taken per leg and the best wins, so no single API is load-bearing.
-- **Direct AMM legs without an API key:** Uniswap v3/v4 and Aerodrome-style pools encoded by the SDK. Worse prices on large orders, but always available. Required on chains aggregators don't cover (check Robinhood first).
+- **Direct AMM legs without an API key:** Uniswap v3/v4 and Aerodrome-style pools encoded by the SDK. Worse prices on large orders, but always available. Required on chains aggregators don't cover (check Robinhood first). Start from the QuoterV2-based run builder in PR #130 (`@bagprotocol/sdk/uniswap-v3`) rather than writing a second one.
 - **LI.FI** remains one quoter, not the execution layer.
 
 The router checks outcomes regardless of where calldata came from, so a wrong or malicious quote fails closed.
@@ -152,6 +152,23 @@ A stateless service: simulate, submit `settleWithPermit`, receive `relayerFee` i
 | Same address deploy | CreateX present (Composer's factory uses it there) | Verify | Verify |
 
 Verify these before deployment with `npx tsx scripts/verify-settler-prereqs.ts` (read-only: Permit2, CreateX / deployment proxy and their cross-chain runtime match, wrapped native, payment token and its EIP-2612 surface, a Uniswap v3 wrapped-native/payment pool). Robinhood stock tokens are routed through their Uniswap v3 pools against USDG/WETH; measure their depth with `scripts/check-fee-router-liquidity.ts`. Receipt verification is the same event check on all three chains, so the Nitro trace reader is not needed for settler purchases.
+
+## Relation to the DCA executor (PR #130)
+
+PR #130 (draft, stacked on #128/#129) adds `RecurringPurchaseExecutor`, a Composer-free executor for recurring purchases built on the same principles: no owner, upgrade or pause; the user's signed limits enforced on chain; outputs measured as balance deltas; a direct Uniswap v3 run builder in the SDK. It still executes through `BagExecutionRouter`, so every run needs a `planSigner` signature and a keeper. The two designs fit together rather than compete:
+
+| Concern | Proposed owner |
+|---|---|
+| One purchase: pull input, run legs, check floors, deliver, emit `BasketSettled` | BagSettler |
+| Recurring authorization: calendar, budget, runs, price ceiling, revocation | `RecurringPurchaseExecutor`, calling BagSettler instead of `BagExecutionRouter` |
+| Direct AMM legs | #130's `@bagprotocol/sdk/uniswap-v3` builder |
+
+With BagSettler underneath, a keeper can build each run's legs from QuoterV2 itself and the executor checks them against the signed limits, so the `planSigner` dependency #130 discloses goes away.
+
+Two ideas from #130 to adopt here:
+
+- **Composition binding on chain.** #130's executor rebuilds the `chain:address:symbol:decimals:weightBps` string from the signed asset rows and requires its keccak to equal `Bag.compositionHash()`. BagSettler v1 only records `definitionHash` in its event. For a factory-deployed Bag, an optional `bag` field in `BagPurchase` could make the settler check the legs' tokens and weights against `compositionHash` the same way. Open: how tightly to bind leg amounts to weights on chain (exact largest-remainder split vs a ±1 unit bound).
+- **Prepared-call binding in verification.** `verifyRecurringPurchase` compares the mined calldata with the prepared intent byte for byte (`PREPARED_INTENT`) before reading balances. The settler's event check should keep that step.
 
 ## Phases
 
