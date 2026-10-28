@@ -115,15 +115,19 @@ The Composer path can stay as an alternative provider; nothing has to be removed
 
 ## Alternative considered: general composable router (ERC-8211 + diamond)
 
-Proposal: a router that executes ERC-8211 "smart batching" programs (runtime-resolved parameters, predicates, return values written to state), with target/selector allowlists, delegatecall/CALL contexts and a diamond proxy with ERC-7201 storage. Rejected for this purpose:
+Proposal: a router that executes ERC-8211 "smart batching" batches (runtime-resolved parameters, predicates, return values written to state), with target/selector allowlists, delegatecall/CALL contexts and a diamond proxy with ERC-7201 storage. Rejected for this purpose:
 
-- It rebuilds Composer, Weiroll or Biconomy's MEE, which already ships an audited ERC-8211 implementation. BAG would own a general VM without being differentiated by it.
-- A general program is what forces trace-based receipt verification today. BagSettler's value is that one fixed code path plus one event proves the outcome.
+- ERC-8211 is not a general VM: it adds three primitives to an ordinary batch format. But a router built around it executes caller-composed batches, which puts BAG in the business Composer and Biconomy's MEE (which already ships an audited ERC-8211 implementation) are in, without being differentiated by it.
+- Caller-composed execution is what forces trace-based receipt verification today. BagSettler's value is that one fixed code path plus one event proves the outcome.
 - An upgradeable diamond with facets is LI.FI's architecture: the 2024 loss came from a newly added facet. Upgradeability also brings back an owner that agents must trust, which is the factory-policy/deployment-pin gate in another form.
 - Delegatecall belongs in the user's own account (7702/7579), not in a shared router whose storage and balances all users touch.
 - Target/selector allowlists did not stop the cited incidents and block arbitrary bag.json assets and quoters.
 
-What to keep: ERC-8211 is a reasonable account-side encoding. The SDK can later emit an ERC-8211 or EIP-5792 batch (exact approve → `BagSettler.settle`) for smart accounts. Its predicates duplicate checks the settler already enforces, so they are optional.
+What to keep: ERC-8211 is a reasonable account-side encoding. The SDK can later emit an ERC-8211 or EIP-5792 batch (exact approve → `BagSettler.settle`) for smart accounts. Rules for that layer:
+
+- Predicates are an extra wallet-side check. They never replace the settler's own floors, and `settle` must remain directly callable without any batch layer.
+- Runtime-resolved parameters may feed only the `msg.sender`-payer path. A Permit2 witness signs exact amounts, so the permit path takes no values resolved at execution time.
+- Any convenience contract stays outside the settler, receives no standing approvals and cannot change what `BasketSettled` attests. None is planned for v1.
 
 ## Risks and open questions
 
