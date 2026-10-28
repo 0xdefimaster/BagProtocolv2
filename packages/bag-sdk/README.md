@@ -426,6 +426,21 @@ A looser value is refused (`LOOSER_THAN_POLICY`). An optional `allowedTokens` re
 - **Before calling the provider:** the SDK validates the strategy and purchase inputs, builds the plan, checks its slippage and price-impact policy, and requires a caller trust policy whose chain matches the plan. The target/spender allowlist contents are also checked for valid addresses.
 - **After the provider responds:** the SDK checks the returned transaction's chain and target, native value, approval token/spender/amount, planned output tokens and slippage bounds on every leg, and reported price impact. A target or spender that is not allowlisted is rejected here, before the unsigned transaction is returned to the caller.
 
+#### Negative (favorable) price impact: LI.FI Composer only
+
+Composer reports `priceImpact` as USD values of the priced input and outputs plus a signed `impactBps`. When the priced outputs are worth more than the priced input, `impactBps` is negative. This can happen with a stale reference price, an input token valued slightly off its peg, or a stock-token pool trading outside market hours. The SDK keeps the raw value and never clamps it. The quote exposes `priceImpactBps` (possibly negative) and `priceImpactUsd`.
+
+A negative value is accepted only from a provider created by `lifiComposer`, and only when all of these hold:
+- `inputValueUsd` is finite and positive;
+- `outputValueUsd` is finite and above the input value;
+- `impactBps` is a safe integer;
+- no asset is listed as unpriced;
+- `impactBps` lies within ±1 bps of `(inputValueUsd − outputValueUsd) / inputValueUsd × 10 000`.
+
+Otherwise the quote fails with `PRICE_IMPACT_INVALID`.
+
+The ±1 bps tolerance is a compatibility tolerance from observed API behavior. Composer 0.11.3 returned `-6` where that ratio is `-6.33`. It is **not** LI.FI's documented formula, and it is **not** an independent price check: the comparison uses the provider's own USD values. Other providers, including custom ones, keep the non-negative rule. The `maxPriceImpactBps` limit now applies in both directions: a negative value below `−maxPriceImpactBps` fails with `PRICE_IMPACT_EXCEEDED`, because a favorable gap that large more likely means a wrong reference price than a real gain. The per-leg minimum outputs, the slippage bound and all transaction checks apply unchanged. LI.FI has confirmed (2026-10-24) that the impact is the difference between total input and output value and that negative values are valid; the exact rounding was not specified.
+
 Every swapped leg must report positive `expectedOutRaw` and `minOutRaw` in the same output-token units. The minimum must be no greater than the estimate and at least `floor(expectedOutRaw * (10000 - slippageBps) / 10000)`. Integer arithmetic permits less than one raw unit of rounding; a missing/zero estimate or an excessive gap is refused. This is a consistency check on the provider's reported quote, not proof of its calldata. Composer may report a simulated estimate and an operation-based minimum: an improved simulation can make that minimum fall outside this SDK bound, in which case compilation is conservatively refused rather than widening the caller's tolerance.
 
 Anything else throws `ProviderResponseError`.

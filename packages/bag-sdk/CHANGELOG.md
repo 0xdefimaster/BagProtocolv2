@@ -11,6 +11,7 @@ This candidate contains changes after the npm 0.2.1 publication. bag.json v1 def
 - Preserve quote timing/deadlines, actual fee recipient addresses and structured provider warnings; reject known expired quotes.
 - Add stable SDK-owned error codes, safe diagnostic summaries and bounded/cancellable strategy HTTP retrieval.
 - Add the independent public-package consumer starter and clean tarball installation checks.
+- Pass LI.FI Composer's signed price impact through unchanged with its USD valuation (`PurchaseQuote.priceImpactUsd`). A negative (favorable) impact from that adapter is accepted when the USD values are finite, the output is above the input, nothing is unpriced, and the value is within ±1 bps of the USD ratio (an observed-behavior compatibility tolerance, not LI.FI's documented formula). Other providers still refuse negative values.
 - Add `selectExecutionPath`, a pure rule table choosing how a wallet pays (native, direct, atomic EIP-5792 batch, Permit2 relayed/self, sequential) with stable reasons for every path, and `hasAtomicBatchCapability` for reading `wallet_getCapabilities`.
 
 ### Integration changes
@@ -21,6 +22,7 @@ This candidate contains changes after the npm 0.2.1 publication. bag.json v1 def
 - Public quotes now carry local timing, an optional known provider deadline, normalized fee addresses and warnings. Custom providers may omit the new metadata.
 - SDK-owned ProviderResponseError / PurchasePlanError retain their identities and add stable codes. Account RPC failures are sanitized as RPC_READ_FAILED; use getSdkErrorInfo for display. Upstream Composer typed errors remain upstream errors.
 - fetchBag now has a default 15-second request/body deadline; callers can set timeoutMs and AbortSignal.
+- `quote.priceImpactBps` can be negative for LI.FI Composer quotes. `maxPriceImpactBps` applies in both directions (`|impactBps| ≤ maxPriceImpactBps`); a larger favorable gap fails with PRICE_IMPACT_EXCEEDED.
 
 Production factory policy confirmation, final deployment approval and a newly signed purchase verified against its ORIGINAL intent remain release gates. This changelog does not claim live purchase proof or npm publication.
 
