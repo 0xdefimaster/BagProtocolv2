@@ -6,6 +6,7 @@ import { buildBagJson, loadStrategyVersionRows } from '@/lib/server/strategy-api
 import { confirmStrategyRegistration, getRegistrationStatus, prepareStrategyRegistration } from '@/lib/server/strategy-registration';
 import { computeOnChainBagId } from '@/lib/domain/basket-protocol/onchain';
 import { readRegistryRecord, registryStrategyId, verifyBagJsonCommitment } from '@/lib/domain/basket-protocol/strategy-registry';
+import { compareComposition, definitionToAllocations, readOnchainComposition, toContractAllocations } from '@/lib/domain/basket-protocol/strategy-compositions';
 import { TestDatabase, createTestDatabase, validRecipeInput } from './pg-harness';
 
 // -----------------------------------------------------------------------------
@@ -20,12 +21,14 @@ let db: TestDatabase;
 let viem: Awaited<ReturnType<typeof network.connect>>['viem'];
 let publicClient: PublicClient;
 let registry: Hex;
+let compositions: Hex;
 
 beforeAll(async () => {
   db = await createTestDatabase({ mode: 'fresh' });
   viem = (await network.connect()).viem;
   publicClient = (await viem.getPublicClient()) as unknown as PublicClient;
   registry = (await viem.deployContract('StrategyRegistry', [])).address;
+  compositions = (await viem.deployContract('StrategyCompositions', [registry])).address;
 });
 afterAll(async () => {
   await db?.drop();
@@ -190,5 +193,80 @@ describe('StrategyRegistry registration (user-signed)', () => {
     const other = await creator();
     expect(await prepareStrategyRegistration(db.client, other.session, bag.id, deps())).toEqual({ ok: false, error: 'FORBIDDEN' });
     expect(await prepareStrategyRegistration(db.client, c.session, bag.id, { ...deps(), registryAddress: null })).toEqual({ ok: false, error: 'REGISTRY_NOT_CONFIGURED' });
+  });
+});
+
+describe('StrategyCompositions publication (user-signed, after registration)', () => {
+  const withComp = () => ({ ...deps(), compositionsAddress: compositions });
+  const chainIdOf = (c: string) => (c === 'robinhood' ? 4663 : null);
+
+  async function next(c: Awaited<ReturnType<typeof creator>>, bagId: string) {
+    const prepared = await prepareStrategyRegistration(db.client, c.session, bagId, withComp());
+    if (!prepared.ok) throw new Error(JSON.stringify(prepared));
+    const txHash = await c.w.sendTransaction({ to: prepared.transaction.to, data: prepared.transaction.data });
+    return { prepared, txHash, confirmed: await confirmStrategyRegistration(db.client, c.session, bagId, txHash, withComp()) };
+  }
+
+  it('after v1 is registered, its weights are published from the same wallet, verified against bag.json and recorded; v2 follows the same path', async () => {
+    const c = await creator();
+    const bag = await strategy(c);
+    expect((await next(c, bag.id)).prepared.kind).toBe('REGISTER');
+
+    const comp = await next(c, bag.id);
+    expect(comp.prepared).toMatchObject({ kind: 'PUBLISH_COMPOSITION', covers: [{ version: 1 }], transaction: { to: compositions } });
+    expect(comp.confirmed).toMatchObject({ ok: true, alreadyRecorded: false, registrations: [] });
+    expect(await prepareStrategyRegistration(db.client, c.session, bag.id, withComp())).toEqual({ ok: false, error: 'NOTHING_TO_REGISTER' });
+
+    // The chain holds this version's weights, independently of BAG.
+    const id = registryStrategyId(c.session.walletAddress, bag.id);
+    const expected = definitionToAllocations((await bagJson(bag.id, 1)).definition, chainIdOf);
+    if (!expected.ok) throw new Error(expected.reason);
+    const onchain = await readOnchainComposition(publicClient as never, compositions, id, 1);
+    expect(compareComposition(expected.allocations, onchain!).matches).toBe(true);
+    const row = (await db.admin.query('select version, compositions_address, allocations from strategy_compositions where bag_id = $1', [bag.id])).rows;
+    expect(row).toEqual([{ version: 1, compositions_address: compositions.toLowerCase(), allocations: expected.allocations.map((a) => ({ chainId: a.chainId.toString(), token: a.token, weightBps: a.weightBps })) }]);
+
+    // Idempotent; a recorded composition cannot be claimed by another Bag.
+    expect(await confirmStrategyRegistration(db.client, c.session, bag.id, comp.txHash, withComp())).toMatchObject({ ok: true, alreadyRecorded: true });
+    expect(await confirmStrategyRegistration(db.client, c.session, (await strategy(c)).id, comp.txHash, withComp())).toEqual({ ok: false, error: 'TX_ALREADY_USED' });
+
+    const v2 = await createBagVersion(db.client, { bagId: bag.id, createdBy: c.session.userId, reason: 'v2', recipe: otherRecipe() });
+    if (!v2.ok) throw new Error(JSON.stringify(v2));
+    expect((await next(c, bag.id)).prepared).toMatchObject({ kind: 'PUBLISH_VERSIONS', covers: [{ version: 2 }] });
+    vi.stubEnv('STRATEGY_REGISTRY_ADDRESS_ROBINHOOD', registry);
+    vi.stubEnv('STRATEGY_COMPOSITIONS_ADDRESS_ROBINHOOD', compositions);
+    const pending = await getRegistrationStatus(db.client, bag.id, c.session.userId);
+    expect(pending).toMatchObject({ compositionsAddress: compositions.toLowerCase(), compositionPending: true });
+    expect(pending!.versions.map((v) => [v.version, v.compositionPublished])).toEqual([[1, true], [2, false]]);
+    expect((await next(c, bag.id)).prepared).toMatchObject({ kind: 'PUBLISH_COMPOSITION', covers: [{ version: 2 }] });
+    const done = await getRegistrationStatus(db.client, bag.id, c.session.userId);
+    vi.unstubAllEnvs();
+    expect(done).toMatchObject({ compositionPending: false });
+    expect(done!.versions.map((v) => [v.version, v.compositionPublished])).toEqual([[1, true], [2, true]]);
+  });
+
+  it('weights the creator publishes directly that are not the bag.json definition are never recorded', async () => {
+    const c = await creator();
+    const bag = await strategy(c);
+    await next(c, bag.id); // register v1
+    const id = registryStrategyId(c.session.walletAddress, bag.id);
+    const real = definitionToAllocations((await bagJson(bag.id, 1)).definition, chainIdOf);
+    if (!real.ok) throw new Error(real.reason);
+    const swapped = real.allocations.map((a, i, all) => ({ ...a, weightBps: all[all.length - 1 - i].weightBps }));
+    const tx = await c.w.writeContract({
+      address: compositions,
+      abi: (await viem.getContractAt('StrategyCompositions', compositions)).abi,
+      functionName: 'publishComposition',
+      args: [id, 1, toContractAllocations(swapped)],
+    });
+    expect(await confirmStrategyRegistration(db.client, c.session, bag.id, tx, withComp())).toMatchObject({ ok: false, error: 'VERIFICATION_FAILED' });
+    expect((await db.admin.query('select count(*)::int as n from strategy_compositions where bag_id = $1', [bag.id])).rows[0].n).toBe(0);
+  });
+
+  it('without a configured StrategyCompositions the flow ends after registration, as before', async () => {
+    const c = await creator();
+    const bag = await strategy(c);
+    await registerNext(c, bag.id);
+    expect(await prepareStrategyRegistration(db.client, c.session, bag.id, { ...deps(), compositionsAddress: null })).toEqual({ ok: false, error: 'NOTHING_TO_REGISTER' });
   });
 });

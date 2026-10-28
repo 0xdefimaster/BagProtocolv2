@@ -2,7 +2,17 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { network } from 'hardhat';
-import { hashBag, offChainRefOf, parseBag, registryStrategyId, validateBag, verifyRegistryCommitment, type BagDocument, type ContractReader } from '../../packages/bag-sdk/src/index';
+import {
+  hashBag,
+  offChainRefOf,
+  parseBag,
+  registryStrategyId,
+  STRATEGY_REGISTRY_DEPLOYMENTS,
+  validateBag,
+  verifyRegistryCommitment,
+  type BagDocument,
+  type ContractReader,
+} from '../../packages/bag-sdk/src/index';
 
 // -----------------------------------------------------------------------------
 // The standalone SDK (packages/bag-sdk) against the REAL StrategyRegistry on
@@ -10,7 +20,14 @@ import { hashBag, offChainRefOf, parseBag, registryStrategyId, validateBag, veri
 // registers the hash the SDK computes from a hand-written bag.json, and a
 // third party verifies it with only the file, the expected creator, the
 // registry address and an RPC client. NOT a real-chain test.
+//
+// The SDK verifies only on the strategy's own chain and at its known registry
+// (STRATEGY_REGISTRY_DEPLOYMENTS), so the local EVM runs as Robinhood Chain and
+// the deployed registry's runtime code is placed at the known Robinhood address
+// (StrategyRegistry has no constructor arguments or immutables).
 // -----------------------------------------------------------------------------
+
+const KNOWN = STRATEGY_REGISTRY_DEPLOYMENTS.robinhood!;
 
 const UUID = '55555555-5555-4555-8555-555555555555';
 const FORK_UUID = '66666666-6666-4666-8666-666666666666';
@@ -26,12 +43,17 @@ function served(uuid: string, version: number, mutate: (d: any) => void = () => 
 }
 
 async function setup() {
-  const { viem } = await network.connect();
-  const client = (await viem.getPublicClient()) as unknown as ContractReader;
+  const { viem } = await network.connect({ override: { chainId: KNOWN.chainId } });
+  const publicClient = await viem.getPublicClient();
+  const client = publicClient as unknown as ContractReader;
   const [alice, bob] = await viem.getWalletClients();
-  const registry = await viem.deployContract('StrategyRegistry', []);
+  const deployed = await viem.deployContract('StrategyRegistry', []);
+  const runtime = await publicClient.getCode({ address: deployed.address });
+  assert.ok(runtime && runtime !== '0x');
+  await (await viem.getTestClient()).setCode({ address: KNOWN.address, bytecode: runtime });
+  const registry = await viem.getContractAt('StrategyRegistry', KNOWN.address);
   const as = (wallet: typeof alice) => viem.getContractAt('StrategyRegistry', registry.address, { client: { wallet } });
-  return { registry, client, alice, bob, as };
+  return { registry, otherAddress: deployed.address, client, alice, bob, as };
 }
 
 describe('bag-sdk ↔ StrategyRegistry (in-process EVM)', () => {
@@ -56,8 +78,8 @@ describe('bag-sdk ↔ StrategyRegistry (in-process EVM)', () => {
     }
   });
 
-  it('not verified: wrong expected creator, tampered definition, unregistered version', async () => {
-    const { registry, client, alice, bob, as } = await setup();
+  it('not verified: wrong expected creator, tampered definition, unregistered version, unknown registry address', async () => {
+    const { registry, otherAddress, client, alice, bob, as } = await setup();
     const v1 = served(UUID, 1);
     await (await as(alice)).write.registerStrategy([offChainRefOf(UUID), hashBag(v1), '']);
 
@@ -72,6 +94,11 @@ describe('bag-sdk ↔ StrategyRegistry (in-process EVM)', () => {
     assert.equal((await verifyRegistryCommitment({ bag: tampered, expectedCreator: alice.account.address, registry: registry.address, client })).verified, false);
 
     assert.equal((await verifyRegistryCommitment({ bag: served(UUID, 2), expectedCreator: alice.account.address, registry: registry.address, client })).verified, false);
+
+    // The same registry code at any other address on this chain is refused before its records are read.
+    const elsewhere = await verifyRegistryCommitment({ bag: v1, expectedCreator: alice.account.address, registry: otherAddress, client });
+    assert.equal(elsewhere.verified, false);
+    assert.equal(elsewhere.checks.find((c) => c.name === 'REGISTRY_ADDRESS_MATCHES_KNOWN_DEPLOYMENT')?.ok, false);
   });
 
   it('a fork verifies under its own creator and reports the exact parent version from the chain', async () => {

@@ -397,6 +397,11 @@ const NEXT = [
   },
   {
     tag: 'IN PROGRESS',
+    t: 'Strategy weights on-chain',
+    b: 'Each registered version can publish its assets and weights on-chain, readable by any app or contract. Built and tested; not deployed yet.',
+  },
+  {
+    tag: 'IN PROGRESS',
     t: 'Bags on Ethereum, Arbitrum and Base',
     b: 'BagFactory is being deployed on the three networks so strategies can be created there too; performance fees stay on Robinhood Chain until settlement works elsewhere.',
   },
