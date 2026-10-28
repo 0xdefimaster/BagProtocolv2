@@ -22,7 +22,7 @@ re-exports its canonicalization. Decisions recorded with it:
 - D3: a minimal document `{ bagJson, definition, metadata? }` is complete.
 - D4: `creator` is a verification input, never read from the JSON.
 - D5: strict parsing.
-- Weights sum to exactly 10000. The target allocation (floor, largest remainder, ties by `chain:address`) is normative and exact. An executor must spend the whole deposit and give each asset its target within 2 bps of the deposit; LI.FI Composer's bps cascade needs this bound. Version creation now requires exactly 10000 too; the purchase path always did.
+- Weights sum to exactly 10000. The target allocation (floor, largest remainder, ties by `chain:address`) is normative and exact. An executor must spend the whole deposit and give each asset its target within 2 bps of the deposit; LI.FI Composer's bps partition (packages/bag-sdk partition.ts, vectors in docs/schemas/partition.v1.vectors.json) needs this bound. Version creation now requires exactly 10000 too; the purchase path always did.
 - The `null` → default table (`resolveV1Rules`) is normative and frozen. Defaults are still never written into the document or the hash.
 - The core never fetches. Transport lives in adapters (`/http`, `/evm`, `/lifi`).
 - Execution (`quoteBag` / `compileBag` / `simulateBag`) builds unsigned transactions only. Slippage ≤ 300 bps and price impact ≤ 500 bps; a caller can only tighten them.

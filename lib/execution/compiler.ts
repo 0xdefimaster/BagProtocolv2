@@ -113,6 +113,9 @@ export async function compileBagExecution(
       // mismatched value past this seam.
       return { ...compiled, providerId: provider.identify(), executionPlanHash };
     } catch (err) {
+      // A price-impact refusal goes back to the buyer (who may accept it), exactly
+      // like the legacy path; it must not silently become N transactions instead.
+      if (err instanceof BagExecutionError && err.code === 'PRICE_IMPACT_REFUSED') throw err;
       compileFailures.push({ providerId: provider.identify(), message: (err as Error).message ?? String(err) });
       // Fall through to the next eligible provider — same "degrade, don't
       // abort" behavior `tryBuildComposerSteps()` already has for Composer

@@ -1,7 +1,7 @@
 # VS Code'da localhost'ta çalıştırma — sıfırdan gerçek satın almaya
 
 Her adımda **gerçek para/gas gerekip gerekmediği** açıkça yazıyor. Neyin kodda
-doğrulandığı, neyin canlı ortam gerektirdiği: [`DEMO_READINESS.md`](../DEMO_READINESS.md).
+doğrulandığı, neyin canlı ortam gerektirdiği: [`STATUS.md`](STATUS.md).
 
 > **GERÇEK PRIVATE KEY'LERİ ASLA REPOYA KOYMA.** Hepsi `.env.local`'e gider
 > (`.gitignore` bunu hariç tutuyor). `.env.example`'a gerçek değer yazma.
@@ -159,7 +159,7 @@ canlı ortama karşı test edilmedi** (geliştirme ortamında erişim yoktu). İ
 - Sunucu loglarını izle; quote/fee-tier/calldata hatası çıkarsa logu getir.
 - LI.FI'ı ayrıca doğrulamak için (önce dry-run, para harcamaz):
   `npx tsx scripts/spike/lifi-e2e-execute.ts` — ayrıntı:
-  [`SPIKE-NOTE-lifi-quote.md`](../SPIKE-NOTE-lifi-quote.md)
+  [`SPIKE-NOTE-lifi-quote.md`](archive/SPIKE-NOTE-lifi-quote.md)
 
 ## 9) Testler (localhost'ta)
 
@@ -172,4 +172,4 @@ npm run test:contracts
 npm run build
 ```
 
-Hâlâ eksik/canlı doğrulanmamış olanların güncel listesi: [`DEMO_READINESS.md`](../DEMO_READINESS.md).
+Hâlâ eksik/canlı doğrulanmamış olanların güncel listesi: [`STATUS.md`](STATUS.md).

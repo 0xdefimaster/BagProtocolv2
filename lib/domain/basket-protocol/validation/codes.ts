@@ -41,6 +41,8 @@ export const VALIDATION_CODES = {
   LOW_ASSET_COUNT: 'LOW_ASSET_COUNT',
   // Phase 22 — performance fee cap (types/basket-protocol.ts's MAX_PERFORMANCE_FEE_BPS).
   INVALID_PERFORMANCE_FEE: 'INVALID_PERFORMANCE_FEE',
+  // A performance fee on a chain where it cannot be settled (types/basket-protocol.ts PERFORMANCE_FEE_CHAINS).
+  PERFORMANCE_FEE_UNSUPPORTED_CHAIN: 'PERFORMANCE_FEE_UNSUPPORTED_CHAIN',
 
   // Asset Registry (Phase 5) — external validation, NOT part of the pure
   // `VALIDATORS` array in ./index.ts. See ./registry-validation.ts.

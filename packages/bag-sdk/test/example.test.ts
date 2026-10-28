@@ -21,16 +21,16 @@ const B = '0xb0000000000000000000000000000000000000bb';
 const USDG = '0x' + 'c'.repeat(40);
 const SIGNER = '0x' + '5'.repeat(40);
 const CREATOR = '0x' + '1'.repeat(40);
-const REGISTRY = ('0x' + '4'.repeat(40)) as Hex;
+const REGISTRY = '0x907cc27d644c8ea1c24b8320ad09ecf2819209a8' as Hex;
 const STRATEGY = '33333333-3333-4333-8333-333333333333';
 const ZERO32 = `0x${'0'.repeat(64)}`;
 
 function composerFetch() {
   const wire = JSON.stringify({
     data: {
-      producedResources: {
-        'swap_0.amountOut': { kind: 'erc20', chainId: 4663, token: A, availability: 'now', owner: SIGNER, simulated: { amountOut: '400', amountOutMin: '396' } },
-        'swap_1.amountOut': { kind: 'erc20', chainId: 4663, token: B, availability: 'now', owner: SIGNER, simulated: { amountOut: '600', amountOutMin: '594' } },
+      outputs: {
+        'swap_0.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: A, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '400' }, minimum: { basis: 'op', value: '396' } } },
+        'swap_1.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: B, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '600' }, minimum: { basis: 'op', value: '594' } } },
       },
       transactionRequest: { to: '0x' + '7'.repeat(40), chainId: 4663, data: '0xdeadbeef', value: '0' },
       userProxy: '0x' + '8'.repeat(40),
@@ -39,15 +39,16 @@ function composerFetch() {
       fees: [],
     },
   });
-  return vi.fn(async () => ({ ok: true, status: 200, json: async () => JSON.parse(wire), text: async () => wire })) as unknown as typeof fetch;
+  return vi.fn(async () => ({ ok: true, status: 200, headers: new Headers(), json: async () => JSON.parse(wire), text: async () => wire })) as unknown as typeof fetch;
 }
 
 /** The caller's RPC: token decimals, balance, allowance, the registry, and eth_call. */
 function rpc(hash: string) {
   return {
     getChainId: async () => 4663,
-    readContract: async ({ functionName, args }: { functionName: string; args?: readonly unknown[] }) => {
-      if (functionName === 'decimals') return 18;
+    getCode: async (): Promise<Hex> => '0x6000',
+    readContract: async ({ functionName, args, address }: { functionName: string; args?: readonly unknown[]; address?: string }) => {
+      if (functionName === 'decimals') return address?.toLowerCase() === USDG ? 6 : 18;
       if (functionName === 'balanceOf') return BigInt(10_000_000);
       if (functionName === 'allowance') return BigInt(10_000_000);
       if (functionName === 'strategyOf') {

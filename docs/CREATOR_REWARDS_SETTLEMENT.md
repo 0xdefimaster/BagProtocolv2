@@ -4,7 +4,7 @@ Referenced by `supabase/migrations/0014_add_creator_reward_settlements.sql`.
 Describes how a creator reward goes from "an off-chain event happened" to
 "the creator can withdraw real USDG from `CreatorRewardsVault` on Robinhood
 Chain." For the earlier, off-chain-only accounting this replaces, see
-`durum-raporu-v2.md`.
+`docs/archive/durum-raporu-v2.md`.
 
 ## Why this exists
 
@@ -171,7 +171,7 @@ rows that existed before 0014 shipped.
 - Real deployment: `scripts/deploy-creator-rewards.ts` exists and
   typechecks but has never been broadcast — this sandbox has no network
   route to Robinhood Chain's RPC.
-- **`[SUPERSEDED — see docs/V11_HARDENING_REPORT.md]`** `ROBINHOOD_UNISWAP_SWAP_TARGET_ADDRESS` — no canonical Uniswap
+- **`[SUPERSEDED — see docs/archive/V11_HARDENING_REPORT.md]`** `ROBINHOOD_UNISWAP_SWAP_TARGET_ADDRESS` — no canonical Uniswap
   deployment address for Robinhood Chain has been independently verified
   yet (see `lib/config/robinhood-chain.ts`'s module doc). `RedeemFeeRouter`
   cannot allowlist a real swap target until this is resolved.
@@ -185,7 +185,7 @@ rows that existed before 0014 shipped.
   the production Bag flow) has not been touched — this is a large,
   separate refactor across the asset registry, bag creation UI, and
   execution-plan code, not part of this pass.
-- **`[SUPERSEDED — see docs/V11_HARDENING_REPORT.md]` `RedeemFeeRouter` is not wired into the actual redeem flow.**
+- **`[SUPERSEDED — see docs/archive/V11_HARDENING_REPORT.md]` `RedeemFeeRouter` is not wired into the actual redeem flow.**
   `lib/server/redeem-execution.ts` still calls the legacy
   `apply_redeem_execution()` paper-ledger RPC exclusively. No EIP-712
   fee-attestation signing endpoint exists, and no client-side hook drives

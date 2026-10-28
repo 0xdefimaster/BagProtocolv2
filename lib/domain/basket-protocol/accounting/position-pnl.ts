@@ -43,6 +43,8 @@ export interface PnlEvent {
   kind: string;
   legs: PnlLeg[];
   quote: Record<string, unknown>;
+  /** EXTERNAL_OUTFLOW / OUTFLOW_CLASSIFIED: `reconciliationRecordId` ties a classification to the outflow it corrects. */
+  source?: Record<string, unknown>;
 }
 
 export interface AssetBasis {
@@ -51,6 +53,11 @@ export interface AssetBasis {
   quantityRaw: string;
   /** Total basis of the quantity held; null when unknown. */
   costBasisQuote: string | null;
+  /**
+   * The basis is known but approximate: an outflow it came back from was valued at an average cost that a later
+   * purchase had already changed (0057). Stays until the asset is fully sold. No fee is computed on it.
+   */
+  costBasisApproximate: boolean;
 }
 
 export interface RealizedExit {
@@ -93,6 +100,7 @@ interface State {
   qty: bigint;
   basis: bigint;
   known: boolean;
+  approximate: boolean;
 }
 
 export function computePositionPnl(events: PnlEvent[]): PositionPnl {
@@ -102,7 +110,7 @@ export function computePositionPnl(events: PnlEvent[]): PositionPnl {
     const k = key(leg.chain, leg.address);
     let s = assets.get(k);
     if (!s) {
-      s = { chain: leg.chain, address: leg.address, qty: ZERO, basis: ZERO, known: true };
+      s = { chain: leg.chain, address: leg.address, qty: ZERO, basis: ZERO, known: true, approximate: false };
       assets.set(k, s);
     }
     return s;
@@ -113,6 +121,14 @@ export function computePositionPnl(events: PnlEvent[]): PositionPnl {
   let fees = ZERO;
   let exitedBasis: bigint | null = ZERO;
   const exits: RealizedExit[] = [];
+  // Per (outflow record, asset): what an EXTERNAL_OUTFLOW took off and has not been given back by OUTFLOW_CLASSIFIED.
+  const outflows = new Map<string, { qty: bigint; basis: bigint | null }>();
+  const outflowKey = (e: PnlEvent, leg: PnlLeg) => `${String(e.source?.reconciliationRecordId ?? '')}|${key(leg.chain, leg.address)}`;
+  // Per (sale intent, asset): tokens an OUTFLOW_CLASSIFIED gave back for that sale, with the basis they left with. The
+  // sale happened before anything bought since, so its REDEEM_FILL consumes this lot first, at exactly this basis,
+  // never blended into the average cost of later purchases.
+  const saleLots = new Map<string, { qty: bigint; basis: bigint | null; approximate: boolean }>();
+  const saleLotKey = (intentId: unknown, leg: PnlLeg) => `${String(intentId ?? '')}|${key(leg.chain, leg.address)}`;
 
   /** Removes `sold` from the asset at average cost; returns the basis removed (null when unknown). */
   const remove = (s: State, sold: bigint): bigint | null => {
@@ -128,6 +144,7 @@ export function computePositionPnl(events: PnlEvent[]): PositionPnl {
     if (s.qty === ZERO) {
       s.basis = ZERO;
       s.known = true; // nothing left: whatever was unknown has left with it
+      s.approximate = false;
     }
     return sold > take ? null : consumed;
   };
@@ -156,7 +173,19 @@ export function computePositionPnl(events: PnlEvent[]): PositionPnl {
         for (const leg of e.legs) {
           const d = BigInt(leg.deltaRaw);
           if (d >= ZERO) continue;
-          const consumed = remove(asset(leg), -d);
+          let sold = -d;
+          let consumed: bigint | null = ZERO;
+          const lk = saleLotKey(e.source?.intentId, leg);
+          const lot = saleLots.get(lk);
+          if (lot && lot.qty > ZERO) {
+            const fromLot = sold < lot.qty ? sold : lot.qty;
+            const lotBasis = lot.basis === null ? null : fromLot === lot.qty ? lot.basis : mulDiv(lot.basis, fromLot, lot.qty);
+            saleLots.set(lk, { ...lot, qty: lot.qty - fromLot, basis: lot.basis === null || lotBasis === null ? null : lot.basis - lotBasis });
+            consumed = lotBasis;
+            sold -= fromLot;
+          }
+          const fromPool = sold > ZERO ? remove(asset(leg), sold) : ZERO;
+          consumed = consumed === null || fromPool === null ? null : consumed + fromPool;
           cost = cost === null || consumed === null ? null : cost + consumed;
           proceeds = proceeds === null || !isDec(leg.proceedsQuote) ? null : proceeds + parseDec(leg.proceedsQuote);
         }
@@ -210,8 +239,41 @@ export function computePositionPnl(events: PnlEvent[]): PositionPnl {
         for (const leg of e.legs) {
           const d = BigInt(leg.deltaRaw);
           if (d >= ZERO) continue;
-          const consumed = remove(asset(leg), -d);
+          const s = asset(leg);
+          const before = s.qty;
+          const consumed = remove(s, -d);
           exitedBasis = exitedBasis === null || consumed === null ? null : exitedBasis + consumed;
+          const taken = before - s.qty;
+          const k = outflowKey(e, leg);
+          const prev = outflows.get(k) ?? { qty: ZERO, basis: ZERO };
+          outflows.set(k, { qty: prev.qty + taken, basis: prev.basis === null || consumed === null ? null : prev.basis + consumed });
+        }
+        break;
+      }
+      case 'OUTFLOW_CLASSIFIED': {
+        // A sale explained (part of) an outflow: the tokens come back with exactly the basis the outflow took off them,
+        // pro rata over what is still unexplained; the last classification takes the rest. The sale that follows
+        // (REDEEM_FILL, later seq) then removes them at average cost and realizes its proceeds against that basis.
+        for (const leg of e.legs) {
+          const d = BigInt(leg.deltaRaw);
+          if (d <= ZERO) continue;
+          asset(leg); // the asset is held again
+          const k = outflowKey(e, leg);
+          const out = outflows.get(k);
+          let back: bigint | null = null;
+          if (out && out.qty > ZERO && out.basis !== null) {
+            back = d >= out.qty ? out.basis : mulDiv(out.basis, d, out.qty);
+            outflows.set(k, { qty: d >= out.qty ? ZERO : out.qty - d, basis: out.basis - back });
+          }
+          if (back !== null && exitedBasis !== null) exitedBasis -= back;
+          const lk = saleLotKey(e.source?.redeemIntentId, leg);
+          const lot = saleLots.get(lk) ?? { qty: ZERO, basis: ZERO, approximate: false };
+          saleLots.set(lk, {
+            qty: lot.qty + d,
+            basis: lot.basis === null || back === null ? null : lot.basis + back,
+            approximate: lot.approximate || e.quote.approximate === true,
+          });
+          if (e.quote.approximate === true) asset(leg).approximate = true;
         }
         break;
       }
@@ -220,14 +282,29 @@ export function computePositionPnl(events: PnlEvent[]): PositionPnl {
         break;
       }
       default:
-        break; // ROYALTY_ACCRUED, OUTFLOW_CLASSIFIED, RECONCILIATION_NOTE: no effect on this position's books
+        break; // ROYALTY_ACCRUED, RECONCILIATION_NOTE: no effect on this position's books
     }
   }
 
+  // A lot given back for a sale that is not booked yet (the two RPCs run one after the other) is still held.
+  for (const [lk, lot] of saleLots) {
+    if (lot.qty <= ZERO) continue;
+    const s = assets.get(lk.slice(lk.indexOf('|') + 1));
+    if (!s) continue;
+    s.qty += lot.qty;
+    if (lot.basis === null) s.known = false;
+    else s.basis += lot.basis;
+  }
   const held = [...assets.values()].filter((s) => s.qty > ZERO);
   const allKnown = held.every((s) => s.known);
   return {
-    assets: held.map((s) => ({ chain: s.chain, address: s.address, quantityRaw: s.qty.toString(), costBasisQuote: s.known ? formatDec(s.basis) : null })),
+    assets: held.map((s) => ({
+      chain: s.chain,
+      address: s.address,
+      quantityRaw: s.qty.toString(),
+      costBasisQuote: s.known ? formatDec(s.basis) : null,
+      costBasisApproximate: s.approximate,
+    })),
     costBasisQuote: allKnown ? formatDec(held.reduce((a, s) => a + s.basis, ZERO)) : null,
     realizedPnlQuote: realized === null ? null : formatDec(realized),
     realizedHighWaterMarkQuote: peak === null ? null : formatDec(peak),

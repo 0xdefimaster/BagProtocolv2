@@ -7,9 +7,12 @@ import {
   composerLegSimulatedOutputRaw,
   isComposerEligible,
 } from '@/lib/blockchain/lifi-composer-adapter';
+import { composerFallbackFrom } from '@/lib/blockchain/lifi-purchase-quote';
+import { BagExecutionError } from '../errors';
 import { toLiFiChainId } from '@/lib/blockchain/lifi-config';
 import { BagExecutionGraph, BagExecutionIntent, CompiledExecution, ExpectedOutput } from '../types';
 import { BagExecutionProvider, ProviderCapabilities } from './types';
+import { PartitionError, planPartitionLegs } from '@/packages/bag-sdk/src';
 
 // -----------------------------------------------------------------------------
 // lib/execution/providers/lifi-composer-provider.ts
@@ -23,7 +26,7 @@ import { BagExecutionProvider, ProviderCapabilities } from './types';
 // same chain" shape the underlying adapter itself supports — see
 // `supports()` below, which mirrors `isComposerEligible()` plus the extra
 // "all legs share the same input asset" check the underlying adapter's
-// cascading-split fan-out requires (its own module doc: "one input, N
+// partition fan-out requires (its own module doc: "one input, N
 // outputs").
 // -----------------------------------------------------------------------------
 
@@ -46,6 +49,8 @@ export interface LiFiComposerProviderConfig {
   apiKey: string;
   baseUrl?: string;
   fetchImpl?: typeof fetch;
+  /** Composer's whole-flow price-impact limit; set only after the buyer accepted a reported impact (same rule as the legacy path). */
+  maxPriceImpactBps?: number;
 }
 
 export class LiFiComposerProvider implements BagExecutionProvider {
@@ -62,32 +67,48 @@ export class LiFiComposerProvider implements BagExecutionProvider {
   supports(_intent: BagExecutionIntent, graph: BagExecutionGraph): boolean {
     if (!COMPOSER_ELIGIBLE_CHAINS.includes(graph.chainId)) return false;
     if (graph.legs.length === 0) return false;
-    // Cascading-split fan-out needs exactly one shared input asset.
+    // One partition fan-out needs exactly one shared input asset.
     const firstInput = graph.legs[0].sourceAsset;
     const sameInput = graph.legs.every(
       (leg) => leg.sourceAsset.chain === firstInput.chain && leg.sourceAsset.address === firstInput.address
     );
     if (!sameInput) return false;
-    const legs = toComposerLegs(graph);
-    return isComposerEligible(graph.chainId, legs);
+    const planned = toComposerLegs(graph);
+    return planned !== null && isComposerEligible(graph.chainId, planned.legs);
   }
 
   async compile(_intent: BagExecutionIntent, graph: BagExecutionGraph): Promise<CompiledExecution> {
-    const legs = toComposerLegs(graph);
+    const planned = toComposerLegs(graph);
+    if (!planned) throw new Error('A leg is below 1 bp of the purchase; one Composer partition cannot express it.');
+    const { legs, legIndexOf } = planned;
     const inputAsset = graph.legs[0].sourceAsset;
+    // One Composer flow takes one slippage value; a graph whose legs differ is refused, never flattened to legs[0].
     const uniformSlippageBps = graph.legs[0].slippageBps;
+    if (graph.legs.some((leg) => leg.slippageBps !== uniformSlippageBps)) {
+      throw new Error('The legs use different slippage limits; one Composer transaction applies a single limit.');
+    }
 
-    const result = await buildComposerPurchase({
-      chain: graph.chainId,
-      inputTokenAddress: inputAsset.address,
-      inputAmountRaw: graph.inputAmountRaw,
-      legs,
-      signerAddress: graph.wallet,
-      slippageBps: uniformSlippageBps,
-      apiKey: this.config.apiKey,
-      baseUrl: this.config.baseUrl,
-      fetchImpl: this.config.fetchImpl,
-    });
+    let result;
+    try {
+      // The request deadline is inside buildComposerPurchase (COMPOSER_COMPILE_TIMEOUT_MS).
+      result = await buildComposerPurchase({
+        chain: graph.chainId,
+        inputTokenAddress: inputAsset.address,
+        // What the legs spend, never the whole deposit: a part the Bag keeps in the input asset is not swapped.
+        inputAmountRaw: planned.totalRaw.toString(),
+        legs,
+        signerAddress: graph.wallet,
+        slippageBps: uniformSlippageBps,
+        apiKey: this.config.apiKey,
+        baseUrl: this.config.baseUrl,
+        fetchImpl: this.config.fetchImpl,
+        ...(this.config.maxPriceImpactBps !== undefined ? { maxPriceImpactBps: this.config.maxPriceImpactBps } : {}),
+      });
+    } catch (err) {
+      const notice = composerFallbackFrom(err);
+      if (notice.reason === 'PRICE_IMPACT') throw new BagExecutionError('PRICE_IMPACT_REFUSED', notice.message, { composerFallback: notice });
+      throw err;
+    }
 
     const expectedOutputs: ExpectedOutput[] = [];
     // Keyed by leg id — see providers/types.ts and this provider's own
@@ -100,8 +121,10 @@ export class LiFiComposerProvider implements BagExecutionProvider {
     // the bridge can reproduce that record without this provider knowing
     // `PurchaseIntentStepRecord` exists.
     const legQuotes: Record<string, { outputAmountRaw: string | null; outputDecimals: number | null; route: string | null; lifiStep: unknown | null }> = {};
-    graph.legs.forEach((leg, index) => {
-      const outputAmountRaw = composerLegSimulatedOutputRaw(result.producedResources, index);
+    graph.legs.forEach((leg, graphIndex) => {
+      // Composer's `swap_<i>` follows the planner's canonical leg order, not the graph's.
+      const index = legIndexOf[graphIndex];
+      const outputAmountRaw = composerLegSimulatedOutputRaw(result.outputs, index);
       // `quotedOutputRaw` is the simulated (expected) output. The leg's swap
       // itself IS protected on chain — LI.FI's swap reverts below
       // `amountOutMin` — but that floor is the PROVIDER's, at the swap
@@ -114,7 +137,7 @@ export class LiFiComposerProvider implements BagExecutionProvider {
         quotedOutputRaw: outputAmountRaw,
         quotedOutputBasis: 'SIMULATION',
         minimumGuaranteedOutputRaw: null,
-        providerEnforcedMinOutputRaw: composerLegEnforcedMinOutputRaw(result.producedResources, index),
+        providerEnforcedMinOutputRaw: composerLegEnforcedMinOutputRaw(result.outputs, index),
       });
       legQuotes[leg.id] = { outputAmountRaw, outputDecimals: null, route: null, lifiStep: null };
     });
@@ -150,12 +173,25 @@ export class LiFiComposerProvider implements BagExecutionProvider {
   }
 }
 
-function toComposerLegs(graph: BagExecutionGraph): ComposerPurchaseLeg[] {
-  return graph.legs.map((leg) => ({
-    address: leg.targetAsset.address,
-    weightBps: leg.weightBps,
-    symbol: leg.targetAsset.address,
-  }));
+/**
+ * The graph's legs as Composer legs, planned by the SDK's partition planner (packages/bag-sdk/src/partition.ts) from
+ * each leg's exact raw amount, exactly as the purchase path plans them. `legIndexOf[graphIndex]` is that leg's
+ * Composer index. Null when a partition cannot express the legs (a leg under 1 bp).
+ */
+function toComposerLegs(graph: BagExecutionGraph): { legs: ComposerPurchaseLeg[]; legIndexOf: number[]; totalRaw: bigint } | null {
+  let partitioned: ReturnType<typeof planPartitionLegs>;
+  try {
+    partitioned = planPartitionLegs(graph.legs.map((leg) => ({ token: leg.targetAsset.address, amountRaw: BigInt(leg.amountRaw) })));
+  } catch (err) {
+    if (err instanceof PartitionError) return null;
+    throw err;
+  }
+  const position = new Map(partitioned.legs.map((l, i) => [l.token, i]));
+  return {
+    legs: partitioned.legs.map((l) => ({ address: l.token, weightBps: l.legBps, symbol: l.token })),
+    legIndexOf: graph.legs.map((leg) => position.get(leg.targetAsset.address.toLowerCase())!),
+    totalRaw: partitioned.totalRaw,
+  };
 }
 
 export type { ChainId };

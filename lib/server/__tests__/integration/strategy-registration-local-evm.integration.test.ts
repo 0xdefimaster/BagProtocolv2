@@ -134,6 +134,17 @@ describe('StrategyRegistry registration (user-signed)', () => {
     expect(await confirmStrategyRegistration(db.client, c2.session, bag2.id, tx, deps())).toMatchObject({ ok: false, error: 'VERIFICATION_FAILED' });
   });
 
+  it('the prepared calldata sent to a look-alike StrategyRegistry is not recorded: the configured registry emitted nothing', async () => {
+    const c = await creator();
+    const bag = await strategy(c);
+    const lookalike = (await viem.deployContract('StrategyRegistry', [])).address;
+    const prepared = await prepareStrategyRegistration(db.client, c.session, bag.id, deps());
+    if (!prepared.ok) throw new Error('prepare');
+    const tx = await c.w.sendTransaction({ to: lookalike, data: prepared.transaction.data }); // succeeds on-chain, on the wrong contract
+    expect(await confirmStrategyRegistration(db.client, c.session, bag.id, tx, deps())).toMatchObject({ ok: false, error: 'VERIFICATION_FAILED' });
+    expect((await db.admin.query('select count(*)::int as n from strategy_registrations where bag_id = $1', [bag.id])).rows[0].n).toBe(0);
+  });
+
   it('fork provenance: a fork registers against the exact parent version it was made from, and only once that version is registered', async () => {
     const alice = await creator();
     const parent = await strategy(alice);

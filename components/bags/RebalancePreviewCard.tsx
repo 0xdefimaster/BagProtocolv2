@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Scale, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
-import { formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
+import { formatDecimalStringUsd, formatRawAmount, formatRawAmountUsd, parseDecimalToRaw } from '@/lib/format';
 import type { PositionRebalancePreview } from '@/lib/domain/basket-protocol/rebalance/position-rebalance';
 import { useWallet } from '@/lib/wallet-context';
 import { executeWalletSweep, type SweepProgress } from '@/lib/blockchain/wallet-sweep-client';
@@ -49,9 +49,27 @@ interface IntentView {
 type RunPhase = 'idle' | 'planning' | 'wallet' | 'confirming' | 'done';
 
 const pct = (bps: number) => `${(bps / 100).toFixed(1)}%`;
+
+/** Below this much to sell, a rebalance is not worth a transaction (and the buys round to nothing). */
+export const MIN_REBALANCE_USD = '1';
+const usdUnits = (value: string) => BigInt(parseDecimalToRaw(value, 18) ?? '0');
+/** The USD value the plan would sell, and whether that is too small to offer a rebalance at all. */
+export function rebalanceSize(preview: { orders: { side: string; value: string }[] }): { sellUsd: bigint; tooSmall: boolean } {
+  const sells = preview.orders.filter((o) => o.side === 'SELL');
+  const buys = preview.orders.filter((o) => o.side === 'BUY');
+  const sellUsd = sells.reduce((sum, o) => sum + usdUnits(o.value), BigInt(0));
+  return { sellUsd, tooSmall: sells.length === 0 || buys.length === 0 || sellUsd < usdUnits(MIN_REBALANCE_USD) };
+}
 const VERIFY_POLL_MS = 3000;
 const VERIFY_ATTEMPTS = 60;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** A refused request; `acceptablePriceImpactBps` is set when the investor may accept the measured price impact. */
+class RequestError extends Error {
+  constructor(message: string, readonly acceptablePriceImpactBps: number | null) {
+    super(message);
+  }
+}
 
 async function postJson<T>(url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
@@ -60,12 +78,30 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((json as { error?: string }).error ?? 'Request failed.');
+  const json = (await res.json().catch(() => ({}))) as { error?: string; acceptablePriceImpactBps?: unknown };
+  if (!res.ok) {
+    const acceptable = typeof json.acceptablePriceImpactBps === 'number' ? json.acceptablePriceImpactBps : null;
+    throw new RequestError(json.error ?? 'Request failed.', acceptable);
+  }
   return json as T;
 }
 
-export function RebalancePreviewCard({ bagId, refreshKey, onRebalanced }: { bagId: string; refreshKey?: string | number; onRebalanced?: () => void }) {
+export function RebalancePreviewCard({
+  bagId,
+  refreshKey,
+  onRebalanced,
+  autoRunVersion,
+}: {
+  bagId: string;
+  refreshKey?: string | number;
+  onRebalanced?: () => void;
+  /**
+   * Set right after the creator saved this version: once the preview targets it and a rebalance is needed, the
+   * rebalance starts by itself (plan → the wallet asks for the signature). Once per version; a price impact above
+   * the limit still stops and asks.
+   */
+  autoRunVersion?: number;
+}) {
   const { authUser } = useWallet();
   const [data, setData] = useState<Response | null>(null);
   const [phase, setPhase] = useState<RunPhase>('idle');
@@ -75,18 +111,21 @@ export function RebalancePreviewCard({ bagId, refreshKey, onRebalanced }: { bagI
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  // A price impact above the default limit but within what may be accepted (10%): shown, and used only if the
+  // investor presses "Rebalance anyway". Never applied silently.
+  const [impactOffer, setImpactOffer] = useState<number | null>(null);
+  const [acceptedImpact, setAcceptedImpact] = useState<number | null>(null);
 
-  const getQuote = async () => {
+  const getQuote = async (accept: number | null = acceptedImpact) => {
     setQuoting(true);
     setQuoteError(null);
     try {
-      const res = await fetch(`/api/bags/${encodeURIComponent(bagId)}/rebalance-quote`, { method: 'POST', credentials: 'same-origin' });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error ?? 'No quote right now.');
-      setQuote(body as Quote);
+      const body = await postJson<Quote>(`/api/bags/${encodeURIComponent(bagId)}/rebalance-quote`, accept !== null ? { acceptedPriceImpactBps: accept } : undefined);
+      setQuote(body);
     } catch (err) {
       setQuote(null);
       setQuoteError((err as Error).message);
+      if (err instanceof RequestError && err.acceptablePriceImpactBps !== null) setImpactOffer(err.acceptablePriceImpactBps);
     } finally {
       setQuoting(false);
     }
@@ -104,7 +143,7 @@ export function RebalancePreviewCard({ bagId, refreshKey, onRebalanced }: { bagI
   }, [bagId, refreshKey, reloadKey]);
 
   /** Plan → wallet signs the one transaction → BAG verifies it on-chain and books it. */
-  const runRebalance = async () => {
+  const runRebalance = async (accept: number | null = acceptedImpact) => {
     const walletAddress = authUser?.walletAddress;
     if (!walletAddress) {
       setRunError('Sign in with your wallet first.');
@@ -113,7 +152,10 @@ export function RebalancePreviewCard({ bagId, refreshKey, onRebalanced }: { bagI
     setRunError(null);
     setPhase('planning');
     try {
-      const { intent } = await postJson<{ intent: IntentView }>(`/api/bags/${encodeURIComponent(bagId)}/rebalance-intent`);
+      const { intent } = await postJson<{ intent: IntentView }>(
+        `/api/bags/${encodeURIComponent(bagId)}/rebalance-intent`,
+        accept !== null ? { acceptedPriceImpactBps: accept } : undefined
+      );
       const tx = intent.composerTransaction;
       if (!tx || Date.parse(intent.expiresAt) <= Date.now()) throw new Error('This rebalance can no longer be signed. Try again.');
       const verifyUrl = `/api/rebalance-intent/${encodeURIComponent(intent.id)}/verify`;
@@ -151,10 +193,36 @@ export function RebalancePreviewCard({ bagId, refreshKey, onRebalanced }: { bagI
       }
       throw new Error('Still confirming. Your position updates as soon as the transaction is confirmed.');
     } catch (err) {
-      setRunError(describeWalletError(err).message ?? (err as Error).message);
+      if (err instanceof RequestError) {
+        setRunError(err.message);
+        if (err.acceptablePriceImpactBps !== null) setImpactOffer(err.acceptablePriceImpactBps);
+      } else {
+        setRunError(describeWalletError(err).message ?? (err as Error).message);
+      }
       setPhase('idle');
       setWalletStep(null);
     }
+  };
+
+  const autoRanRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (autoRunVersion === undefined || autoRanRef.current === autoRunVersion) return;
+    if (!data || data.preview.status !== 'OK' || data.preview.targetVersion < autoRunVersion) return;
+    if (!data.preview.requiresRebalance || rebalanceSize(data.preview).tooSmall || phase !== 'idle') return;
+    autoRanRef.current = autoRunVersion;
+    void runRebalance();
+    // Runs once per saved version, when the preview for it has loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRunVersion, data, phase]);
+
+  const acceptImpact = () => {
+    if (impactOffer === null) return;
+    const accept = impactOffer;
+    setAcceptedImpact(accept);
+    setImpactOffer(null);
+    setRunError(null);
+    setQuoteError(null);
+    void runRebalance(accept);
   };
 
   if (!data || data.preview.status === 'NO_POSITION') return null;
@@ -178,6 +246,7 @@ export function RebalancePreviewCard({ bagId, refreshKey, onRebalanced }: { bagI
 
   const sells = preview.orders.filter((o) => o.side === 'SELL');
   const buys = preview.orders.filter((o) => o.side === 'BUY');
+  const size = rebalanceSize(preview);
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 p-6">
@@ -210,7 +279,12 @@ export function RebalancePreviewCard({ bagId, refreshKey, onRebalanced }: { bagI
           ))}
         </tbody>
       </table>
-      {preview.requiresRebalance ? (
+      {preview.requiresRebalance && size.tooSmall ? (
+        <p className="text-sm text-white/60" data-testid="rebalance-too-small">
+          What your wallet holds for this strategy is worth {formatRawAmountUsd(size.sellUsd.toString(), 18)} to move,
+          under ${MIN_REBALANCE_USD}: too little to rebalance. Buy into the Bag to hold strategy v{preview.targetVersion}.
+        </p>
+      ) : preview.requiresRebalance ? (
         <div className="text-sm">
           <p className="text-amber-400 inline-flex items-center gap-1 mb-2">
             <AlertTriangle size={14} /> Drift of {pct(preview.maxAbsDriftBps)} is beyond this strategy&apos;s {pct(preview.driftThresholdBps)} threshold.
@@ -253,6 +327,18 @@ export function RebalancePreviewCard({ bagId, refreshKey, onRebalanced }: { bagI
           </button>
           {walletStep && <p className="mt-2 text-white/70">{walletStep}</p>}
           {runError && <p className="mt-2 text-red-400">{runError}</p>}
+          {impactOffer !== null && phase === 'idle' && (
+            <div data-testid="rebalance-impact-offer" className="mt-3 rounded-lg border border-amber-400/40 p-3 text-white/70">
+              <p className="mb-2">
+                Composer measures a {(impactOffer / 100).toFixed(2)}% price impact for this rebalance: you would get about that much less value
+                than the tokens are worth at market prices. You can go ahead (at most {(Math.min(impactOffer + 100, 1000) / 100).toFixed(2)}% is allowed on the
+                retry), or wait for deeper liquidity.
+              </p>
+              <button onClick={acceptImpact} className="btn btn-secondary">
+                Rebalance anyway at {(impactOffer / 100).toFixed(2)}% impact
+              </button>
+            </div>
+          )}
           {phase === 'done' && (
             <p className="mt-2 text-emerald-400 inline-flex items-center gap-1">
               <CheckCircle2 size={14} /> Rebalanced. Your position now follows strategy v{preview.targetVersion}.

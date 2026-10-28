@@ -1,14 +1,16 @@
 import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth/require-session';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
-import { getRobinhoodPublicClient } from '@/lib/blockchain/robinhood-public-client';
+import { getChainPublicClient } from '@/lib/blockchain/rpc/clients';
+import { isBagChain } from '@/lib/config/chains';
 import { checkRateLimit, rateLimitedResponseBody } from '@/lib/server/rate-limit';
 import { quoteWalletSweep, SweepQuoteRequest } from '@/lib/server/wallet-holdings';
 
 // POST /api/wallet/sweep-quote — compiles ONE LI.FI Composer transaction that
-// sells the chosen tokens of the signed-in wallet for USDG. Nothing is signed
-// here: the wallet signs it in the browser. Body:
-//   { tokens: [{ address, amountRaw }], acceptedPriceImpactBps? }
+// sells the chosen tokens of the signed-in wallet, on one chain, for that
+// chain's stablecoin (USDG on Robinhood Chain, USDC on Ethereum/Arbitrum/Base).
+// Nothing is signed here: the wallet signs it in the browser. Body:
+//   { chain?, tokens: [{ address, amountRaw }], acceptedPriceImpactBps? }   (chain defaults to robinhood)
 
 const RATE_LIMIT = { windowSeconds: 60, maxRequests: 10 };
 
@@ -26,12 +28,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
   }
 
+  const chain = body?.chain ?? 'robinhood';
+  if (typeof chain !== 'string' || !isBagChain(chain)) return NextResponse.json({ error: `Unknown chain ${String(chain)}.` }, { status: 400 });
+
   const admin = supabaseAdmin();
   const limit = await checkRateLimit(admin, `wallet-sweep:${auth.session.userId}`, RATE_LIMIT);
   if (!limit.allowed) return NextResponse.json(rateLimitedResponseBody(limit.retryAfterSeconds), { status: 429 });
 
   try {
-    const result = await quoteWalletSweep(admin, getRobinhoodPublicClient(), auth.session.walletAddress, body, { apiKey: process.env.LIFI_API_KEY });
+    const result = await quoteWalletSweep(admin, getChainPublicClient(chain), auth.session.walletAddress, body, { apiKey: process.env.LIFI_API_KEY }, chain);
     if (!result.ok) {
       return NextResponse.json({ error: result.error, ...(result.composerFallback ? { composerFallback: result.composerFallback } : {}) }, { status: result.status });
     }

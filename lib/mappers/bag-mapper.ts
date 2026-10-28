@@ -216,7 +216,8 @@ export function mapBagRecordToApiResponse(
     ? recipeAssetsToBagPositions(version.recipe.assets).map((pos, i) => {
         const asset = version.recipe.assets[i];
         const known = ctx.assetsByKey?.get(assetIdentityKey({ chain: asset.chain, address: asset.address }));
-        const withStable = isSettlementStablecoin(asset.chain, asset.address) ? { ...pos, stable: true } : pos;
+        const located = { ...pos, address: asset.address, weightBps: asset.weightBps };
+        const withStable = isSettlementStablecoin(asset.chain, asset.address) ? { ...located, stable: true } : located;
         return known ? { ...withStable, assetType: known.assetType, logoUrl: known.logoUrl } : withStable;
       })
     : [];
@@ -233,6 +234,8 @@ export function mapBagRecordToApiResponse(
     id: bag.id,
     name: bag.name,
     status: bag.status,
+    version: bag.currentVersion,
+    mutability: bag.mutability,
     creator,
     description: bag.description,
     thesis: version ? '' : '',

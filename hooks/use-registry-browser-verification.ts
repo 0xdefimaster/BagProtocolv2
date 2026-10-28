@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { createPublicClient, http } from 'viem';
 import { BAG_CHAINS, isBagChain } from '@/lib/config/chains';
 import { verifyRegistrationsInBrowser, type BrowserVerifyResult } from '@/lib/blockchain/registry-browser-verify';
-import type { ContractReader } from '@/packages/bag-sdk/src';
+import type { RegistryClient } from '@/packages/bag-sdk/src';
 
 // Runs lib/blockchain/registry-browser-verify.ts once per registered-version set, reading the chain through the
 // chain operator's public RPC from the viewer's browser (no BAG server in the read).
@@ -34,7 +34,7 @@ export function useRegistryBrowserVerification(input: {
     }
     let cancelled = false;
     setChecking(true);
-    const client = createPublicClient({ chain: BAG_CHAINS[chain].viemChain, transport: http(rpc) }) as unknown as ContractReader & { getChainId(): Promise<number> };
+    const client = createPublicClient({ chain: BAG_CHAINS[chain].viemChain, transport: http(rpc) }) as unknown as RegistryClient;
     verifyRegistrationsInBrowser({ bagId, chain, creatorWallet, serverRegistryAddress, versions, client })
       .then((r) => !cancelled && setResult(r))
       .finally(() => !cancelled && setChecking(false));

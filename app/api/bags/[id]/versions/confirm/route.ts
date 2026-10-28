@@ -3,7 +3,7 @@ import { requireSession } from '@/lib/auth/require-session';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
 import { confirmBagVersionUpdate } from '@/lib/server/bag-versioning';
 import { checkRateLimit, rateLimitedResponseBody } from '@/lib/server/rate-limit';
-import { parseVersionBody, versionFailureResponse } from '../_shared';
+import { resolveVersionBody, versionFailureResponse } from '../_shared';
 
 // POST /api/bags/[id]/versions/confirm — see lib/server/bag-versioning.ts. The
 // server never signs: this verifies the creator-signed transaction on-chain, then records the version atomically.
@@ -23,8 +23,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const limit = await checkRateLimit(admin, `version-confirm:${auth.session.userId}:${id}`, RATE_LIMIT);
   if (!limit.allowed) return NextResponse.json(rateLimitedResponseBody(limit.retryAfterSeconds), { status: 429 });
 
-  const body = parseVersionBody(await req.json().catch(() => null));
-  if (!body) return NextResponse.json({ error: 'Body must be { recipe, reason?, txHash }.', code: 'BAD_REQUEST' }, { status: 400 });
+  const resolved = await resolveVersionBody(admin, id, await req.json().catch(() => null));
+  if (!resolved.ok) return resolved.response;
+  const { body } = resolved;
 
   const session = { userId: auth.session.userId, walletAddress: auth.session.walletAddress };
   const result = await confirmBagVersionUpdate(admin, session, id, body.recipe, body.txHash, body.reason);

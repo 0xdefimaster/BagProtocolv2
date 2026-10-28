@@ -31,6 +31,15 @@ vi.mock('@/lib/server/redeem-intent-repo', async () => {
     findActiveRedeemIntentForBag: vi.fn(),
   };
 });
+// Outflow classification (0057) has its own real-Postgres tests; here there is no outflow to classify.
+const calls: string[] = [];
+vi.mock('@/lib/server/outflow-classification', () => ({
+  recoveryGate: async () => 'OK',
+  classifyOutflowsForSale: async (_a: unknown, _c: unknown, intent: { id: string }) => {
+    calls.push(`classify:${intent.id}`);
+    return BigInt(0);
+  },
+}));
 vi.mock('@/lib/server/bag-repo', () => ({
   getBagById: async () => ({ id: 'bag_1', creatorId: 'creator_1', performanceFeeBpsLocked: null }),
   getCurrentBagVersion: async () => ({ recipe: { performanceFeeBps: 0 } }),
@@ -105,7 +114,11 @@ describe('verifyRedeemExecution — a sale already confirmed at the first verify
     trackStepStatusMock.mockResolvedValue({ kind: 'DONE', receivedAsset: { chain: 'robinhood', address: USDG }, receivedAmountRaw: '990', matchesExpectedAsset: true });
     updateRedeemIntentStepsMock.mockImplementation(async (_a: unknown, _id: string, _st: string, steps: RedeemIntentStepRecord[]) => (row = { ...row, steps }));
     updateRedeemIntentStatusMock.mockImplementation(async (_a: unknown, u: { to: RedeemIntent['status'] }) => (row = { ...row, status: u.to }));
-    const rpc = vi.fn(async (name: string) => (name === 'claim_intent_tx_hash' ? { data: true, error: null } : { data: null, error: null }));
+    calls.length = 0;
+    const rpc = vi.fn(async (name: string) => {
+      calls.push(name);
+      return name === 'claim_intent_tx_hash' ? { data: true, error: null } : { data: null, error: null };
+    });
 
     const outcome = await verifyRedeemExecution({ rpc } as never, { userId: 'user_1', walletAddress: WALLET } as never, 'redeem_1');
 
@@ -117,6 +130,28 @@ describe('verifyRedeemExecution — a sale already confirmed at the first verify
       ['CONFIRMING', 'COMPLETED'],
     ]);
     expect(rpc).toHaveBeenCalledWith('apply_redeem_execution', expect.objectContaining({ p_intent_id: 'redeem_1' }));
+    // A confirmed outflow holding these tokens is classified (0057) before the sale is booked, never after.
+    expect(calls.indexOf('classify:redeem_1')).toBeGreaterThanOrEqual(0);
+    expect(calls.indexOf('classify:redeem_1')).toBeLessThan(calls.indexOf('apply_redeem_execution'));
     expect(markRedeemAccountingAppliedMock).toHaveBeenCalledWith(expect.anything(), 'redeem_1');
+    // Into the settlement token: proceeds counted 1:1 (990 raw at 6 decimals).
+    const applied = (rpc.mock.calls as unknown as [string, { p_holdings_sold: { proceeds_quote?: string }[] }][]).find((c) => c[0] === 'apply_redeem_execution')![1];
+    expect(applied.p_holdings_sold[0].proceeds_quote).toBe('0.00099');
+  });
+
+  it('a sale into another token books USD proceeds at the price fixed when it was quoted', async () => {
+    let row = intent();
+    row = { ...row, steps: [{ ...leg(), outputUsdPrice: '25' }] };
+    getRedeemIntentForUserMock.mockResolvedValue({ ok: true, intent: row });
+    trackStepStatusMock.mockResolvedValue({ kind: 'DONE', receivedAsset: { chain: 'robinhood', address: USDG }, receivedAmountRaw: '990', matchesExpectedAsset: true });
+    updateRedeemIntentStepsMock.mockImplementation(async (_a: unknown, _id: string, _st: string, steps: RedeemIntentStepRecord[]) => (row = { ...row, steps }));
+    updateRedeemIntentStatusMock.mockImplementation(async (_a: unknown, u: { to: RedeemIntent['status'] }) => (row = { ...row, status: u.to }));
+    const rpc = vi.fn(async (name: string) => (name === 'claim_intent_tx_hash' ? { data: true, error: null } : { data: null, error: null }));
+
+    const outcome = await verifyRedeemExecution({ rpc } as never, { userId: 'user_1', walletAddress: WALLET } as never, 'redeem_1');
+
+    expect(outcome.ok && outcome.value.status).toBe('COMPLETED');
+    const applied = (rpc.mock.calls as unknown as [string, { p_holdings_sold: { proceeds_quote?: string }[] }][]).find((c) => c[0] === 'apply_redeem_execution')![1];
+    expect(applied.p_holdings_sold[0].proceeds_quote).toBe('0.024750000000000000'); // 0.00099 × $25
   });
 });

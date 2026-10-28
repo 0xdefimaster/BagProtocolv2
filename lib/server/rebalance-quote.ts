@@ -1,14 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { PublicClient } from 'viem';
 import { ROBINHOOD_REWARD_TOKEN } from '@/lib/config/robinhood-chain';
-import { buildComposerRebalance, rebalanceBuyNodeId, rebalanceSellNodeId, type RebalanceShape } from '@/lib/blockchain/lifi-composer-adapter';
-import { DEFAULT_COMPOSER_SLIPPAGE_BPS, parseComposerFallback } from '@/lib/blockchain/lifi-purchase-quote';
-import type { ComposerFallbackNotice } from '@/types/purchase-intent';
+import { buildComposerRebalance, composerPortAmounts, rebalanceBuyNodeId, rebalanceSellNodeId, type RebalanceShape } from '@/lib/blockchain/lifi-composer-adapter';
+import { DEFAULT_COMPOSER_SLIPPAGE_BPS, composerFallbackFrom } from '@/lib/blockchain/lifi-purchase-quote';
+import { PRICE_IMPACT_ACCEPT_BUFFER_BPS, type ComposerFallbackNotice } from '@/types/purchase-intent';
 import { COMPOSER_DEFAULT_MAX_PRICE_IMPACT_BPS } from '@/lib/server/strategy-policy';
 import { loadRebalancePreview } from '@/lib/server/rebalance-preview';
 import { toProtocolPrice } from '@/lib/domain/basket-protocol/pricing/price-precision';
 import { NAV_VALUE_DECIMALS } from '@/lib/domain/basket-protocol/nav/nav';
 import type { PriceProvider } from '@/lib/domain/basket-protocol/pricing';
+import { largestRemainderBps } from '@/packages/bag-sdk/src';
 
 // -----------------------------------------------------------------------------
 // Rebalance quote (R2): the position preview (rebalance-preview.ts) turned into
@@ -24,6 +25,24 @@ import type { PriceProvider } from '@/lib/domain/basket-protocol/pricing';
 
 /** The most slippage a rebalance swap may take, whatever the strategy says. */
 const MAX_REBALANCE_SLIPPAGE_BPS = 300;
+
+/**
+ * Hard ceiling on the price impact an investor may accept for a rebalance (10%). Without acceptance the limit is
+ * COMPOSER_DEFAULT_MAX_PRICE_IMPACT_BPS (5%); between the two, the card shows the impact and the investor can accept
+ * it explicitly (same flow as purchases and the swap card, lower ceiling). Above it a rebalance is refused outright.
+ */
+export const MAX_ACCEPTABLE_REBALANCE_PRICE_IMPACT_BPS = 1000;
+
+/**
+ * The price-impact limit Composer is asked to enforce: the default, or — when the investor accepted a measured impact —
+ * that impact plus a small buffer (a price move between the warning and the retry), never above the ceiling and never
+ * below the default. Null when the accepted value is not a whole bps figure within [0, ceiling].
+ */
+export function rebalancePriceImpactLimitBps(acceptedPriceImpactBps: number | undefined): number | null {
+  if (acceptedPriceImpactBps === undefined) return COMPOSER_DEFAULT_MAX_PRICE_IMPACT_BPS;
+  if (!Number.isInteger(acceptedPriceImpactBps) || acceptedPriceImpactBps < 0 || acceptedPriceImpactBps > MAX_ACCEPTABLE_REBALANCE_PRICE_IMPACT_BPS) return null;
+  return Math.max(COMPOSER_DEFAULT_MAX_PRICE_IMPACT_BPS, Math.min(acceptedPriceImpactBps + PRICE_IMPACT_ACCEPT_BUFFER_BPS, MAX_ACCEPTABLE_REBALANCE_PRICE_IMPACT_BPS));
+}
 
 export interface RebalanceQuoteLeg {
   address: string;
@@ -49,23 +68,19 @@ export type RebalanceQuoteResult =
       fees: { token: string; bps: number; amount: string | null }[];
       approvalsNeeded: number;
     }
-  | { ok: false; status: number; error: string; composerFallback?: ComposerFallbackNotice };
+  | {
+      ok: false;
+      status: number;
+      error: string;
+      composerFallback?: ComposerFallbackNotice;
+      /** Set with a price-impact refusal: whether the measured impact is within what the investor may accept. */
+      acceptablePriceImpactBps?: number | null;
+    };
 
-/** Largest-remainder split of `values` into whole bps summing to exactly 10000; a value too small for 1 bp gets 0. */
+/** Largest-remainder split of `values` into whole bps summing to exactly 10000 (bag-sdk `largestRemainderBps`); a value too small for 1 bp gets 0. */
 export function weightsFromValues(values: bigint[]): number[] {
-  const total = values.reduce((s, v) => s + v, BigInt(0));
-  if (total <= BigInt(0)) throw new Error('Buy values must be positive.');
-  const bps = BigInt(10000);
-  const floors = values.map((v) => (v * bps) / total);
-  let left = Number(bps - floors.reduce((s, f) => s + f, BigInt(0)));
-  const order = values.map((v, i) => ({ i, rem: (v * bps) % total })).sort((a, b) => (a.rem === b.rem ? a.i - b.i : a.rem > b.rem ? -1 : 1));
-  const out = floors.map(Number);
-  for (const { i } of order) {
-    if (left <= 0) break;
-    out[i] += 1;
-    left -= 1;
-  }
-  return out;
+  if (values.reduce((s, v) => s + v, BigInt(0)) <= BigInt(0)) throw new Error('Buy values must be positive.');
+  return largestRemainderBps(values);
 }
 
 const str = (v: unknown) => (v === undefined || v === null ? null : String(v));
@@ -114,9 +129,13 @@ export async function planRebalance(
   priceProvider: PriceProvider,
   session: { userId: string; walletAddress: string },
   bagId: string,
-  options: { apiKey: string | undefined; fetchImpl?: typeof fetch }
+  options: { apiKey: string | undefined; fetchImpl?: typeof fetch; acceptedPriceImpactBps?: number }
 ): Promise<RebalancePlanResult> {
   if (!options.apiKey) return { ok: false, status: 503, error: 'Rebalancing is not configured on this deployment (LIFI_API_KEY).' };
+  const maxPriceImpactBps = rebalancePriceImpactLimitBps(options.acceptedPriceImpactBps);
+  if (maxPriceImpactBps === null) {
+    return { ok: false, status: 400, error: `A price impact above ${MAX_ACCEPTABLE_REBALANCE_PRICE_IMPACT_BPS / 100}% cannot be accepted for a rebalance.` };
+  }
   const loaded = await loadRebalancePreview(admin, client, priceProvider, session, bagId);
   if (!loaded.ok) return loaded;
   const { bag, recipe, holdings, symbols, preview } = loaded;
@@ -147,18 +166,25 @@ export async function planRebalance(
       hubTokenAddress: ROBINHOOD_REWARD_TOKEN.address,
       signerAddress: session.walletAddress,
       slippageBps,
-      maxPriceImpactBps: COMPOSER_DEFAULT_MAX_PRICE_IMPACT_BPS,
+      maxPriceImpactBps,
       apiKey: options.apiKey,
       fetchImpl: options.fetchImpl,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const notice = parseComposerFallback(message);
-    if (notice.reason === 'PRICE_IMPACT') return { ok: false, status: 422, error: 'The price impact of this rebalance is above the limit.', composerFallback: notice };
-    return { ok: false, status: 502, error: `No route for this rebalance right now: ${message}` };
+    const notice = composerFallbackFrom(err);
+    if (notice.reason === 'PRICE_IMPACT') {
+      const measured = notice.priceImpactBps;
+      const acceptable = measured !== null && measured <= MAX_ACCEPTABLE_REBALANCE_PRICE_IMPACT_BPS ? measured : null;
+      const error =
+        acceptable !== null
+          ? `The price impact of this rebalance is ${(measured! / 100).toFixed(2)}%, above the ${maxPriceImpactBps / 100}% limit.`
+          : `The price impact of this rebalance${measured !== null ? ` (${(measured / 100).toFixed(2)}%)` : ''} is above the ${MAX_ACCEPTABLE_REBALANCE_PRICE_IMPACT_BPS / 100}% maximum. Try again when liquidity is deeper.`;
+      return { ok: false, status: 422, error, composerFallback: notice, acceptablePriceImpactBps: acceptable };
+    }
+    return { ok: false, status: 502, error: `No route for this rebalance right now: ${notice.message}` };
   }
 
-  const produced = (node: string) => compiled.producedResources[`${node}.amountOut`];
+  const produced = (node: string) => composerPortAmounts(compiled.outputs, `${node}.amountOut`);
   const buyLegs: RebalanceQuoteLeg[] = buys.map((b, j) => {
     // One buy: each sell swaps straight into it, so its output is the sum over the sell nodes.
     const nodes = compiled.shape === 'ONE_BUY' ? sells.map((_s, i) => rebalanceSellNodeId(i)) : [rebalanceBuyNodeId(j)];
@@ -168,8 +194,8 @@ export async function planRebalance(
       decimals: b.order.decimals,
       amountRaw: null,
       weightBps: b.weightBps,
-      expectedOutRaw: sumOrNull(nodes.map((n) => str(produced(n)?.simulated?.amountOut))),
-      minOutRaw: sumOrNull(nodes.map((n) => str(produced(n)?.simulated?.amountOutMin))),
+      expectedOutRaw: sumOrNull(nodes.map((n) => produced(n).expected)),
+      minOutRaw: sumOrNull(nodes.map((n) => produced(n).min)),
     };
   });
   const sellLegs = sells.map((o) => ({ address: o.asset.address, symbol: label(o.asset.address), decimals: o.decimals, amountRaw: o.quantityRaw, weightBps: null, expectedOutRaw: null, minOutRaw: null }));

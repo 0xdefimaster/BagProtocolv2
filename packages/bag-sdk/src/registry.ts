@@ -1,5 +1,6 @@
+import { BagSdkError } from './errors';
 import { encodeAbiParameters, keccak256 } from 'viem';
-import { BAG_V1_CHAINS, type BagChain } from './chains';
+import { BAG_V1_CHAINS, chainIdOf, type BagChain } from './chains';
 import { computeDefinitionHash } from './definition';
 import type { BagDocument, Hex } from './types';
 
@@ -42,13 +43,13 @@ export const STRATEGY_REGISTRY_DEPLOYMENTS: Readonly<Partial<Record<BagChain, St
 
 /** offChainRef of a BAG strategy UUID: the 16 UUID bytes, left-padded to bytes32. */
 export function offChainRefOf(strategyUuid: string): Hex {
-  if (!UUID_RE.test(strategyUuid)) throw new Error(`"${strategyUuid}" is not a lowercase UUID.`);
+  if (!UUID_RE.test(strategyUuid)) throw new BagSdkError('INVALID_ARGUMENT', `"${strategyUuid}" is not a lowercase UUID.`);
   return `0x${strategyUuid.replace(/-/g, '').padStart(64, '0')}`;
 }
 
 /** keccak256(abi.encode(creator, offChainRef)): StrategyRegistry.deriveStrategyId and BagFactory.deriveBagId. */
 export function registryStrategyId(creator: string, strategyUuid: string): Hex {
-  if (!ADDRESS_RE.test(creator)) throw new Error(`creator "${creator}" is not an address.`);
+  if (!ADDRESS_RE.test(creator)) throw new BagSdkError('INVALID_ARGUMENT', `creator "${creator}" is not an address.`);
   return keccak256(encodeAbiParameters([{ type: 'address' }, { type: 'bytes32' }], [creator.toLowerCase() as Hex, offChainRefOf(strategyUuid)]));
 }
 
@@ -64,7 +65,7 @@ export interface RegistryRecord {
   fork: { parentStrategyId: Hex; parentVersion: number } | null;
 }
 
-export type RegistryCheckName = 'REF_PRESENT' | 'STRATEGY_REGISTERED_BY_EXPECTED_CREATOR' | 'VERSION_REGISTERED' | 'DEFINITION_MATCHES_REGISTRY';
+export type RegistryCheckName = 'RPC_CHAIN_MATCHES_STRATEGY' | 'REGISTRY_ADDRESS_MATCHES_KNOWN_DEPLOYMENT' | 'REGISTRY_HAS_CODE' | 'REF_PRESENT' | 'STRATEGY_REGISTERED_BY_EXPECTED_CREATOR' | 'VERSION_REGISTERED' | 'DEFINITION_MATCHES_REGISTRY';
 
 export interface RegistryVerification {
   verified: boolean;
@@ -150,6 +151,12 @@ export interface ContractReader {
   readContract(args: { address: Hex; abi: readonly unknown[]; functionName: string; args?: readonly unknown[] }): Promise<unknown>;
 }
 
+/** Read-only client needed to verify a registry's chain and deployed code before trusting its records. */
+export interface RegistryClient extends ContractReader {
+  getChainId(): Promise<number>;
+  getCode(args: { address: Hex }): Promise<Hex | undefined>;
+}
+
 /** Reads one (strategyId, version). An unregistered version is `definitionHash: null`, never a guess. */
 export async function readRegistryRecord(client: ContractReader, registry: Hex, strategyId: Hex, version: number): Promise<RegistryRecord> {
   const s = (await client.readContract({ address: registry, abi: STRATEGY_REGISTRY_READ_ABI, functionName: 'strategyOf', args: [strategyId] })) as {
@@ -177,9 +184,57 @@ export async function readRegistryRecord(client: ContractReader, registry: Hex, 
  * Verifies a bag.json against a deployed StrategyRegistry with no BAG server involved: the caller supplies
  * the expected creator, the registry address and a client for the registry's chain. Read-only.
  */
-export async function verifyRegistryCommitment(params: { bag: BagDocument; expectedCreator: string; registry: Hex; client: ContractReader }): Promise<RegistryVerification> {
+export async function verifyRegistryCommitment(params: { bag: BagDocument; expectedCreator: string; registry: Hex; client: RegistryClient }): Promise<RegistryVerification> {
   const { bag, expectedCreator, registry, client } = params;
   if (!bag.ref) return checkRegistryCommitment(bag, expectedCreator, null);
+
+  const preflight: RegistryVerification['checks'] = [];
+  const expectedChainId = chainIdOf(bag.definition.chain);
+  let rpcChainId: number | null = null;
+  try {
+    rpcChainId = await client.getChainId();
+  } catch (error) {
+    preflight.push({ name: 'RPC_CHAIN_MATCHES_STRATEGY', ok: false, detail: `could not read RPC chain id` });
+  }
+  const chainMatches = rpcChainId === expectedChainId;
+  if (!preflight.length) preflight.push({ name: 'RPC_CHAIN_MATCHES_STRATEGY', ok: chainMatches, detail: `rpc ${rpcChainId}, strategy ${bag.definition.chain} (${expectedChainId})` });
+
+  const known = STRATEGY_REGISTRY_DEPLOYMENTS[bag.definition.chain];
+  const addressMatches = !known || known.address.toLowerCase() === registry.toLowerCase();
+  preflight.push({
+    name: 'REGISTRY_ADDRESS_MATCHES_KNOWN_DEPLOYMENT',
+    ok: addressMatches,
+    detail: known
+      ? addressMatches ? `${registry} is the known ${bag.definition.chain} registry` : `expected known registry ${known.address}, received ${registry}`
+      : `no canonical deployment is recorded for ${bag.definition.chain}; caller-supplied address ${registry}`,
+  });
+
+  if (!chainMatches || !addressMatches) {
+    preflight.push({ name: 'REGISTRY_HAS_CODE', ok: false, detail: 'not checked because chain or registry address did not match' });
+    const commitment = checkRegistryCommitment(bag, expectedCreator, null);
+    return { ...commitment, verified: false, checks: [...preflight, ...commitment.checks] };
+  }
+
+  let code: Hex | undefined;
+  try {
+    code = await client.getCode({ address: registry });
+  } catch (error) {
+    preflight.push({ name: 'REGISTRY_HAS_CODE', ok: false, detail: `could not read contract code` });
+  }
+  const hasCode = typeof code === 'string' && code !== '0x' && code.length > 2;
+  if (!preflight.some((c) => c.name === 'REGISTRY_HAS_CODE')) {
+    preflight.push({ name: 'REGISTRY_HAS_CODE', ok: hasCode, detail: hasCode ? `${registry}: ${(code!.length - 2) / 2} bytes` : `${registry}: no contract code` });
+  }
+  if (!hasCode) {
+    const commitment = checkRegistryCommitment(bag, expectedCreator, null);
+    return { ...commitment, verified: false, checks: [...preflight, ...commitment.checks] };
+  }
+
   const id = registryStrategyId(expectedCreator, bag.ref.strategyId);
-  return checkRegistryCommitment(bag, expectedCreator, await readRegistryRecord(client, registry, id, bag.ref.version));
+  const commitment = checkRegistryCommitment(bag, expectedCreator, await readRegistryRecord(client, registry, id, bag.ref.version));
+  return {
+    ...commitment,
+    verified: preflight.every((c) => c.ok) && commitment.verified,
+    checks: [...preflight, ...commitment.checks],
+  };
 }

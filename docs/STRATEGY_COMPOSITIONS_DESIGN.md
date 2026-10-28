@@ -31,7 +31,7 @@ JSON). BAG compares the two before recording anything, and anyone can do the sam
 The existing user-signed registration loop gets one more step. Once every version is registered, `prepare` returns
 `PUBLISH_COMPOSITION` for the **latest registered version** whose weights are not recorded yet (when
 `STRATEGY_COMPOSITIONS_ADDRESS_<CHAIN>` is set and the definition can be expressed on-chain). The creator's wallet
-signs it; `confirm` records a row in `strategy_compositions` (migration 0057, insert-only) only when the receipt has
+signs it; `confirm` records a row in `strategy_compositions` (migration 0060, insert-only) only when the receipt has
 exactly one `CompositionPublished` from the configured contract, for this Bag's registered id and a registered
 version, with allocations and hash equal to that version's bag.json definition. The server never signs.
 
@@ -53,7 +53,7 @@ Needs `STRATEGY_REGISTRY_ADDRESS_ROBINHOOD` (the live registry; the script check
 one-time `DEPLOYER_PRIVATE_KEY` with a little ETH. It reads the contract back (chain, registry, constants, no
 balance) and prints `VERIFIED`. Then:
 
-1. Run migration `0057_strategy_compositions.sql` in the Supabase SQL Editor.
+1. Run migration `0060_strategy_compositions.sql` in the Supabase SQL Editor.
 2. Set `STRATEGY_COMPOSITIONS_ADDRESS_ROBINHOOD` in Netlify (not secret).
 3. Remove `DEPLOYER_PRIVATE_KEY` from `.env.local`.
 4. Live test: register a Bag, publish its weights from the panel, and check them with `readOnchainComposition`.

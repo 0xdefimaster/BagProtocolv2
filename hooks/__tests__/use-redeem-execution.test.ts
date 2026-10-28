@@ -166,6 +166,29 @@ describe('useRedeemExecution', () => {
     const fetchedUrls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
     expect(fetchedUrls.some((u: string) => u.endsWith('attest-fee'))).toBe(false);
   });
+  it('declining the first per-asset swap in the wallet closes the remaining steps too, so the sale does not stay open', async () => {
+    const { useRedeemExecution } = await import('../use-redeem-execution');
+    const swap = (stepIndex: number) => ({ stepIndex, action: 'SWAP', targetSymbol: `T${stepIndex}`, lifiStep: { id: `q${stepIndex}` } });
+    mockFetchSequence([
+      { url: /\/redeem-intent$/, body: { intent: baseIntent({ id: 'intent_1' }) } },
+      { url: /\/execute$/, body: { intent: baseIntent({ id: 'intent_1', steps: [swap(0), swap(1), swap(2)] as never }) } },
+      { url: /\/step\/\d+\/report$/, body: { intent: baseIntent({ id: 'intent_1' }) } },
+      { url: /verify$/, body: { intent: baseIntent({ id: 'intent_1', status: 'FAILED' }) } },
+    ]);
+    executeRouteMock.mockRejectedValueOnce(Object.assign(new Error('User rejected the request.'), { code: 4001 }));
+
+    const { result } = renderHook(() => useRedeemExecution());
+    await act(async () => {
+      await result.current.start(BAG_ID, 10_000, 'asset_usdg', WALLET_ADDRESS);
+    });
+
+    expect(executeRouteMock).toHaveBeenCalledTimes(1); // never asked to sign the next swaps
+    const reports = (global.fetch as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c) => /\/step\/\d+\/report$/.test(c[0]))
+      .map((c) => [String(c[0]).match(/step\/(\d+)/)![1], JSON.parse(c[1].body).type]);
+    expect(reports).toEqual(expect.arrayContaining([['1', 'REJECTED'], ['2', 'REJECTED']]));
+  });
+
   it('A4: one leg sold and one failed ends as a partial sale, never as completed (and stops polling)', async () => {
     const { useRedeemExecution } = await import('../use-redeem-execution');
 

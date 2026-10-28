@@ -1,14 +1,16 @@
 import { AssetIdentity, ExecutionStep } from '@/types/basket-protocol';
 import { RedeemIntent, RedeemIntentStepRecord } from '@/types/redeem-intent';
-import { buildComposerSweep, sweepNodeId } from '@/lib/blockchain/lifi-composer-adapter';
-import { COMPOSER_COMPILE_TIMEOUT_MS, DEFAULT_COMPOSER_SLIPPAGE_BPS } from '@/lib/blockchain/lifi-purchase-quote';
+import { buildComposerSweep, composerPortAmounts, sweepNodeId } from '@/lib/blockchain/lifi-composer-adapter';
+import type { Outputs } from '@lifi/compose-spec';
+import { DEFAULT_COMPOSER_SLIPPAGE_BPS } from '@/lib/blockchain/lifi-purchase-quote';
 import { ROBINHOOD_CHAIN_ID } from '@/lib/config/robinhood-chain';
+import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 
 // -----------------------------------------------------------------------------
 // One-transaction redemption: every SWAP leg of a redemption (each sells one of
 // the depositor's own holdings into the chosen output token) compiled as ONE
 // LI.FI Composer transaction, the same flow the wallet sweep uses
-// (buildComposerSweep: per-swap slippage guard, Composer's price-impact limit,
+// (buildComposerSweep: per-swap minimum output from config.slippage, Composer's price-impact limit,
 // approvals only for the tokens being sold and never above the amount sold,
 // no native ETH spent, output swept back to the signer).
 //
@@ -38,12 +40,9 @@ export interface RedeemComposerRequest {
   fetchImpl?: typeof fetch;
 }
 
-type ProducedResources = Record<string, { simulated?: { amountOut?: unknown; amountOutMin?: unknown } } | undefined>;
-
-function legAmounts(resources: ProducedResources, legIndex: number) {
-  const sim = resources[`${sweepNodeId(legIndex)}.amountOut`]?.simulated;
-  const str = (v: unknown) => ((typeof v === 'string' || typeof v === 'number' || typeof v === 'bigint') && /^\d+$/.test(String(v)) ? String(v) : null);
-  return { out: str(sim?.amountOut), min: str(sim?.amountOutMin) };
+function legAmounts(outputs: Outputs, legIndex: number) {
+  const { expected, min } = composerPortAmounts(outputs, `${sweepNodeId(legIndex)}.amountOut`);
+  return { out: expected, min };
 }
 
 export async function buildRedeemComposer(request: RedeemComposerRequest): Promise<RedeemComposerBuild | null> {
@@ -55,29 +54,26 @@ export async function buildRedeemComposer(request: RedeemComposerRequest): Promi
   if (swaps.some((s) => s.route.sourceChain !== chain || s.route.destinationChain !== chain || !isOutput(s.route.outputAsset))) return null;
 
   let compiled;
-  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    compiled = await Promise.race([
-      buildComposerSweep({
-        chain,
-        inputs: swaps.map((s) => ({ address: s.route.inputAsset.address, amountRaw: s.route.inputAmountRaw, symbol: s.targetSymbol || s.route.inputAsset.address })),
-        outputTokenAddress: request.outputAsset.address,
-        signerAddress: request.walletAddress,
-        slippageBps: DEFAULT_COMPOSER_SLIPPAGE_BPS,
-        apiKey: request.apiKey,
-        fetchImpl: request.fetchImpl,
-      }),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('Composer compile timed out')), COMPOSER_COMPILE_TIMEOUT_MS);
-      }),
-    ]);
-  } catch {
+    // The deadline is on the request itself (COMPOSER_COMPILE_TIMEOUT_MS in lifi-composer-adapter.ts).
+    compiled = await buildComposerSweep({
+      chain,
+      inputs: swaps.map((s) => ({ address: s.route.inputAsset.address, amountRaw: s.route.inputAmountRaw, symbol: s.targetSymbol || s.route.inputAsset.address })),
+      outputTokenAddress: request.outputAsset.address,
+      // A sale into native ETH: every swap sells into the chain's native token (resources.native), still no ETH spent.
+      nativeOutput: isNativeAssetIdentity(request.outputAsset),
+      signerAddress: request.walletAddress,
+      slippageBps: DEFAULT_COMPOSER_SLIPPAGE_BPS,
+      apiKey: request.apiKey,
+      fetchImpl: request.fetchImpl,
+    });
+  } catch (err) {
+    // Falls back to one transaction per asset; say why, or nobody can tell a dead route from a misconfiguration.
+    console.warn(`[redeem] one-transaction sale unavailable, falling back to per-asset swaps: ${err instanceof Error ? err.message : String(err)}`);
     return null;
-  } finally {
-    if (timer) clearTimeout(timer);
   }
 
-  const resources = compiled.producedResources as ProducedResources;
+  const resources = compiled.outputs;
   const steps: RedeemIntentStepRecord[] = request.steps.map((step, stepIndex) => {
     const base = {
       stepIndex,

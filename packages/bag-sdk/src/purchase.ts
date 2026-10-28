@@ -1,6 +1,8 @@
+import { BagSdkError } from './errors';
 import { chainIdOf, isNativeToken, normalizeAddress } from './chains';
 import { computeDefinitionHash } from './definition';
 import { resolveV1Rules } from './rules';
+import { PartitionError, planPartitionLegs, type PartitionPlan } from './partition';
 import { splitByWeight } from './split';
 import type { BagDocument, BagIssue, Hex } from './types';
 import { validateBag, type TokenInfo } from './validate';
@@ -12,8 +14,9 @@ import { validateBag, type TokenInfo } from './validate';
 //
 //   - the target allocation (splitByWeight, exact),
 //   - the asset that IS the input token, if any: kept, never swapped,
-//   - the swap legs and their on-chain bps cascade (the split a bps-ratio
-//     executor such as LI.FI Composer performs; within the v1 execution bound),
+//   - the swap legs and the on-chain partition that divides the swapped
+//     amount between them (partition.ts: the split a bps-ratio executor such
+//     as LI.FI Composer performs; within the v1 execution bound),
 //   - the slippage and price-impact limits, which a caller can only tighten.
 //
 // Accounting boundary (normative): a purchase built with the SDK is an
@@ -42,6 +45,8 @@ export interface PurchaseRequest {
   inputToken: string;
   /** Deposit, in the input token's smallest unit. */
   amountRaw: bigint;
+  /** Input token precision. Required to enforce a positive minInvestment for ERC-20 payments; native ETH defaults to 18. */
+  inputTokenDecimals?: number;
   /** The wallet that will sign; the assets are delivered to it. */
   signer: string;
   /** Tighter per-swap slippage than the definition's (never looser). */
@@ -59,7 +64,7 @@ export interface PlannedLeg {
   token: string;
   /** Exact target share of the deposit this leg should spend (splitByWeight). */
   targetInputRaw: bigint;
-  /** This leg's share of the swapped amount, in whole bps (the last leg absorbs rounding). */
+  /** This leg's share of the swapped amount, in whole bps (largest remainder; the legs sum to 10000). */
   legBps: number;
 }
 
@@ -75,38 +80,41 @@ export interface PurchasePlan {
   kept: { token: string; amountRaw: bigint } | null;
   /** Amount actually swapped (`amountRaw − kept`). */
   swapAmountRaw: bigint;
+  /** Canonical order: token address ascending. */
   legs: PlannedLeg[];
-  /** bps of the REMAINING amount each split takes, for legs[0..n−2]; the last leg takes what remains. */
-  cascadeSplitBps: number[];
+  /** The `core.partition` node(s) that divide `swapAmountRaw` across `legs` (partition.ts `planPartition`). */
+  partition: PartitionPlan;
   slippageBps: number;
   maxPriceImpactBps: number;
   accounting: typeof SDK_EXECUTION_ACCOUNTING;
 }
 
-export class PurchasePlanError extends Error {
+export class PurchasePlanError extends BagSdkError {
   constructor(readonly issues: BagIssue[]) {
-    super(`Cannot plan this purchase: ${issues.map((i) => `${i.code} (${i.path})`).join(', ')}`);
+    super('PURCHASE_PLAN_INVALID', `Cannot plan this purchase: ${issues.map((i) => `${i.code} (${i.path})`).join(', ')}`);
     this.name = 'PurchasePlanError';
   }
 }
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
-/**
- * bps of the remaining pool each cascade step splits off. Same algorithm as BAG's Composer purchase
- * (lifi-composer-adapter.ts computeCascadeSplitBps; a test keeps them equal).
- */
-export function cascadeSplitBps(legBps: number[]): number[] {
-  const total = legBps.reduce((s, b) => s + b, 0);
-  if (total !== 10000) throw new Error(`cascadeSplitBps: leg bps sum to ${total}, not 10000.`);
-  const steps: number[] = [];
-  let remaining = 10000;
-  for (let i = 0; i < legBps.length - 1; i++) {
-    const step = Math.round((legBps[i] / remaining) * 10000);
-    steps.push(Math.min(9999, Math.max(1, step)));
-    remaining -= legBps[i];
+/** Compare raw token units to a canonical human-readable decimal without floating point. */
+function compareRawToDecimal(amountRaw: bigint, decimals: number, amount: string): number {
+  const unit = BigInt(10) ** BigInt(decimals);
+  const whole = (amountRaw / unit).toString();
+  const fraction = decimals === 0 ? '' : (amountRaw % unit).toString().padStart(decimals, '0');
+  const [minimumWhole, minimumFraction = ''] = amount.split('.');
+
+  if (whole.length !== minimumWhole.length) return whole.length < minimumWhole.length ? -1 : 1;
+  if (whole !== minimumWhole) return whole < minimumWhole ? -1 : 1;
+
+  const fractionLength = Math.max(fraction.length, minimumFraction.length);
+  for (let i = 0; i < fractionLength; i += 1) {
+    const actualDigit = fraction[i] ?? '0';
+    const minimumDigit = minimumFraction[i] ?? '0';
+    if (actualDigit !== minimumDigit) return actualDigit < minimumDigit ? -1 : 1;
   }
-  return steps;
+  return 0;
 }
 
 /** Plans a purchase of a valid bag.json. Throws PurchasePlanError with every reason it cannot. */
@@ -120,8 +128,27 @@ export function planPurchase(bag: BagDocument, req: PurchaseRequest): PurchasePl
   if (!ADDRESS_RE.test(req.inputToken)) err('INVALID_INPUT_TOKEN', 'request.inputToken', 'inputToken must be an ERC-20 address or NATIVE_TOKEN.');
   if (!ADDRESS_RE.test(req.signer)) err('INVALID_SIGNER', 'request.signer', 'signer must be an address.');
   if (typeof req.amountRaw !== 'bigint' || req.amountRaw <= BigInt(0)) err('INVALID_AMOUNT', 'request.amountRaw', 'amountRaw must be a positive bigint.');
+  if (req.inputTokenDecimals !== undefined && (!Number.isInteger(req.inputTokenDecimals) || req.inputTokenDecimals < 0 || req.inputTokenDecimals > 255)) {
+    err('INVALID_INPUT_TOKEN_DECIMALS', 'request.inputTokenDecimals', 'inputTokenDecimals must be an integer from 0 to 255.');
+  }
+  if (bag.definition.assets.some((asset) => isNativeToken(asset.address))) {
+    err('UNSUPPORTED_NATIVE_ASSET', 'definition.assets', 'The v1 purchase executor supports ERC-20 basket assets; the native token is supported as a payment token only.');
+  }
 
   const rules = resolveV1Rules(bag.definition);
+  const minInvestmentAmount = rules.minInvestmentAmount.value;
+  if (!/^(?:0|[1-9]\d*)(?:\.\d*[1-9])?$/.test(minInvestmentAmount)) {
+    err('INVALID_MIN_INVESTMENT', 'definition.rules.minInvestment.amount', 'minInvestment.amount must be a canonical non-negative decimal string.');
+  } else if (minInvestmentAmount !== '0') {
+    const inputTokenDecimals = req.inputTokenDecimals ?? (isNativeToken(req.inputToken) ? 18 : undefined);
+    if (inputTokenDecimals === undefined) {
+      err('INPUT_TOKEN_DECIMALS_REQUIRED', 'request.inputTokenDecimals', 'Provide the input token decimals to enforce this strategy’s minimum investment.');
+    } else if (!Number.isInteger(inputTokenDecimals) || inputTokenDecimals < 0 || inputTokenDecimals > 255) {
+      // The request already carries INVALID_INPUT_TOKEN_DECIMALS; avoid using an invalid exponent.
+    } else if (typeof req.amountRaw === 'bigint' && req.amountRaw > BigInt(0) && compareRawToDecimal(req.amountRaw, inputTokenDecimals, minInvestmentAmount) < 0) {
+      err('BELOW_MIN_INVESTMENT', 'request.amountRaw', `Deposit is below the strategy minimum of ${minInvestmentAmount} payment-token units.`);
+    }
+  }
   const policyCap = V1_EXECUTION_POLICY.maxSlippageBps;
   let slippageBps = Math.min(rules.swapSlippageBps.value, policyCap);
   if (req.slippageBps !== undefined) {
@@ -159,16 +186,16 @@ export function planPurchase(bag: BagDocument, req: PurchaseRequest): PurchasePl
   swapAssets.forEach((a) => a.targetInputRaw <= BigInt(0) && err('AMOUNT_TOO_SMALL', 'request.amountRaw', `The deposit gives ${a.token} nothing to swap.`));
   if (swapAssets.length === 0) err('NOTHING_TO_SWAP', 'definition.assets', 'The strategy holds only the input token.');
 
-  const swapAmountRaw = swapAssets.reduce((s, a) => s + a.targetInputRaw, BigInt(0));
-  // Whole-bp leg weights from the exact target amounts; the last leg absorbs the rounding (as BAG does).
-  let assigned = 0;
-  const legs: PlannedLeg[] = swapAssets.map((a, i) => {
-    const legBps = i === swapAssets.length - 1 ? 10000 - assigned : swapAmountRaw > BigInt(0) ? Number((a.targetInputRaw * BigInt(10000)) / swapAmountRaw) : 0;
-    if (i < swapAssets.length - 1) assigned += legBps;
-    return { token: a.token, targetInputRaw: a.targetInputRaw, legBps };
-  });
-  legs.forEach((l) => l.legBps <= 0 && err('AMOUNT_TOO_SMALL', 'request.amountRaw', `${l.token} would get less than 1 bp of the swap; deposit more.`));
+  if (issues.length > 0) throw new PurchasePlanError(issues);
 
+  // Whole-bp leg weights from the exact target amounts, by largest remainder (partition.ts), as BAG builds them.
+  let partitioned: ReturnType<typeof planPartitionLegs> | null = null;
+  try {
+    partitioned = planPartitionLegs(swapAssets.map((a) => ({ token: a.token, amountRaw: a.targetInputRaw })));
+  } catch (e) {
+    if (!(e instanceof PartitionError)) throw e;
+    err(e.code === 'LEG_BELOW_ONE_BP' ? 'AMOUNT_TOO_SMALL' : 'UNPLANNABLE_SPLIT', 'request.amountRaw', `${e.message} Deposit more.`);
+  }
   if (issues.length > 0) throw new PurchasePlanError(issues);
 
   return {
@@ -179,9 +206,9 @@ export function planPurchase(bag: BagDocument, req: PurchaseRequest): PurchasePl
     signer: normalizeAddress(req.signer),
     amountRaw: req.amountRaw,
     kept: keptRaw === null ? null : { token: input, amountRaw: keptRaw },
-    swapAmountRaw,
-    legs,
-    cascadeSplitBps: cascadeSplitBps(legs.map((l) => l.legBps)),
+    swapAmountRaw: partitioned!.totalRaw,
+    legs: partitioned!.legs.map((l) => ({ token: l.token, targetInputRaw: l.amountRaw, legBps: l.legBps })),
+    partition: partitioned!.partition,
     slippageBps,
     maxPriceImpactBps,
     accounting: SDK_EXECUTION_ACCOUNTING,

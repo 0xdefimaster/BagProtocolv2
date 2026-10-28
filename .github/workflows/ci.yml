@@ -13,12 +13,14 @@ name: CI
 #     network-restricted sandbox.
 #
 # Two jobs, run in parallel: the fast checks (secrets, lint, typecheck, unit
-# tests) and the integration tests against a REAL database. Contract tests
-# live in contracts.yml and run only when contract code changes. The
-# production build is not repeated here: Netlify builds every pull request
-# (deploy preview) and every push to main, and reports a failed build on the
-# PR. Docs-only changes skip CI. Actions bills each job by the started minute,
-# so fewer, fuller jobs cost less for the same coverage.
+# tests, production build) and the integration tests against a REAL database.
+# Contract tests live in contracts.yml and run only when contract code
+# changes. The production build runs here too: `tsc` does not check what only
+# `next build` checks (e.g. a route handler's signature: a `POST(req?: Request)`
+# passed lint, typecheck and every test, and only the Netlify preview failed),
+# and a failed preview is easy to miss while every CI row is green. Docs-only
+# changes skip CI. Actions bills each job by the started
+# minute, so fewer, fuller jobs cost less for the same coverage.
 # -----------------------------------------------------------------------------
 
 on:
@@ -35,8 +37,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Node 24: the production dependency @lifi/composer-sdk@0.5.0 (and its
-  # @lifi/compose-spec@0.5.0) declares `engines.node: ">=24"` — verified in
+  # Node 24: the production dependency @lifi/composer-sdk@0.11.3 (and its
+  # @lifi/compose-spec@0.11.3) declares `engines.node: ">=24"` — verified in
   # package-lock.json. package.json `engines` and .nvmrc pin the same major
   # so local dev, CI and the production runtime (Vercel reads `engines.node`)
   # all run the version the dependency tree actually supports.
@@ -60,7 +62,19 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      # Exercise the packed SDK from a clean downstream project, including every export and TS consumer types.
+      - name: Build and smoke-test the published SDK package
+        run: |
+          npm run build --prefix packages/bag-sdk
+          npm run smoke:consumer --prefix packages/bag-sdk
+          npm run smoke:starter --prefix packages/bag-sdk
+          SDK_RELEASE_SKIP_CONSUMERS=1 npm run release:check --prefix packages/bag-sdk -- --mode package --out "$RUNNER_TEMP/bag-sdk-candidate"
       - run: npm test
+      # Same job, same `npm ci`: catches what only Next's build checks (route
+      # handler signatures, page exports, server/client boundaries).
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
 
   integration-tests:
     name: Integration tests (real Postgres)

@@ -161,6 +161,8 @@ export type CreateBagResult =
   | { ok: true; bag: BagRecord; version: BagVersionRecord }
   | { ok: false; error: 'VALIDATION_FAILED'; issues: ValidationIssue[] }
   | { ok: false; error: 'DUPLICATE_SLUG'; message: string }
+  /** Another Bag that is not archived already has this name (migration 0058: case and spacing ignored). */
+  | { ok: false; error: 'DUPLICATE_NAME'; message: string }
   | { ok: false; error: 'DB_ERROR'; message: string };
 
 /**
@@ -227,6 +229,9 @@ async function insertBag(admin: SupabaseClient, input: CreateBagInput, lineage: 
   });
 
   if (error) {
+    if (isBagNameTakenError(error)) {
+      return { ok: false, error: 'DUPLICATE_NAME', message: bagNameTakenMessage(recipe.name) };
+    }
     // Postgres unique_violation — see `bags.slug unique` in schema.sql.
     if (error.code === '23505') {
       return { ok: false, error: 'DUPLICATE_SLUG', message: `Slug "${input.slug}" is already taken.` };
@@ -236,6 +241,28 @@ async function insertBag(admin: SupabaseClient, input: CreateBagInput, lineage: 
 
   const result = data as { bag: BagRow; version: BagVersionRow };
   return { ok: true, bag: bagFromRow(result.bag), version: versionFromRow(result.version) };
+}
+
+// ----------------------------- Names ----------------------------------------
+
+/** Same rule as normalize_bag_name (migration 0058): lowercase, trimmed, inner whitespace collapsed. */
+export function normalizeBagName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+export function bagNameTakenMessage(name: string): string {
+  return `A Bag named "${name.trim()}" already exists. Pick another name.`;
+}
+
+function isBagNameTakenError(error: { message?: string }): boolean {
+  return typeof error.message === 'string' && error.message.includes('BAG_NAME_TAKEN');
+}
+
+/** Whether no Bag that is not archived uses this name yet. The insert checks again, so this is only a hint. */
+export async function isBagNameAvailable(admin: SupabaseClient, name: string): Promise<boolean> {
+  const { data, error } = await admin.rpc('bag_name_available', { p_name: name });
+  if (error) throw new Error(error.message);
+  return data === true;
 }
 
 // ----------------------------- Read -----------------------------------------

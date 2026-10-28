@@ -14,6 +14,7 @@ import {
   type ComposerCompileRequest,
   type ComposerCompileResult,
   type ComposerProvider,
+  type Hex,
   type SimulationClient,
 } from '../src';
 import { lifiComposer } from '../src/adapters/lifi';
@@ -34,7 +35,7 @@ const doc = (mutate: (d: any) => void = () => {}): BagDocument => {
   if (!r.ok) throw new Error(JSON.stringify(r.issues));
   return r.bag;
 };
-const req = (over: Record<string, unknown> = {}) => ({ inputToken: USDG, amountRaw: BigInt(10_000_000), signer: SIGNER, ...over });
+const req = (over: Record<string, unknown> = {}) => ({ inputToken: USDG, amountRaw: BigInt(10_000_000), inputTokenDecimals: 6, signer: SIGNER, ...over });
 const codes = (fn: () => unknown) => {
   try {
     fn();
@@ -58,7 +59,7 @@ function fakeProvider(override: (r: ComposerCompileResult, q: ComposerCompileReq
           transaction: { to: ROUTER, data: '0x12345678abcdef', value: '0', chainId: q.chainId },
           executor: '0x' + '8'.repeat(40),
           approvals: [{ token: q.inputToken, spender: SPENDER, amountRaw: String(q.amountRaw) }],
-          legs: q.legs.map((l) => ({ token: l.token, expectedOutRaw: '1000', minOutRaw: '990' })),
+          legs: q.legs.map((l) => ({ token: l.token, expectedOutRaw: '1000', minOutRaw: String(BigInt(1000) * BigInt(10_000 - q.slippageBps) / BigInt(10_000)) })),
           priceImpactBps: 12,
           gasLimit: '400000',
           fees: [],
@@ -70,7 +71,7 @@ function fakeProvider(override: (r: ComposerCompileResult, q: ComposerCompileReq
 }
 
 describe('planPurchase', () => {
-  it('exact target allocation, whole-bp legs, cascade, limits, and the accounting boundary', () => {
+  it('exact target allocation, whole-bp legs, partition, limits, and the accounting boundary', () => {
     const plan = planPurchase(doc(), req());
     expect(plan.chainId).toBe(4663);
     expect(plan.kept).toBeNull();
@@ -79,7 +80,7 @@ describe('planPurchase', () => {
       { token: B, targetInputRaw: BigInt(6_000_000), legBps: 6000 },
     ]);
     expect(plan.swapAmountRaw).toBe(BigInt(10_000_000));
-    expect(plan.cascadeSplitBps).toEqual([4000]);
+    expect(plan.partition).toEqual({ outerBps: [4000, 6000], groups: [{ legs: [0], innerBps: null }, { legs: [1], innerBps: null }] });
     expect(plan.slippageBps).toBe(100); // declared
     expect(plan.maxPriceImpactBps).toBe(V1_EXECUTION_POLICY.maxPriceImpactBps);
     expect(plan.accounting).toBe('NOT_BAG_ACCOUNTED');
@@ -95,7 +96,15 @@ describe('planPurchase', () => {
     expect(plan.kept).toEqual({ token: USDG, amountRaw: BigInt(4_000_000) });
     expect(plan.legs).toEqual([{ token: '0xb0000000000000000000000000000000000000bb', targetInputRaw: BigInt(6_000_000), legBps: 10000 }]);
     expect(plan.swapAmountRaw).toBe(BigInt(6_000_000));
-    expect(plan.cascadeSplitBps).toEqual([]);
+    expect(plan.partition).toEqual({ outerBps: [10000], groups: [{ legs: [0], innerBps: null }] });
+  });
+
+  it('rejects a native coin basket asset before asking a provider to route it as ERC-20', () => {
+    const bag = doc((d) => {
+      d.definition.assets[0].address = NATIVE_TOKEN;
+      delete d.metadata;
+    });
+    expect(codes(() => planPurchase(bag, req()))).toContain('UNSUPPORTED_NATIVE_ASSET');
   });
 
   it('slippage: declared, capped at 300, default 100 for null; a caller can only tighten', () => {
@@ -114,7 +123,7 @@ describe('planPurchase', () => {
     expect(codes(() => planPurchase(doc((d) => (d.definition.assets[0].weightBps = 3000)), req()))).toEqual(['WEIGHTS_NOT_100']);
     expect(codes(() => planPurchase(doc(), req({ inputToken: 'USDG', signer: '0x1', amountRaw: BigInt(0) })))).toEqual(['INVALID_INPUT_TOKEN', 'INVALID_SIGNER', 'INVALID_AMOUNT']);
     expect(codes(() => planPurchase(doc(), req({ allowedTokens: [A] })))).toEqual(['TOKEN_NOT_ALLOWED']);
-    expect(codes(() => planPurchase(doc(), req({ amountRaw: BigInt(1) })))).toContain('AMOUNT_TOO_SMALL');
+    expect(codes(() => planPurchase(doc((d) => (d.definition.rules.minInvestment = { amount: '0', measuredAs: 'PAYMENT_TOKEN_AMOUNT' })), req({ amountRaw: BigInt(1) })))).toContain('AMOUNT_TOO_SMALL');
   });
 
   it('legs follow the exact target (cross-checked with splitByWeight)', () => {
@@ -135,8 +144,8 @@ describe('compileBag / quoteBag', () => {
     expect(compiled.approvals).toEqual([{ token: USDG, spender: SPENDER, amountRaw: BigInt(10_000_000) }]);
     expect(compiled.quote.legs.map((l) => l.minOutRaw)).toEqual(['990', '990']);
     expect(provider.requests[0]).toEqual({
-      chainId: 4663, inputToken: USDG, inputKind: 'erc20', amountRaw: BigInt(10_000_000), signer: SIGNER, legs: [{ token: A }, { token: B }],
-      cascadeSplitBps: [4000], slippageBps: 100, maxPriceImpactBps: 500,
+      chainId: 4663, inputToken: USDG, inputKind: 'erc20', amountRaw: BigInt(10_000_000), signer: SIGNER, legs: [{ token: A, legBps: 4000 }, { token: B, legBps: 6000 }],
+      slippageBps: 100, maxPriceImpactBps: 500,
     });
     const quote = await quoteBag(doc(), req(), { provider: fakeProvider(), trust: TRUST });
     expect(quote.priceImpactBps).toBe(12);
@@ -194,12 +203,12 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
   // A fresh copy per response: the SDK client converts amounts in place while parsing.
   function composeFetch(data: Record<string, unknown>) {
     const wire = JSON.stringify({ data });
-    return vi.fn(async () => ({ ok: true, status: 200, json: async () => JSON.parse(wire), text: async () => wire })) as unknown as typeof fetch;
+    return vi.fn(async () => ({ ok: true, status: 200, headers: new Headers(), json: async () => JSON.parse(wire), text: async () => wire })) as unknown as typeof fetch;
   }
   const compileData = {
-    producedResources: {
-      'swap_0.amountOut': { kind: 'erc20', chainId: 4663, token: A, availability: 'now', owner: SIGNER, simulated: { amountOut: '4000', amountOutMin: '3960' } },
-      'swap_1.amountOut': { kind: 'erc20', chainId: 4663, token: B, availability: 'now', owner: SIGNER, simulated: { amountOut: '6000', amountOutMin: '5940' } },
+    outputs: {
+      'swap_0.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: A, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '4000' }, minimum: { basis: 'op', value: '3960' } } },
+      'swap_1.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: B, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '6000' }, minimum: { basis: 'op', value: '5940' } } },
     },
     transactionRequest: { to: ROUTER, chainId: 4663, data: '0xdeadbeef', value: '0', gasLimit: '500000' },
     userProxy: '0x' + '8'.repeat(40),
@@ -208,12 +217,15 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     fees: [],
   };
 
-  it('requires the caller’s own API key', () => {
+  it('requires the caller’s own API key and a secure Composer endpoint', () => {
     expect(() => lifiComposer({ apiKey: '', baseUrl: 'https://composer.test' })).toThrow(/apiKey/);
     expect(() => lifiComposer({ apiKey: 'k', baseUrl: '' })).toThrow(/baseUrl/);
+    for (const baseUrl of ['http://composer.test', 'https://user:pass@composer.test', 'not-a-url']) {
+      expect(() => lifiComposer({ apiKey: 'k', baseUrl })).toThrow(/baseUrl/);
+    }
   });
 
-  it('builds the split/swap flow from the plan and maps the compile response', async () => {
+  it('builds the partition/swap flow from the plan and maps the compile response', async () => {
     const fetchImpl = composeFetch(compileData);
     const compiled = await compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'test-key', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST });
     expect(compiled.transaction).toEqual({ to: ROUTER, data: '0xdeadbeef', value: BigInt(0), chainId: 4663 });
@@ -223,7 +235,8 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
     const calls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls as [string, RequestInit][];
     const compose = calls.find(([url]) => String(url).endsWith('/compose'))!;
     const body = String(compose[1].body);
-    expect(body).toContain('"bps":4000'); // the cascade split
+    expect(body).toContain('"bps":[4000,6000]'); // one core.partition by the legs' bps
+    expect(body).not.toContain('core.split');
     expect(body).toContain('"maxPriceImpactBps":500');
     expect(body.toLowerCase()).toContain(SIGNER);
     expect(JSON.stringify(compose[1].headers)).toContain('test-key');
@@ -232,6 +245,55 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
   it('a price impact above the limit from the real adapter is refused', async () => {
     const fetchImpl = composeFetch({ ...compileData, priceImpact: { ...compileData.priceImpact, impactBps: 735 } });
     await expect(compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST })).rejects.toThrow(/735 bps is above the limit 500/);
+  });
+
+  it.each(['owner', 'chain', 'delayed', 'intermediate'])('rejects Composer output with wrong %s before returning a transaction', async kind => {
+    const data = structuredClone(compileData);
+    const output = data.outputs['swap_0.amountOut'] as Record<string, any>;
+    if (kind === 'owner') output.owner = '0x' + '9'.repeat(40);
+    if (kind === 'chain') output.resource.chainId = 1;
+    if (kind === 'delayed') output.delivery = { when: 'later' };
+    if (kind === 'intermediate') output.role = 'intermediate';
+    const fetchImpl = composeFetch(data);
+    await expect(compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST })).rejects.toThrow();
+  });
+
+  it('binds the compile result to the independently resolved factory/proxy and handles first use', async () => {
+    const proxy = compileData.userProxy as Hex;
+    const account = { chainId: 4663, signer: SIGNER as Hex, factory: ROUTER as Hex, factoryCodeHash: ('0x' + '1'.repeat(64)) as Hex,
+      proxy, proxyDeployed: false, blockNumber: BigInt(100), blockHash: ('0x' + '2'.repeat(64)) as Hex, trust: TRUST };
+    const data = structuredClone(compileData); data.approvals[0].spender = proxy;
+    const trust = { ...TRUST, allowedApprovalSpenders: [proxy] };
+    const compiled = await compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: composeFetch(data), account }), trust });
+    expect(compiled.executor).toBe(proxy);
+    expect(compiled.transaction.to).toBe(ROUTER);
+    data.transactionRequest.to = proxy;
+    const deployed = await compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: composeFetch(data), account: { ...account, proxyDeployed: true } }), trust: { ...trust, allowedTransactionTargets: [proxy] } });
+    expect(deployed.transaction.to).toBe(proxy);
+  });
+
+  it.each(['chain', 'signer', 'target', 'proxy', 'spender'])('rejects an independently resolved account %s mismatch', async kind => {
+    const proxy = compileData.userProxy as Hex;
+    const account = { chainId: kind === 'chain' ? 1 : 4663, signer: (kind === 'signer' ? '0x' + '9'.repeat(40) : SIGNER) as Hex,
+      factory: ROUTER as Hex, factoryCodeHash: ('0x' + '1'.repeat(64)) as Hex, proxy, proxyDeployed: false,
+      blockNumber: BigInt(100), blockHash: ('0x' + '2'.repeat(64)) as Hex, trust: TRUST };
+    const data = structuredClone(compileData); data.approvals[0].spender = proxy;
+    if (kind === 'target') data.transactionRequest.to = proxy;
+    if (kind === 'proxy') data.userProxy = '0x' + '9'.repeat(40);
+    if (kind === 'spender') data.approvals[0].spender = SPENDER;
+    const fetchImpl = composeFetch(data);
+    await expect(compileBag(doc(), req(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl, account }), trust: { ...TRUST, allowedApprovalSpenders: [proxy] } })).rejects.toThrow(/independently|different chain or signer/);
+    if (kind === 'chain' || kind === 'signer') expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('refuses unavailable and malformed price impact instead of bypassing the limit', async () => {
+    const missing = fakeProvider((r) => ({ ...r, priceImpactBps: null }));
+    await expect(compileBag(doc(), req(), { provider: missing, trust: TRUST })).rejects.toThrow(/did not report price impact/);
+
+    for (const impactBps of [-1, 1.5, Number.NaN]) {
+      const malformed = fakeProvider((r) => ({ ...r, priceImpactBps: impactBps }));
+      await expect(compileBag(doc(), req(), { provider: malformed, trust: TRUST })).rejects.toThrow(/malformed price impact/);
+    }
   });
 });
 
@@ -271,13 +333,17 @@ describe('simulateBag', () => {
 
 describe('native ETH input (the chain\'s native coin, paid as the transaction value)', () => {
   const ETH = NATIVE_TOKEN;
-  const ethReq = (over: Record<string, unknown> = {}) => req({ inputToken: ETH, amountRaw: BigInt('1000000000000000'), ...over });
+  const ethReq = (over: Record<string, unknown> = {}) => req({ inputToken: ETH, amountRaw: BigInt('1000000000000000'), inputTokenDecimals: 18, ...over });
+  const ethDoc = (mutate: (d: any) => void = () => {}) => doc((d) => {
+    d.definition.rules.minInvestment = { amount: '0', measuredAs: 'PAYMENT_TOKEN_AMOUNT' };
+    mutate(d);
+  });
   /** A well-behaved provider for a native purchase: value = the swapped amount, no approval. */
   const nativeProvider = (override: (r: ComposerCompileResult, q: ComposerCompileRequest) => ComposerCompileResult = (r) => r) =>
     fakeProvider((r, q) => override({ ...r, transaction: { ...r.transaction, value: String(q.amountRaw) }, approvals: [] }, q));
 
   it('plans a native purchase: inputKind native, every asset swapped, same exact allocation as an ERC-20 deposit', () => {
-    const plan = planPurchase(doc(), ethReq());
+    const plan = planPurchase(ethDoc(), ethReq());
     expect(plan.inputKind).toBe('native');
     expect(plan.inputToken).toBe(ETH);
     expect(plan.kept).toBeNull();
@@ -286,17 +352,17 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
     expect(planPurchase(doc(), req()).inputKind).toBe('erc20');
   });
 
-  it('a strategy holding the native coin itself cannot be paid in it (nothing native is ever kept)', () => {
-    const bag = doc((d) => {
+  it('rejects strategies that include the native coin as a basket asset', () => {
+    const bag = ethDoc((d) => {
       d.definition.assets[1].address = ETH;
       delete d.metadata;
     });
-    expect(codes(() => planPurchase(bag, ethReq()))).toContain('NATIVE_INPUT_KEPT');
+    expect(codes(() => planPurchase(bag, ethReq()))).toContain('UNSUPPORTED_NATIVE_ASSET');
   });
 
   it('compiles: the provider is asked for a native input, and the unsigned transaction carries exactly the ETH as msg.value, no approval', async () => {
     const provider = nativeProvider();
-    const compiled = await compileBag(doc(), ethReq(), { provider, trust: TRUST });
+    const compiled = await compileBag(ethDoc(), ethReq(), { provider, trust: TRUST });
     expect(provider.requests[0]).toMatchObject({ inputToken: ETH, inputKind: 'native', amountRaw: BigInt('1000000000000000'), signer: SIGNER, chainId: 4663 });
     expect(compiled.transaction).toEqual({ to: ROUTER, data: '0x12345678abcdef', value: BigInt('1000000000000000'), chainId: 4663 });
     expect(compiled.approvals).toEqual([]);
@@ -305,51 +371,52 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
   it('msg.value must be exactly the swapped amount: more, less, or none is refused', async () => {
     for (const value of ['1000000000000001', '999999999999999', '0']) {
       const provider = nativeProvider((r) => ({ ...r, transaction: { ...r.transaction, value } }));
-      await expect(compileBag(doc(), ethReq(), { provider, trust: TRUST })).rejects.toThrow(/must send exactly 1000000000000000 wei/);
+      await expect(compileBag(ethDoc(), ethReq(), { provider, trust: TRUST })).rejects.toThrow(/must send exactly 1000000000000000 wei/);
     }
     // 0x-hex is accepted when it is the exact amount
     const hex = nativeProvider((r) => ({ ...r, transaction: { ...r.transaction, value: '0x38d7ea4c68000' } }));
-    expect((await compileBag(doc(), ethReq(), { provider: hex, trust: TRUST })).transaction.value).toBe(BigInt('1000000000000000'));
+    expect((await compileBag(ethDoc(), ethReq(), { provider: hex, trust: TRUST })).transaction.value).toBe(BigInt('1000000000000000'));
   });
 
   it('a native purchase with any approval request is refused; an ERC-20 purchase that sends ETH still is', async () => {
     const withApproval = nativeProvider((r, q) => ({ ...r, approvals: [{ token: q.inputToken, spender: SPENDER, amountRaw: '1' }] }));
-    await expect(compileBag(doc(), ethReq(), { provider: withApproval, trust: TRUST })).rejects.toThrow(/needs no approval/);
+    await expect(compileBag(ethDoc(), ethReq(), { provider: withApproval, trust: TRUST })).rejects.toThrow(/needs no approval/);
     const erc20WithValue = fakeProvider((r) => ({ ...r, transaction: { ...r.transaction, value: '5' } }));
     await expect(compileBag(doc(), req(), { provider: erc20WithValue, trust: TRUST })).rejects.toThrow(/must not send native value/);
   });
 
   it('chain, target, legs, slippage and minimum output stay checked for a native purchase', async () => {
     const wrongChain = nativeProvider((r) => ({ ...r, transaction: { ...r.transaction, chainId: 1 } }));
-    await expect(compileBag(doc(), ethReq(), { provider: wrongChain, trust: TRUST })).rejects.toThrow(/chain 1 does not match plan chain 4663/);
+    await expect(compileBag(ethDoc(), ethReq(), { provider: wrongChain, trust: TRUST })).rejects.toThrow(/chain 1 does not match plan chain 4663/);
     const wrongTarget = nativeProvider((r) => ({ ...r, transaction: { ...r.transaction, to: '0x' + '9'.repeat(40) } }));
-    await expect(compileBag(doc(), ethReq(), { provider: wrongTarget, trust: TRUST })).rejects.toThrow(/not in the caller's trusted target allowlist/);
+    await expect(compileBag(ethDoc(), ethReq(), { provider: wrongTarget, trust: TRUST })).rejects.toThrow(/not in the caller's trusted target allowlist/);
     const wrongLeg = nativeProvider((r) => ({ ...r, legs: [{ ...r.legs[0], token: '0x' + 'd'.repeat(40) }, r.legs[1]] }));
-    await expect(compileBag(doc(), ethReq(), { provider: wrongLeg, trust: TRUST })).rejects.toThrow(/leg 0 delivers/);
+    await expect(compileBag(ethDoc(), ethReq(), { provider: wrongLeg, trust: TRUST })).rejects.toThrow(/leg 0 delivers/);
     const badMin = nativeProvider((r) => ({ ...r, legs: r.legs.map((l) => ({ ...l, expectedOutRaw: '1000', minOutRaw: '1001' })) }));
-    await expect(compileBag(doc(), ethReq(), { provider: badMin, trust: TRUST })).rejects.toThrow(/minimum output is above its expected output/);
+    await expect(compileBag(ethDoc(), ethReq(), { provider: badMin, trust: TRUST })).rejects.toThrow(/minimum output is above its expected output/);
     // slippage: the caller can only tighten, for native as for ERC-20
-    expect(codes(() => planPurchase(doc(), ethReq({ slippageBps: 301 })))).toContain('LOOSER_THAN_POLICY');
+    expect(codes(() => planPurchase(ethDoc(), ethReq({ slippageBps: 301 })))).toContain('LOOSER_THAN_POLICY');
     const tight = nativeProvider();
-    await compileBag(doc(), ethReq({ slippageBps: 50 }), { provider: tight, trust: TRUST });
+    await compileBag(ethDoc(), ethReq({ slippageBps: 50 }), { provider: tight, trust: TRUST });
     expect(tight.requests[0].slippageBps).toBe(50);
   });
 
   it('the LI.FI adapter declares the native resource, sweeps outputs to the signer, and returns the exact value', async () => {
     const wire = JSON.stringify({
       data: {
-        producedResources: {
-          'swap_0.amountOut': { kind: 'erc20', chainId: 4663, token: A, availability: 'now', owner: SIGNER, simulated: { amountOut: '4000', amountOutMin: '3960' } },
-          'swap_1.amountOut': { kind: 'erc20', chainId: 4663, token: B, availability: 'now', owner: SIGNER, simulated: { amountOut: '6000', amountOutMin: '5940' } },
+        outputs: {
+          'swap_0.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: A, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '4000' }, minimum: { basis: 'op', value: '3960' } } },
+          'swap_1.amountOut': { role: 'terminal', owner: SIGNER, delivery: { when: 'now' }, resource: { kind: 'erc20', token: B, chainId: 4663 }, amount: { estimate: { basis: 'simulated', value: '6000' }, minimum: { basis: 'op', value: '5940' } } },
         },
         transactionRequest: { to: ROUTER, chainId: 4663, data: '0xdeadbeef', value: '1000000000000000' },
         userProxy: '0x' + '8'.repeat(40),
         approvals: [],
+        priceImpact: { inputValueUsd: 1, outputValueUsd: 0.99, impactBps: 100, unpricedInputs: [], unpricedOutputs: [] },
         fees: [],
       },
     });
-    const fetchImpl = vi.fn(async () => ({ ok: true, status: 200, json: async () => JSON.parse(wire), text: async () => wire })) as unknown as typeof fetch;
-    const compiled = await compileBag(doc(), ethReq(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST });
+    const fetchImpl = vi.fn(async () => ({ ok: true, status: 200, headers: new Headers(), json: async () => JSON.parse(wire), text: async () => wire })) as unknown as typeof fetch;
+    const compiled = await compileBag(ethDoc(), ethReq(), { provider: lifiComposer({ apiKey: 'k', baseUrl: 'https://composer.test', fetch: fetchImpl }), trust: TRUST });
     expect(compiled.transaction.value).toBe(BigInt('1000000000000000'));
     const calls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls as [string, RequestInit][];
     const body = JSON.parse(String(calls.find(([url]) => String(url).endsWith('/compose'))![1].body));
@@ -360,7 +427,7 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
   });
 
   it('simulateBag reads the native balance (getBalance), never an ERC-20 allowance', async () => {
-    const compiled = await compileBag(doc(), ethReq(), { provider: nativeProvider(), trust: TRUST });
+    const compiled = await compileBag(ethDoc(), ethReq(), { provider: nativeProvider(), trust: TRUST });
     let readContractCalls = 0;
     let callValue: bigint | undefined;
     const client = (balance: bigint): SimulationClient => ({

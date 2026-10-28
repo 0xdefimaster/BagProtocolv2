@@ -310,8 +310,10 @@ export async function confirmStrategyRegistration(
     if (name === 'TransactionNotFoundError') return { ok: false, error: 'PENDING', message: `No transaction found for ${hash} yet.` };
     return { ok: false, error: 'CHAIN_ERROR', message: err instanceof Error ? err.message : String(err) };
   }
-  const toCompositions = !!tx.to && !!ctx.compositions && same(tx.to, ctx.compositions);
-  if (!tx.to || (!same(tx.to, ctx.registry) && !toCompositions)) return fail(`Transaction was sent to ${tx.to ?? '(contract creation)'}, not the StrategyRegistry ${ctx.registry}.`);
+  // `tx.to` may be a smart-account router (MetaMask's EIP-7702 account sends through its DelegationManager)
+  // rather than the registry itself; what binds the registration is checked below from the receipt: events
+  // emitted BY the configured registry, for this Bag's creator-bound strategy id, in the creator's own transaction.
+  if (!tx.to) return fail(`Transaction is a contract creation, not a call that reaches the StrategyRegistry ${ctx.registry}.`);
   if (!same(tx.from, ctx.wallet)) return fail(`Transaction was sent from ${tx.from}, not the creator's wallet ${ctx.wallet}.`);
 
   let confirmation;
@@ -323,7 +325,11 @@ export async function confirmStrategyRegistration(
   if (confirmation.status !== 'CONFIRMED') return { ok: false, error: 'PENDING', message: `Transaction ${hash} is not confirmed yet.` };
   const { receipt } = confirmation;
   if (receipt.status !== 'success') return fail(`Transaction ${hash} reverted — nothing was registered.`);
-  if (toCompositions) return recordComposition(admin, ctx, hash, receipt, fail, recordedFor);
+  // As with the registry, `tx.to` may be a smart-account router: the receipt's logs decide which contract was
+  // reached. A transaction with StrategyCompositions events and none from the registry is a weights publication.
+  const fromCompositions = !!ctx.compositions && receipt.logs.some((l) => same(l.address, ctx.compositions!));
+  const fromRegistry = receipt.logs.some((l) => same(l.address, ctx.registry));
+  if (fromCompositions && !fromRegistry) return recordComposition(admin, ctx, hash, receipt, fail, recordedFor);
 
   const events = receipt.logs
     .filter((l) => same(l.address, ctx.registry))

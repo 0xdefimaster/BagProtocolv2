@@ -339,9 +339,11 @@ function asset(symbol: string, address: string, weightBps: number): RecipeAsset 
   return { chain: 'robinhood', address, symbol, decimals: 18, weightBps };
 }
 
+let recipeNameCounter = 0;
+/** Bag names are unique (migration 0058), so each call gets its own default name. */
 export function validRecipeInput(overrides: Partial<Omit<BasketRecipe, 'id' | 'bagId' | 'version' | 'createdAt'>> = {}) {
   return {
-    name: 'Majors Basket',
+    name: `Majors Basket ${process.pid}-${++recipeNameCounter}`,
     symbol: 'MAJORS',
     description: 'BTC + ETH',
     chain: 'robinhood' as const,

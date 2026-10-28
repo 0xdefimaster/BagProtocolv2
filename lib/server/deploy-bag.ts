@@ -78,7 +78,7 @@ export type PrepareBagDeploymentResult =
   | { ok: false; error: 'NO_VERSION' }
   | { ok: false; error: 'ALREADY_DEPLOYED'; deployment: BagDeployment }
   /** A Bag for (session wallet, this Bag) is already registered on-chain — a previous transaction succeeded but was never confirmed. Sending another would revert; confirm with the ORIGINAL transaction hash instead. */
-  | { ok: false; error: 'ALREADY_CREATED_ON_CHAIN' }
+  | { ok: false; error: 'ALREADY_CREATED_ON_CHAIN'; txHash?: `0x${string}` }
   | { ok: false; error: 'CHAIN_UNAVAILABLE'; message: string };
 
 /** Stateless (see module header): only READS the database and the chain; returns unsigned calldata for the person's own wallet. Safe to call repeatedly. */
@@ -116,7 +116,13 @@ export async function prepareBagDeployment(
   const metadataURI = `bag:${bag.id}`;
 
   try {
-    if (await adapter.hasBagOnChain(wallet, offChainRef)) return { ok: false, error: 'ALREADY_CREATED_ON_CHAIN' };
+    if (await adapter.hasBagOnChain(wallet, offChainRef)) {
+      // Recovery: find the creation transaction so the client can confirm it instead of asking the person
+      // for a hash. Best effort — a failed or empty search leaves the plain refusal; the hash, if found,
+      // still goes through the full verifyBagCreation on confirm.
+      const txHash = adapter.findBagCreationTx ? await adapter.findBagCreationTx(wallet, offChainRef).catch(() => null) : null;
+      return txHash ? { ok: false, error: 'ALREADY_CREATED_ON_CHAIN', txHash } : { ok: false, error: 'ALREADY_CREATED_ON_CHAIN' };
+    }
     const transaction = await adapter.prepareBagCreation({ offChainRef, compositionHash, metadataURI, isMutable: bag.mutability === 'MUTABLE' });
     return { ok: true, transaction, wallet, chain, factoryAddress: adapter.factoryAddress, offChainRef, compositionHash };
   } catch (err) {

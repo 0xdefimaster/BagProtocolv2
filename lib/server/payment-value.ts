@@ -4,6 +4,7 @@ import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identi
 import type { PriceProvider } from '@/lib/domain/basket-protocol/pricing/provider';
 import { isValidDecimalString, toProtocolPrice } from '@/lib/domain/basket-protocol/pricing/price-precision';
 import { SCALE, toDecimalString } from '@/lib/domain/basket-protocol/pricing/decimal-math';
+import { isSettlementToken } from '@/lib/server/payment-assets';
 
 // -----------------------------------------------------------------------------
 // A purchase's payment, in the Bag's quote currency (USD).
@@ -12,8 +13,9 @@ import { SCALE, toDecimalString } from '@/lib/domain/basket-protocol/pricing/dec
 // USD. The settlement stablecoins (USDG / USDC) count 1:1, exactly as before,
 // with no price lookup. Native ETH is valued at its wrapped token's oracle
 // price (lib/config/chains.ts `wrappedNativeAddress`, through the production
-// price router); the purchase itself still spends and routes wei. No price
-// means no purchase: nothing is estimated.
+// price router); the purchase itself still spends and routes wei. Any other
+// verified token is valued at its own oracle price. No price means no
+// purchase (and no sale into it): nothing is estimated.
 // -----------------------------------------------------------------------------
 
 export class PaymentValuationError extends Error {
@@ -23,15 +25,22 @@ export class PaymentValuationError extends Error {
   }
 }
 
-/** USD per one whole unit of the payment asset: '1' for a settlement stablecoin, the wrapped-native oracle price for native ETH. */
+/**
+ * USD per one whole unit of the payment (or sale output) asset: '1' for the settlement stablecoin, the wrapped-native
+ * oracle price for native ETH, the token's own oracle price otherwise.
+ */
 export async function paymentAssetUsdPrice(asset: AssetIdentity, provider: PriceProvider): Promise<string> {
-  if (!isNativeAssetIdentity(asset)) return '1';
-  const weth = isBagChain(asset.chain) ? BAG_CHAINS[asset.chain].wrappedNativeAddress : null;
-  if (!weth) throw new PaymentValuationError(`Native payments are not supported on ${asset.chain}.`);
-  const price = await provider.getPrice({ chain: asset.chain, address: weth });
-  if (price.quoteCurrency !== 'USD') throw new PaymentValuationError(`The native token price is quoted in ${price.quoteCurrency}, not USD.`);
+  if (isSettlementToken(asset)) return '1';
+  let priced: AssetIdentity = asset;
+  if (isNativeAssetIdentity(asset)) {
+    const weth = isBagChain(asset.chain) ? BAG_CHAINS[asset.chain].wrappedNativeAddress : null;
+    if (!weth) throw new PaymentValuationError(`Native payments are not supported on ${asset.chain}.`);
+    priced = { chain: asset.chain, address: weth };
+  }
+  const price = await provider.getPrice(priced);
+  if (price.quoteCurrency !== 'USD') throw new PaymentValuationError(`The token price is quoted in ${price.quoteCurrency}, not USD.`);
   if (!isValidDecimalString(price.price) || toProtocolPrice(price.price, SCALE) <= BigInt(0)) {
-    throw new PaymentValuationError('The native token price is not a positive number.');
+    throw new PaymentValuationError('The token price is not a positive number.');
   }
   return price.price;
 }

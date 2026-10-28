@@ -1,12 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildComposerPurchase,
-  computeCascadeSplitBps,
+  describeFailedComposerLegs,
   ComposerIneligibleError,
   composerLegEnforcedMinOutputRaw,
   composerLegSimulatedOutputRaw,
   isComposerEligible,
+  planPartition,
+  simulatePartition,
+  PARTITION_MAX_PARTS,
 } from '../lifi-composer-adapter';
+import { composeResponse, out, wireOut } from './composer-fixtures';
 
 // -----------------------------------------------------------------------------
 // Mocks fetch at the HTTP boundary (fetchImpl injection), not the SDK
@@ -14,8 +18,8 @@ import {
 // request serialization code, only faking the network response. The mock
 // response shape below is copied from node_modules/@lifi/composer-sdk/dist
 // /client.js's own parsing code (parseCompileSuccessBody: `{ data: {...} }`
-// envelope; producedResources[*].simulated.amountOut must be a numeric
-// STRING on the wire, the client converts it to bigint) — not guessed.
+// envelope; outputs[*].amount.{estimate,minimum}.value is a decimal STRING
+// on the wire, the client converts it to bigint) — not guessed.
 // -----------------------------------------------------------------------------
 
 function mockComposeFetch(overrides: Partial<{ status: number; body: unknown }> = {}) {
@@ -24,20 +28,15 @@ function mockComposeFetch(overrides: Partial<{ status: number; body: unknown }> 
     overrides.body ??
     {
       data: {
-        producedResources: {
-          swap_0: { kind: 'erc20', chainId: 1, token: '0xTargetA', availability: 'now', owner: '0xSigner', simulated: { amountOut: '600000' } },
-          swap_1: { kind: 'erc20', chainId: 1, token: '0xTargetB', availability: 'now', owner: '0xSigner', simulated: { amountOut: '400000' } },
+        outputs: {
+          'swap_0.amountOut': wireOut('600000', null, '0xTargetA', 1),
+          'swap_1.amountOut': wireOut('400000', null, '0xTargetB', 1),
         },
         transactionRequest: { to: '0xComposerVM', chainId: 1, data: '0xdeadbeef', value: '0' },
         userProxy: '0xUserProxy',
       },
     };
-  return vi.fn(async () => ({
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-    text: async () => JSON.stringify(body),
-  })) as unknown as typeof fetch;
+  return vi.fn(async () => composeResponse(body, status)) as unknown as typeof fetch;
 }
 
 describe('isComposerEligible', () => {
@@ -57,39 +56,82 @@ describe('isComposerEligible', () => {
   });
 });
 
-describe('computeCascadeSplitBps', () => {
-  it('computes a single relative bps for a 2-leg 60/40 split', () => {
-    const legs = [
-      { address: '0xa', weightBps: 6000, symbol: 'A' },
-      { address: '0xb', weightBps: 4000, symbol: 'B' },
-    ];
-    // Only N-1 = 1 split step; the last leg needs no split.
-    expect(computeCascadeSplitBps(legs)).toEqual([6000]);
+// The old cascade as Composer executed it (core.split rounds output `a` up), for the issue #88 comparison.
+// Each step's bps relative to the REMAINING pool, rounded (the removed computeCascadeSplitBps, kept here as history).
+function cascadeSteps(weights: number[]): number[] {
+  const steps: number[] = [];
+  let remaining = 10000;
+  for (let i = 0; i < weights.length - 1; i++) {
+    steps.push(Math.min(9999, Math.max(1, Math.round((weights[i] / remaining) * 10000))));
+    remaining -= weights[i];
+  }
+  return steps;
+}
+function cascadeDelivered(amount: bigint, weights: number[]): bigint[] {
+  const steps = cascadeSteps(weights);
+  let remaining = amount;
+  const out = steps.map((bps) => {
+    const a = (remaining * BigInt(bps) + BigInt(9999)) / BigInt(10000);
+    remaining -= a;
+    return a;
+  });
+  return [...out, remaining];
+}
+const exact = (amount: bigint, w: number) => (amount * BigInt(w)) / BigInt(10000);
+
+describe('core.partition allocation (issue #88)', () => {
+  const A = BigInt(1_000_000_000);
+
+  it('the issue\'s cases: every leg gets exactly its weight; the cascade drifted', () => {
+    for (const w of [[2500, 2500, 2500, 2500], [3333, 3333, 3334], [9001, 7, 992]]) {
+      const got = simulatePartition(A, w);
+      expect(got.reduce((s, x) => s + x, BigInt(0))).toBe(A);
+      got.forEach((g, i) => expect(g).toBe(exact(A, w[i])));
+    }
+    // What the issue measured for the cascade: 2500×4 → 0, −25 000, +12 500, +12 500.
+    expect(cascadeDelivered(A, [2500, 2500, 2500, 2500]).map((g) => g - exact(A, 2500))).toEqual([BigInt(0), BigInt(-25000), BigInt(12500), BigInt(12500)]);
   });
 
-  it('recomputes each step relative to the REMAINING pool, not the original total, for a 3-leg 50/30/20 split', () => {
-    const legs = [
-      { address: '0xa', weightBps: 5000, symbol: 'A' },
-      { address: '0xb', weightBps: 3000, symbol: 'B' },
-      { address: '0xc', weightBps: 2000, symbol: 'C' },
-    ];
-    // Step 1: 5000/10000 = 5000 bps of the original pool.
-    // Step 2: remaining pool is 5000 bps; leg B wants 3000 of the
-    // original 10000, i.e. 3000/5000 = 6000 bps of what's LEFT.
-    // Leg C (last) needs no split — it just takes what remains.
-    expect(computeCascadeSplitBps(legs)).toEqual([5000, 6000]);
+  it('up to 16 legs: one node; each leg is floor(amount × weight), the last takes under n raw units of dust', () => {
+    let seed = 3;
+    const rand = (m: number) => ((seed = (seed * 1103515245 + 12345) % 2 ** 31), seed % m);
+    for (let t = 0; t < 3000; t++) {
+      const n = 2 + rand(15);
+      const raw = Array.from({ length: n }, () => 1 + rand(4000));
+      const sum = raw.reduce((a, b) => a + b, 0);
+      const w = raw.map((x) => Math.max(1, Math.floor((x * 10000) / sum)));
+      w[0] += 10000 - w.reduce((a, b) => a + b, 0);
+      if (w.some((x) => x <= 0)) continue;
+      expect(planPartition(w)).toEqual({ outerBps: w, groups: w.map((_, i) => ({ legs: [i], innerBps: null })) });
+      const amount = BigInt(1 + rand(1_000_000_007)) * BigInt(1 + rand(1000));
+      const got = simulatePartition(amount, w);
+      expect(got.reduce((s, x) => s + x, BigInt(0))).toBe(amount);
+      got.forEach((g, i) => {
+        const d = g - exact(amount, w[i]);
+        if (i < n - 1) expect(d).toBe(BigInt(0));
+        else expect(d >= BigInt(0) && d < BigInt(n)).toBe(true);
+      });
+    }
   });
 
-  it('throws if weights do not sum to exactly 10000 bps, rather than silently normalizing', () => {
-    const legs = [
-      { address: '0xa', weightBps: 5000, symbol: 'A' },
-      { address: '0xb', weightBps: 4000, symbol: 'B' },
-    ];
-    expect(() => computeCascadeSplitBps(legs)).toThrow(/sum to exactly 10000/);
-  });
-
-  it('returns an empty array for a single leg (no split needed at all)', () => {
-    expect(computeCascadeSplitBps([{ address: '0xa', weightBps: 10000, symbol: 'A' }])).toEqual([]);
+  it('above 16 legs: at most 16 groups of 2–16, every leg within about 1 bp of its weight; one leg needs no node', () => {
+    const w = Array.from({ length: 100 }, () => 100); // the largest basket validate_bag allows
+    const plan = planPartition(w);
+    expect(plan.outerBps.length).toBeLessThanOrEqual(PARTITION_MAX_PARTS);
+    for (const g of plan.groups) expect(g.legs.length >= 2 && g.legs.length <= PARTITION_MAX_PARTS).toBe(true);
+    expect(planPartition(Array.from({ length: 17 }, (_, i) => (i === 0 ? 10000 - 16 * 588 : 588))).groups.map((g) => g.legs.length)).toEqual([9, 8]);
+    const odd = Array.from({ length: 37 }, (_, i) => 1 + ((i * 97) % 400));
+    const oddSum = odd.reduce((a, b) => a + b, 0);
+    const ow = odd.map((x) => Math.floor((x * 10000) / oddSum));
+    ow[0] += 10000 - ow.reduce((a, b) => a + b, 0);
+    for (const weights of [w, ow]) {
+      const got = simulatePartition(A, weights);
+      expect(got.reduce((s, x) => s + x, BigInt(0))).toBe(A);
+      got.forEach((g, i) => expect(Math.abs(Number(g - exact(A, weights[i])))).toBeLessThanOrEqual(Number(A) / 10000 + 16));
+    }
+    expect(simulatePartition(A, [10000])).toEqual([A]);
+    expect(() => planPartition([5000, 4000])).toThrow(/sum to 9000, not 10000/);
+    expect(() => planPartition([10000, 0])).toThrow(/positive/);
   });
 });
 
@@ -126,7 +168,22 @@ describe('buildComposerPurchase', () => {
     expect(JSON.stringify((byDefault.mock.calls as unknown as [unknown, RequestInit][])[0][1].body)).not.toContain('maxPriceImpactBps');
   });
 
-  it('compiles a multi-leg flow and returns transactionRequest + userProxy + producedResources', async () => {
+  it('splits the input with ONE core.partition node carrying the leg weights (no core.split cascade)', async () => {
+    const f = vi.fn(mockComposeFetch());
+    const legs = [
+      { address: '0xTargetA', weightBps: 9001, symbol: 'A' },
+      { address: '0xTargetB', weightBps: 7, symbol: 'B' },
+      { address: '0xTargetC', weightBps: 992, symbol: 'C' },
+    ];
+    await buildComposerPurchase({ ...baseRequest, legs, fetchImpl: f });
+    const sent = String((f.mock.calls as unknown as [unknown, RequestInit][])[0][1].body);
+    expect(sent).toContain('core.partition');
+    expect(sent).not.toContain('core.split');
+    expect(sent.replace(/\s/g, '')).toContain('[9001,7,992]');
+    for (const p of ['parts.0', 'parts.1', 'parts.2']) expect(sent).toContain(p);
+  });
+
+  it('compiles a multi-leg flow and returns transactionRequest + userProxy + outputs', async () => {
     const fetchImpl = mockComposeFetch();
     const result = await buildComposerPurchase({
       ...baseRequest,
@@ -144,8 +201,8 @@ describe('buildComposerPurchase', () => {
       chainId: 1,
     });
     expect(result.userProxy).toBe('0xUserProxy');
-    expect(result.producedResources.swap_0.simulated?.amountOut).toBe(BigInt(600000));
-    expect(result.producedResources.swap_1.simulated?.amountOut).toBe(BigInt(400000));
+    expect(composerLegSimulatedOutputRaw(result.outputs, 0)).toBe('600000');
+    expect(composerLegSimulatedOutputRaw(result.outputs, 1)).toBe('400000');
 
     // Exactly one POST to /compose — one signature's worth of work, not N.
     const composeCalls = (fetchImpl as ReturnType<typeof vi.fn>).mock.calls.filter((call: unknown[]) =>
@@ -158,8 +215,8 @@ describe('buildComposerPurchase', () => {
     const fetchImpl = mockComposeFetch({
       body: {
         data: {
-          producedResources: {
-            swap_0: { kind: 'erc20', chainId: 1, token: '0xTargetA', availability: 'now', owner: '0xSigner', simulated: { amountOut: '600000' } },
+          outputs: {
+            'swap_0.amountOut': wireOut('600000', null, '0xTargetA', 1),
           },
           transactionRequest: { to: '0xComposerVM', chainId: 1, data: '0xdeadbeef', value: '0', gasLimit: '210000' },
           userProxy: '0xUserProxy',
@@ -185,8 +242,8 @@ describe('buildComposerPurchase', () => {
       mockComposeFetch({
         body: {
           data: {
-            producedResources: {
-              swap_0: { kind: 'erc20', chainId: 1, token: '0xTargetA', availability: 'now', owner: '0xSigner', simulated: { amountOut: '600000' } },
+            outputs: {
+              'swap_0.amountOut': wireOut('600000', null, '0xTargetA', 1),
             },
             transactionRequest: { to: '0xComposerVM', chainId: 1, data: '0xdeadbeef', value: '0' },
             userProxy: '0xUserProxy',
@@ -246,12 +303,12 @@ describe('buildComposerPurchase', () => {
     expect((init.headers as Record<string, string>)['x-lifi-api-key']).toBe('test-key');
   });
 
-  it('throws with the server-reported reason on a partial/reverted compile result, rather than returning a half-built transaction', async () => {
+  it('refuses a partial (reverted) compile result, rather than returning a half-built transaction', async () => {
     const fetchImpl = mockComposeFetch({
       status: 206,
       body: {
         data: {
-          producedResources: {},
+          outputs: {},
           transactionRequest: { to: '0xComposerVM', chainId: 1, data: '0x', value: '0' },
           userProxy: '0xUserProxy',
         },
@@ -265,18 +322,52 @@ describe('buildComposerPurchase', () => {
         fetchImpl,
         legs: [{ address: '0xTargetA', weightBps: 10000, symbol: 'A' }],
       })
-    ).rejects.toThrow(/insufficient liquidity/);
+    ).rejects.toThrow(/partial result \(SIMULATION_REVERTED\)/);
+  });
+});
+
+describe('describeFailedComposerLegs', () => {
+  const id = (i: number) => `swap_${i}`;
+  it('names the legs behind failedOps, with the server message; swap_1 never matches swap_10', () => {
+    const symbols = Array.from({ length: 11 }, (_, i) => `T${i}`);
+    const err = { failedOps: [{ callId: 'swap_10', message: 'No available quotes' }, { path: 'nodes.swap_1', message: '' }] };
+    expect(describeFailedComposerLegs(err, id, symbols)).toBe('T10: No available quotes; T1');
+  });
+  it('null when there are no failedOps or none maps to a leg', () => {
+    expect(describeFailedComposerLegs(new Error('x'), id, ['A'])).toBeNull();
+    expect(describeFailedComposerLegs({ failedOps: [{ callId: 'split_0' }] }, id, ['A'])).toBeNull();
+  });
+  it('buildComposerPurchase names the failing token when the compile reports a preparation_error', async () => {
+    const fetchImpl = mockComposeFetch({
+      // A preparation_error is a 422; the SDK throws a ComposeError carrying failedOps.
+      status: 422,
+      body: {
+        error: { kind: 'preparation_error', message: '1 of 2 prepared op(s) failed', failedOps: [{ callId: 'swap_1', op: 'lifi.swap', kind: 'resolution_rejected', message: 'No available quotes' }], succeededOps: ['swap_0'] },
+      },
+    });
+    await expect(
+      buildComposerPurchase({
+        chain: 'ethereum',
+        inputTokenAddress: '0xInputToken',
+        inputAmountRaw: '1000000',
+        signerAddress: '0xSigner',
+        slippageBps: 100,
+        apiKey: 'test-key',
+        fetchImpl,
+        legs: [{ address: '0xTargetA', weightBps: 5000, symbol: 'AAA' }, { address: '0xTargetB', weightBps: 5000, symbol: 'GRT' }],
+      })
+    ).rejects.toThrow(/^GRT: No available quotes \(1 of 2 prepared op\(s\) failed\)/);
   });
 });
 
 describe('composerLegEnforcedMinOutputRaw', () => {
   // Shape of the live compile response (scripts/spike/composer-min-output-probe.ts
-  // run on Robinhood Chain): keyed by output port, bigint amounts.
+  // run on Robinhood Chain): keyed by output port; 0.6 `outputs` shape, bigint amounts.
   const live = {
-    'swap_0.amountOut': { kind: 'erc20', token: '0xcashcat', chainId: 4663, availability: 'now', owner: '0xwallet', simulated: { amountOut: BigInt('1976415459627212722'), amountOutMin: BigInt('1956937756416111525') } },
-    'swap_1.amountOut': { kind: 'erc20', token: '0xhii', chainId: 4663, availability: 'now', owner: '0xwallet', simulated: { amountOut: BigInt('1234444823130025'), amountOutMin: BigInt('1222279288915906') } },
-    'swap_2.amountOut': { kind: 'erc20', token: '0xklac', chainId: 4663, availability: 'now', owner: '0xwallet', simulated: { amountOut: BigInt('1742455756559971'), amountOutMin: BigInt('1725283741476082') } },
-  } as unknown as Parameters<typeof composerLegEnforcedMinOutputRaw>[0];
+    'swap_0.amountOut': out('1976415459627212722', '1956937756416111525', '0xcashcat'),
+    'swap_1.amountOut': out('1234444823130025', '1222279288915906', '0xhii'),
+    'swap_2.amountOut': out('1742455756559971', '1725283741476082', '0xklac'),
+  };
 
   it('reads each leg\'s own amountOutMin from its swap_<i>.amountOut entry', () => {
     expect([0, 1, 2].map((i) => composerLegEnforcedMinOutputRaw(live, i))).toEqual([
@@ -288,7 +379,7 @@ describe('composerLegEnforcedMinOutputRaw', () => {
 
   it('returns null (never a guess) when the leg or its amountOutMin is missing', () => {
     expect(composerLegEnforcedMinOutputRaw(live, 3)).toBeNull();
-    const noMin = { 'swap_0.amountOut': { simulated: { amountOut: BigInt(5) } } } as unknown as Parameters<typeof composerLegEnforcedMinOutputRaw>[0];
+    const noMin = { 'swap_0.amountOut': out(5) };
     expect(composerLegEnforcedMinOutputRaw(noMin, 0)).toBeNull();
   });
 
@@ -298,7 +389,7 @@ describe('composerLegEnforcedMinOutputRaw', () => {
   });
 
   it('does not read a node-keyed entry (swap_0) — the live API keys by output port', () => {
-    const nodeKeyed = { swap_0: { simulated: { amountOut: BigInt(5), amountOutMin: BigInt(4) } } } as unknown as Parameters<typeof composerLegEnforcedMinOutputRaw>[0];
+    const nodeKeyed = { swap_0: out(5, 4) };
     expect(composerLegEnforcedMinOutputRaw(nodeKeyed, 0)).toBeNull();
   });
 });
@@ -322,7 +413,7 @@ describe('buildComposerPurchase — native ETH input (one transaction, ETH as ms
     mockComposeFetch({
       body: {
         data: {
-          producedResources: {},
+          outputs: {},
           transactionRequest: { to: '0xComposerVM', chainId: 1, data: '0xdeadbeef', value },
           userProxy: '0xUserProxy',
           approvals,
@@ -359,5 +450,34 @@ describe('buildComposerPurchase — native ETH input (one transaction, ETH as ms
     await expect(
       buildComposerPurchase({ ...ethRequest, inputTokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', inputAmountRaw: '1000000', fetchImpl: withTx('5') })
     ).rejects.toThrow(/also spends native ETH/);
+  });
+});
+
+describe('buildComposerPurchase — request hygiene (LI.FI review #84, #90)', () => {
+  const req = { chain: 'ethereum' as const, inputTokenAddress: '0xInputToken', inputAmountRaw: '1000000', signerAddress: '0xSigner', slippageBps: 100, apiKey: 'k', legs: [{ address: '0xTargetA', weightBps: 6000, symbol: 'A' }, { address: '0xTargetB', weightBps: 4000, symbol: 'B' }] };
+
+  it('sends no `unspentIn` guard: per-swap protection is config.slippage (→ amountOutMin)', async () => {
+    const fetchImpl = mockComposeFetch();
+    await buildComposerPurchase({ ...req, fetchImpl });
+    const sent = String(((fetchImpl as unknown as { mock: { calls: [unknown, RequestInit][] } }).mock.calls[0][1]).body);
+    expect(sent).not.toContain('unspentIn');
+    expect(sent).toContain('"slippage":0.01');
+  });
+
+  it('puts the deadline on the request itself (an AbortSignal), not a Promise.race', async () => {
+    const fetchImpl = mockComposeFetch();
+    await buildComposerPurchase({ ...req, fetchImpl });
+    const init = (fetchImpl as unknown as { mock: { calls: [unknown, RequestInit][] } }).mock.calls[0][1];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('the deadline is COMPOSER_COMPILE_TIMEOUT_MS (15 s) on every request', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    try {
+      await buildComposerPurchase({ ...req, fetchImpl: mockComposeFetch() });
+      expect(timeout).toHaveBeenCalledWith(15_000);
+    } finally {
+      timeout.mockRestore();
+    }
   });
 });

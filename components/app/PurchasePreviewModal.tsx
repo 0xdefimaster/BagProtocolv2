@@ -618,7 +618,9 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, preferNati
           {loadingAssets ? (
             <span style={{ fontSize: 12.5, color: 'var(--ink-soft, #B4AEA2)' }}>Loading…</span>
           ) : assetsError ? (
-            <span style={{ fontSize: 12.5, color: '#E27D60' }}>Assets unavailable</span>
+            <span style={{ fontSize: 12.5, color: '#E27D60' }} title={assetsError}>
+              {/not live/i.test(assetsError) ? 'Not live yet — deploy it first' : 'Assets unavailable'}
+            </span>
           ) : inputAssets && inputAssets.length > 0 ? (
             <select
               value={selectedAssetId ?? ''}
@@ -1262,6 +1264,23 @@ const FAILURE_MESSAGES: Partial<Record<string, string>> = {
   UNKNOWN_ERROR: 'Something went wrong completing this purchase.',
 };
 
+/**
+ * What the wallet is asking for while a purchase awaits its signature. A Composer purchase buys every asset in
+ * ONE transaction, so it names them all instead of counting swaps; only the per-asset path (one transaction per
+ * swap) shows "(i/n)".
+ */
+export function purchaseSignatureLabel(swapSteps: { targetSymbol: string }[], activeSwapIndex: number, singleTransaction: boolean): string {
+  if (singleTransaction) {
+    const names = swapSteps.map((s) => s.targetSymbol).filter(Boolean).join(', ');
+    return swapSteps.length > 1
+      ? `Confirm the purchase of ${names} in your wallet (one transaction for all assets)`
+      : `Confirm the purchase${names ? ` of ${names}` : ''} in your wallet`;
+  }
+  const step = swapSteps[activeSwapIndex] ?? swapSteps[0];
+  const position = swapSteps.length > 1 && activeSwapIndex >= 0 ? ` (${activeSwapIndex + 1}/${swapSteps.length})` : '';
+  return step ? `Confirm swap to ${step.targetSymbol} in your wallet${position}` : 'Confirm in your wallet…';
+}
+
 function PurchaseExecutionPanel({
   state,
   inputSymbol,
@@ -1276,9 +1295,7 @@ function PurchaseExecutionPanel({
   if (state.phase === 'creating') label = 'Preparing your purchase…';
   else if (state.phase === 'preparing') label = 'Wallet confirmation required…';
   else if (state.phase === 'awaiting_signature') {
-    const step = swapSteps[activeSwapIndex] ?? swapSteps[0];
-    const position = swapSteps.length > 1 && activeSwapIndex >= 0 ? ` (${activeSwapIndex + 1}/${swapSteps.length})` : '';
-    label = step ? `Confirm swap to ${step.targetSymbol} in your wallet${position}` : 'Confirm in your wallet…';
+    label = purchaseSignatureLabel(swapSteps, activeSwapIndex, !!state.intent?.composerTransaction);
   } else if (state.phase === 'confirming') label = 'Confirming on-chain…';
   else if (state.phase === 'completed') label = 'Purchase complete';
   else if (state.phase === 'failed') {

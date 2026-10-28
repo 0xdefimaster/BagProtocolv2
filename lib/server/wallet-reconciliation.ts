@@ -5,6 +5,7 @@ import { verifyRedeemExecution } from '@/lib/server/redeem-execution';
 import { settleUnsettledPurchasesForUser } from '@/lib/server/purchase-execution';
 import { listUnsettledRedeemIntentsForUser } from '@/lib/server/redeem-intent-repo';
 import { settleOpenRebalances } from '@/lib/server/rebalance-execution';
+import { recordNavSnapshot } from '@/lib/server/bag-nav-snapshots';
 
 // -----------------------------------------------------------------------------
 // Accounting V2 / A2 — wallet reconciliation (docs/ACCOUNTING_V2_DESIGN.md §5).
@@ -85,7 +86,27 @@ export async function reconcileWallet(
 
   const { error: markError } = await admin.rpc('mark_wallet_reconciled', { p_user_id: user.userId, p_block_number: Number(blockNumber) });
   if (markError) throw new Error(`mark_wallet_reconciled failed: ${markError.message}`);
+
+  // A confirmed outflow lowered what the Bags hold: price them again now, so a listing's TVL (the latest snapshot)
+  // shows it right away instead of after the next hourly pass.
+  const outflows = out.filter((a) => a.status === 'CONFIRMED_OUTFLOW').map((a) => a.address);
+  if (outflows.length > 0) await refreshNavForOutflows(admin, user.userId, outflows);
+
   return { userId: user.userId, blockNumber: blockNumber.toString(), assets: out };
+}
+
+/** Records a fresh NAV snapshot for every Bag in which this user held one of `addresses`. Never fails the reconciliation. */
+async function refreshNavForOutflows(admin: SupabaseClient, userId: string, addresses: string[]): Promise<void> {
+  try {
+    const { data, error } = await admin.from('bag_investor_holdings').select('bag_id, address').eq('user_id', userId);
+    if (error) return;
+    const left = new Set(addresses.map((a) => a.toLowerCase()));
+    const rows = (data ?? []) as { bag_id: string; address: string }[];
+    const bagIds = [...new Set(rows.filter((r) => left.has(r.address.toLowerCase())).map((r) => r.bag_id))];
+    for (const bagId of bagIds) await recordNavSnapshot(admin, bagId, { minIntervalMs: 0 }).catch(() => undefined);
+  } catch {
+    // The hourly snapshot pass still catches up.
+  }
 }
 
 export const WALLET_RECONCILE_BATCH = 20;
@@ -124,6 +145,12 @@ export async function trackedAssetsForUser(admin: SupabaseClient, userId: string
 
 /** A wallet that connects is checked again only when its last full check is at least this old. */
 export const RECONCILE_ON_CONNECT_MIN_INTERVAL_MS = 5 * 60 * 1000;
+/**
+ * Right after a trade from this app (Swap, wallet sweep) the wallet is checked again sooner. An outflow is only
+ * booked when a shortfall is seen twice, at least `reconciliation_confirm_after()` (2 minutes) apart, so the
+ * client asks once right away and once more after that window (lib/wallet-recheck.ts).
+ */
+export const RECONCILE_AFTER_TRADE_MIN_INTERVAL_MS = 30 * 1000;
 
 export type ConnectReconcileOutcome =
   | { status: 'checked'; blockNumber: string | null }
@@ -139,7 +166,8 @@ export async function reconcileWalletOnConnect(
   admin: SupabaseClient,
   client: PublicClient,
   session: { userId: string; walletAddress: string },
-  now: number = Date.now()
+  now: number = Date.now(),
+  minIntervalMs: number = RECONCILE_ON_CONNECT_MIN_INTERVAL_MS
 ): Promise<ConnectReconcileOutcome> {
   const { data, error } = await admin
     .from('wallet_reconciliation_state')
@@ -148,7 +176,7 @@ export async function reconcileWalletOnConnect(
     .maybeSingle<{ last_checked_at: string | null }>();
   if (error) throw new Error(error.message);
   const last = data?.last_checked_at ? Date.parse(data.last_checked_at) : NaN;
-  if (Number.isFinite(last) && now - last < RECONCILE_ON_CONNECT_MIN_INTERVAL_MS) return { status: 'recent' };
+  if (Number.isFinite(last) && now - last < minIntervalMs) return { status: 'recent' };
 
   const assets = await trackedAssetsForUser(admin, session.userId);
   if (assets.length === 0) return { status: 'nothing-tracked' };

@@ -128,6 +128,14 @@ describe('prepareBagDeployment', () => {
     expect(adapter.prepareBagCreation).not.toHaveBeenCalled();
   });
 
+  it('ALREADY_CREATED_ON_CHAIN carries the creation tx hash when the adapter finds it; a failed search leaves the plain refusal', async () => {
+    const found = makeAdapter({ hasBagOnChain: vi.fn(async () => true), findBagCreationTx: vi.fn(async () => TX as `0x${string}`) });
+    expect(await prepareBagDeployment(admin, session, BAG_ID, found.deps)).toEqual({ ok: false, error: 'ALREADY_CREATED_ON_CHAIN', txHash: TX });
+    expect(found.adapter.prepareBagCreation).not.toHaveBeenCalled();
+    const broken = makeAdapter({ hasBagOnChain: vi.fn(async () => true), findBagCreationTx: vi.fn(async () => { throw new Error('rpc down'); }) });
+    expect(await prepareBagDeployment(admin, session, BAG_ID, broken.deps)).toEqual({ ok: false, error: 'ALREADY_CREATED_ON_CHAIN' });
+  });
+
   it('fails CLOSED if the chain cannot be resolved or read — never a mock', async () => {
     expect(await prepareBagDeployment(admin, session, BAG_ID, { resolveAdapter: () => { throw new Error('No EVM deployment config'); } })).toMatchObject({ ok: false, error: 'CHAIN_UNAVAILABLE' });
     const { deps } = makeAdapter({ hasBagOnChain: vi.fn(async () => { throw new Error('rpc down'); }) });

@@ -3,6 +3,7 @@ import { encodeAbiParameters, keccak256, type Hex } from 'viem';
 import {
   checkRegistryCommitment,
   hashBag,
+  NATIVE_TOKEN,
   normalizeBag,
   parseBag,
   registryStrategyId,
@@ -10,8 +11,9 @@ import {
   verifyRegistryCommitment,
   type BagDocument,
   type ContractReader,
+  type RegistryClient,
 } from '../src';
-import { fetchBag } from '../src/adapters/http';
+import { fetchBag, MAX_BAG_JSON_BYTES } from '../src/adapters/http';
 import { readTokenDecimals } from '../src/adapters/evm';
 import { EXTERNAL_DEFINITION_HASH, externalBag, externalBagText } from './helpers';
 
@@ -26,14 +28,16 @@ import { EXTERNAL_DEFINITION_HASH, externalBag, externalBagText } from './helper
 const CREATOR = '0x1111111111111111111111111111111111111111';
 const IMPOSTOR = '0x2222222222222222222222222222222222222222';
 const STRATEGY = '33333333-3333-4333-8333-333333333333';
-const REGISTRY = '0x4444444444444444444444444444444444444444' as Hex;
+const REGISTRY = '0x907cc27d644c8ea1c24b8320ad09ecf2819209a8' as Hex;
 const ZERO = '0x0000000000000000000000000000000000000000';
 const ZERO32 = `0x${'0'.repeat(64)}` as Hex;
 
 /** In-memory StrategyRegistry: strategyOf + definitionHashOf, as the contract answers them. */
-function fakeRegistry(entries: { creator: string; uuid: string; hashes: Hex[] }[]): ContractReader {
+function fakeRegistry(entries: { creator: string; uuid: string; hashes: Hex[] }[]): RegistryClient {
   const byId = new Map(entries.map((e) => [registryStrategyId(e.creator, e.uuid).toLowerCase(), e] as const));
   return {
+    getChainId: async () => 4663,
+    getCode: async () => '0x6000',
     async readContract({ functionName, args }) {
       const e = byId.get(String(args![0]).toLowerCase());
       if (functionName === 'strategyOf') return { creator: e?.creator ?? ZERO, latestVersion: e?.hashes.length ?? 0, forkOfStrategyId: ZERO32, forkOfVersion: 0 };
@@ -77,6 +81,33 @@ describe('third-party pipeline without any BAG record', () => {
     await expect(fetchBag('https://example.org/missing.json', { fetch: failing })).rejects.toThrow(/404/);
   });
 
+  it('enforces the response byte limit while streaming and does not echo secret URLs', async () => {
+    const multibyte = `"${'é'.repeat(Math.ceil((MAX_BAG_JSON_BYTES + 1) / 2))}"`;
+    expect(multibyte.length).toBeLessThan(MAX_BAG_JSON_BYTES);
+    const tooLargeUtf8 = (async () => new Response(multibyte)) as unknown as typeof fetch;
+    await expect(fetchBag('https://example.org/secret?key=hidden', { fetch: tooLargeUtf8 })).rejects.toThrow(/larger than/);
+
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(' '.repeat(MAX_BAG_JSON_BYTES + 1)));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const tooLargeStream = (async () => new Response(body)) as unknown as typeof fetch;
+    await expect(fetchBag('https://example.org/large.json', { fetch: tooLargeStream })).rejects.toThrow(/larger than/);
+    expect(cancelled).toBe(true);
+
+    const networkFailure = (async () => {
+      throw new Error('https://example.org/secret?key=hidden');
+    }) as unknown as typeof fetch;
+    const error = await fetchBag('https://example.org/secret?key=hidden', { fetch: networkFailure }).then(() => null, (reason: unknown) => reason);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).not.toContain('hidden');
+  });
+
   it('token decimals can be read with the caller’s own client', async () => {
     const parsed = parseBag(externalBagText());
     if (!parsed.ok) throw new Error('parse');
@@ -85,6 +116,18 @@ describe('third-party pipeline without any BAG record', () => {
     expect(validateBag(parsed.bag, { tokens }).valid).toBe(true);
     const six: ContractReader = { readContract: async () => 6 };
     expect(validateBag(parsed.bag, { tokens: await readTokenDecimals(parsed.bag.definition, () => six) }).errors.map((e) => e.code)).toEqual(['DECIMALS_MISMATCH', 'DECIMALS_MISMATCH']);
+  });
+
+  it('uses native ETH decimals without calling decimals() on the zero address', async () => {
+    const raw = externalBag();
+    raw.definition.assets[0].address = NATIVE_TOKEN;
+    const parsed = parseBag(raw);
+    if (!parsed.ok) throw new Error('parse');
+    let calls = 0;
+    const client: ContractReader = { readContract: async () => (calls++, 18) };
+    const tokens = await readTokenDecimals(parsed.bag.definition, () => client);
+    expect(tokens[0]).toMatchObject({ address: NATIVE_TOKEN, decimals: 18 });
+    expect(calls).toBe(1);
   });
 });
 
@@ -99,7 +142,8 @@ describe('bag.json + registry commitment → independent verification', () => {
   it('verified with the expected creator', async () => {
     const v = await verifyRegistryCommitment({ bag: servedDoc(), expectedCreator: CREATOR, registry: REGISTRY, client: registered });
     expect(v.verified).toBe(true);
-    expect(v.checks.map((c) => c.ok)).toEqual([true, true, true, true]);
+    expect(v.checks.every((c) => c.ok)).toBe(true);
+    expect(v.checks.map((c) => c.name)).toEqual(['RPC_CHAIN_MATCHES_STRATEGY', 'REGISTRY_ADDRESS_MATCHES_KNOWN_DEPLOYMENT', 'REGISTRY_HAS_CODE', 'REF_PRESENT', 'STRATEGY_REGISTERED_BY_EXPECTED_CREATOR', 'VERSION_REGISTERED', 'DEFINITION_MATCHES_REGISTRY']);
   });
 
   it('the creator is a verification input: the JSON’s own registry claim is never authority', async () => {
@@ -127,6 +171,37 @@ describe('bag.json + registry commitment → independent verification', () => {
     const v = await verifyRegistryCommitment({ bag: servedDoc(2), expectedCreator: CREATOR, registry: REGISTRY, client: registered });
     expect(v.verified).toBe(false);
     expect(v.checks.find((c) => c.name === 'VERSION_REGISTERED')!.ok).toBe(false);
+  });
+
+  it('fails closed before registry reads when the RPC chain, known address, or code is wrong', async () => {
+    let registryReads = 0;
+    const base = fakeRegistry([{ creator: CREATOR, uuid: STRATEGY, hashes: [EXTERNAL_DEFINITION_HASH as Hex] }]);
+    const tracked: RegistryClient = {
+      ...base,
+      async readContract(args) { registryReads++; return base.readContract(args); },
+    };
+
+    const wrongChain = await verifyRegistryCommitment({
+      bag: servedDoc(), expectedCreator: CREATOR, registry: REGISTRY,
+      client: { ...tracked, getChainId: async () => 1 },
+    });
+    expect(wrongChain.verified).toBe(false);
+    expect(wrongChain.checks.find((c) => c.name === 'RPC_CHAIN_MATCHES_STRATEGY')?.ok).toBe(false);
+    expect(registryReads).toBe(0);
+
+    const wrongAddress = await verifyRegistryCommitment({
+      bag: servedDoc(), expectedCreator: CREATOR, registry: '0x4444444444444444444444444444444444444444' as Hex, client: tracked,
+    });
+    expect(wrongAddress.checks.find((c) => c.name === 'REGISTRY_ADDRESS_MATCHES_KNOWN_DEPLOYMENT')?.ok).toBe(false);
+    expect(registryReads).toBe(0);
+
+    const noCode = await verifyRegistryCommitment({
+      bag: servedDoc(), expectedCreator: CREATOR, registry: REGISTRY,
+      client: { ...tracked, getCode: async () => '0x' },
+    });
+    expect(noCode.verified).toBe(false);
+    expect(noCode.checks.find((c) => c.name === 'REGISTRY_HAS_CODE')?.ok).toBe(false);
+    expect(registryReads).toBe(0);
   });
 
   it('a draft bag.json (no ref) can be hashed but not registry-verified, and says why', () => {

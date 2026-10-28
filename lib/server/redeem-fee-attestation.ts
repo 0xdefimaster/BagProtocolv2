@@ -44,7 +44,7 @@ import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
 // quote token — see that module's doc).
 //
 // V12 — closes the "no live slippage protection" gap V11's own hardening
-// report (docs/V11_HARDENING_REPORT.md §10.2) flagged as the one real,
+// report (docs/archive/V11_HARDENING_REPORT.md §10.2) flagged as the one real,
 // open HIGH-severity finding left after that pass: every swap leg's
 // `minOutput` and the attestation's `minUserProceeds` were hardcoded to 0,
 // meaning a misbehaving or manipulated swap could return far less than
@@ -127,7 +127,7 @@ export class PositionBusyError extends Error {
 
 /** B0: the books cannot give the basis or realized P&L this fee needs; never guessed, nothing is signed. */
 export class FeeBasisUnavailableError extends Error {
-  constructor(public readonly reason: 'BASIS_UNKNOWN' | 'SOLD_EXCEEDS_BOOKS' | 'REALIZED_PNL_UNKNOWN') {
+  constructor(public readonly reason: 'BASIS_UNKNOWN' | 'BASIS_APPROXIMATE' | 'SOLD_EXCEEDS_BOOKS' | 'REALIZED_PNL_UNKNOWN') {
     super(`The performance fee for this sale cannot be computed from your records (${reason}). Nothing was signed.`);
     this.name = 'FeeBasisUnavailableError';
   }

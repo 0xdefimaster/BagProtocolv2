@@ -19,7 +19,7 @@ import { BagExecutionGraph, BagExecutionLeg } from '../../types';
 //   3. Fee-tier fallback when the first tier has no liquidity.
 //   4. Slippage math (minAmountOut) is computed, never fabricated/omitted.
 // A real end-to-end quote against Robinhood Chain mainnet is OUT OF SCOPE
-// for this suite — see docs/PHASE_19X_REPORT.md for why this sandbox has
+// for this suite — see docs/archive/PHASE_19X_REPORT.md for why this sandbox has
 // no RPC access, and robinhood-uniswap-quoter.ts's own doc.
 // -----------------------------------------------------------------------------
 

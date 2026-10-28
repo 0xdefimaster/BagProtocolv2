@@ -6,7 +6,7 @@ import { UNISWAP_ROUTER_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS } from '@/lib/config
 // for the redeem path (LI.FI is a cross-chain aggregator; Robinhood-only
 // redemption doesn't need cross-chain routing, and LI.FI's calldata isn't
 // composable through RedeemFeeRouter's fee-enforcement wrapper — see
-// docs/FINAL_PRODUCTION_AUDIT.md's blocker #1 history for why this exists).
+// docs/archive/FINAL_PRODUCTION_AUDIT.md's blocker #1 history for why this exists).
 //
 // Produces ONLY calldata for `UNISWAP_ROUTER_ADDRESS` (SwapRouter02 on
 // Robinhood Chain — verified, see lib/config/robinhood-chain.ts's module
@@ -24,7 +24,7 @@ import { UNISWAP_ROUTER_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS } from '@/lib/config
 // `multicall(deadline, data[])` for deadline enforcement instead of a
 // per-call field). This sandbox has no RPC access to read the deployed
 // bytecode/verify the exact selector against Robinhood Chain directly
-// (see docs/FINAL_PRODUCTION_AUDIT.md). RedeemFeeRouter's OWN deadline
+// (see docs/archive/FINAL_PRODUCTION_AUDIT.md). RedeemFeeRouter's OWN deadline
 // check (`p.deadline`, enforced before any swap is attempted) means an
 // incorrect assumption here fails a real swap call, not a security
 // property — but this must be confirmed against the live contract (or

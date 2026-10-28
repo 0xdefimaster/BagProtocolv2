@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// A third-party script. It uses ONLY @bag-protocol/sdk (imported by path inside
+// A third-party script. It uses ONLY @bagprotocol/sdk (imported by path inside
 // this repository): no BAG frontend, server, database or app code.
 //
 //   bag.json (file or URL) → parse → validate → normalize → hash → [verify]
@@ -16,10 +16,12 @@
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { createPublicClient, http, type Hex } from 'viem';
-import { chainIdOf, compileBag, hashBag, normalizeBag, parseBag, simulateBag, validateBag, verifyRegistryCommitment, type ComposerProvider, type ContractReader, type SimulationClient } from '../src/index';
+import { chainIdOf, compileBag, hashBag, isNativeToken, normalizeBag, parseBag, simulateBag, validateBag, verifyRegistryCommitment, type ComposerProvider, type RegistryClient, type SimulationClient } from '../src/index';
 import { fetchBag } from '../src/adapters/http';
 import { readTokenDecimals } from '../src/adapters/evm';
 import { lifiComposer } from '../src/adapters/lifi';
+
+const ERC20_DECIMALS_ABI = [{ type: 'function', name: 'decimals', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] }] as const;
 
 export interface RunOptions {
   source: string;
@@ -29,7 +31,7 @@ export interface RunOptions {
   provider: ComposerProvider;
   allowedTransactionTargets: string[];
   allowedApprovalSpenders: string[];
-  client: SimulationClient & ContractReader;
+  client: SimulationClient & RegistryClient;
   registry?: { address: Hex; expectedCreator: string };
   readText?: (path: string) => Promise<string>;
   fetch?: typeof fetch;
@@ -53,11 +55,15 @@ export async function run(o: RunOptions) {
   if (o.registry) {
     const v = await verifyRegistryCommitment({ bag, expectedCreator: o.registry.expectedCreator, registry: o.registry.address, client: o.client });
     report.verify = v.verified ? 'verified' : v.checks.filter((c) => !c.ok);
+    if (!v.verified) return report;
   }
 
+  const inputTokenDecimals = isNativeToken(o.inputToken)
+    ? 18
+    : Number(await o.client.readContract({ address: o.inputToken as Hex, abi: ERC20_DECIMALS_ABI, functionName: 'decimals' }));
   const compiled = await compileBag(
     bag,
-    { inputToken: o.inputToken, amountRaw: o.amountRaw, signer: o.signer, tokens },
+    { inputToken: o.inputToken, amountRaw: o.amountRaw, inputTokenDecimals, signer: o.signer, tokens },
     {
       provider: o.provider,
       trust: {
@@ -74,10 +80,17 @@ export async function run(o: RunOptions) {
     slippageBps: q.plan.slippageBps,
     maxPriceImpactBps: q.plan.maxPriceImpactBps,
     priceImpactBps: q.priceImpactBps,
+    requestedAtMs: q.requestedAtMs,
+    receivedAtMs: q.receivedAtMs,
+    validUntilMs: q.validUntilMs,
+    fees: q.fees,
+    warnings: q.warnings,
     kept: q.plan.kept && { token: q.plan.kept.token, amountRaw: String(q.plan.kept.amountRaw) },
     legs: q.legs.map((l) => ({ token: l.token, targetInputRaw: String(l.targetInputRaw), expectedOutRaw: l.expectedOutRaw, minOutRaw: l.minOutRaw })),
   };
-  report.simulate = await simulateBag(compiled, { client: o.client });
+  const simulation = await simulateBag(compiled, { client: o.client });
+  report.simulate = simulation;
+  if (simulation.status === 'QUOTE_EXPIRED') return report;
   report.approvals = compiled.approvals.map((a) => ({ token: a.token, spender: a.spender, amountRaw: String(a.amountRaw) }));
   report.unsignedTransaction = { to: compiled.transaction.to, data: compiled.transaction.data, value: String(compiled.transaction.value), chainId: compiled.transaction.chainId };
   return report;
@@ -95,7 +108,7 @@ async function main() {
   }
   // LI.FI's production Composer API (docs.li.fi quickstart; what BAG uses). Override with COMPOSER_URL.
   const baseUrl = process.env.COMPOSER_URL ?? 'https://composer.li.quest';
-  const client = createPublicClient({ transport: http(rpcUrl) }) as unknown as SimulationClient & ContractReader;
+  const client = createPublicClient({ transport: http(rpcUrl) }) as unknown as SimulationClient & RegistryClient;
   const report = await run({
     source,
     inputToken,

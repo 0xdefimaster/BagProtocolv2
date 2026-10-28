@@ -7,6 +7,8 @@ vi.mock('@/lib/server/purchase-execution', () => ({ settleUnsettledPurchasesForU
 vi.mock('@/lib/server/redeem-intent-repo', () => ({ listUnsettledRedeemIntentsForUser: (...a: unknown[]) => listRedeems(...a) }));
 vi.mock('@/lib/server/redeem-execution', () => ({ verifyRedeemExecution: (...a: unknown[]) => verifyRedeem(...a) }));
 vi.mock('@/lib/server/wallet-holdings', () => ({ MULTICALL3_ADDRESS: '0xcA11bde05977b3631167028862bE2a173976CA11' }));
+const recordSnapshot = vi.fn();
+vi.mock('@/lib/server/bag-nav-snapshots', () => ({ recordNavSnapshot: (...a: unknown[]) => recordSnapshot(...a) }));
 
 import { readBalancesAtBlock, reconcileWallet } from '../wallet-reconciliation';
 
@@ -18,6 +20,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   settlePurchases.mockResolvedValue({ checked: 0, settled: 0 });
   listRedeems.mockResolvedValue([]);
+  recordSnapshot.mockResolvedValue({ status: 'recorded' });
 });
 
 describe('readBalancesAtBlock', () => {
@@ -77,5 +80,46 @@ describe('reconcileWallet', () => {
     const rpc = vi.fn(async () => ({ data: null, error: { message: 'boom' } }));
     const client = { getBlockNumber: vi.fn(async () => BigInt(1)), multicall: vi.fn(async () => [{ status: 'success', result: BigInt(1) }]) };
     await expect(reconcileWallet({ rpc } as never, client as never, { userId: 'u1', walletAddress: WALLET, assets: [T1] })).rejects.toThrow(/boom/);
+  });
+
+  it('a confirmed outflow prices the Bags that held that asset again right away (listing TVL follows)', async () => {
+    const rpc = vi.fn(async (name: string, args: Record<string, unknown>) =>
+      name === 'apply_wallet_observation' ? { data: { status: args.p_address === T1.address ? 'CONFIRMED_OUTFLOW' : 'DRIFT' }, error: null } : { data: null, error: null }
+    );
+    const eq = vi.fn(async () => ({
+      data: [
+        { bag_id: 'bag-a', address: T1.address.toUpperCase().replace('0X', '0x') },
+        { bag_id: 'bag-a', address: T2.address },
+        { bag_id: 'bag-b', address: T1.address },
+        { bag_id: 'bag-c', address: T2.address },
+      ],
+      error: null,
+    }));
+    const from = vi.fn(() => ({ select: () => ({ eq }) }));
+    const client = { getBlockNumber: vi.fn(async () => BigInt(9)), multicall: vi.fn(async () => [{ status: 'success', result: BigInt(0) }, { status: 'success', result: BigInt(1) }]) };
+
+    await reconcileWallet({ rpc, from } as never, client as never, { userId: 'u1', walletAddress: WALLET, assets: [T1, T2] });
+
+    expect(from).toHaveBeenCalledWith('bag_investor_holdings');
+    expect(eq).toHaveBeenCalledWith('user_id', 'u1');
+    expect(recordSnapshot.mock.calls.map((c) => [c[1], c[2]])).toEqual([
+      ['bag-a', { minIntervalMs: 0 }],
+      ['bag-b', { minIntervalMs: 0 }],
+    ]);
+  });
+
+  it('no confirmed outflow → no extra pricing; a failed snapshot never fails the reconciliation', async () => {
+    const rpc = vi.fn(async (name: string) => (name === 'apply_wallet_observation' ? { data: { status: 'DRIFT' }, error: null } : { data: null, error: null }));
+    const from = vi.fn();
+    const client = { getBlockNumber: vi.fn(async () => BigInt(9)), multicall: vi.fn(async () => [{ status: 'success', result: BigInt(0) }]) };
+    await reconcileWallet({ rpc, from } as never, client as never, { userId: 'u1', walletAddress: WALLET, assets: [T1] });
+    expect(from).not.toHaveBeenCalledWith('bag_investor_holdings');
+    expect(recordSnapshot).not.toHaveBeenCalled();
+
+    const confirmed = vi.fn(async (name: string) => (name === 'apply_wallet_observation' ? { data: { status: 'CONFIRMED_OUTFLOW' }, error: null } : { data: null, error: null }));
+    const from2 = vi.fn(() => ({ select: () => ({ eq: async () => ({ data: [{ bag_id: 'bag-a', address: T1.address }], error: null }) }) }));
+    recordSnapshot.mockRejectedValue(new Error('pricing down'));
+    const r = await reconcileWallet({ rpc: confirmed, from: from2 } as never, client as never, { userId: 'u1', walletAddress: WALLET, assets: [T1] });
+    expect(r.assets[0].status).toBe('CONFIRMED_OUTFLOW');
   });
 });

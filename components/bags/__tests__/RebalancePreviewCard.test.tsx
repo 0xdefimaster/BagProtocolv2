@@ -41,6 +41,16 @@ const drifted = {
 };
 
 describe('RebalancePreviewCard', () => {
+  it('a drift worth under $1 to move (dust): says so and offers no quote or rebalance', async () => {
+    const dust = { ...drifted, orders: drifted.orders.map((o) => ({ ...o, value: '0.004' })) };
+    serve({ symbols, preview: dust });
+    render(<RebalancePreviewCard bagId="b1" />);
+    await waitFor(() => expect(screen.getByTestId('rebalance-too-small')).toBeTruthy());
+    expect(screen.getByTestId('rebalance-too-small').textContent).toMatch(/worth \$0\.00 to move, under \$1: too little to rebalance/);
+    expect(screen.queryByText('Get a live rebalance quote')).toBeNull();
+    expect(screen.queryByText('Rebalance now')).toBeNull();
+  });
+
   it('shows the drift against the current version and what a rebalance would trade', async () => {
     serve({ symbols, preview: drifted });
     render(<RebalancePreviewCard bagId="b1" />);
@@ -76,6 +86,45 @@ describe('RebalancePreviewCard', () => {
     render(<RebalancePreviewCard bagId="b1" />);
     fireEvent.click(await screen.findByText('Get a live rebalance quote'));
     await waitFor(() => expect(screen.getByText(/price impact of this rebalance is above the limit/)).toBeTruthy());
+  });
+
+  it('price impact between 5% and 10%: shown, and only an explicit "Rebalance anyway" retries with that impact accepted', async () => {
+    const tx = { to: '0x' + 'c'.repeat(40), data: '0xdead', value: '0', chainId: 4663, approvals: [] };
+    const intent = { id: 'r1', status: 'READY', expiresAt: new Date(Date.now() + 300_000).toISOString(), failureMessage: null, composerTransaction: tx };
+    const intentBodies: (string | null)[] = [];
+    global.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/rebalance-intent')) {
+        intentBodies.push((init?.body as string | undefined) ?? null);
+        if (intentBodies.length === 1) {
+          return new Response(JSON.stringify({ error: 'The price impact of this rebalance is 7.20%, above the 5% limit.', acceptablePriceImpactBps: 720 }), { status: 422 });
+        }
+        return new Response(JSON.stringify({ intent }), { status: 200 });
+      }
+      if (url.endsWith('/verify')) return new Response(JSON.stringify({ intent: { ...intent, status: 'SUCCEEDED', composerTransaction: null } }), { status: 200 });
+      return new Response(JSON.stringify({ symbols, preview: drifted }), { status: 200 });
+    }) as unknown as typeof fetch;
+    sweepMock.mockResolvedValue('0x' + 'ab'.repeat(32));
+    render(<RebalancePreviewCard bagId="b1" />);
+    fireEvent.click(await screen.findByText('Rebalance now'));
+    await waitFor(() => expect(screen.getByTestId('rebalance-impact-offer').textContent).toMatch(/7\.20% price impact.*at most 8\.20%/));
+    expect(sweepMock).not.toHaveBeenCalled();
+    expect(intentBodies).toEqual([null]);
+
+    fireEvent.click(screen.getByText('Rebalance anyway at 7.20% impact'));
+    await waitFor(() => expect(screen.getByText(/Rebalanced\./)).toBeTruthy());
+    expect(intentBodies[1]).toBe(JSON.stringify({ acceptedPriceImpactBps: 720 }));
+  });
+
+  it('price impact above 10%: no offer to accept it', async () => {
+    global.fetch = vi.fn(async (url: string) =>
+      url.endsWith('/rebalance-intent')
+        ? new Response(JSON.stringify({ error: 'The price impact of this rebalance (18.00%) is above the 10% maximum.', acceptablePriceImpactBps: null }), { status: 422 })
+        : new Response(JSON.stringify({ symbols, preview: drifted }), { status: 200 })
+    ) as unknown as typeof fetch;
+    render(<RebalancePreviewCard bagId="b1" />);
+    fireEvent.click(await screen.findByText('Rebalance now'));
+    await waitFor(() => expect(screen.getByText(/above the 10% maximum/)).toBeTruthy());
+    expect(screen.queryByTestId('rebalance-impact-offer')).toBeNull();
   });
 
   it('says so when the position is within tolerance', async () => {

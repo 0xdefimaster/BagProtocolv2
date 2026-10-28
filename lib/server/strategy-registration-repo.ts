@@ -29,7 +29,7 @@ export async function loadRegistrations(admin: SupabaseClient, bagId: string): P
   return (data ?? []) as RegistrationRow[];
 }
 
-// strategy_compositions (0057): what BAG verified from creator-signed StrategyCompositions.publishComposition
+// strategy_compositions (0060): what BAG verified from creator-signed StrategyCompositions.publishComposition
 // transactions, one row per version. Written only by lib/server/strategy-registration.ts after receipt verification.
 
 export interface CompositionRow {

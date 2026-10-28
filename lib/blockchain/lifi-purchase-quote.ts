@@ -1,11 +1,13 @@
 import { getQuote } from '@lifi/sdk';
+import { isComposeSdkOutdatedError, isComposeServerOutdatedError } from '@lifi/composer-sdk';
 import { ChainId, ExecutionStep } from '@/types/basket-protocol';
 import { ComposerFallbackNotice, PurchaseIntentStepRecord } from '@/types/purchase-intent';
 import { getLiFiClient, toLiFiChainId } from './lifi-config';
 import { getLiFiTokenData } from './lifi-token-data';
 import { mapLiFiError } from './lifi-execution-adapter';
 import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
-import { buildComposerPurchase, composerLegEnforcedMinOutputRaw, composerLegSimulatedOutputRaw, ComposerIneligibleError, ComposerPurchaseLeg, isComposerEligible } from './lifi-composer-adapter';
+import { PartitionError, planPartitionLegs } from '@/packages/bag-sdk/src';
+import { buildComposerPurchase, composeErrorOf, composerLegEnforcedMinOutputRaw, composerLegSimulatedOutputRaw, ComposerIneligibleError, ComposerPurchaseLeg, isComposerEligible } from './lifi-composer-adapter';
 
 // -----------------------------------------------------------------------------
 // Phase 17 — spec Aşama 1/4: "fromAddress placeholder tamamen kaldırılacak.
@@ -119,7 +121,7 @@ export async function quoteRealSwapStep(
 export const DEFAULT_COMPOSER_SLIPPAGE_BPS = 100;
 
 /** Upper bound on one Composer compile before falling back to sequential quotes. */
-export const COMPOSER_COMPILE_TIMEOUT_MS = 15_000;
+export { COMPOSER_COMPILE_TIMEOUT_MS } from './lifi-composer-adapter';
 
 export interface ComposerTransactionSummary {
   to: string;
@@ -153,14 +155,30 @@ export interface BuildPurchaseIntentStepsResult {
 }
 
 /**
- * Reads LI.FI Composer's refusal message into a notice. Only the figures
- * Composer itself printed are used, e.g.
- * "Price impact 551 bps exceeds maximum 500 bps (input: $0.9991, output: $0.9440)".
+ * Turns a Composer refusal into a notice, branching on the SDK's typed error
+ * (`ComposeError.kind`), never on the message alone. Only a whole-flow
+ * price-impact refusal ("Price impact N bps exceeds maximum M bps") is
+ * PRICE_IMPACT: the buyer may accept it and retry with a higher limit. A
+ * single swap's route filter ("Price impact too high for …") is not, since
+ * raising the limit does not help. The message is parsed only for the
+ * figures Composer printed.
  */
-export function parseComposerFallback(message: string): ComposerFallbackNotice {
-  const impact = message.match(/price impact\s+(\d+)\s*bps\s+exceeds\s+maximum\s+(\d+)\s*bps/i);
-  const input = message.match(/input:\s*\$([\d.]+)/i);
-  const output = message.match(/output:\s*\$([\d.]+)/i);
+export function composerFallbackFrom(err: unknown): ComposerFallbackNotice {
+  const raw = err instanceof Error ? err.message : String(err);
+  const composeErr = composeErrorOf(err);
+  const kind = composeErr?.kind ?? null;
+  // A version mismatch is ours to fix, not the buyer's: say so plainly and flag it for the operator.
+  const outdated = composeErr && isComposeSdkOutdatedError(composeErr) ? 'sdk' : composeErr && isComposeServerOutdatedError(composeErr) ? 'server' : null;
+  if (outdated) console.error(`[composer] ${outdated === 'sdk' ? 'SDK is older than the API supports' : 'API is older than this SDK'} — upgrade @lifi/composer-sdk / compose-spec: ${raw}`);
+  const message =
+    outdated === 'sdk'
+      ? `One-transaction routing is temporarily unavailable: this app's LI.FI Composer SDK is older than the API now supports. Nothing was sent. (${raw})`
+      : outdated === 'server'
+        ? `One-transaction routing is temporarily unavailable: the LI.FI Composer API is older than this app's SDK. Nothing was sent. (${raw})`
+        : raw;
+  const impact = kind === 'price_impact_exceeded' ? raw.match(/price impact\s+(\d+)\s*bps\s+exceeds\s+maximum\s+(\d+)\s*bps/i) : null;
+  const input = impact ? raw.match(/input:\s*\$([\d.]+)/i) : null;
+  const output = impact ? raw.match(/output:\s*\$([\d.]+)/i) : null;
   return {
     reason: impact ? 'PRICE_IMPACT' : 'UNAVAILABLE',
     message,
@@ -168,6 +186,7 @@ export function parseComposerFallback(message: string): ComposerFallbackNotice {
     maxPriceImpactBps: impact ? Number(impact[2]) : null,
     inputUsd: input ? input[1] : null,
     outputUsd: output ? output[1] : null,
+    kind,
   };
 }
 
@@ -176,7 +195,7 @@ export function parseComposerFallback(message: string): ComposerFallbackNotice {
  * without this and must keep doing so: a redemption's SWAP steps have
  * DIFFERENT `inputAsset`s per step (selling several distinct holdings into
  * one output — see redeem/allocation.ts), the opposite shape from what
- * lifi-composer-adapter.ts's cascading-split fan-out (one input, N
+ * lifi-composer-adapter.ts's partition fan-out (one input, N
  * outputs) was built for. Passing this to a redeem call wouldn't just be
  * unnecessary, it would silently attempt to build a nonsensical flow —
  * the eligibility check below only tests for a matching output chain per
@@ -236,53 +255,45 @@ async function tryBuildComposerSteps(
   const sameChain = swapSteps.every((s) => s.route.sourceChain === chain && s.route.destinationChain === chain);
   if (!sameChain) return null;
 
-  const totalInputRaw = swapSteps.reduce((sum, s) => sum + BigInt(s.route.inputAmountRaw), BigInt(0));
-  if (totalInputRaw === BigInt(0)) return null;
+  // Leg weights and leg order from the SDK's partition planner (packages/bag-sdk/src/partition.ts), fed the SAME
+  // per-leg raw amounts calculateDepositAllocation already computed: whole bps by largest remainder (bigint), legs
+  // in token-address order, so BAG and the SDK build identical nodes from identical targets. A purchase a
+  // partition cannot express (a leg under 1 bp) keeps the per-asset path.
+  let partitioned: ReturnType<typeof planPartitionLegs>;
+  try {
+    partitioned = planPartitionLegs(swapSteps.map((s) => ({ token: s.route.outputAsset.address, amountRaw: BigInt(s.route.inputAmountRaw) })));
+  } catch (err) {
+    if (err instanceof PartitionError) return null;
+    throw err;
+  }
+  const totalInputRaw = partitioned.totalRaw;
+  const stepByToken = new Map(swapSteps.map((s) => [s.route.outputAsset.address.toLowerCase(), s]));
+  // Composer leg i (`swap_<i>`) is orderedSteps[i].
+  const orderedSteps = partitioned.legs.map((l) => stepByToken.get(l.token)!);
+  const legs: ComposerPurchaseLeg[] = partitioned.legs.map((l, i) => ({ address: orderedSteps[i].route.outputAsset.address, weightBps: l.legBps, symbol: orderedSteps[i].targetSymbol }));
 
-  // bps per leg from the SAME per-leg raw amounts calculateDepositAllocation
-  // already computed — this reuses the existing allocation math verbatim,
-  // it does not recompute weights independently. The last leg absorbs
-  // whatever's left after the others round down, so the legs' bps always
-  // sum to exactly 10000 regardless of integer-division remainder — same
-  // "dust lands on the last leg" choice lifi-composer-adapter.ts's own
-  // cascading split already makes, applied one level up here too.
-  let assignedBps = 0;
-  const legs: ComposerPurchaseLeg[] = swapSteps.map((s, i) => {
-    const isLast = i === swapSteps.length - 1;
-    const bps = isLast
-      ? 10000 - assignedBps
-      : Number((BigInt(s.route.inputAmountRaw) * BigInt(10000)) / totalInputRaw);
-    if (!isLast) assignedBps += bps;
-    return { address: s.route.outputAsset.address, weightBps: bps, symbol: s.targetSymbol };
-  });
-
-  if (!isComposerEligible(chain as ChainId, legs) || legs.some((l) => l.weightBps <= 0)) return null;
+  if (!isComposerEligible(chain as ChainId, legs)) return null;
 
   let composerResult;
   try {
-    // Capped so a stuck Composer compile fails with a reason the buyer can
-    // retry, instead of keeping them waiting for the wallet prompt.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    composerResult = await Promise.race([
-      buildComposerPurchase({
-        chain: chain as ChainId,
-        inputTokenAddress: inputAsset.address,
-        inputAmountRaw: totalInputRaw.toString(),
-        legs,
-        signerAddress: walletAddress,
-        slippageBps: options.slippageBps,
-        apiKey: options.apiKey,
-        ...(options.maxPriceImpactBps !== undefined ? { maxPriceImpactBps: options.maxPriceImpactBps } : {}),
-      }),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`Composer compile took longer than ${COMPOSER_COMPILE_TIMEOUT_MS}ms`)), COMPOSER_COMPILE_TIMEOUT_MS);
-      }),
-    ]).finally(() => clearTimeout(timer));
+    // The deadline is on the request itself (COMPOSER_COMPILE_TIMEOUT_MS in
+    // lifi-composer-adapter.ts): a stuck compile is aborted and fails with a
+    // reason the buyer can retry.
+    composerResult = await buildComposerPurchase({
+      chain: chain as ChainId,
+      inputTokenAddress: inputAsset.address,
+      inputAmountRaw: totalInputRaw.toString(),
+      legs,
+      signerAddress: walletAddress,
+      slippageBps: options.slippageBps,
+      apiKey: options.apiKey,
+      ...(options.maxPriceImpactBps !== undefined ? { maxPriceImpactBps: options.maxPriceImpactBps } : {}),
+    });
   } catch (err) {
     if (err instanceof ComposerIneligibleError) return null;
     const message = err instanceof Error ? err.message : String(err);
     console.warn(`[composer] single-transaction route refused: ${message}`);
-    const notice = parseComposerFallback(message);
+    const notice = composerFallbackFrom(err);
     // A native-ETH payment has a proven per-asset path (each swap sends its
     // ETH as the transaction value, no approval), and Composer's native-input
     // support is the newer of the two: anything but a price-impact refusal
@@ -319,8 +330,8 @@ async function tryBuildComposerSteps(
       };
     }
 
-    const legIndex = swapSteps.indexOf(step);
-    const simulatedOut = composerLegSimulatedOutputRaw(composerResult.producedResources, legIndex);
+    const legIndex = orderedSteps.indexOf(step);
+    const simulatedOut = composerLegSimulatedOutputRaw(composerResult.outputs, legIndex);
 
     return {
       stepIndex,
@@ -343,7 +354,7 @@ async function tryBuildComposerSteps(
       // provider's (see composerLegEnforcedMinOutputRaw) and is recorded
       // separately, never used for verification.
       minOutputRaw: null,
-      providerEnforcedMinOutputRaw: composerLegEnforcedMinOutputRaw(composerResult.producedResources, legIndex),
+      providerEnforcedMinOutputRaw: composerLegEnforcedMinOutputRaw(composerResult.outputs, legIndex),
       route: null,
       // No per-step LI.FI route — see this type's own doc comment on why
       // `lifiStep` is null whenever `composerTransaction` is set.

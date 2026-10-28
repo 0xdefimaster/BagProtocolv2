@@ -1,30 +1,34 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, RefreshCw, Wallet } from 'lucide-react';
 import { formatDecimalString, formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
 import { describeWalletError } from '@/lib/blockchain/wallet-error';
+import { recheckWalletAfterTrade } from '@/lib/wallet-recheck';
 import { executeWalletSweep, SweepProgress } from '@/lib/blockchain/wallet-sweep-client';
-import type { WalletHoldings, WalletTokenBalance } from '@/lib/server/wallet-holdings';
+import type { ChainHoldingsResult, WalletHoldings, WalletTokenBalance } from '@/lib/server/wallet-holdings';
+import { BAG_CHAINS, BAG_CHAINS_LIST, type BagChain } from '@/lib/config/chains';
 import type { ComposerFallbackNotice } from '@/types/purchase-intent';
 import { MAX_ACCEPTABLE_PRICE_IMPACT_BPS } from '@/types/purchase-intent';
 
 // -----------------------------------------------------------------------------
-// "Wallet" section of the Portfolio page: every registry token the connected
-// wallet holds on Robinhood Chain (read from the chain), and selling any of
-// them — one, or several at once like a dust sweeper — for USDG in ONE
-// LI.FI Composer transaction. Bag tokens bought through BAG and sold
-// elsewhere, or tokens never bought here at all, can be sold the same way.
+// The wallet's tokens on every BAG chain (Robinhood Chain, Ethereum, Arbitrum,
+// Base), read from the chain, one tab per chain with its total. Selling any of
+// them — one, or several at once like a dust sweeper — happens on that chain,
+// for that chain's stablecoin (USDG on Robinhood Chain, USDC elsewhere), in ONE
+// LI.FI Composer transaction. Used by the Swap page and Portfolio's Wallet section.
 // -----------------------------------------------------------------------------
 
 interface SweepQuote {
   transaction: { to: string; data: string; value: string; chainId: number };
   approvals: { token: string; spender: string; amountRaw: string }[];
   legs: { address: string; symbol: string; amountRaw: string; decimals: number; expectedOutRaw: string | null; minOutRaw: string | null }[];
-  outputToken: { address: string; symbol: string; decimals: number };
+  outputToken: { address: string; symbol: string; decimals: number; native?: boolean };
   expectedOutRaw: string | null;
   minOutRaw: string | null;
   priceImpactBps: number | null;
+  /** Tokens left out because no route was found for them; they stay in the wallet. */
+  skipped?: { address: string; symbol: string; reason: string }[];
 }
 
 type Phase =
@@ -45,16 +49,25 @@ const PROGRESS_LABEL: Record<SweepProgress, string> = {
   confirming: 'Confirming on-chain…',
 };
 
-function explorerTx(hash: string) {
-  return `https://robinhoodchain.blockscout.com/tx/${hash}`;
+function explorerTx(chain: BagChain, hash: string) {
+  return `${BAG_CHAINS[chain].explorerUrl}/tx/${hash}`;
 }
 
+const isHoldings = (r: ChainHoldingsResult): r is WalletHoldings => !('error' in r);
+const chainTotal = (h: WalletHoldings) => h.tokens.reduce((sum, t) => sum + Number(t.usdValue ?? 0), 0);
+
 export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) {
-  const [holdings, setHoldings] = useState<WalletHoldings | null>(null);
+  const [all, setAll] = useState<ChainHoldingsResult[] | null>(null);
+  const [active, setActive] = useState<BagChain>('robinhood');
+  // What the sale pays out: the chain's stablecoin, or its native ETH (then the stablecoin can be sold too).
+  const [receive, setReceive] = useState<'STABLE' | 'NATIVE'>('STABLE');
+  const [lastOut, setLastOut] = useState<{ symbol: string; decimals: number } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
+  const recheckCancel = useRef<(() => void) | null>(null);
+  useEffect(() => () => recheckCancel.current?.(), []);
   const [acceptImpact, setAcceptImpact] = useState(false);
   // The exact token list being quoted, so accepting a price impact re-quotes the same sale.
   const [pending, setPending] = useState<WalletTokenBalance[]>([]);
@@ -62,15 +75,21 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
   const load = useCallback(() => {
     setLoading(true);
     setLoadError(null);
-    fetch('/api/wallet/holdings', { credentials: 'same-origin' })
+    fetch('/api/wallet/holdings?chain=all', { credentials: 'same-origin' })
       .then(async (res) => {
         const body = await res.json().catch(() => null);
         if (!res.ok) throw new Error(body?.error ?? `Request failed (${res.status}).`);
-        return body as WalletHoldings;
+        return body.chains as ChainHoldingsResult[];
       })
-      .then((h) => {
-        setHoldings(h);
+      .then((chains) => {
+        setAll(chains);
         setSelected(new Set());
+        // First load: open the chain holding the most value (Robinhood Chain when nothing is held).
+        setActive((current) => {
+          if (chains.some((c) => c.chain === current && isHoldings(c) && c.tokens.length > 0)) return current;
+          const best = chains.filter(isHoldings).sort((a, b) => chainTotal(b) - chainTotal(a))[0];
+          return best && chainTotal(best) > 0 ? best.chain : current;
+        });
       })
       .catch((err: Error) => setLoadError(err.message))
       .finally(() => setLoading(false));
@@ -80,8 +99,14 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
     load();
   }, [load, walletAddress]);
 
+  const activeResult = all?.find((c) => c.chain === active) ?? null;
+  const holdings = activeResult && isHoldings(activeResult) ? activeResult : null;
+  const chainError = activeResult && !isHoldings(activeResult) ? activeResult.error : null;
+  const chainName = BAG_CHAINS[active].name;
   const tokens = holdings?.tokens ?? [];
-  const sellable = tokens.filter((t) => t.sellable);
+  const grandTotal = (all ?? []).filter(isHoldings).reduce((sum, h) => sum + chainTotal(h), 0);
+  const canSell = (t: WalletTokenBalance) => t.sellable || receive === 'NATIVE';
+  const sellable = tokens.filter(canSell);
   const totalUsd = tokens.reduce((sum, t) => sum + Number(t.usdValue ?? 0), 0);
   const selectedTokens = useMemo(() => sellable.filter((t) => selected.has(t.address)), [sellable, selected]);
   const selectedUsd = selectedTokens.reduce((sum, t) => sum + Number(t.usdValue ?? 0), 0);
@@ -97,6 +122,8 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          chain: active,
+          receive,
           tokens: list.map((t) => ({ address: t.address, amountRaw: t.balanceRaw })),
           ...(acceptedPriceImpactBps !== undefined ? { acceptedPriceImpactBps } : {}),
         }),
@@ -107,11 +134,12 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
         return;
       }
       if (!res.ok) throw new Error(body?.error ?? `Request failed (${res.status}).`);
+      setLastOut({ symbol: (body as SweepQuote).outputToken.symbol, decimals: (body as SweepQuote).outputToken.decimals });
       setPhase({ kind: 'quoted', quote: body as SweepQuote, acceptedPriceImpactBps });
     } catch (err) {
       setPhase({ kind: 'error', message: (err as Error).message });
     }
-  }, []);
+  }, [active, receive]);
 
   const confirm = useCallback(
     async (quote: SweepQuote) => {
@@ -128,6 +156,9 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
             }),
         });
         setPhase({ kind: 'done', txHash: hash, received: quote.expectedOutRaw });
+        // Tokens a Bag tracks may have left the wallet: let positions and Bag TVL follow.
+        recheckCancel.current?.();
+        recheckCancel.current = recheckWalletAfterTrade();
         load();
       } catch (err) {
         const { message, rejected } = describeWalletError(err);
@@ -146,22 +177,84 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
     });
 
   const out = holdings?.outputToken;
-  const fmtOut = (raw: string | null) => (raw === null || !out ? '—' : `${formatRawAmount(raw, out.decimals, { maxFractionDigits: 2 })} ${out.symbol}`);
+  const stableSymbol = out?.symbol ?? BAG_CHAINS[active].sweepOutputToken.symbol;
+  const nativeSymbol = BAG_CHAINS[active].nativeCurrency.symbol;
+  const outSymbol = receive === 'NATIVE' ? nativeSymbol : stableSymbol;
+  const shownOut = lastOut ?? out;
+  const fmtOut = (raw: string | null) =>
+    raw === null || !shownOut ? '—' : `${formatRawAmount(raw, shownOut.decimals, { maxFractionDigits: shownOut.decimals > 6 ? 6 : 2 })} ${shownOut.symbol}`;
 
   return (
     <div style={{ marginTop: 40 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <span className="section-label">
           <Wallet size={13} style={{ verticalAlign: '-2px', marginRight: 6 }} />
-          Wallet · Robinhood Chain
+          Wallet · {chainName}
         </span>
         <button className="btn btn-ghost" onClick={load} disabled={loading || busy} style={{ padding: '6px 12px', fontSize: 12.5 }}>
           <RefreshCw size={13} className={loading ? 'animate-spin' : undefined} /> Refresh
         </button>
       </div>
       <p style={{ color: 'var(--ink-soft)', fontSize: 13, margin: '6px 0 14px' }}>
-        Tokens in your wallet, read from the chain. Select several to sell them all for {out?.symbol ?? 'USDG'} in one transaction.
+        Tokens in your wallet, read from each chain. Select several to sell them all for {outSymbol} on {chainName} in one transaction.
       </p>
+
+      {all && (
+        <div className="sweep-chains" role="tablist" aria-label="Network">
+          {BAG_CHAINS_LIST.map((c) => {
+            const r = all.find((x) => x.chain === c);
+            const total = r && isHoldings(r) ? chainTotal(r) : null;
+            return (
+              <button
+                key={c}
+                role="tab"
+                aria-selected={c === active}
+                className={c === active ? 'sweep-chain active' : 'sweep-chain'}
+                disabled={busy}
+                onClick={() => {
+                  setActive(c);
+                  setSelected(new Set());
+                  setPhase({ kind: 'idle' });
+                }}
+              >
+                <span>{BAG_CHAINS[c].name}</span>
+                <span className="mono">{total === null ? '—' : formatDecimalStringUsd(total.toFixed(2))}</span>
+              </button>
+            );
+          })}
+          <span className="sweep-chains-total mono">All networks {formatDecimalStringUsd(grandTotal.toFixed(2))}</span>
+        </div>
+      )}
+
+      {all && (
+        <div className="sweep-receive" role="radiogroup" aria-label="Receive">
+          <span>Receive</span>
+          {(['STABLE', 'NATIVE'] as const).map((r) => (
+            <button
+              key={r}
+              role="radio"
+              aria-checked={receive === r}
+              className={receive === r ? 'sweep-chain active' : 'sweep-chain'}
+              disabled={busy}
+              onClick={() => {
+                setReceive(r);
+                setSelected(new Set());
+                setPhase({ kind: 'idle' });
+              }}
+            >
+              {r === 'STABLE' ? stableSymbol : nativeSymbol}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {active === 'ethereum' && (
+        <p style={{ color: 'var(--ink-soft)', fontSize: 12.5, margin: '0 0 12px' }}>
+          Network fees on Ethereum can be higher than small balances are worth. Check the fee in your wallet before you confirm.
+        </p>
+      )}
+
+      {chainError && <p style={{ color: '#E0847A', fontSize: 13 }}>Could not read your wallet on {chainName}: {chainError}</p>}
 
       {loadError && (
         <p style={{ color: '#E0847A', fontSize: 13 }}>
@@ -172,11 +265,12 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
         </p>
       )}
 
-      {holdings === null && !loadError ? (
+      {all === null && !loadError ? (
         <p style={{ color: 'var(--ink-soft)', fontSize: 13.5 }}>Reading your wallet…</p>
       ) : holdings && tokens.length === 0 ? (
         <div className="leaderboard-card" style={{ padding: 24, textAlign: 'center', color: 'var(--ink-soft)', fontSize: 13.5 }}>
-          No supported tokens in this wallet on Robinhood Chain. ETH balance: {formatDecimalString(holdings.nativeBalance, { maxFractionDigits: 5 })}
+          No supported tokens in this wallet on {chainName}. {BAG_CHAINS[active].nativeCurrency.symbol} balance:{' '}
+          {formatDecimalString(holdings.nativeBalance, { maxFractionDigits: 5 })}
         </div>
       ) : holdings ? (
         <div className="leaderboard-card">
@@ -195,7 +289,7 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
               {tokens.map((t) => (
                 <tr key={t.address}>
                   <td>
-                    {t.sellable && (
+                    {canSell(t) && (
                       <input
                         type="checkbox"
                         aria-label={`Select ${t.symbol}`}
@@ -221,7 +315,7 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
                   <td className="mono">{t.priceUsd === null ? '—' : formatDecimalString(t.priceUsd, { maxFractionDigits: Number(t.priceUsd) < 1 ? 6 : 2, prefix: '$' })}</td>
                   <td className="mono">{t.usdValue === null ? '—' : formatDecimalStringUsd(t.usdValue)}</td>
                   <td>
-                    {t.sellable ? (
+                    {canSell(t) ? (
                       <button className="btn btn-ghost" disabled={busy} onClick={() => requestQuote([t])} style={{ padding: '6px 12px', fontSize: 12.5 }}>
                         Sell
                       </button>
@@ -235,14 +329,15 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
           </table>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 14px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12.5, color: 'var(--ink-soft)' }}>
-              Total {formatDecimalStringUsd(totalUsd.toFixed(2))} · ETH {formatDecimalString(holdings.nativeBalance, { maxFractionDigits: 5 })}
+              Total on {chainName} {formatDecimalStringUsd(totalUsd.toFixed(2))} · {BAG_CHAINS[active].nativeCurrency.symbol}{' '}
+              {formatDecimalString(holdings.nativeBalance, { maxFractionDigits: 5 })}
             </span>
             <button
               className="btn btn-primary"
               disabled={busy || selectedTokens.length === 0}
               onClick={() => requestQuote(selectedTokens)}
             >
-              Sell selected ({selectedTokens.length}) · {formatDecimalStringUsd(selectedUsd.toFixed(2))} → {out?.symbol ?? 'USDG'}
+              Sell selected ({selectedTokens.length}) · {formatDecimalStringUsd(selectedUsd.toFixed(2))} → {outSymbol}
             </button>
           </div>
         </div>
@@ -270,6 +365,11 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
                 </tbody>
               </table>
               <div style={{ fontSize: 13, display: 'grid', gap: 4 }}>
+                {(phase.quote.skipped?.length ?? 0) > 0 && (
+                  <div role="status" style={{ color: 'var(--warning, #b7791f)' }}>
+                    Not sold (no route right now, stays in your wallet): {phase.quote.skipped!.map((x) => x.symbol).join(', ')}
+                  </div>
+                )}
                 <div>You receive ≈ <b>{fmtOut(phase.quote.expectedOutRaw)}</b></div>
                 <div style={{ color: 'var(--ink-soft)' }}>Minimum (enforced on-chain per swap): {fmtOut(phase.quote.minOutRaw)}</div>
                 {phase.quote.priceImpactBps !== null && (
@@ -331,7 +431,7 @@ export function WalletAssetsPanel({ walletAddress }: { walletAddress: string }) 
           {phase.kind === 'done' && (
             <p style={{ margin: 0, fontSize: 13.5, color: 'var(--emerald)' }}>
               Sold. ≈ {fmtOut(phase.received)} sent to your wallet.{' '}
-              <a href={explorerTx(phase.txHash)} target="_blank" rel="noreferrer">
+              <a href={explorerTx(active, phase.txHash)} target="_blank" rel="noreferrer">
                 View transaction →
               </a>
             </p>

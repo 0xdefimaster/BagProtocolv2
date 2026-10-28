@@ -32,10 +32,22 @@ describe('payment value in USD', () => {
     expect(paymentAmountInQuoteCurrency('0.000000000000000001', '3000.123456789012345678')).toBe('0.000000000000003000');
   });
 
-  it('refuses a non-USD quote, a zero price, and chains without native payments', async () => {
+  it('refuses a non-USD quote and a zero price; Base values native ETH by its WETH', async () => {
     await expect(paymentAssetUsdPrice(ETH_RH, provider('3000', 'EUR'))).rejects.toBeInstanceOf(PaymentValuationError);
     await expect(paymentAssetUsdPrice(ETH_RH, provider('0'))).rejects.toBeInstanceOf(PaymentValuationError);
-    await expect(paymentAssetUsdPrice({ chain: 'base', address: NATIVE_ASSET_ADDRESS }, provider('3000'))).rejects.toBeInstanceOf(PaymentValuationError);
+    const p = provider('3000');
+    expect(await paymentAssetUsdPrice({ chain: 'base', address: NATIVE_ASSET_ADDRESS }, p)).toBe('3000');
+    expect(p.getPrice).toHaveBeenCalledWith({ chain: 'base', address: '0x4200000000000000000000000000000000000006' });
+  });
+
+  it('any other verified token is valued at its own USD oracle price', async () => {
+    const PFE = { chain: 'robinhood' as const, address: '0x00000000000000000000000000000000000000f1' };
+    const p = provider('25.5');
+    const v = await valuePayment(PFE, '4', p);
+    expect(p.getPrice).toHaveBeenCalledWith(PFE);
+    expect(v).toEqual({ quoteAmount: '102.000000000000000000', inputUsdPrice: '25.5' });
+    await expect(paymentAssetUsdPrice(PFE, provider('0'))).rejects.toBeInstanceOf(PaymentValuationError);
+    await expect(paymentAssetUsdPrice(PFE, provider('25', 'EUR'))).rejects.toBeInstanceOf(PaymentValuationError);
   });
 
   it('a price outage propagates (no estimate)', async () => {

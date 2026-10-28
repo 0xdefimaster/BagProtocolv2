@@ -7,6 +7,7 @@ import "@fontsource-variable/inter";
 import "@fontsource-variable/jetbrains-mono";
 import "./globals.css";
 import { THEME_BOOT_SCRIPT } from "@/components/ui/ThemeToggle";
+import { DENSITY_BOOT_SCRIPT } from "@/components/ui/DensityControl";
 
 export const metadata: Metadata = {
   title: "Bag Protocol — Programmable portfolios for onchain assets",
@@ -19,10 +20,10 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    // suppressHydrationWarning: the boot script may set data-theme before React hydrates.
+    // suppressHydrationWarning: the boot script may set data-theme / data-density before React hydrates.
     <html lang="en" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT + DENSITY_BOOT_SCRIPT }} />
       </head>
       <body>{children}</body>
     </html>

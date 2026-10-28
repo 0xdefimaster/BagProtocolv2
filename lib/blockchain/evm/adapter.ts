@@ -53,6 +53,16 @@ function isPendingError(err: unknown): boolean {
   return name === 'TransactionNotFoundError' || name === 'TransactionReceiptNotFoundError';
 }
 
+/** findBagCreationTx window: ~3.5 days of Robinhood Chain blocks, newest first, within a time budget that fits one request. */
+export const CREATION_SEARCH_MAX_BLOCKS = BigInt(3_000_000);
+export const CREATION_SEARCH_CHUNK_BLOCKS = BigInt(100_000);
+const CREATION_SEARCH_MIN_CHUNK_BLOCKS = BigInt(2_000);
+const CREATION_SEARCH_BUDGET_MS = 6_000;
+const BAG_CREATED_EVENT = bagFactoryAbi.find((item) => item.type === 'event' && item.name === 'BagCreated') as Extract<
+  (typeof bagFactoryAbi)[number],
+  { type: 'event'; name: 'BagCreated' }
+>;
+
 /**
  * One adapter instance per chain config. `client` is injectable so unit tests
  * can drive the verification logic with a mocked viem client and the local-EVM
@@ -94,6 +104,40 @@ export function createEvmBagDeploymentAdapter(config: EvmChainConfig, client?: P
       return !same(existing as string, ZERO_ADDRESS);
     },
 
+    async findBagCreationTx(creator: `0x${string}`, offChainRef: `0x${string}`): Promise<`0x${string}` | null> {
+      const rpc = publicClient();
+      const bagId = deriveOnChainBagId(creator, offChainRef);
+      const latest = await rpc.getBlockNumber();
+      const oldest = latest > CREATION_SEARCH_MAX_BLOCKS ? latest - CREATION_SEARCH_MAX_BLOCKS : BigInt(0);
+      const deadline = Date.now() + CREATION_SEARCH_BUDGET_MS;
+      let chunk = CREATION_SEARCH_CHUNK_BLOCKS;
+      // Newest first: an unconfirmed creation is almost always recent. All three event args are indexed,
+      // so each request matches at most this one Bag's event.
+      for (let to = latest; to >= oldest && Date.now() < deadline; ) {
+        const from = to - chunk + BigInt(1) > oldest ? to - chunk + BigInt(1) : oldest;
+        let logs;
+        try {
+          logs = await rpc.getLogs({
+            address: config.factoryAddress,
+            event: BAG_CREATED_EVENT,
+            args: { bagId, creator, offChainRef },
+            fromBlock: from,
+            toBlock: to,
+          });
+        } catch (err) {
+          // A provider block-range cap: retry the same window smaller; give up below the floor.
+          if (chunk <= CREATION_SEARCH_MIN_CHUNK_BLOCKS) throw err;
+          chunk = chunk / BigInt(4) > CREATION_SEARCH_MIN_CHUNK_BLOCKS ? chunk / BigInt(4) : CREATION_SEARCH_MIN_CHUNK_BLOCKS;
+          continue;
+        }
+        const hit = logs.find((log) => log.transactionHash);
+        if (hit?.transactionHash) return hit.transactionHash.toLowerCase() as `0x${string}`;
+        if (from === oldest) break;
+        to = from - BigInt(1);
+      }
+      return null;
+    },
+
     async verifyBagCreation(params: VerifyBagCreationParams): Promise<VerifiedBagCreation> {
       const fail = (message: string): never => {
         throw new BagCreationVerificationError(message);
@@ -116,10 +160,12 @@ export function createEvmBagDeploymentAdapter(config: EvmChainConfig, client?: P
       }
       if (!tx) throw new BagCreationPendingError(`No transaction found for ${txHash} yet.`);
 
-      // 3 & 4. Definitive even while still pending — refuse a wrong target/sender immediately.
-      if (!tx.to || !same(tx.to, params.expectedFactoryAddress)) {
-        fail(`Transaction ${txHash} was sent to ${tx.to ?? '(contract creation)'}, not the expected BagFactory ${params.expectedFactoryAddress}.`);
-      }
+      // 3 & 4. Definitive even while still pending — refuse a contract creation / wrong sender immediately.
+      // `tx.to` is NOT required to be the factory: a smart-account wallet (e.g. MetaMask's EIP-7702 account,
+      // which routes through its DelegationManager) sends the person's call via another contract. What binds
+      // the deployment is checked below from the receipt: exactly one BagCreated emitted BY the configured
+      // factory whose `creator` (the factory's msg.sender) is this session wallet, plus the on-chain reads.
+      if (!tx.to) fail(`Transaction ${txHash} is a contract creation, not a call that reaches the BagFactory ${params.expectedFactoryAddress}.`);
       if (!same(tx.from, params.expectedCreator)) {
         fail(
           `Transaction ${txHash} was sent from ${tx.from}, not the authenticated wallet ${params.expectedCreator}. ` +

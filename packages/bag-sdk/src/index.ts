@@ -1,7 +1,8 @@
-// @bag-protocol/sdk — the bag.json v1 strategy core.
+export { BagSdkError, getSdkErrorInfo, SDK_ERROR_MESSAGES, type BagSdkErrorCode, type SdkErrorInfo } from './errors';
+// @bagprotocol/sdk — the bag.json v1 strategy core.
 // parse → validate → normalize → hash → verify (StrategyRegistry). No transport: getting the bytes is an
-// adapter's job (@bag-protocol/sdk/http, @bag-protocol/sdk/evm); routing is a ComposerProvider
-// (@bag-protocol/sdk/lifi). The core depends on viem only. Spec: ../README.md.
+// adapter's job (@bagprotocol/sdk/http, @bagprotocol/sdk/evm); routing is a ComposerProvider
+// (@bagprotocol/sdk/lifi). The core depends on viem only. Spec: ../README.md.
 
 export { BAG_V1_CHAINS, BAG_V1_CHAIN_SLUGS, chainIdOf, isBagChain, isNativeToken, NATIVE_TOKEN, normalizeAddress, type BagChain } from './chains';
 export {
@@ -39,11 +40,24 @@ export {
   STRATEGY_REGISTRY_READ_ABI,
   verifyRegistryCommitment,
   type ContractReader,
+  type RegistryClient,
   type RegistryRecord,
   type RegistryVerification,
   type StrategyRegistryDeployment,
 } from './registry';
-export { cascadeSplitBps, planPurchase, PurchasePlanError, SDK_EXECUTION_ACCOUNTING, V1_EXECUTION_POLICY, type PlannedLeg, type PurchasePlan, type PurchaseRequest } from './purchase';
+export {
+  largestRemainderBps,
+  PARTITION_MAX_PARTS,
+  PartitionError,
+  partitionAmounts,
+  planPartition,
+  planPartitionLegs,
+  simulatePartition,
+  type LegTarget,
+  type PartitionedLegs,
+  type PartitionPlan,
+} from './partition';
+export { planPurchase, PurchasePlanError, SDK_EXECUTION_ACCOUNTING, V1_EXECUTION_POLICY, type PlannedLeg, type PurchasePlan, type PurchaseRequest } from './purchase';
 export {
   compileBag,
   ProviderResponseError,
@@ -54,8 +68,26 @@ export {
   type ComposerCompileResult,
   type ComposerProvider,
   type ExecutionTrustPolicy,
+  type ProviderFee,
+  type ProviderWarning,
   type PurchaseQuote,
+  type QuotedFee,
   type QuotedLeg,
+  type SimulateBagOptions,
   type SimulationClient,
   type SimulationResult,
 } from './execution';
+
+export {
+  verifyPurchaseReceipt,
+  type PurchaseReceiptClient,
+  type PurchaseReceiptLog,
+  type PurchaseReceiptTransaction,
+  type PurchaseTransactionReceipt,
+  type PurchaseReceiptIssueCode,
+  type PurchaseReceiptVerification,
+  type VerifyPurchaseReceiptOptions,
+  type PurchaseEvidenceContext,
+  type PurchaseBalanceEvidence,
+  type PurchaseCallEvidence,
+} from './receipt';

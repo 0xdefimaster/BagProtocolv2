@@ -12,6 +12,7 @@ const E18 = BigInt(10) ** BigInt(18);
 const load = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/server/rebalance-preview', () => ({ loadRebalancePreview: load }));
 
+import { composeResponse, wireOut } from '@/lib/blockchain/__tests__/composer-fixtures';
 import { quoteRebalance, weightsFromValues } from '../rebalance-quote';
 
 const order = (address: string, side: 'BUY' | 'SELL', value: string, quantityRaw: string | null) => ({ asset: { chain: 'robinhood', address }, symbol: address, side, value, quantityRaw, decimals: 18 });
@@ -33,7 +34,7 @@ function loaded(orders: ReturnType<typeof order>[], over: Record<string, unknown
 function composer(produced: Record<string, { amountOut: string; amountOutMin: string }>) {
   const body = {
     data: {
-      producedResources: Object.fromEntries(Object.entries(produced).map(([k, v]) => [k, { kind: 'erc20', chainId: 4663, token: '0x0', availability: 'now', owner: SIGNER, simulated: v }])),
+      outputs: Object.fromEntries(Object.entries(produced).map(([k, v]) => [k, wireOut(v.amountOut, v.amountOutMin)])),
       transactionRequest: { to: '0x0a6baefc776477c494ab8b0a288881a7b72196f7', chainId: 4663, data: '0xdeadbeef', value: '0' },
       userProxy: '0x0a6baefc776477c494ab8b0a288881a7b72196f7',
       priceImpact: { inputValueUsd: 10, outputValueUsd: 9.97, impactBps: 30, unpricedInputs: [], unpricedOutputs: [] },
@@ -41,7 +42,7 @@ function composer(produced: Record<string, { amountOut: string; amountOutMin: st
       fees: [{ token: TSLA, recipient: 'lifi', bps: 25, amount: '25' }],
     },
   };
-  return vi.fn(async () => ({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) })) as unknown as typeof fetch;
+  return vi.fn(async () => composeResponse(body)) as unknown as typeof fetch;
 }
 const run = (fetchImpl?: typeof fetch, opts: { noKey?: boolean } = {}) =>
   quoteRebalance({} as never, {} as never, {} as never, { userId: 'u', walletAddress: SIGNER }, 'b', { apiKey: opts.noKey ? undefined : 'k', fetchImpl });

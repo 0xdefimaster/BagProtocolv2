@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { mockBags } from '@/lib/mock-data';
 import { isDemoModeEnabled } from '@/lib/config/demo-mode';
@@ -38,8 +38,12 @@ const SORTS: { id: BagSort; label: string }[] = [
   { id: 'holders', label: 'Holders' },
 ];
 
-export function FeaturedBags() {
-  const [query, setQuery] = useState('');
+export function FeaturedBags({ initialQuery }: { initialQuery?: string } = {}) {
+  const [query, setQuery] = useState(initialQuery ?? '');
+  // A new search from the header (same page, new ?q=) replaces the current one.
+  useEffect(() => {
+    if (initialQuery !== undefined) setQuery(initialQuery);
+  }, [initialQuery]);
   const [category, setCategory] = useState<DiscoveryFilter['category']>('All');
   const [risk, setRisk] = useState<DiscoveryFilter['risk']>('Any');
   const [sort, setSort] = useState<BagSort>('newest');

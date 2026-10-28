@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth/require-session';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
-import { countRecentDraftBags, createForkBag, DRAFT_WINDOW_MS, getBagById, getCurrentBagVersion, MAX_RECENT_DRAFTS } from '@/lib/server/bag-repo';
+import { countRecentDraftBags, createForkBag, DRAFT_WINDOW_MS, getBagById, getCurrentBagVersion, isBagNameAvailable, MAX_RECENT_DRAFTS } from '@/lib/server/bag-repo';
 import { mapBagRecordToApiResponse } from '@/lib/mappers/bag-mapper';
 import { loadRecipeAssets } from '@/lib/server/bag-asset-context';
 import { loadCreatorProfiles } from '@/lib/server/user-profile-repo';
 import { validateBagText } from '@/lib/server/bag-text';
+import { parseCompositionEdit, resolveCompositionAssets } from '@/lib/server/strategy-edit';
+import { defaultMaxAssets } from '@/types/basket-protocol';
 import { checkRateLimit, rateLimitedResponseBody } from '@/lib/server/rate-limit';
 
 const FORK_RATE_LIMIT = { windowSeconds: 3600, maxRequests: 30 };
@@ -62,10 +64,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Source bag has no composition to fork.' }, { status: 409 });
   }
 
-  const body = (await req.json().catch(() => ({}))) as { name?: string; reason?: string };
+  const body = (await req.json().catch(() => ({}))) as { name?: string; reason?: string; composition?: unknown };
   const textIssue = validateBagText({ name: body.name });
   if (textIssue) return NextResponse.json({ error: textIssue }, { status: 400 });
-  const name = body.name?.trim() || `${source.name} (Fork)`;
+
+  // Optional: the forker's own assets and weights (the same editor and rules as Edit strategy). Without it the fork
+  // copies the source's current composition.
+  let assets = sourceVersion.recipe.assets;
+  if (body.composition !== undefined) {
+    const edit = parseCompositionEdit(body.composition);
+    if (!edit) return NextResponse.json({ error: 'composition must be a list of { address, weightBps }.' }, { status: 400 });
+    const resolved = await resolveCompositionAssets(admin, sourceVersion.recipe.chain, sourceVersion.recipe.assets, edit);
+    if (!resolved.ok) return NextResponse.json({ error: 'Forked recipe failed validation.', issues: resolved.issues }, { status: 422 });
+    assets = resolved.assets;
+  }
+  const name = body.name?.trim() || (await defaultForkName(admin, source.name));
   const symbol =
     name
       .replace(/[^A-Z0-9]/gi, '')
@@ -90,10 +103,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // Forks copy the parent's strategy type — only one exists today, but
       // this makes the copy exact rather than silently re-defaulting.
       strategyType: sourceVersion.recipe.strategyType,
-      assets: sourceVersion.recipe.assets,
+      assets,
       rebalanceRule: sourceVersion.recipe.rebalanceRule,
       minInvestment: sourceVersion.recipe.minInvestment,
-      maxAssets: sourceVersion.recipe.maxAssets,
+      maxAssets: Math.max(sourceVersion.recipe.maxAssets, defaultMaxAssets(assets.length)),
       minWeightBps: sourceVersion.recipe.minWeightBps,
       maxWeightBps: sourceVersion.recipe.maxWeightBps,
       mutability: source.mutability,
@@ -113,6 +126,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         return NextResponse.json({ error: 'Forked recipe failed validation.', issues: result.issues }, { status: 422 });
       case 'DUPLICATE_SLUG':
         return NextResponse.json({ error: result.message }, { status: 409 });
+      case 'DUPLICATE_NAME':
+        return NextResponse.json({ error: result.message, code: 'DUPLICATE_NAME' }, { status: 409 });
       case 'DB_ERROR':
         return NextResponse.json({ error: result.message }, { status: 502 });
     }
@@ -124,4 +139,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   ]);
   const bag = mapBagRecordToApiResponse(result.bag, result.version, { assetsByKey, creator: creators.get(result.bag.creatorId) });
   return NextResponse.json({ bag }, { status: 201 });
+}
+
+/**
+ * Bag names are unique (migration 0058): the first of "X (Fork)", "X (Fork 2)", … that is free. Past the last
+ * candidate the plain name is returned and the insert reports DUPLICATE_NAME, asking the forker for a name.
+ */
+async function defaultForkName(admin: ReturnType<typeof supabaseAdmin>, sourceName: string): Promise<string> {
+  // Recipe names are at most 64 characters (validateBasketRecipe); " (Fork 20)" needs 10.
+  const base = sourceName.trim().slice(0, 54);
+  for (let i = 1; i <= 20; i++) {
+    const candidate = i === 1 ? `${base} (Fork)` : `${base} (Fork ${i})`;
+    if (await isBagNameAvailable(admin, candidate)) return candidate;
+  }
+  return `${base} (Fork)`;
 }

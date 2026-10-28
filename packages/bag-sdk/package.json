@@ -1,7 +1,6 @@
 {
-  "name": "@bag-protocol/sdk",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@bagprotocol/sdk",
+  "version": "0.3.0",
   "description": "bag.json v1: parse, validate, normalize, hash and verify BAG strategies, and compile unsigned purchases, without the BAG app.",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,26 +21,47 @@
     "./lifi": {
       "types": "./dist/adapters/lifi.d.ts",
       "import": "./dist/adapters/lifi.js"
-    }
+    },
+    "./schema": "./schema/bag.v1.schema.json"
   },
   "files": [
     "dist",
-    "README.md"
+    "schema",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/fix-esm-imports.mjs",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "smoke:consumer": "node scripts/consumer-smoke.mjs"
+    "smoke:consumer": "node scripts/consumer-smoke.mjs",
+    "smoke:starter": "node scripts/starter-smoke.mjs",
+    "release:check": "node scripts/release-candidate.mjs"
   },
   "peerDependencies": {
     "viem": "^2.0.0",
-    "@lifi/composer-sdk": "^0.5.0"
+    "@lifi/composer-sdk": ">=0.11.0 <0.12.0"
   },
   "peerDependenciesMeta": {
     "@lifi/composer-sdk": {
       "optional": true
     }
   },
-  "license": "UNLICENSED"
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0xdefimaster/BagProtocolv2.git",
+    "directory": "packages/bag-sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/0xdefimaster/BagProtocolv2/issues"
+  },
+  "homepage": "https://github.com/0xdefimaster/BagProtocolv2/tree/main/packages/bag-sdk"
 }

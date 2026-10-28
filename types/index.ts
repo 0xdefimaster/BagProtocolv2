@@ -23,6 +23,10 @@ export interface Bag {
   /** DRAFT | ACTIVE | ARCHIVED — mirrors `BagRecord.status` (types/basket-protocol.ts). Optional: mock/local
    * bags predate this field and are treated as already-live (ACTIVE) wherever it's read. */
   status?: string;
+  /** Live Bags: the current strategy version (1 = as created). Shown as "Name v2" once the creator edits it. */
+  version?: number;
+  /** Live Bags: whether the creator can publish new versions. */
+  mutability?: 'IMMUTABLE' | 'MUTABLE';
   creator: CreatorProfile;
   description: string;
   thesis: string;
@@ -74,6 +78,9 @@ export interface BagPosition {
   /** The chain's pinned settlement stablecoin (lib/domain/discovery/stablecoin.ts), matched by address. */
   stable?: boolean;
   logoUrl?: string;
+  /** Live Bags: the asset's token address and exact target weight, for the Edit strategy screen. */
+  address?: string;
+  weightBps?: number;
 }
 
 export interface UpdateLog {

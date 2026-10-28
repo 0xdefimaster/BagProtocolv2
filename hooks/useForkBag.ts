@@ -7,11 +7,15 @@ import { useActivity } from '@/lib/activity-store';
 
 /**
  * Forks a Bag through POST /api/bags/[id]/fork — the only place a fork is
- * created. The server copies the source's current recipe into a new DRAFT
+ * created. With the forker's choices (ForkPanel) the new DRAFT gets their name
+ * and assets/weights; otherwise the server copies the source's current recipe into a new DRAFT
  * Bag owned by the signed-in wallet, with real parent/root lineage, and the
  * user is taken to it. There is deliberately no local "saved on this
  * device" copy: it never reached Explore or Portfolio and could not be
  * invested in, so a failure is shown instead.
+ *
+ * The new Bag's page opens with `?deploy=1` (and `&buy=` for a launch buy): deploying, registering and buying
+ * follow in one flow (DeployBagPanel), each step still confirmed in the forker's wallet.
  */
 export function useForkBag() {
   const router = useRouter();
@@ -21,7 +25,11 @@ export function useForkBag() {
   const [forkError, setForkError] = useState<string | null>(null);
 
   const fork = useCallback(
-    async (bag: { id: string; name: string }) => {
+    /** `choices`: the forker's own name and assets/weights (CompositionEditor); without them the source is copied. */
+    async (
+      bag: { id: string; name: string },
+      choices: { name?: string; composition?: { address: string; weightBps: number }[]; launchBuy?: string; launchPayment?: 'settlement' | 'native' } = {}
+    ) => {
       if (isForking) return;
       setIsForking(true);
       setForkError(null);
@@ -30,7 +38,10 @@ export function useForkBag() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
-          body: JSON.stringify({}),
+          body: JSON.stringify({
+            ...(choices.name?.trim() ? { name: choices.name.trim() } : {}),
+            ...(choices.composition ? { composition: choices.composition } : {}),
+          }),
         });
 
         if (res.status === 401) {
@@ -44,14 +55,18 @@ export function useForkBag() {
           return;
         }
 
-        const body = (await res.json().catch(() => null)) as { bag?: { id: string }; error?: string } | null;
+        const body = (await res.json().catch(() => null)) as { bag?: { id: string }; error?: string; issues?: { message: string; severity: string }[] } | null;
         if (!res.ok || !body?.bag) {
-          setForkError(body?.error ?? `Fork failed (server responded ${res.status}).`);
+          const issues = (body?.issues ?? []).filter((i) => i.severity === 'ERROR').map((i) => i.message);
+          setForkError(issues.length > 0 ? issues.join(' ') : (body?.error ?? `Fork failed (server responded ${res.status}).`));
           return;
         }
 
         addActivity(`Forked ${bag.name}`);
-        router.push(`/dashboard/bag/${body.bag.id}`);
+        const buy = choices.launchBuy?.trim();
+        const launch =
+          buy && /^\d+(\.\d+)?$/.test(buy) && Number(buy) > 0 ? `&buy=${encodeURIComponent(buy)}${choices.launchPayment === 'native' ? '&pay=native' : ''}` : '';
+        router.push(`/dashboard/bag/${body.bag.id}?deploy=1${launch}`);
       } catch {
         setForkError('Could not fork: network error. Try again.');
       } finally {
