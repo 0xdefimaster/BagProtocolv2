@@ -39,7 +39,7 @@ Basket purchases are a narrow problem: one input, N exact-input swaps, every out
   - `settleWithPermit`: Permit2 `permitWitnessTransferFrom`, the `BagPurchase` struct as witness. One signature binds funds and outcome, and anyone (the agent, a relayer) may submit it.
   - `settle` with `msg.sender` as payer: `transferFrom` of an exact amount approved in the same EIP-5792/7702 batch.
   - Native input: `msg.value == inputAmount`, wrapped internally.
-- **Exact amounts, no bps partition.** Each leg carries its own `amountIn`. The router requires `Σ amountIn + keptAmount + fee == inputAmount`, so the allocation from `splitByWeight` is enforced exactly. `partition.ts`, the 16-part limit and the bps rounding bound stop applying to this path.
+- **Exact amounts, no bps partition.** Each leg carries its own `amountIn`. The router requires `Σ amountIn + keptAmount + feeAmount + relayerFee == inputAmount`, so the allocation from `splitByWeight` is enforced exactly. `partition.ts`, the 16-part limit and the bps rounding bound stop applying to this path.
 - **Per leg:** `forceApprove(spender, amountIn)`, call `target`, `forceApprove(spender, 0)`. Targets are arbitrary except Permit2, the router itself and the input/output tokens of the purchase. Since the router holds no approvals and only the current payer's funds, a malicious leg can at worst waste that payer's own input, which the output floors then revert.
 - **Outcome checks:** for each output token, router balance delta ≥ `minOut` (delta, never absolute balance), then transfer exactly the delta to `recipient`. Output tokens must be distinct. Kept share and fee go straight to their recipients. Leftover input is refunded to the payer. Any shortfall reverts the whole purchase.
 - **Structured event**, the main SDK simplification:
@@ -78,6 +78,7 @@ struct BagPurchase {
     uint256 keptAmount;       // allocation when the input token is itself an asset
     address feeRecipient;
     uint256 feeAmount;
+    uint256 relayerFee;       // input token paid to msg.sender; 0 when the payer submits
     uint256 deadline;
     bytes32 legsHash;         // keccak256 of the encoded Leg[]
 }
@@ -107,10 +108,55 @@ The router checks outcomes regardless of where calldata came from, so a wrong or
 
 The Composer path can stay as an alternative provider; nothing has to be removed.
 
+## Launch chains and one-click purchase
+
+Target: Robinhood (4663), Base (8453), Arbitrum (42161). "One click" means one wallet popup per purchase, on every wallet, including wallets without EIP-5792 atomic batching (Rabby, per the note in `lib/blockchain/wallet-sweep-client.ts`).
+
+### Entry points (all in v1, because the contract is immutable)
+
+| Entry point | Payment | Who submits |
+|---|---|---|
+| `settleNative(purchases, legs)` | `msg.value`, wrapped internally | Payer |
+| `settle(purchases, legs)` | `transferFrom(msg.sender)`, exact approval in the same batch | Payer |
+| `settleWithPermit(purchases, legs, permit, signature)` | Permit2 witness over the purchase batch | Anyone: payer, agent or relayer |
+
+Every entry point takes an array of purchases (multi-buy). One payment covers the batch: the sum of `inputAmount` over the purchases equals the amount pulled, each purchase keeps its own legs, floors and sum rule, and emits its own `BasketSettled`. Any failing purchase reverts the batch. All purchases in a batch share one chain and one input token. Buying across chains is not atomic and stays out of v1.
+
+### Client path selection
+
+| Situation | Path | Popups per purchase |
+|---|---|---|
+| Pays with ETH (any wallet) | `settleNative` | 1 transaction |
+| ERC-20, wallet reports atomic EIP-5792 (MetaMask) | `wallet_sendCalls`: exact approve → `settle` | 1 confirmation |
+| ERC-20, no atomic batching (Rabby), relayer up | Sign Permit2 witness → relayer submits `settleWithPermit` | 1 signature, no gas |
+| ERC-20, no batching, relayer down | Sign witness, then submit `settleWithPermit` | 2 |
+| Agent with its own key | `settleWithPermit` or `settle` | 0 |
+
+The Permit2 path needs a one-time token approval to Permit2 per token. Many wallets already have it from Uniswap. Where the token supports EIP-2612, the relayer can submit the user's `permit` to Permit2 in the same transaction, so the first purchase costs two signatures and no gas transaction. Rabby and MetaMask both sign `eth_signTypedData_v4` and show Permit2 spender and amount. Reuse `walletSupportsAtomicBatch` for the capability check.
+
+Default the Buy button to ETH input: it is one popup on every wallet without a relayer.
+
+### Relayer
+
+A stateless service: simulate, submit `settleWithPermit`, receive `relayerFee` in the input token. The witness binds legs, floors, recipient, fee and deadline, so a relayer can only fail to submit, never change the purchase. Anyone can relay, BAG's relayer is one of them, and the payer can always self-submit. L2 gas is cents. BAG may sponsor it by setting `relayerFee = 0`. Quotes age quickly, so the relayer submits immediately or returns the request for a recompile.
+
+### Per chain
+
+| | Robinhood | Base | Arbitrum |
+|---|---|---|---|
+| Native | ETH | ETH | ETH |
+| Main ERC-20 input | USDG (6 decimals); EIP-2612 unverified | USDC | USDC |
+| Permit2 (canonical `0x0000…8BA3`) | Present per Robinhood docs (`lib/config/robinhood-chain.ts`) | Expected; verify | Expected; verify |
+| Direct AMM legs | Uniswap v3 SwapRouter02 `0xCaf6…5cb2`, with the existing `robinhood-swap-builder.ts` | Uniswap v3/v4, Aerodrome | Uniswap v3/v4, Camelot |
+| Aggregator legs | Unverified: plan on direct v3 as the primary source | 0x, 1inch, Odos, KyberSwap | Same |
+| Same address deploy | CreateX present (Composer's factory uses it there) | Verify | Verify |
+
+Verify each "verify" item with `eth_getCode` before deployment. Robinhood stock tokens are routed through their Uniswap v3 pools against USDG/WETH. Receipt verification is the same event check on all three chains, so the Nitro trace reader is not needed for settler purchases.
+
 ## Phases
 
-1. **Router v1 (same chain).** Contract + Foundry/Hardhat tests (fork tests against real aggregator calldata), reusing `BagExecutionRouter`'s accounting. SDK: `settler` adapter, two aggregator quoters, one direct Uniswap v3 quoter, event-based receipt verification. External audit before mainnet funds.
-2. **Gasless/agent submission.** Relayer-submitted `settleWithPermit`; a fee leg pays the relayer.
+1. **Router v1 (same chain, three networks).** Contract with all three entry points and multi-buy. Hardhat tests plus fork tests on Robinhood, Base and Arbitrum, reusing `BagExecutionRouter`'s accounting. SDK: `settler` adapter, direct Uniswap v3 quoter (Robinhood first), two aggregator quoters (Base/Arbitrum), event-based receipt verification, wallet path selection. External audit before mainnet funds.
+2. **Relayer service.** The contract already supports it. Ships when Rabby users need one-click ERC-20 purchases.
 3. **Intent filling.** Publish `BagPurchase` as an order that any filler can satisfy by delivering `tokensOut ≥ minOut` (UniswapX/CoW shape): the user signs outcomes, not routes. Cross-chain baskets via ERC-7683 order data later.
 
 ## Alternative considered: general composable router (ERC-8211 + diamond)
