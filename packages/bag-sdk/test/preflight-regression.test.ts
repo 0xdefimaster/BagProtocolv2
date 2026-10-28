@@ -69,7 +69,7 @@ describe('purchase preflight regression checks (#118)', () => {
   it.each([600, 999])('requires the retained share when balance is %i of a 1000-unit budget', async balance => {
     const compiled = await compileBag(bag(), { ...request, inputToken: A, inputTokenDecimals: 18 }, { provider: provider(), trust: TRUST });
     expect(compiled.quote.plan.swapAmountRaw).toBe(BigInt(600));
-    const client = { getChainId: async () => 4663,
+    const client = { getChainId: async () => 4663, getCode: async (): Promise<Hex> => '0x6000',
       readContract: vi.fn(async () => BigInt(balance)), call: vi.fn(async () => ({})) };
     expect(await simulateBag(compiled, { client })).toEqual({ status: 'INSUFFICIENT_BALANCE', balanceRaw: BigInt(balance), requiredRaw: BigInt(1000) });
     expect(client.readContract).toHaveBeenCalledTimes(1);
@@ -79,7 +79,7 @@ describe('purchase preflight regression checks (#118)', () => {
   it('accepts the full budget while requiring approval for only the swapped share', async () => {
     const compiled = await compileBag(bag(), { ...request, inputToken: A, inputTokenDecimals: 18 }, { provider: provider(), trust: TRUST });
     expect(compiled.approvals[0].amountRaw).toBe(BigInt(600));
-    const client = { getChainId: async () => 4663,
+    const client = { getChainId: async () => 4663, getCode: async (): Promise<Hex> => '0x6000',
       readContract: vi.fn(async ({ functionName }: { functionName: string }) => BigInt(functionName === 'balanceOf' ? 1000 : 600)),
       call: vi.fn(async () => ({})) };
     expect(await simulateBag(compiled, { client })).toEqual({ status: 'OK' });

@@ -386,7 +386,7 @@ const trust = {
   allowedApprovalSpenders: ['0x…'],   // contracts you have verified for this chain
 };
 const compiled = await compileBag(bag, { inputToken, amountRaw, inputTokenDecimals, signer }, { provider, trust });
-const check = await simulateBag(compiled, { client });   // OK | QUOTE_EXPIRED | NEEDS_APPROVAL | INSUFFICIENT_BALANCE | REVERTED
+const check = await simulateBag(compiled, { client });   // OK | QUOTE_EXPIRED | INVALID_TARGET | NEEDS_APPROVAL | INSUFFICIENT_BALANCE | REVERTED
 // your wallet sends compiled.approvals, then signs and sends compiled.transaction
 ```
 
@@ -408,7 +408,7 @@ A provider answer that breaks any row is refused with `ProviderResponseError`.
 |---|---|
 | `planPurchase` | Pure plan: enforces `minInvestment` in payment-token units, then computes exact target allocation (`splitByWeight`), keeps any matching input asset, builds whole-bp legs and the `core.partition`, and applies slippage and price-impact limits |
 | `quoteBag` / `compileBag` | Ask the provider for the route and return the quote, or the quote plus the **unsigned** transaction and the approvals it needs |
-| `simulateBag` | Dry run with `eth_call` from the signer on your client: full input budget balance (swapped + kept), then approvals for the swapped portion, then the call. A point-in-time check, not a guarantee |
+| `simulateBag` | Dry run with `eth_call` from the signer on your client: contract code at the transaction target (`INVALID_TARGET` otherwise, because a call to an address without code succeeds), full input budget balance (swapped + kept), then approvals for the swapped portion, then the call. The client needs `getCode`. A point-in-time check, not a guarantee |
 
 **Never signs, never sends.**
 - The SDK holds no key. It has no signing or sending call (a boundary test checks this).
@@ -424,7 +424,7 @@ A looser value is refused (`LOOSER_THAN_POLICY`). An optional `allowedTokens` re
 **Validation happens on both sides of the provider call:**
 
 - **Before calling the provider:** the SDK validates the strategy and purchase inputs, builds the plan, checks its slippage and price-impact policy, and requires a caller trust policy whose chain matches the plan. The target/spender allowlist contents are also checked for valid addresses.
-- **After the provider responds:** the SDK checks the returned transaction's chain and target, native value, approval token/spender/amount, planned output tokens and slippage bounds on every leg, and reported price impact. A target or spender that is not allowlisted is rejected here, before the unsigned transaction is returned to the caller.
+- **After the provider responds:** the SDK checks the returned transaction's chain and target, native value, approval token/spender/amount (at most one approval per spender), planned output tokens and slippage bounds on every leg, and reported price impact. A target or spender that is not allowlisted is rejected here, before the unsigned transaction is returned to the caller.
 
 #### Negative (favorable) price impact: LI.FI Composer only
 
