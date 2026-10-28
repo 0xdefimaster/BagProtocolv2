@@ -22,6 +22,7 @@ Recheck at release time. Registry metadata were read; this is not an audit of th
 | Format chains | ethereum/base/arbitrum/robinhood | Frozen EVM format profile; this does not establish provider routes or registry deployments everywhere |
 | Solana / cross-chain baskets | NOT SUPPORTED | Separate versioned format/adapter work |
 | Robinhood historical evidence | Qualified reader/build | Read-only evidence documented in SDK_COMPOSER_TRUST.md |
+| Purchase receipt verification on Base / Arbitrum | NOT QUALIFIED | The Nitro balance reader accepts only Robinhood's chain id and the Geth reader requires `Geth/v1.16.`; the remaining single-transaction-block mode refuses multi-transaction blocks, so results are INDETERMINATE in practice. Composer compilation on these chains is also untested |
 | New signed SDK purchase | NOT COMPLETED | Requires original intent, explicit wallet minima and qualified receipt evidence |
 
 The synthetic consumer result is not live transaction evidence. SDK executions remain NOT_BAG_ACCOUNTED.

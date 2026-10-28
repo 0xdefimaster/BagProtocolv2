@@ -1,4 +1,5 @@
 import { createPublicClient, custom, encodeFunctionData, erc20Abi } from 'viem';
+import { hasAtomicBatchCapability } from '@/packages/bag-sdk/src';
 import { getEthereumProvider, type Eip1193Provider } from '@/lib/wallet/eth-provider';
 import { describeWalletError } from './wallet-error';
 import { ensureErc20AllowanceOnChain, getBrowserWalletClientForChain, sendComposerTransaction, simulateTransactionOnChain } from './lifi-wallet-client';
@@ -49,15 +50,7 @@ export async function walletSupportsAtomicBatch(provider: Eip1193Provider, walle
   } catch {
     return false; // no EIP-5792 at all
   }
-  if (!caps || typeof caps !== 'object') return false;
-  const byChain = caps as Record<string, { atomic?: { status?: string }; atomicBatch?: { supported?: boolean } } | undefined>;
-  for (const key of [toHexChain(chainId), String(chainId), '0x0']) {
-    const c = byChain[key];
-    if (!c) continue;
-    if (c.atomic?.status === 'supported' || c.atomic?.status === 'ready') return true;
-    if (c.atomicBatch?.supported === true) return true;
-  }
-  return false;
+  return hasAtomicBatchCapability(caps, chainId); // the SDK's parser, so the app and agents read capabilities alike
 }
 
 async function shortApprovals(provider: Eip1193Provider, walletAddress: string, plan: SweepTransactionPlan) {

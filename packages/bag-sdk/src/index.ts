@@ -77,6 +77,16 @@ export {
   type SimulationClient,
   type SimulationResult,
 } from './execution';
+export {
+  EXECUTION_PATHS,
+  hasAtomicBatchCapability,
+  selectExecutionPath,
+  type ExecutionPath,
+  type ExecutionPathCandidate,
+  type ExecutionPathFacts,
+  type ExecutionPathReason,
+  type ExecutionPathSelection,
+} from './execution-path';
 
 export {
   verifyPurchaseReceipt,

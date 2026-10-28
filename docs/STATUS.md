@@ -125,6 +125,8 @@ prove behavior against a local chain, never against Robinhood Chain.
 | `docs/VSCODE_LOCAL_SETUP.md` | CURRENT | Local setup (Turkish) |
 | `docs/archive/INVENTORY_*.md`, `docs/archive/CHANGES_SUMMARY.md`, `docs/archive/COWBOY_COLLECTION.md` | HISTORICAL | Inventory / Forge cosmetics, removed from the app |
 | `docs/BAGVAULT_DESIGN.md` | NOT IMPLEMENTED | Design only; no `BagVault.sol` |
+| `docs/BAG_SETTLER_DESIGN.md` | NOT IMPLEMENTED | Proposal for a Composer-independent settlement contract; no contract, architecture undecided (see #130) |
+| `docs/STRATEGY_COMPOSITIONS_DESIGN.md` | CURRENT | Contract + registration step merged (#74); not deployed, migration 0060 not run |
 | `docs/DECISIONS_PRODUCTION_BACKLOG.md` | NOT IMPLEMENTED | Decided, not built (ADR-1..3) |
 | `docs/archive/SPIKE-NOTE-lifi-quote.md` | SPIKE | LI.FI feasibility on Robinhood Chain |
 | `docs/archive/durum-raporu-v2.md` | HISTORICAL | Project report of 2026-10-05 (Turkish) |

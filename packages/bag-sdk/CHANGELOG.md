@@ -13,6 +13,7 @@ This candidate contains changes after the npm 0.2.1 publication. bag.json v1 def
 - Add the independent public-package consumer starter and clean tarball installation checks.
 - Refuse a provider answer with two approvals to the same spender, and report `INVALID_TARGET` from `simulateBag` when the transaction target has no contract code instead of a misleading `OK`.
 - Pass LI.FI Composer's signed price impact through unchanged with its USD valuation (`PurchaseQuote.priceImpactUsd`). A negative (favorable) impact from that adapter is accepted when the USD values are finite, the output is above the input, nothing is unpriced, and the value is within ±1 bps of the USD ratio (an observed-behavior compatibility tolerance, not LI.FI's documented formula). Other providers still refuse negative values.
+- Add `selectExecutionPath`, a pure rule table choosing how a wallet pays (native, direct, atomic EIP-5792 batch, Permit2 relayed/self, sequential) with stable reasons for every path, and `hasAtomicBatchCapability` for reading `wallet_getCapabilities`.
 
 ### Integration changes
 
