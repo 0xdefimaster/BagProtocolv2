@@ -159,6 +159,7 @@ describe('compileBag / quoteBag', () => {
       ['native value', (r) => ({ ...r, transaction: { ...r.transaction, value: '1' } })],
       ['approval token', (r) => ({ ...r, approvals: [{ token: A, spender: SPENDER, amountRaw: '1' }] })],
       ['approval amount', (r) => ({ ...r, approvals: [{ token: USDG, spender: SPENDER, amountRaw: '10000001' }] })],
+      ['duplicate approval spender', (r) => ({ ...r, approvals: [r.approvals[0], { ...r.approvals[0], spender: r.approvals[0].spender.toUpperCase().replace('0X', '0x') }] })],
       ['untrusted transaction target (checked after provider response)', (r) => ({ ...r, transaction: { ...r.transaction, to: '0x' + '9'.repeat(40) } })],
       ['untrusted approval spender (checked after provider response)', (r) => ({ ...r, approvals: [{ token: USDG, spender: '0x' + '9'.repeat(40), amountRaw: '10000000' }] })],
       ['leg token', (r) => ({ ...r, legs: [r.legs[1], r.legs[0]] })],
@@ -298,10 +299,11 @@ describe('lifiComposer adapter (real @lifi/composer-sdk, network mocked at fetch
 });
 
 describe('simulateBag', () => {
-  const client = (o: { chainId?: number; balance?: bigint; allowance?: bigint; revert?: string } = {}): SimulationClient & { calls: number } => {
+  const client = (o: { chainId?: number; balance?: bigint; allowance?: bigint; revert?: string; targetCode?: Hex | undefined } = {}): SimulationClient & { calls: number } => {
     const c = {
       calls: 0,
       getChainId: async () => o.chainId ?? 4663,
+      getCode: async (): Promise<Hex | undefined> => ('targetCode' in o ? o.targetCode : '0x6000'),
       readContract: async ({ functionName }: { functionName: string }) => (functionName === 'balanceOf' ? o.balance ?? BigInt(10_000_000) : o.allowance ?? BigInt(10_000_000)),
       call: async () => {
         c.calls++;
@@ -328,6 +330,15 @@ describe('simulateBag', () => {
   it('a revert is reported with its first line only; a wrong-chain client is refused', async () => {
     expect(await simulateBag(await compiled(), { client: client({ revert: 'execution reverted: TOO_LITTLE_RECEIVED' }) })).toEqual({ status: 'REVERTED', reason: 'execution reverted: TOO_LITTLE_RECEIVED' });
     await expect(simulateBag(await compiled(), { client: client({ chainId: 1 }) })).rejects.toThrow(/chain 1/);
+  });
+
+  it('a target without contract code is INVALID_TARGET, never OK, and is not called', async () => {
+    for (const targetCode of ['0x', undefined] as const) {
+      const c = client({ targetCode });
+      const purchase = await compiled();
+      expect(await simulateBag(purchase, { client: c })).toEqual({ status: 'INVALID_TARGET', address: purchase.transaction.to });
+      expect(c.calls).toBe(0);
+    }
   });
 });
 
@@ -432,6 +443,7 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
     let callValue: bigint | undefined;
     const client = (balance: bigint): SimulationClient => ({
       getChainId: async () => 4663,
+      getCode: async () => '0x6000',
       getBalance: async () => balance,
       readContract: async () => {
         readContractCalls++;
@@ -446,7 +458,7 @@ describe('native ETH input (the chain\'s native coin, paid as the transaction va
     expect(callValue).toBe(BigInt('1000000000000000'));
     expect(readContractCalls).toBe(0);
     expect(await simulateBag(compiled, { client: client(BigInt(1)) })).toEqual({ status: 'INSUFFICIENT_BALANCE', balanceRaw: BigInt(1), requiredRaw: BigInt('1000000000000000') });
-    const noBalance = { getChainId: async () => 4663, readContract: async () => BigInt(0), call: async () => ({}) } as SimulationClient;
+    const noBalance = { getChainId: async () => 4663, getCode: async () => '0x6000', readContract: async () => BigInt(0), call: async () => ({}) } as SimulationClient;
     await expect(simulateBag(compiled, { client: noBalance })).rejects.toThrow(/getBalance/);
   });
 });
