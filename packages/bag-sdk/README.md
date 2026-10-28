@@ -432,6 +432,35 @@ Anything else throws `ProviderResponseError`.
 
 The caller must provide a chain-scoped `ExecutionTrustPolicy`. A mismatched policy chain or malformed/empty target allowlist is rejected before the provider call. The SDK cannot know the provider's compiled target or approval spender until the provider responds, so disallowed returned targets/spenders are rejected after that call and before any unsigned transaction is returned. The SDK does not decode arbitrary transaction calldata to prove its full economic behavior; use a provider and endpoint you trust, simulate the compiled call, and let the wallet show the transaction before signing.
 
+### Choosing how the wallet pays
+
+`selectExecutionPath` is a pure rule table: you supply what you know about the payment, the wallet, the executor and any relayer, and it returns the path with the fewest wallet prompts, every eligible path in fallback order, and for each other path the reasons it does not apply. The SDK reads nothing itself, and an omitted optional fact counts as false.
+
+```ts
+import { hasAtomicBatchCapability, selectExecutionPath } from '@bagprotocol/sdk';
+
+const caps = await provider.request({ method: 'wallet_getCapabilities', params: [signer, [chainIdHex]] }).catch(() => null);
+const selection = selectExecutionPath({
+  payment: compiled.plan.inputKind,          // 'native' | 'erc20'
+  approvalsNeeded: shortApprovals.length,    // compiled approvals your allowance read says are still short
+  wallet: { atomicBatch: hasAtomicBatchCapability(caps, chainId), typedDataSigning: true },
+});
+// selection.path, selection.walletPrompts, selection.ranked (fallback order), selection.candidates[i].blockedBy
+```
+
+| Path | When | Wallet prompts | Payer transactions |
+|---|---|---|---|
+| `NATIVE` | Paid with ETH as the transaction value | 1 | 1 |
+| `DIRECT` | ERC-20, every allowance already suffices | 1 | 1 |
+| `ATOMIC_BATCH` | ERC-20, wallet reports atomic EIP-5792 batching: exact approvals and the purchase in one batch | 1 | 1 |
+| `PERMIT2_RELAYED` | Executor accepts a Permit2 witness, wallet signs typed data, relayer available | 1 (+1 first use) | 0 (+1 first use) |
+| `PERMIT2_SELF` | As above, submitted by the payer | 2 (+1 first use) | 1 (+1 first use) |
+| `SEQUENTIAL` | ERC-20, one prompt per short approval, then the purchase | approvals + 1 | approvals + 1 |
+
+Ties on prompts keep this table order, so paths that need nothing outside the wallet come first. "First use" is a one-time token approval to Permit2, reported as the note `PERMIT2_SETUP_REQUIRED`. LI.FI Composer purchases do not accept Permit2 (`executorAcceptsPermit2` omitted), so they resolve to `NATIVE`, `DIRECT`, `ATOMIC_BATCH` or `SEQUENTIAL`. If a wallet that reported batching refuses a batch as unsupported, select again with `atomicBatch: false`. Malformed or contradictory facts (a native payment with approvals) throw `BagSdkError` `INVALID_ARGUMENT`.
+
+`hasAtomicBatchCapability(capabilities, chainId)` reads a `wallet_getCapabilities` result: EIP-5792 v2 `atomic.status` `supported`/`ready` or the older `atomicBatch.supported`, under the chain's hex or decimal key or the all-chains `0x0` entry. Anything malformed is `false`.
+
 ### Quote timing, fees and provider warnings
 
 Both `quoteBag` and `compileBag(...).quote` include:

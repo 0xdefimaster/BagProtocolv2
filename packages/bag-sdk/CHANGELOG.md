@@ -11,6 +11,7 @@ This candidate contains changes after the npm 0.2.1 publication. bag.json v1 def
 - Preserve quote timing/deadlines, actual fee recipient addresses and structured provider warnings; reject known expired quotes.
 - Add stable SDK-owned error codes, safe diagnostic summaries and bounded/cancellable strategy HTTP retrieval.
 - Add the independent public-package consumer starter and clean tarball installation checks.
+- Add `selectExecutionPath`, a pure rule table choosing how a wallet pays (native, direct, atomic EIP-5792 batch, Permit2 relayed/self, sequential) with stable reasons for every path, and `hasAtomicBatchCapability` for reading `wallet_getCapabilities`.
 
 ### Integration changes
 
