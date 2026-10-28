@@ -151,7 +151,7 @@ A stateless service: simulate, submit `settleWithPermit`, receive `relayerFee` i
 | Aggregator legs | Unverified: plan on direct v3 as the primary source | 0x, 1inch, Odos, KyberSwap | Same |
 | Same address deploy | CreateX present (Composer's factory uses it there) | Verify | Verify |
 
-Verify each "verify" item with `eth_getCode` before deployment. Robinhood stock tokens are routed through their Uniswap v3 pools against USDG/WETH. Receipt verification is the same event check on all three chains, so the Nitro trace reader is not needed for settler purchases.
+Verify these before deployment with `npx tsx scripts/verify-settler-prereqs.ts` (read-only: Permit2, CreateX / deployment proxy and their cross-chain runtime match, wrapped native, payment token and its EIP-2612 surface, a Uniswap v3 wrapped-native/payment pool). Robinhood stock tokens are routed through their Uniswap v3 pools against USDG/WETH; measure their depth with `scripts/check-fee-router-liquidity.ts`. Receipt verification is the same event check on all three chains, so the Nitro trace reader is not needed for settler purchases.
 
 ## Phases
 
