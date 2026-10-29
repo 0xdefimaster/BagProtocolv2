@@ -52,7 +52,7 @@ async function main() {
   // --public-rpc ignores ROBINHOOD_RPC_URL / RPC_URL_ROBINHOOD: a quick check of whether the configured provider is
   // the one rejecting a request.
   const usePublic = process.argv.includes('--public-rpc');
-  const client = createPublicClient({ transport: http(usePublic ? ROBINHOOD_PUBLIC_RPC_URL : ROBINHOOD_RPC_URL) });
+  const client = createPublicClient({ transport: http(usePublic ? ROBINHOOD_PUBLIC_RPC_URL : ROBINHOOD_RPC_URL, { timeout: 20_000, retryCount: 1 }) });
   console.log(`RPC: ${usePublic || ROBINHOOD_RPC_URL === ROBINHOOD_PUBLIC_RPC_URL ? 'public Robinhood RPC' : 'configured provider (URL not printed)'}`);
   let latest: bigint;
   try {
@@ -62,10 +62,14 @@ async function main() {
     return fail(`RPC error: ${(e as Error).message.split('\n')[0]}`);
   }
 
+  console.error(`Scanning blocks ${fromBlock}–${latest} (${latest - fromBlock + BigInt(1)} blocks, up to ${chunk} per request)…`);
   const events: SettledEventRecord[] = [];
+  let lastReport = Date.now();
+  let requests = 0;
   const timestamps = new Map<bigint, number>();
   // Providers cap eth_getLogs (block range, result size) and some answer an over-large request with a generic
   // JSON-RPC error: on any error, retry the same window smaller, down to MIN_CHUNK.
+  // A rejected size stays lowered for the rest of the scan, so a provider cap is learned once.
   let size = chunk;
   for (let start = fromBlock; start <= latest; ) {
     const end = start + size - BigInt(1) < latest ? start + size - BigInt(1) : latest;
@@ -75,6 +79,7 @@ async function main() {
     } catch (e) {
       if (size > MIN_CHUNK) {
         size = size / BigInt(4) > MIN_CHUNK ? size / BigInt(4) : MIN_CHUNK;
+        console.error(`  range rejected at ${start} (${(e as Error).message.split('\n')[0]}); retrying with ${size} blocks`);
         continue;
       }
       return fail(`RPC error reading logs ${start}–${end}: ${(e as Error).message.split('\n')[0]}`);
@@ -91,9 +96,12 @@ async function main() {
         fee: e.args.fee.toString(),
       });
     }
-    if ((end - fromBlock) / BigInt(1_000_000) !== (start - fromBlock) / BigInt(1_000_000)) console.error(`  … block ${end} of ${latest}`);
+    requests++;
+    if (Date.now() - lastReport > 10_000 || end === latest) {
+      console.error(`  … block ${end} of ${latest}: ${requests} request(s), ${events.length} event(s), ${size} blocks per request`);
+      lastReport = Date.now();
+    }
     start = end + BigInt(1);
-    if (size < chunk) size = size * BigInt(2) < chunk ? size * BigInt(2) : chunk;
   }
 
   const earliest = events.length ? Math.min(...events.map((e) => e.blockTimestampSec)) : Math.floor(Date.now() / 1000);
