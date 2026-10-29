@@ -2,6 +2,8 @@
 
 Status: design proposal, 2026-10-28. Nothing here is deployed or audited. It does not change bag.json v1, the definition hash or allocation semantics.
 
+> **Superseded in part (2026-10-29)** by `docs/BAG_SETTLEMENT_ARCHITECTURE.md` and `docs/ADAPTER_INTERFACE.md`. Legs there are typed adapter calls: the router never executes a caller-supplied `target` and calldata, so the "targets are arbitrary" rule and the `Leg { target, data }` shape below no longer apply. The signed intent binds the strategy version through both registries and per-asset price limits. Wallet paths, launch chains and the rejected ERC-8211 alternative still stand.
+
 ## Problem
 
 The SDK can only execute a purchase through LI.FI Composer. On Base and Arbitrum that purchase also cannot be verified in practice: the Nitro balance reader accepts only Robinhood's chain id, the Geth reader requires a `Geth/v1.16.` client string, and the remaining mode refuses blocks with more than one transaction (`packages/bag-sdk/src/adapters/receipt-rpc.ts`). Three of the four 0.3.0 release gates (`packages/bag-sdk/release-gates.json`) exist only because of that: the production factory policy, the deployment pin and the trace-based receipt readers (Geth 1.16 / Nitro) that reconstruct what a Composer VM program did. A BAG-owned settlement contract would remove the execution monopoly and most of that verification machinery.
