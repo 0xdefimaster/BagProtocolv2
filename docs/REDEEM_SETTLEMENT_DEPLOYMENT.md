@@ -9,8 +9,8 @@ what has to be true before and after. Script: `scripts/deploy-redeem-settlement.
 
 | Address | Status | Owner | Attestor | Deploy tx |
 |---|---|---|---|---|
-| `0x3eCD734eb53370c2795DB6Ca3CB2B1de0BEdF8A3` | **Version 2 (fork royalty), deployed 2026-10-13, not switched on yet.** `VERIFIED` by the owner's run of the deploy script (EIP-712 version 2, `FORK_ROYALTY_SHARE_BPS` 2000, holds nothing; owner `EOA_7702`, attestor plain EOA). Replaces `0x934a…70a0` when §6 step 3 is done | `0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46` (EOA with an EIP-7702 delegation) | `0xFf60Ab336c3Be45Cfae3B31238dd22DEA176dff2` (plain EOA) | `0x4e6c6aa47279064aa3f535db5c439f51e4cf3b7d319d25fb1d45560c40a3b1bd`, block 87108715 |
-| `0x934a3f266e68DfbFF8eD4F02AA393a36048170a0` | **Current (version 1), switched on.** `VERIFIED` (all checks incl. owner and attestor plain EOAs); configured in Netlify | `0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46` (EOA) | `0xFf60Ab336c3Be45Cfae3B31238dd22DEA176dff2` (plain EOA, holds nothing) | `0xd31a4c1a712adf1e761c407d836f94174371921b3a6043ddd93c5829a543e0eb`, block 81169553 |
+| `0x3eCD734eb53370c2795DB6Ca3CB2B1de0BEdF8A3` | **Current (version 2, fork royalty), switched on** (confirmed configured in Netlify 2026-10-29; deployed 2026-10-13). `VERIFIED` by the owner's run of the deploy script (EIP-712 version 2, `FORK_ROYALTY_SHARE_BPS` 2000, holds nothing; owner `EOA_7702`, attestor plain EOA). Replaced `0x934a…70a0` | `0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46` (EOA with an EIP-7702 delegation) | `0xFf60Ab336c3Be45Cfae3B31238dd22DEA176dff2` (plain EOA) | `0x4e6c6aa47279064aa3f535db5c439f51e4cf3b7d319d25fb1d45560c40a3b1bd`, block 87108715 |
+| `0x934a3f266e68DfbFF8eD4F02AA393a36048170a0` | **Superseded by version 2 — no longer configured.** `VERIFIED` (all checks incl. owner and attestor plain EOAs); was configured in Netlify until v2 | `0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46` (EOA) | `0xFf60Ab336c3Be45Cfae3B31238dd22DEA176dff2` (plain EOA, holds nothing) | `0xd31a4c1a712adf1e761c407d836f94174371921b3a6043ddd93c5829a543e0eb`, block 81169553 |
 | `0x1B365C5325Eb511935F60B7aeA184a3fABedF6f6` | **Superseded — never configured.** Its attestor was a 7702 account holding funds; replaced by a fresh deployment with an empty plain-EOA attestor | `0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46` (EOA) | `0xa1BAf6072301DB78e48BBAeB82a85b9753ACBE5F` (EOA with an EIP-7702 delegation — a MetaMask smart account; signs normally) | `0x48628c32932620179cf9fe6f64560612876104c9aa5aced48c9535b7e4635167`, block 81147074 |
 | `0x0FB961dd2844091361C6bFcCd92D8f0457DC984d` | **Abandoned — never configure.** Its owner is the P1 probe contract (`0x7bEB…5e3C`), which cannot call `setAttestor`/`setOwner`: unmanageable. Holds nothing. | `0x7bEB437538BC71A95dad6624Aa04bF3594525e3C` (contract) | same | `0x6de197c76918bdef94540ba25f47a84dfb57da497f8382383a3e142f7a8ddb8d`, block 81144647 |
 
@@ -141,7 +141,10 @@ One real sale of a fee-paying Bag, then the chain and the database must describe
   `realizedPnl = gross − basis`, `netRealizedPnl = realizedPnl − fee`.
 - `Settled` event ↔ receipt ↔ ledger match one to one.
 
-## 6. Version 2: fork royalty (deployed 2026-10-13 at `0x3eCD…F8A3`, not switched on yet)
+## 6. Version 2: fork royalty (deployed 2026-10-13 at `0x3eCD…F8A3`, switched on)
+
+Steps 1–4 are done: version 2 is the configured contract (confirmed in Netlify 2026-10-29) and §0 records it.
+Step 5 (live fee-bearing fork sale) is tracked in `docs/STATUS.md`.
 
 The code in this repository now signs for EIP-712 domain version `2` (`Settlement` gained `rootCreator`;
 `settleFlat` takes `rootCreator` and a packed `feeRateAndDeadline`). The live version `1` contract cannot
@@ -160,3 +163,12 @@ verify those signatures, so **fee-paying sales fail until version 2 is deployed 
 
 Rule, flows and tests: `docs/FORK_ROYALTY_ONCHAIN.md`.
 
+
+## 7. Reconciling `Settled` events with booked sales
+
+`npx tsx scripts/audit-settlement-events.ts` (read only: no key, no transaction, no database write) lists every
+`Settled` event of the configured contract since its deploy block and matches it to the redeem intent that signed
+it. Each event is `BOOKED` (booked from that transaction), `PENDING` (recent; verification may still run),
+`UNBOOKED`, `USER_MISMATCH` or `UNKNOWN_REDEMPTION`. Exit code 1 means at least one row needs a look; wallet
+reconciliation still records the outflow, so the script only reports. For the version 1 history pass
+`--address=0x934a3f266e68DfbFF8eD4F02AA393a36048170a0`.
