@@ -128,6 +128,7 @@ prove behavior against a local chain, never against Robinhood Chain.
 | `docs/BAG_SETTLER_DESIGN.md` | NOT IMPLEMENTED | Proposal for a Composer-independent settlement contract; no contract, architecture undecided (see #130) |
 | `docs/STRATEGY_COMPOSITIONS_DESIGN.md` | CURRENT | Contract + registration step merged (#74); not deployed, migration 0060 not run |
 | `docs/DECISIONS_PRODUCTION_BACKLOG.md` | NOT IMPLEMENTED | Decided, not built (ADR-1..3) |
+| `docs/MIGRATION_AND_ROLLOUT.md` | NOT IMPLEMENTED | Rollout gates and evidence labels for the settlement layer |
 | `docs/archive/SPIKE-NOTE-lifi-quote.md` | SPIKE | LI.FI feasibility on Robinhood Chain |
 | `docs/archive/durum-raporu-v2.md` | HISTORICAL | Project report of 2026-10-05 (Turkish) |
 | `docs/archive/PHASE_14_REPORT.md`, `docs/archive/PHASE_19X_REPORT.md` | HISTORICAL | Phase reports (19.X was a spike) |
