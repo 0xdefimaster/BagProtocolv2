@@ -105,3 +105,28 @@ describe('feeBasisFromPositionPnl — basis from the A3 ledger (F2), loss carry 
     expect(feeBasisFromPositionPnl(unknownRealized, [{ ...A, quantityRaw: '10' }])).toEqual({ ok: false, reason: 'REALIZED_PNL_UNKNOWN' });
   });
 });
+
+describe('settlement floor: what a signed minUserProceeds admits on chain', () => {
+  // RedeemSettlement charges computeFee(received) = computeB0Fee with gross = received and requires
+  // received − fee ≥ minUserProceeds. The backend signs minUserProceeds = computeB0Fee(grossMinimum). The user's share
+  // never decreases as received grows and drops by at least 1 every 2 raw units (rate ≤ 30%), so the floor admits
+  // no settlement more than 1 raw unit below the gross minimum.
+  const proceedsAt = (received: bigint, basis: bigint, carry: bigint, rateBps: number) =>
+    received - computeB0Fee({ grossMinimumProceedsRaw: received, consumedBasisRaw: basis, lossCarryRaw: carry, rateBps, creatorIsRedeemer: false }).feeRaw;
+
+  it('received below grossMinimum − 1 never reaches the floor (MAX_FEE_RATE_BPS = 3000)', () => {
+    let seed = 7;
+    const rand = (n: number) => ((seed = (seed * 1103515245 + 12345) % 2 ** 31), seed % n);
+    for (let i = 0; i < 2000; i++) {
+      const grossMinimum = BigInt(1 + rand(5_000_000_000));
+      const basis = BigInt(rand(5_000_000_000));
+      const carry = BigInt(rand(1_000_000_000));
+      const rateBps = rand(3001);
+      const floor = computeB0Fee({ grossMinimumProceedsRaw: grossMinimum, consumedBasisRaw: basis, lossCarryRaw: carry, rateBps, creatorIsRedeemer: false }).minUserProceedsRaw;
+      expect(proceedsAt(grossMinimum, basis, carry, rateBps)).toBe(floor);
+      for (const below of [BigInt(2), BigInt(3), BigInt(1000), grossMinimum / BigInt(10)]) {
+        if (below >= BigInt(2) && grossMinimum > below) expect(proceedsAt(grossMinimum - below, basis, carry, rateBps) < floor).toBe(true);
+      }
+    }
+  });
+});
