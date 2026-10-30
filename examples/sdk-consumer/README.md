@@ -79,6 +79,11 @@ Steps on the page:
 5. Approve and buy. If the quote expires after the approval, get a new quote; the approval stays.
 6. Verify with the SDK after a few blocks.
 
+Verification needs an RPC with `debug_traceCall` and `txIndex` on the qualified Nitro build. Alchemy's and the
+public Robinhood endpoints did not serve it on 2026-10-30. If the page shows `INDETERMINATE` /
+`BALANCE_EVIDENCE_UNAVAILABLE`, run `npm run verify` later with a qualified `RPC_URL` and
+`RECEIPT_EVIDENCE_MODE=ROBINHOOD_NITRO_TRANSACTION_INDEX`. Never send the purchase again.
+
 The intent, its hash, the transaction hash (written before any receipt is read) and a `VERIFIED` result go to
 `live-purchases/`. One purchase per run; the page refuses to send a second.
 
