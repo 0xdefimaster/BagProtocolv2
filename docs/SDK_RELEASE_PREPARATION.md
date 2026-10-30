@@ -23,9 +23,39 @@ Recheck at release time. Registry metadata were read; this is not an audit of th
 | Solana / cross-chain baskets | NOT SUPPORTED | Separate versioned format/adapter work |
 | Robinhood historical evidence | Qualified reader/build | Read-only evidence documented in SDK_COMPOSER_TRUST.md |
 | Purchase receipt verification on Base / Arbitrum | NOT QUALIFIED | The Nitro balance reader accepts only Robinhood's chain id and the Geth reader requires `Geth/v1.16.`; the remaining single-transaction-block mode refuses multi-transaction blocks, so results are INDETERMINATE in practice. Composer compilation on these chains is also untested |
-| New signed SDK purchase | NOT COMPLETED | Requires original intent, explicit wallet minima and qualified receipt evidence |
+| New signed SDK purchase | VERIFIED (2026-10-30) | See "Live signed purchase" below |
 
 The synthetic consumer result is not live transaction evidence. SDK executions remain NOT_BAG_ACCOUNTED.
+
+## Live signed purchase (release gate 3)
+
+On 2026-10-30 the 0.3.0 candidate, installed from its packed tarball into the independent consumer
+(`examples/sdk-consumer`, `npm run sign`), compiled and verified a real purchase:
+
+| Field | Value |
+|---|---|
+| Strategy | `feetest` v1 (TSLA 50% / NVDA 50%), `definitionHash` `0x089fc9ba…a4fa` |
+| Input | 3 USDG (`3000000`), pinned Composer factory `0xaceb…bdae` (VM 1.2) |
+| Wallet | `0x3690895b48cea6f1f6c8e66fa9b332858f8eb1b7`, MetaMask, plain EOA |
+| Approval | exact 3 USDG to the predicted proxy `0x05bb424a1c46dc7d1e5333b218c1142b5b2ec27a`, tx `0xd3a46dd5…5ba7` |
+| Purchase | tx `0xec6df6cf44fd4c0758896dcf3184033ca937280c1c9da16eb0c6da5641100209`, block 101506977 |
+| Original intent hash | `0x559f4b6d2003a740a61d0dac61c1b715decc887e7c2419e9fa2cb86b72cfe068` |
+| Result | `VERIFIED`: `DIRECT` binding, `TRANSACTION` balance scope, input spent 3000000 |
+
+Outputs, all above the reviewed wallet minima:
+
+| Token | Received (raw) | Minimum (raw) | Balance before → after |
+|---|---|---|---|
+| TSLA `0x322f…3b2d` | 3795634691032666 | 3757678344122339 | 0 → 3795634691032666 |
+| NVDA `0xd060…9eec` | 7169079509197212 | 7123304250276130 | 0 → 7169079509197212 |
+
+**Reader requirements observed on the same transaction:**
+- **Alchemy Robinhood endpoint (Nitro v3.12.1):** rejects `debug_traceCall` (and `eth_getLogs`) with "JSON is not a valid request object".
+- **Public RPC:** runs Nitro v3.12.2, which the reader does not accept yet, and does not expose `debug_traceCall`.
+- **QuickNode endpoint:** Nitro v3.12.1+70fa99a with `debug_traceCall` and `txIndex`. This is where the verification ran.
+
+A wallet minimum is checked only with transaction-scoped balance evidence. Without a qualified reader the result
+is `INDETERMINATE`, not a failure.
 
 ## Reproducible candidate checks
 

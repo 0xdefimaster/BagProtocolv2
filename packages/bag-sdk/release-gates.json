@@ -2,9 +2,10 @@
   "candidateVersion": "0.3.0",
   "factoryPolicyConfirmed": true,
   "deploymentPinApproved": true,
-  "liveOriginalPurchaseVerified": false,
+  "liveOriginalPurchaseVerified": true,
   "publicationApproved": false,
   "factoryPolicyBasis": "Closed by the maintainer on 2026-10-30. LI.FI confirmed (2026-10-22) that the production factory 0xaceb3bb6c75488b5b806b9de4dcf78814465bdae is VM 1.2 and that the docs were stale; on-chain code embeds VM 0xA9f22b951d5A9CBBD0eC8d2741EA44BFDD2D11fd (docs/SDK_COMPOSER_TRUST.md). A future factory change is a safe refusal until a new pin is reviewed; LI.FI's upgrade policy, mutability and audits are accepted as an upstream dependency, not verified by this project.",
   "deploymentPinBasis": "Approved by the maintainer on 2026-10-30: factory 0xaceb3bb6c75488b5b806b9de4dcf78814465bdae on chain 4663, runtime keccak re-checked at block 101381451 and equal to the pin; VM 1.2 keccak recorded (docs/SDK_DEPLOYMENT_PIN_ROBINHOOD.md).",
+  "liveOriginalPurchaseBasis": "VERIFIED on 2026-10-30: a purchase compiled by this candidate (feetest bag, 3 USDG, TSLA + NVDA) was signed in MetaMask from 0x3690895b48cea6f1f6c8e66fa9b332858f8eb1b7, tx 0xec6df6cf44fd4c0758896dcf3184033ca937280c1c9da16eb0c6da5641100209 (Robinhood Chain block 101506977), and verified against its original saved intent (hash 0x559f4b6d2003a740a61d0dac61c1b715decc887e7c2419e9fa2cb86b72cfe068) with reviewed wallet minima, DIRECT binding and transaction-scoped balance deltas from the qualified Nitro v3.12.1+70fa99a reader (docs/SDK_RELEASE_PREPARATION.md).",
   "note": "Candidate preparation does not approve a production deployment, submit a purchase or authorize npm publication."
 }
