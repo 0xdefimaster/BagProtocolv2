@@ -27,6 +27,29 @@ Read-only Robinhood mainnet observations, not a claim that either deployment has
 
 For signer `0x49dadd8212128bdf6752351bf70f6a5d8b73fe46`, the documented factory predicts `0xbd45be2cbc57145cd39947bdceff6c50bd9a0f94`, while the observed production factory predicts `0x0a6baefc776477c494ab8b0a288881a7b72196f7`. Both proxies are deployed; their owner/factory getters match their respective deployments. The older second demo signer likewise maps to a different proxy under each factory. Do not assume historical account addresses still identify the current deployment.
 
+### LI.FI answer and VM 1.2 (2026-10-22, re-checked 2026-10-30)
+
+LI.FI (integration chat, 2026-10-22) explained the discrepancy: VM version 1.2 was released and the
+documentation had not been updated yet. On 2026-10-30 the addresses page still lists the earlier set (VirtualMachine
+`0xb57Ce43Be47DF611C98EB0943e5D36EBDb36cc6D`, ProxyFactory `0xe174…fB35`, InvariantChecker
+`0xe17006F4DfE8Aa2bf80589E497ad98D470f66fef`, ArithmeticProcessor `0x46C2c852E6FEfaF173dFe49457f0Fe61Dc3F587a`).
+
+Read-only Robinhood mainnet check of the runtime code (2026-10-30, public RPC):
+
+| Contract | Bytes | VM address embedded in its code |
+| --- | --- | --- |
+| Documented factory `0xe174…fB35` | 4474 | `0xb57C…cc6D` (documented VM), twice |
+| Production factory `0xaceb…bdae` | 4474 | `0xA9f22b951d5A9CBBD0eC8d2741EA44BFDD2D11fd`, at the same two offsets |
+| Proxy under the documented factory `0xbd45…0f94` | 1645 | `0xb57C…cc6D`, twice |
+| Proxy under the production factory `0x0a6b…96f7` | 1645 | `0xA9f2…11fd`, at the same two offsets |
+| Documented VM `0xb57C…cc6D` | 7365 | — |
+| VM 1.2 `0xA9f2…11fd` (not in the docs) | 12920 | — |
+
+So the factory and proxy are the same template with the VM address embedded, and the documented table belongs to the
+earlier version. Pinning the production factory's runtime hash therefore also pins the VM its proxies call. The
+documented InvariantChecker and ArithmeticProcessor addresses appear in none of these runtimes; their VM 1.2
+counterparts are not identified here. VM 1.2 has not been reviewed or audited by this project.
+
 No production default is embedded in SDK source. The application owner must review and explicitly select a deployment pin. A changed compile deployment is a refusal until the selected deployment is independently reviewed; copying the returned address is not review.
 
 ## Live checks completed
@@ -42,8 +65,8 @@ Private credentials are neither committed nor included in output. Reproduce with
 
 ## Remaining Composer release checks, in order
 
-1. **Confirm the production deployment policy with LI.FI:** explain the snapshot/server discrepancy, which deployment is intended for the integration, and migration/retirement guarantees. Prepare this evidence for a human-approved support request; this work did not send a message to LI.FI.
-2. **Document and approve the deployment pin operationally:** factory address, code fingerprint, network, signer-account resolution, review date and response to a rollout. The helper intentionally does not auto-accept a new factory.
+1. **Confirm the production deployment policy with LI.FI:** closed by the maintainer (2026-10-30, `release-gates.json` `factoryPolicyBasis`). The intended deployment is confirmed (VM 1.2, production factory above). LI.FI's upgrade notice, mutability and audit coverage are accepted as an upstream dependency rather than verified here; a factory change is a safe refusal until a new pin is reviewed. Price impact is answered: the difference between total input and output value, negative values valid, LI.FI's limit fails only a positive impact (2026-10-24 and 2026-10-28; see the SDK README).
+2. **Document and approve the deployment pin operationally** (review note: `docs/SDK_DEPLOYMENT_PIN_ROBINHOOD.md`): factory address, code fingerprint, network, signer-account resolution, review date and response to a rollout. The helper intentionally does not auto-accept a new factory.
 3. **Complete a newly signed SDK purchase:** preserve the original compiled purchase and reviewed wallet minima, let the user sign with sufficient balance/approvals, and verify the mined receipt using the Nitro reader. The unsigned compile and historical reader checks do not replace this step.
 4. **Release compatibility:** keep Composer/spec peers in lockstep and SDK 0.11.x bounds until a deliberate upgrade is checked against the production server. Do not upgrade to a staging/alpha package merely because a documentation example mentions it.
 
