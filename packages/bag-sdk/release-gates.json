@@ -1,8 +1,9 @@
 {
   "candidateVersion": "0.3.0",
-  "factoryPolicyConfirmed": false,
+  "factoryPolicyConfirmed": true,
   "deploymentPinApproved": false,
   "liveOriginalPurchaseVerified": false,
   "publicationApproved": false,
+  "factoryPolicyBasis": "Closed by the maintainer on 2026-10-30. LI.FI confirmed (2026-10-22) that the production factory 0xaceb3bb6c75488b5b806b9de4dcf78814465bdae is VM 1.2 and that the docs were stale; on-chain code embeds VM 0xA9f22b951d5A9CBBD0eC8d2741EA44BFDD2D11fd (docs/SDK_COMPOSER_TRUST.md). A future factory change is a safe refusal until a new pin is reviewed; LI.FI's upgrade policy, mutability and audits are accepted as an upstream dependency, not verified by this project.",
   "note": "Candidate preparation does not approve a production deployment, submit a purchase or authorize npm publication."
 }
