@@ -1,0 +1,123 @@
+{
+  "schema": "bag-metamask-registry-diagnosis/v1",
+  "capturedAt": "2026-10-25T00:19:22.714Z",
+  "userReportedMetaMaskVersion": "13.53.0",
+  "evidence": "OFFLINE_PINNED_SOURCE_BRANCH_REPRODUCTION",
+  "pass": 7,
+  "fail": 0,
+  "extensionRuntimeInternalLog": "NOT_CAPTURED",
+  "nativeGrantRetest": "NOT_TESTED",
+  "dcaExecution": "NOT_TESTED",
+  "libraryRegistryUsedByController": "1.4.0",
+  "comparisonRegistry": "2.1.0",
+  "cases": [
+    {
+      "id": "D-1",
+      "description": "all five upstream source snapshots match their Git blob hashes",
+      "status": "PASS",
+      "details": {
+        "sourceCount": 5
+      }
+    },
+    {
+      "id": "D-2",
+      "description": "deployment registry 1.4.0 lacks chain 4663 but includes Base 8453",
+      "status": "PASS",
+      "details": {
+        "robinhoodPresent": false,
+        "basePresent": true
+      }
+    },
+    {
+      "id": "D-3",
+      "description": "deployment registry 2.1.0 explicitly includes Robinhood",
+      "status": "PASS",
+      "details": {
+        "robinhoodPresent": true,
+        "delegationManager": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3"
+      }
+    },
+    {
+      "id": "D-4",
+      "description": "actual controller lookup branch rejects 4663 with registry 1.4.0",
+      "status": "PASS",
+      "details": {
+        "error": "Contracts not found for chainId: 4663"
+      }
+    },
+    {
+      "id": "D-5",
+      "description": "same lookup branch accepts 4663 with registry 2.1.0",
+      "status": "PASS",
+      "details": {
+        "lookupAccepted": true,
+        "completePermissionDecode": "NOT_TESTED"
+      }
+    },
+    {
+      "id": "D-6",
+      "description": "missing decodedPermission produces the observed wallet error",
+      "status": "PASS",
+      "details": {
+        "error": "External signature requests cannot sign delegations for internal accounts."
+      }
+    },
+    {
+      "id": "D-7",
+      "description": "guard alone permits an already-decoded permission",
+      "status": "PASS",
+      "details": {
+        "guardPassed": true,
+        "actualDecoderOutput": "NOT_TESTED"
+      }
+    }
+  ],
+  "sources": [
+    {
+      "file": "deployment-1.4.0-index.ts",
+      "repository": "MetaMask/smart-accounts-kit",
+      "commit": "b874928c143e316cc47436112fd04a1f2444a900",
+      "path": "packages/delegation-deployments/src/index.ts",
+      "blobSha": "1e942289c75481d524212fc67f31f732d5ad22ce",
+      "url": "https://github.com/MetaMask/smart-accounts-kit/blob/b874928c143e316cc47436112fd04a1f2444a900/packages/delegation-deployments/src/index.ts"
+    },
+    {
+      "file": "deployment-1.4.0-contractAddresses.ts",
+      "repository": "MetaMask/smart-accounts-kit",
+      "commit": "b874928c143e316cc47436112fd04a1f2444a900",
+      "path": "packages/delegation-deployments/src/contractAddresses.ts",
+      "blobSha": "7c1062bf27cc84763608984aaa3d13097a362775",
+      "url": "https://github.com/MetaMask/smart-accounts-kit/blob/b874928c143e316cc47436112fd04a1f2444a900/packages/delegation-deployments/src/contractAddresses.ts"
+    },
+    {
+      "file": "gator-4.2.2-controller.ts",
+      "repository": "MetaMask/core",
+      "commit": "7d5e4cc3eff4ee94cb9c38cb091d14755e215f9d",
+      "path": "packages/gator-permissions-controller/src/GatorPermissionsController.ts",
+      "blobSha": "652513bdf975392316109024db04d608c7f78031",
+      "url": "https://github.com/MetaMask/core/blob/7d5e4cc3eff4ee94cb9c38cb091d14755e215f9d/packages/gator-permissions-controller/src/GatorPermissionsController.ts"
+    },
+    {
+      "file": "signature-39.2.10-validation.ts",
+      "repository": "MetaMask/core",
+      "commit": "3bb5d086a6e3fcc94af342eb20dfae75bec02fc6",
+      "path": "packages/signature-controller/src/utils/validation.ts",
+      "blobSha": "f4a711bfa808dfa144fa42d7f2cb06c73f00ea11",
+      "url": "https://github.com/MetaMask/core/blob/3bb5d086a6e3fcc94af342eb20dfae75bec02fc6/packages/signature-controller/src/utils/validation.ts"
+    },
+    {
+      "file": "signature-39.2.10-controller.ts",
+      "repository": "MetaMask/core",
+      "commit": "3bb5d086a6e3fcc94af342eb20dfae75bec02fc6",
+      "path": "packages/signature-controller/src/SignatureController.ts",
+      "blobSha": "d5f2de6961ed3134e401d23039079b614e2964c1",
+      "url": "https://github.com/MetaMask/core/blob/3bb5d086a6e3fcc94af342eb20dfae75bec02fc6/packages/signature-controller/src/SignatureController.ts"
+    }
+  ],
+  "limits": [
+    "Only the registry lookup and signature guard source branches run; the full extension and Snap do not run.",
+    "A supplied already-decoded object tests the guard only. It does not prove the full decoder accepts this request.",
+    "No internal runtime trace was captured from the user wallet. The observed failure and source defect are consistent, not a complete runtime root-cause trace.",
+    "No public or fork transaction, wallet interaction, signature or network request is made by this script."
+  ]
+}

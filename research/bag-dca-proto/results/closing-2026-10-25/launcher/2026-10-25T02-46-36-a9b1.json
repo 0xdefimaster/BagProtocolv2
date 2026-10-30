@@ -1,0 +1,90 @@
+{
+  "schema": "bag-dca-launcher/v1",
+  "session": "2026-10-25T02-46-36-a9b1",
+  "command": "test",
+  "platform": "linux",
+  "node": "v24.22.0",
+  "packageDir": "/home/user/dca-close/research/bag-dca-proto",
+  "checks": [
+    {
+      "id": "node",
+      "ok": true,
+      "detail": "Node v24.22.0 (needs >= 24)",
+      "fatal": true
+    },
+    {
+      "id": "dep hardhat",
+      "ok": true,
+      "detail": "3.14.0 (pinned 3.14.0)",
+      "fatal": true
+    },
+    {
+      "id": "dep viem",
+      "ok": true,
+      "detail": "2.56.0 (pinned 2.56.0)",
+      "fatal": true
+    },
+    {
+      "id": "dep solc",
+      "ok": true,
+      "detail": "0.8.23 (pinned 0.8.23)",
+      "fatal": true
+    },
+    {
+      "id": "dep tsx",
+      "ok": true,
+      "detail": "4.23.15 (pinned 4.23.15)",
+      "fatal": true
+    },
+    {
+      "id": "dep @metamask/smart-accounts-kit",
+      "ok": true,
+      "detail": "2.0.0 (pinned 2.0.0)",
+      "fatal": true
+    },
+    {
+      "id": "vendor e6bdd10",
+      "ok": true,
+      "detail": "all vendored files match SHA256SUMS",
+      "fatal": true
+    },
+    {
+      "id": "sdk path",
+      "ok": true,
+      "detail": "/home/user/integ-wt/packages/bag-sdk",
+      "fatal": true
+    },
+    {
+      "id": "sdk forwarded mode",
+      "ok": true,
+      "detail": "built SDK contains the forwarded-delivery verification (#126)",
+      "fatal": true
+    },
+    {
+      "id": "sdk commit",
+      "ok": true,
+      "detail": "dadef00; expected dadef00",
+      "fatal": true
+    }
+  ],
+  "steps": [
+    {
+      "id": "unit tests",
+      "code": 0,
+      "seconds": 12
+    },
+    {
+      "id": "fork lifecycle (test key)",
+      "code": 0,
+      "seconds": 138
+    }
+  ],
+  "sdk": {
+    "path": "/home/user/integ-wt/packages/bag-sdk",
+    "commit": "dadef00",
+    "dirty": false
+  },
+  "output": "/home/user/dca-close/research/bag-dca-proto/wallet-fork/out/2026-10-25T02-46-36-a9b1-test",
+  "exitCode": 0,
+  "finishedAt": "2026-10-25T02:49:06.284Z"
+}

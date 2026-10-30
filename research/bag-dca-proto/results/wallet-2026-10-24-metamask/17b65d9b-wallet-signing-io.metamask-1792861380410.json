@@ -1,0 +1,929 @@
+{
+  "kind": "WALLET_SIGNING_RESULTS_NOT_FORK_RESULTS",
+  "page": "wallet/sign-test.html",
+  "exportedAt": "2026-10-24T17:03:00.408Z",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+  "results": [
+    {
+      "test": "W-PERMIT",
+      "wallet": {
+        "name": "MetaMask",
+        "rdns": "io.metamask"
+      },
+      "account": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+      "chainId": "0x1237",
+      "requestedAt": "2026-10-24T17:02:24.555Z",
+      "typedData": {
+        "types": {
+          "EIP712Domain": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "type": "string"
+            },
+            {
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "name": "verifyingContract",
+              "type": "address"
+            }
+          ],
+          "Permit": [
+            {
+              "name": "owner",
+              "type": "address"
+            },
+            {
+              "name": "spender",
+              "type": "address"
+            },
+            {
+              "name": "value",
+              "type": "uint256"
+            },
+            {
+              "name": "nonce",
+              "type": "uint256"
+            },
+            {
+              "name": "deadline",
+              "type": "uint256"
+            }
+          ]
+        },
+        "primaryType": "Permit",
+        "domain": {
+          "name": "Global Dollar",
+          "version": "1",
+          "chainId": 4663,
+          "verifyingContract": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168"
+        },
+        "message": {
+          "owner": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+          "spender": "0x000000000000000000000000000000000000dEaD",
+          "value": "0",
+          "nonce": "0",
+          "deadline": "1"
+        }
+      },
+      "signature": "0x6046f45b199675f8285f3b202960fb70cc474cd4fc0d595b068af0d2bb59e4ab31feeb2215ec874eaacf0cdf9d4c77ad3b62596c7a985755480b967ed92031aa1c",
+      "outcome": "SIGNED",
+      "observations": {
+        "readable": false,
+        "warning": false,
+        "blocked": false,
+        "note": ""
+      }
+    },
+    {
+      "test": "W-DELEGATION-SA",
+      "wallet": {
+        "name": "MetaMask",
+        "rdns": "io.metamask"
+      },
+      "account": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+      "chainId": "0x1237",
+      "requestedAt": "2026-10-24T17:02:28.998Z",
+      "typedData": {
+        "types": {
+          "EIP712Domain": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "type": "string"
+            },
+            {
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "name": "verifyingContract",
+              "type": "address"
+            }
+          ],
+          "Caveat": [
+            {
+              "name": "enforcer",
+              "type": "address"
+            },
+            {
+              "name": "terms",
+              "type": "bytes"
+            }
+          ],
+          "Delegation": [
+            {
+              "name": "delegate",
+              "type": "address"
+            },
+            {
+              "name": "delegator",
+              "type": "address"
+            },
+            {
+              "name": "authority",
+              "type": "bytes32"
+            },
+            {
+              "name": "caveats",
+              "type": "Caveat[]"
+            },
+            {
+              "name": "salt",
+              "type": "uint256"
+            }
+          ]
+        },
+        "primaryType": "Delegation",
+        "domain": {
+          "name": "DelegationManager",
+          "version": "1",
+          "chainId": 4663,
+          "verifyingContract": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3"
+        },
+        "message": {
+          "delegate": "0x000000000000000000000000000000000000dEaD",
+          "delegator": "0xcaFFeBB507C438b35F886cD24dB43E4d3FD2d0E8",
+          "authority": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "caveats": [
+            {
+              "enforcer": "0x1046bb45C8d673d4ea75321280DB34899413c069",
+              "terms": "0x0000000000000000000000000000000000000000000000000000000000000001"
+            }
+          ],
+          "salt": "72803553993481833172300866932057020014"
+        }
+      },
+      "signature": "0x730807dcc2d49b2542d07cb3ccd65bf7d8cba782e2e50203c69345bcd39ff4f6147e8859ee6548afd0b9beee2cd8bb51fda61853614b281cb925fc9c45f4276e1c",
+      "outcome": "SIGNED",
+      "observations": {
+        "readable": false,
+        "warning": false,
+        "blocked": false,
+        "note": ""
+      }
+    },
+    {
+      "test": "W-DELEGATION-EOA",
+      "wallet": {
+        "name": "MetaMask",
+        "rdns": "io.metamask"
+      },
+      "account": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+      "chainId": "0x1237",
+      "requestedAt": "2026-10-24T17:02:34.795Z",
+      "typedData": {
+        "types": {
+          "EIP712Domain": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "type": "string"
+            },
+            {
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "name": "verifyingContract",
+              "type": "address"
+            }
+          ],
+          "Caveat": [
+            {
+              "name": "enforcer",
+              "type": "address"
+            },
+            {
+              "name": "terms",
+              "type": "bytes"
+            }
+          ],
+          "Delegation": [
+            {
+              "name": "delegate",
+              "type": "address"
+            },
+            {
+              "name": "delegator",
+              "type": "address"
+            },
+            {
+              "name": "authority",
+              "type": "bytes32"
+            },
+            {
+              "name": "caveats",
+              "type": "Caveat[]"
+            },
+            {
+              "name": "salt",
+              "type": "uint256"
+            }
+          ]
+        },
+        "primaryType": "Delegation",
+        "domain": {
+          "name": "DelegationManager",
+          "version": "1",
+          "chainId": 4663,
+          "verifyingContract": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3"
+        },
+        "message": {
+          "delegate": "0x000000000000000000000000000000000000dEaD",
+          "delegator": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+          "authority": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "caveats": [
+            {
+              "enforcer": "0x1046bb45C8d673d4ea75321280DB34899413c069",
+              "terms": "0x0000000000000000000000000000000000000000000000000000000000000001"
+            }
+          ],
+          "salt": "67008870453040070627921175661737926671"
+        }
+      },
+      "outcome": "WALLET_ERROR",
+      "error": {
+        "code": -32603,
+        "message": "External signature requests cannot sign delegations for internal accounts."
+      },
+      "observations": {
+        "readable": false,
+        "warning": false,
+        "blocked": false,
+        "note": ""
+      }
+    },
+    {
+      "test": "W-DELEGATION-EOA",
+      "wallet": {
+        "name": "MetaMask",
+        "rdns": "io.metamask"
+      },
+      "account": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+      "chainId": "0x1237",
+      "requestedAt": "2026-10-24T17:02:36.415Z",
+      "typedData": {
+        "types": {
+          "EIP712Domain": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "type": "string"
+            },
+            {
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "name": "verifyingContract",
+              "type": "address"
+            }
+          ],
+          "Caveat": [
+            {
+              "name": "enforcer",
+              "type": "address"
+            },
+            {
+              "name": "terms",
+              "type": "bytes"
+            }
+          ],
+          "Delegation": [
+            {
+              "name": "delegate",
+              "type": "address"
+            },
+            {
+              "name": "delegator",
+              "type": "address"
+            },
+            {
+              "name": "authority",
+              "type": "bytes32"
+            },
+            {
+              "name": "caveats",
+              "type": "Caveat[]"
+            },
+            {
+              "name": "salt",
+              "type": "uint256"
+            }
+          ]
+        },
+        "primaryType": "Delegation",
+        "domain": {
+          "name": "DelegationManager",
+          "version": "1",
+          "chainId": 4663,
+          "verifyingContract": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3"
+        },
+        "message": {
+          "delegate": "0x000000000000000000000000000000000000dEaD",
+          "delegator": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+          "authority": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "caveats": [
+            {
+              "enforcer": "0x1046bb45C8d673d4ea75321280DB34899413c069",
+              "terms": "0x0000000000000000000000000000000000000000000000000000000000000001"
+            }
+          ],
+          "salt": "113673721938313508087280886002352496609"
+        }
+      },
+      "outcome": "WALLET_ERROR",
+      "error": {
+        "code": -32603,
+        "message": "External signature requests cannot sign delegations for internal accounts."
+      },
+      "observations": {
+        "readable": false,
+        "warning": false,
+        "blocked": false,
+        "note": ""
+      }
+    },
+    {
+      "test": "W-DELEGATION-EOA",
+      "wallet": {
+        "name": "MetaMask",
+        "rdns": "io.metamask"
+      },
+      "account": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+      "chainId": "0x1237",
+      "requestedAt": "2026-10-24T17:02:46.373Z",
+      "typedData": {
+        "types": {
+          "EIP712Domain": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "type": "string"
+            },
+            {
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "name": "verifyingContract",
+              "type": "address"
+            }
+          ],
+          "Caveat": [
+            {
+              "name": "enforcer",
+              "type": "address"
+            },
+            {
+              "name": "terms",
+              "type": "bytes"
+            }
+          ],
+          "Delegation": [
+            {
+              "name": "delegate",
+              "type": "address"
+            },
+            {
+              "name": "delegator",
+              "type": "address"
+            },
+            {
+              "name": "authority",
+              "type": "bytes32"
+            },
+            {
+              "name": "caveats",
+              "type": "Caveat[]"
+            },
+            {
+              "name": "salt",
+              "type": "uint256"
+            }
+          ]
+        },
+        "primaryType": "Delegation",
+        "domain": {
+          "name": "DelegationManager",
+          "version": "1",
+          "chainId": 4663,
+          "verifyingContract": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3"
+        },
+        "message": {
+          "delegate": "0x000000000000000000000000000000000000dEaD",
+          "delegator": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+          "authority": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "caveats": [
+            {
+              "enforcer": "0x1046bb45C8d673d4ea75321280DB34899413c069",
+              "terms": "0x0000000000000000000000000000000000000000000000000000000000000001"
+            }
+          ],
+          "salt": "161571163136841085273490437859582842020"
+        }
+      },
+      "outcome": "WALLET_ERROR",
+      "error": {
+        "code": -32603,
+        "message": "External signature requests cannot sign delegations for internal accounts."
+      },
+      "observations": {
+        "readable": false,
+        "warning": false,
+        "blocked": false,
+        "note": ""
+      }
+    },
+    {
+      "test": "W-USEROP",
+      "wallet": {
+        "name": "MetaMask",
+        "rdns": "io.metamask"
+      },
+      "account": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+      "chainId": "0x1237",
+      "requestedAt": "2026-10-24T17:02:38.215Z",
+      "typedData": {
+        "types": {
+          "EIP712Domain": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "type": "string"
+            },
+            {
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "name": "verifyingContract",
+              "type": "address"
+            }
+          ],
+          "PackedUserOperation": [
+            {
+              "name": "sender",
+              "type": "address"
+            },
+            {
+              "name": "nonce",
+              "type": "uint256"
+            },
+            {
+              "name": "initCode",
+              "type": "bytes"
+            },
+            {
+              "name": "callData",
+              "type": "bytes"
+            },
+            {
+              "name": "accountGasLimits",
+              "type": "bytes32"
+            },
+            {
+              "name": "preVerificationGas",
+              "type": "uint256"
+            },
+            {
+              "name": "gasFees",
+              "type": "bytes32"
+            },
+            {
+              "name": "paymasterAndData",
+              "type": "bytes"
+            },
+            {
+              "name": "entryPoint",
+              "type": "address"
+            }
+          ]
+        },
+        "primaryType": "PackedUserOperation",
+        "domain": {
+          "name": "MultiSigDeleGator",
+          "version": "1",
+          "chainId": 4663,
+          "verifyingContract": "0xcaFFeBB507C438b35F886cD24dB43E4d3FD2d0E8"
+        },
+        "message": {
+          "sender": "0xcaFFeBB507C438b35F886cD24dB43E4d3FD2d0E8",
+          "nonce": "57896044618658097711785492504343953926634992332820282019728792003956564819968",
+          "initCode": "0x",
+          "callData": "0x",
+          "accountGasLimits": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "preVerificationGas": "0",
+          "gasFees": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "paymasterAndData": "0x",
+          "entryPoint": "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
+        }
+      },
+      "signature": "0x8478bae75d0f26f82e8df978ccc5f4b56f1d185f996bc00992e8ea287e1296267bb5d35787f803fcf4ab49ef5f20708acb045e89cb3ee4768d19d7116cd4ef911c",
+      "outcome": "SIGNED",
+      "observations": {
+        "readable": false,
+        "warning": false,
+        "blocked": false,
+        "note": ""
+      }
+    },
+    {
+      "test": "W-DELEGATION-EOA",
+      "wallet": {
+        "name": "MetaMask",
+        "rdns": "io.metamask"
+      },
+      "account": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+      "chainId": "0x1237",
+      "requestedAt": "2026-10-24T17:02:51.941Z",
+      "typedData": {
+        "types": {
+          "EIP712Domain": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "type": "string"
+            },
+            {
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "name": "verifyingContract",
+              "type": "address"
+            }
+          ],
+          "Caveat": [
+            {
+              "name": "enforcer",
+              "type": "address"
+            },
+            {
+              "name": "terms",
+              "type": "bytes"
+            }
+          ],
+          "Delegation": [
+            {
+              "name": "delegate",
+              "type": "address"
+            },
+            {
+              "name": "delegator",
+              "type": "address"
+            },
+            {
+              "name": "authority",
+              "type": "bytes32"
+            },
+            {
+              "name": "caveats",
+              "type": "Caveat[]"
+            },
+            {
+              "name": "salt",
+              "type": "uint256"
+            }
+          ]
+        },
+        "primaryType": "Delegation",
+        "domain": {
+          "name": "DelegationManager",
+          "version": "1",
+          "chainId": 4663,
+          "verifyingContract": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3"
+        },
+        "message": {
+          "delegate": "0x000000000000000000000000000000000000dEaD",
+          "delegator": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+          "authority": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "caveats": [
+            {
+              "enforcer": "0x1046bb45C8d673d4ea75321280DB34899413c069",
+              "terms": "0x0000000000000000000000000000000000000000000000000000000000000001"
+            }
+          ],
+          "salt": "298864039748576131950282919320234062840"
+        }
+      },
+      "outcome": "WALLET_ERROR",
+      "error": {
+        "code": -32603,
+        "message": "External signature requests cannot sign delegations for internal accounts."
+      },
+      "observations": {
+        "readable": false,
+        "warning": false,
+        "blocked": false,
+        "note": ""
+      }
+    },
+    {
+      "test": "W-DELEGATION-EOA",
+      "wallet": {
+        "name": "MetaMask",
+        "rdns": "io.metamask"
+      },
+      "account": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+      "chainId": "0x1237",
+      "requestedAt": "2026-10-24T17:02:53.166Z",
+      "typedData": {
+        "types": {
+          "EIP712Domain": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "type": "string"
+            },
+            {
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "name": "verifyingContract",
+              "type": "address"
+            }
+          ],
+          "Caveat": [
+            {
+              "name": "enforcer",
+              "type": "address"
+            },
+            {
+              "name": "terms",
+              "type": "bytes"
+            }
+          ],
+          "Delegation": [
+            {
+              "name": "delegate",
+              "type": "address"
+            },
+            {
+              "name": "delegator",
+              "type": "address"
+            },
+            {
+              "name": "authority",
+              "type": "bytes32"
+            },
+            {
+              "name": "caveats",
+              "type": "Caveat[]"
+            },
+            {
+              "name": "salt",
+              "type": "uint256"
+            }
+          ]
+        },
+        "primaryType": "Delegation",
+        "domain": {
+          "name": "DelegationManager",
+          "version": "1",
+          "chainId": 4663,
+          "verifyingContract": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3"
+        },
+        "message": {
+          "delegate": "0x000000000000000000000000000000000000dEaD",
+          "delegator": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+          "authority": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "caveats": [
+            {
+              "enforcer": "0x1046bb45C8d673d4ea75321280DB34899413c069",
+              "terms": "0x0000000000000000000000000000000000000000000000000000000000000001"
+            }
+          ],
+          "salt": "277667102600452541545935823030830878444"
+        }
+      },
+      "outcome": "WALLET_ERROR",
+      "error": {
+        "code": -32603,
+        "message": "External signature requests cannot sign delegations for internal accounts."
+      },
+      "observations": {
+        "readable": false,
+        "warning": false,
+        "blocked": false,
+        "note": ""
+      }
+    },
+    {
+      "test": "W-DELEGATION-EOA",
+      "wallet": {
+        "name": "MetaMask",
+        "rdns": "io.metamask"
+      },
+      "account": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+      "chainId": "0x1237",
+      "requestedAt": "2026-10-24T17:02:53.680Z",
+      "typedData": {
+        "types": {
+          "EIP712Domain": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "type": "string"
+            },
+            {
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "name": "verifyingContract",
+              "type": "address"
+            }
+          ],
+          "Caveat": [
+            {
+              "name": "enforcer",
+              "type": "address"
+            },
+            {
+              "name": "terms",
+              "type": "bytes"
+            }
+          ],
+          "Delegation": [
+            {
+              "name": "delegate",
+              "type": "address"
+            },
+            {
+              "name": "delegator",
+              "type": "address"
+            },
+            {
+              "name": "authority",
+              "type": "bytes32"
+            },
+            {
+              "name": "caveats",
+              "type": "Caveat[]"
+            },
+            {
+              "name": "salt",
+              "type": "uint256"
+            }
+          ]
+        },
+        "primaryType": "Delegation",
+        "domain": {
+          "name": "DelegationManager",
+          "version": "1",
+          "chainId": 4663,
+          "verifyingContract": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3"
+        },
+        "message": {
+          "delegate": "0x000000000000000000000000000000000000dEaD",
+          "delegator": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+          "authority": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "caveats": [
+            {
+              "enforcer": "0x1046bb45C8d673d4ea75321280DB34899413c069",
+              "terms": "0x0000000000000000000000000000000000000000000000000000000000000001"
+            }
+          ],
+          "salt": "30662010752825542472400033224211819062"
+        }
+      },
+      "outcome": "WALLET_ERROR",
+      "error": {
+        "code": -32603,
+        "message": "External signature requests cannot sign delegations for internal accounts."
+      },
+      "observations": {
+        "readable": false,
+        "warning": false,
+        "blocked": false,
+        "note": ""
+      }
+    },
+    {
+      "test": "W-DELEGATION-EOA",
+      "wallet": {
+        "name": "MetaMask",
+        "rdns": "io.metamask"
+      },
+      "account": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+      "chainId": "0x1237",
+      "requestedAt": "2026-10-24T17:02:53.847Z",
+      "typedData": {
+        "types": {
+          "EIP712Domain": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "type": "string"
+            },
+            {
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "name": "verifyingContract",
+              "type": "address"
+            }
+          ],
+          "Caveat": [
+            {
+              "name": "enforcer",
+              "type": "address"
+            },
+            {
+              "name": "terms",
+              "type": "bytes"
+            }
+          ],
+          "Delegation": [
+            {
+              "name": "delegate",
+              "type": "address"
+            },
+            {
+              "name": "delegator",
+              "type": "address"
+            },
+            {
+              "name": "authority",
+              "type": "bytes32"
+            },
+            {
+              "name": "caveats",
+              "type": "Caveat[]"
+            },
+            {
+              "name": "salt",
+              "type": "uint256"
+            }
+          ]
+        },
+        "primaryType": "Delegation",
+        "domain": {
+          "name": "DelegationManager",
+          "version": "1",
+          "chainId": 4663,
+          "verifyingContract": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3"
+        },
+        "message": {
+          "delegate": "0x000000000000000000000000000000000000dEaD",
+          "delegator": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+          "authority": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "caveats": [
+            {
+              "enforcer": "0x1046bb45C8d673d4ea75321280DB34899413c069",
+              "terms": "0x0000000000000000000000000000000000000000000000000000000000000001"
+            }
+          ],
+          "salt": "140083772014479493072681164943674235993"
+        }
+      },
+      "outcome": "WALLET_ERROR",
+      "error": {
+        "code": -32603,
+        "message": "External signature requests cannot sign delegations for internal accounts."
+      },
+      "observations": {
+        "readable": false,
+        "warning": false,
+        "blocked": false,
+        "note": ""
+      }
+    }
+  ]
+}

@@ -1,0 +1,124 @@
+{
+  "bagJson": 1,
+  "definition": {
+    "kind": "STATIC_BASKET",
+    "chain": "robinhood",
+    "mutability": "MUTABLE",
+    "assets": [
+      {
+        "chain": "robinhood",
+        "address": "0x020bfc650a365f8bb26819deaabf3e21291018b4",
+        "decimals": 18,
+        "weightBps": 937
+      },
+      {
+        "chain": "robinhood",
+        "address": "0x39dbed3a2bd333467115de45665cc57f813c4571",
+        "decimals": 18,
+        "weightBps": 2945
+      },
+      {
+        "chain": "robinhood",
+        "address": "0x75742c18bc1f1c5c5f448f4c9d9c6f66dafaaa38",
+        "decimals": 18,
+        "weightBps": 937
+      },
+      {
+        "chain": "robinhood",
+        "address": "0xacef2e09adb47ad6abebad9ff06689e60615c2b6",
+        "decimals": 18,
+        "weightBps": 1300
+      },
+      {
+        "chain": "robinhood",
+        "address": "0xeb61c0ed490a367d4e3631ccf8a74b3bfc7e775d",
+        "decimals": 18,
+        "weightBps": 3881
+      }
+    ],
+    "rules": {
+      "weightBounds": {
+        "minBps": 100,
+        "maxBps": 7000
+      },
+      "maxAssets": 10,
+      "minInvestment": {
+        "amount": "0",
+        "measuredAs": "PAYMENT_TOKEN_AMOUNT"
+      },
+      "swapSlippageBps": 100,
+      "rebalance": {
+        "frequency": "WEEKLY",
+        "driftThresholdBps": 500
+      },
+      "performanceFeeBps": 1000,
+      "noRouteAssetPolicy": "BLOCK"
+    }
+  },
+  "definitionHash": "0x62e5dd238e967169064c3ccc5d34ed2c6829b3cbcb3119b76c4d3a88758e9f5a",
+  "ref": {
+    "strategyId": "a3caff05-d606-486b-959f-30865a4cbfa7",
+    "version": 2,
+    "parentVersion": 1,
+    "createdAt": "2026-10-19T01:01:50.817552+00:00"
+  },
+  "network": {
+    "chainId": 4663
+  },
+  "metadata": {
+    "name": "v2 ui",
+    "symbol": "V2UI",
+    "description": "ui test",
+    "assets": [
+      {
+        "chain": "robinhood",
+        "address": "0x020bfc650a365f8bb26819deaabf3e21291018b4",
+        "symbol": "CASHCAT"
+      },
+      {
+        "chain": "robinhood",
+        "address": "0x39dbed3a2bd333467115de45665cc57f813c4571",
+        "symbol": "PONS"
+      },
+      {
+        "chain": "robinhood",
+        "address": "0x75742c18bc1f1c5c5f448f4c9d9c6f66dafaaa38",
+        "symbol": "SOXX"
+      },
+      {
+        "chain": "robinhood",
+        "address": "0xacef2e09adb47ad6abebad9ff06689e60615c2b6",
+        "symbol": "INDA"
+      },
+      {
+        "chain": "robinhood",
+        "address": "0xeb61c0ed490a367d4e3631ccf8a74b3bfc7e775d",
+        "symbol": "HII"
+      }
+    ]
+  },
+  "commitments": {
+    "onchainCompositionHash": "0x2dbb1733ab3eb7f0a632d5a7ac51056625d2050bedfe9ee85ad2b9e0d935cde0",
+    "onchainTxHash": "0xab443bb1bbc5c0c53bd2d44fef8f05321f0bac0bfabaf58cc20cd023e80fae1c",
+    "onchainComposition": {
+      "status": "MATCHES_RECORDED",
+      "recordedFrom": "VERIFIED_TX_RECEIPT",
+      "comparedBy": "BAG",
+      "readFromChainThisRequest": false
+    },
+    "registry": {
+      "status": "REGISTERED",
+      "chainId": 4663,
+      "registryAddress": "0x907cc27d644c8ea1c24b8320ad09ecf2819209a8",
+      "registryStrategyId": "0x72ec1d37c03f9bfb3dc369cf77f19841e7d0a7ca00ca3757605d97fb2f398cae",
+      "creator": "0xb193de199eeb9bd1143607a11ad00999ceb956b8",
+      "txHash": "0xf0abea8b5c30481e1a45d651f902bc20f5c7475afc077ddd201d603ff3adab6b",
+      "blockNumber": 92214324,
+      "forkOf": null,
+      "recordedFrom": "VERIFIED_TX_RECEIPT",
+      "verifiedBy": "BAG",
+      "readFromChainThisRequest": false
+    }
+  },
+  "forkedFrom": null
+}

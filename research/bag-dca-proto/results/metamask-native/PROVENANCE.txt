@@ -1,0 +1,3 @@
+Copied unchanged from the user's closing package BAG-DCA-V5-Kapanis-Paketi-2026-10-25.zip (evidence/ and METAMASK_DURUMU.md).
+native-permission-result.json: the real wallet_requestExecutionPermissions request and the wallet's error (no usable permission or signature).
+metamask-reproduction-results.json: the earlier offline pinned-source reproduction (7 PASS / 0 FAIL); not re-run in this closing.

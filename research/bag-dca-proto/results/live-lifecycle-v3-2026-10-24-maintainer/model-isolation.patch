@@ -1,0 +1,25 @@
+diff --git a/work/dca-lifecycle-v3-live-2026-10-24/proto/composer/run.mjs b/work/dca-lifecycle-v3-live-2026-10-24/proto/composer/run-isolated-models.mjs
+index f3e2a80..bdfc26d 100644
+--- a/work/dca-lifecycle-v3-live-2026-10-24/proto/composer/run.mjs
++++ b/work/dca-lifecycle-v3-live-2026-10-24/proto/composer/run-isolated-models.mjs
+@@ -349,6 +349,11 @@ async function refused(id, name, P, h, ctx, expect, snap = h.snap) {
+ }
+ 
+ if (TD) {
++  // Independent A/B experiments start from the same fork state. This never rewinds
++  // successful purchases within the same delegation-consumption lifecycle.
++  const beforeIndependentModels = await rpc('evm_snapshot');
++  report.modelIsolation = { enabled: true, kind: 'A_AND_B_FROM_SAME_FORK_BASE',
++    note: 'A results are collected before reverting to the common base for B. Existing B-17 branch isolation remains unchanged.' };
+   // ---- Model A ----------------------------------------------------------------------------
+   let t0 = (await client.getBlock()).timestamp;
+   const termsA = { funding: 1, owner: user.address, source: user.address, recipient: user.address, delegationManager: v.zeroAddress, definitionHash: fixture.bag.definitionHash,
+@@ -402,6 +407,8 @@ if (TD) {
+   });
+ 
+   // ---- Model B ----------------------------------------------------------------------------
++  assert.equal(await rpc('evm_revert', [beforeIndependentModels]), true, 'Could not restore independent B base state');
++  console.log('ISOLATION restored initial fork state before independent model B');
+   const env = kit.getSmartAccountsEnvironment(4663), E = env.caveatEnforcers, DM = env.DelegationManager;
+   const sa = await kit.toMetaMaskSmartAccount({ client, implementation: kit.Implementation.MultiSig, deployParams: [[user.address], 1n], deploySalt: '0x', signer: [{ account: user }] });
+   const { factory: saFactory, factoryData } = await sa.getFactoryArgs();

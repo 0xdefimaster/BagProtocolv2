@@ -1,0 +1,56 @@
+{
+  "createdAt": "2026-10-24T02:55:14.462Z",
+  "sourceZipSha256": "93cb6a806d7b5f22a89448606fd41022fbfef8c7086a9de3138036d32627b381",
+  "repository": "0xdefimaster/BagProtocolv2",
+  "commit": "e6bdd1057f4cb68d492e2c503736d7e30d24b0c0",
+  "workingTreeClean": true,
+  "sdkVersion": "0.3.0",
+  "prototypeDependencies": {
+    "viem": "2.56.0",
+    "solc": "0.8.23",
+    "hardhat": "3.14.0",
+    "@metamask/smart-accounts-kit": "2.0.0"
+  },
+  "sdkDependencies": {
+    "typescript": "5.9.3",
+    "viem": "2.56.0",
+    "@lifi/composer-sdk": "0.11.3"
+  },
+  "originalPrototypeCriticalFiles": {
+    "package-lock.json": "506a3900ff0c0f0af3fe6e8378d8dd18bf862be34d621f5cf38d4a044095dbcc",
+    "composer/run.mjs": "606b1ecbcefb5e697fd57fb15871444dfd35dee11af43acf42e89004af6b0298",
+    "composer/contracts/DcaComposerPlan.sol": "bd8aa5ce2ef65c4663231004be2d66ffa84ed2becec943191b986da27f66b137"
+  },
+  "sdkReceiptSourceSha256": "90e9fce59cb38717bffc9395b1f694c6fd04a888046b3b3aef6ec6dee729095b",
+  "sdkReceiptBuiltSha256": "dc0d2ffe3bef89f5ccc7367bf7d875d7dca437e4cf291f081558a4942f4cf093",
+  "repositoryLockSha256": "d532c7acc94992dbdbb35750c442fe4ac5e04cec0587de9617ecb65508064f78",
+  "commands": [
+    "git -c http.sslBackend=openssl clone --no-checkout --depth 1 --single-branch --branch codex/app-dca-local-trial https://github.com/0xdefimaster/BagProtocolv2.git work/bag-claude-e6bdd10",
+    "git checkout --detach e6bdd1057f4cb68d492e2c503736d7e30d24b0c0",
+    "npm ci --ignore-scripts --force --no-audit --no-fund --cache <workspace>/work/npm-cache [prototype directory]",
+    "npm ci --ignore-scripts --no-audit --no-fund --cache <workspace>/work/npm-cache [pinned repository]",
+    "npm run build --prefix packages/bag-sdk [pinned repository]",
+    "node work/check-claude-dca-env.mjs [workspace]",
+    "node work/run-claude-dca-live.mjs live-01 [workspace]"
+  ],
+  "environmentNotes": [
+    "Windows, Node 24.22.0, npm 11.19.1.",
+    "Plain npm ci for the prototype failed EBADPLATFORM: solc 0.8.23 depends on n 9.2.3, which excludes win32.",
+    "Only the isolated prototype install used --force with --ignore-scripts to retain the supplied lockfile and compiler versions. No lifecycle install scripts were executed.",
+    "The original prototype runner and Solidity contract were not edited.",
+    "The local SDK was built from the exact detached commit, with no tracked source changes.",
+    "The wrapper redacts credentials from stdout/stderr. Environment contents are not included."
+  ],
+  "scope": {
+    "liveComposer": "26 PASS, 0 FAIL; fresh remote API compilations, execution only on local fork",
+    "purchases": "Two 5-USDG purchases for each model; four purchases total. Configured maxRuns is three; exhaustion was not tested in this live run.",
+    "sdkFullVerification": "NOT_MET_UNCHANGED_SDK_MEASURES_FORWARDING_SIGNER",
+    "walletSignatures": "NOT TESTED with MetaMask or Rabby; only locally generated throwaway accounts signed in the fork.",
+    "historicalMockAndReplay": "The ZIP-supplied 34 mock and 26 replay results were not rerun or added to this new count.",
+    "deploymentMatching": "The supplier's separate bytecode/27-immutable report was not independently rerun in this live test.",
+    "pricePolicy": "Initial fixed floors; long-term oracle/price policy not implemented.",
+    "accounting": "BAG position/fee accounting not implemented; explicit zero-performance-fee BAG.",
+    "gas": "Local simulated EVM gas only, not measured Robinhood Nitro/L1-data transaction costs.",
+    "publicTransactions": 0
+  }
+}

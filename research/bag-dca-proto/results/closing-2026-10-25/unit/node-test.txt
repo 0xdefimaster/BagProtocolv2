@@ -1,0 +1,40 @@
+== unit tests
+✔ 5 x 5 USDG = 25 USDG is valid; total is derived, not entered (7.102718ms)
+✔ a total of 30 for 5 x 5 is rejected with the exact message, nothing is auto-corrected (0.41406ms)
+✔ amount parsing: no floats, exact decimals, rejects zero/negative/exponent/comma/too many decimals/overflow (1.574022ms)
+✔ period: units to seconds; invalid units and counts are rejected (0.36594ms)
+✔ start: now = immediate first purchase; a future time = AT_START; the past is rejected (1.359749ms)
+✔ fixed calendar windows, no accumulation, readable summary with exact UTC dates (0.820802ms)
+✔ token, BAG and addresses must be verified/valid (2.599966ms)
+✔ delegation typed data decodes to exactly the plan; any change is reported (7.718798ms)
+✔ userOp typed data: inner transfer, paymaster binding and window are decoded (11.502106ms)
+✔ the shipped policy never passes: a clean route is PRICE_POLICY_UNPROVEN, with no reference price (5.943199ms)
+✔ a constant high-fee pool fails even when the probe sees no impact (1.1966ms)
+✔ hooked pools fail unless allowlisted; dynamic fee is unknown, never assumed low (0.880435ms)
+✔ quote-only, simulated or unverified fork evidence fails (1.470661ms)
+✔ thin liquidity or far below another route at the same block fails; peers are never a reference (0.838231ms)
+✔ reference price: stale, wrong source, below tolerance, synthetic, unset tolerance (0.984307ms)
+✔ mechanics: PASS only with a proven policy, a fresh real reference and every check satisfied (0.5331ms)
+✔ basket gate: any FAIL fails, any UNPROVEN blocks, empty fails (0.726185ms)
+✔ a receipt-verified basket alone does not make router DCA ready (5.025442ms)
+✔ non-archive per-unit evidence, failed baskets and v4 picks close more gates (0.872803ms)
+✔ structural gates stay closed even if every measured gate were open (0.770687ms)
+✔ an empty report is blocked (0.535743ms)
+✔ loopback signing server: host, origin, secret, size, step binding and signer checks (152.932698ms)
+✔ exact input both directions: payer pays exactly amountIn and receives the output; the adapter keeps nothing (553.988576ms)
+✔ partial fill reverts the whole swap (PartialFill) and nothing moves (117.626863ms)
+✔ wrong-signed or zero deltas revert (BadDelta) (403.263674ms)
+✔ output below minOut reverts (MinOut) (272.856169ms)
+✔ amount bounds and native currency are refused (AmountOutOfRange, NativeUnsupported) (188.190913ms)
+✔ callback: only the PoolManager, and only inside our own unlock (NotPoolManager, NotActive) (114.675536ms)
+✔ re-entering swapExactIn during the swap is refused (Reentered) (185.899073ms)
+✔ payer binding: a caller can only spend its own tokens; another approver is never charged (294.274877ms)
+ℹ tests 30
+ℹ suites 0
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11794.021577
+

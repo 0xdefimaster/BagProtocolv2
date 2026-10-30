@@ -1,0 +1,6 @@
+node_modules
+src-v130/
+**/cache/
+**/*-trace.json
+# Human signatures stay local; never commit or ship them.
+wallet-fork/private/

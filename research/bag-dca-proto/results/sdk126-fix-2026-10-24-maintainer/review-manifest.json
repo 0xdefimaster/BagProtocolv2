@@ -1,0 +1,61 @@
+{
+  "createdAt": "2026-10-24T11:42:44.232Z",
+  "pullRequest": "https://github.com/0xdefimaster/BagProtocolv2/pull/126",
+  "sdkCommit": "3f85a4cf80e6d9cc4289d6d074fc7e000e0737ef",
+  "fixtureCommit": "e6bdd1057f4cb68d492e2c503736d7e30d24b0c0",
+  "packageVersion": "0.3.0 unreleased",
+  "composerPackages": "0.11.3",
+  "node": "v24.22.0",
+  "sourceHashes": {
+    "rootLock": "d532c7acc94992dbdbb35750c442fe4ac5e04cec0587de9617ecb65508064f78",
+    "sdkReceipt": "e173d1b1215656924b5e52ce01596ba04f722b9b90164a398be57f3c1cbf7605",
+    "sdkDistReceipt": "d5fc5879cac6aa1270d11153586e09c5a3c4ac003cc49d88e6c6fe71cf19d7e7",
+    "prototypeRunner": "cb49452f699c3fff27aae074c6a44d64a1d6e5de5a4acc7b6fe977a2ccbd3d71",
+    "prototypeContract": "bd8aa5ce2ef65c4663231004be2d66ffa84ed2becec943191b986da27f66b137",
+    "prototypeLock": "506a3900ff0c0f0af3fe6e8378d8dd18bf862be34d621f5cf38d4a044095dbcc"
+  },
+  "checks": {
+    "sdkBuild": "PASS",
+    "sdkTests": {
+      "pass": 302,
+      "fail": 0
+    },
+    "rootTypecheck": "PASS",
+    "syntheticFundingProbe": "PASS: exact debit accepted; partial, zero, net credit and excess rejected",
+    "replay": {
+      "summary": {
+        "pass": 34,
+        "fail": 0
+      },
+      "fork": {
+        "blockNumber": "96735393",
+        "blockHash": "0x4dd88cf1581b385c2ff96a48b8437778a2a39b28117d2ac3c0f12430b66e6ced",
+        "timestamp": "1792841909"
+      },
+      "forwardedVerified": 4
+    },
+    "liveQuote": {
+      "status": "REJECTED_PRICE_IMPACT_INVALID",
+      "observedImpactBps": -6,
+      "freshLivePurchase": "NOT RUN",
+      "officialSignConvention": "NOT CONFIRMED"
+    },
+    "realMetaMaskRabby": "NOT TESTED",
+    "publicTransactions": 0
+  },
+  "changes": {
+    "trackedSourceModified": false,
+    "guardModified": false,
+    "merged": false,
+    "published": false
+  },
+  "commands": [
+    "npm run build --prefix packages/bag-sdk",
+    "node node_modules/typescript/bin/tsc --noEmit",
+    "node node_modules/vitest/vitest.mjs run packages/bag-sdk --maxWorkers=2 --fileParallelism=false --reporter=json --outputFile=<output>/sdk-tests.json",
+    "node spending-probe.mjs --sdk-repo <3f85a4c checkout> --out <output>/spending-probe.json",
+    "node composer/run.mjs --repo <e6bdd10 checkout> --sdk <3f85a4c checkout>/packages/bag-sdk --mode replay --out <output>/replay-126-03",
+    "node capture-composer-impact.mjs (workspace paths are explicit inside this read-only diagnostic)"
+  ],
+  "dependencyReuse": "Exact root and prototype lockfile hashes checked before reusing the earlier installations; no dependency changes."
+}
