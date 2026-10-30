@@ -10,7 +10,8 @@
     "build": "tsc -p tsconfig.json",
     "demo": "node dist/offline.js",
     "prepare": "node dist/cli.js prepare",
-    "verify": "node dist/cli.js verify"
+    "verify": "node dist/cli.js verify",
+    "sign": "node dist/local-sign.js"
   },
   "dependencies": {
     "@bagprotocol/sdk": "0.3.0",

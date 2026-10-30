@@ -63,6 +63,25 @@ The default local age limit is 30 seconds, including preparation latency. Approv
 
 Wallet callbacks request confirmation in the user's own wallet. Browser apps should obtain server-prepared unsigned intents; keep Composer keys and private RPC configuration on their host server. Node ESM/NodeNext is the verified starter target; the browser bridge does not claim bundler compatibility.
 
+## Live purchase with your own wallet (local page)
+
+`npm run sign -- <bag.json> <amountRaw> [port]` starts a page on `127.0.0.1` only and prints its URL with a session
+token. It uses the same environment as `prepare` plus `INPUT_TOKEN`, and optionally `QUOTE_MAX_AGE_MS` (default 60000)
+and `RECEIPT_EVIDENCE_MODE` (default `ROBINHOOD_NITRO_TRANSACTION_INDEX`). The Node process quotes, simulates, saves
+the reviewed intent and verifies. The page only asks your browser wallet to send the exact approval and purchase
+transactions it returns. API keys and the RPC URL stay in the Node process. No private key is used.
+
+Steps on the page:
+1. Connect the wallet.
+2. Get a quote.
+3. Review the minimum each token must deliver to the wallet. The swap minimum is the default and the floor.
+4. Save the intent.
+5. Approve and buy. If the quote expires after the approval, get a new quote; the approval stays.
+6. Verify with the SDK after a few blocks.
+
+The intent, its hash, the transaction hash (written before any receipt is read) and a `VERIFIED` result go to
+`live-purchases/`. One purchase per run; the page refuses to send a second.
+
 ## Verify a submitted purchase
 
 Set RPC_URL and explicitly choose RECEIPT_EVIDENCE_MODE when needed. The default SINGLE_TRANSACTION_BLOCK reader refuses busy blocks. Geth/Nitro modes require the SDK's qualified client semantics and chain checks; there is no event-only fallback.
