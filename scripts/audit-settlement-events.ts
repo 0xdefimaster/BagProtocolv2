@@ -48,6 +48,11 @@ async function main() {
   const chunk = BigInt(arg('chunk') ?? '10000');
   const graceSec = Number(arg('grace-sec') ?? '3600');
   if (!isSupabaseConfigured()) fail('Supabase is not configured (NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY).');
+  // Fail before a long chain scan when the database cannot answer: settlement_plan comes from migration 0053.
+  const probe = await supabaseAdmin().from('redeem_intents').select('id').not('settlement_plan', 'is', null).limit(1);
+  if (probe.error) {
+    fail(`Database check failed: ${probe.error.message}. Is NEXT_PUBLIC_SUPABASE_URL the production project, with migration 0053 applied?`);
+  }
 
   // --public-rpc ignores ROBINHOOD_RPC_URL / RPC_URL_ROBINHOOD: a quick check of whether the configured provider is
   // the one rejecting a request.
@@ -104,6 +109,10 @@ async function main() {
     start = end + BigInt(1);
   }
 
+  if (events.length === 0) {
+    console.log(`Settlement ${address}: blocks ${fromBlock}–${latest}, 0 Settled events: nothing to reconcile.`);
+    process.exit(0);
+  }
   const earliest = events.length ? Math.min(...events.map((e) => e.blockTimestampSec)) : Math.floor(Date.now() / 1000);
   // Intents are created before their settlement: start the lookup a day earlier than the first event.
   const intents = await listSettlementIntentsSince(supabaseAdmin(), new Date((earliest - 86400) * 1000).toISOString());
