@@ -1,0 +1,110 @@
+/**
+ * Writes contracts/test/vectors/basket-settlement-v1.json: the shared test vectors for BagSettlementRouter's
+ * message hashing (contracts/settlement/BasketTypes.sol ↔ lib/domain/settlement/basket-types.ts).
+ *
+ *   npx tsx scripts/generate-basket-vectors.ts
+ *
+ * Deterministic: the signer key is keccak256 of a fixed label (a throwaway test key, derived here so no key text is
+ * stored), and ECDSA signatures are RFC 6979. Re-running must produce the same file; both test suites check it.
+ */
+import { writeFileSync } from 'node:fs';
+import { keccak256, toHex, type Address, type Hex } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import {
+  domainSeparator, hashIntent, hashSellIntent, holdingsHash, intentDigest, minOutFromPriceLimit, planHash,
+  priceLimitsHash, sellDigest, settlementDomain, SETTLEMENT_TYPES, splitByWeight,
+  type BasketIntent, type ExecutionPlan, type SellIntent,
+} from '../lib/domain/settlement/basket-types';
+
+export const VECTOR_SIGNER_LABEL = 'bag-settlement-vectors-v1-signer';
+const account = privateKeyToAccount(keccak256(toHex(VECTOR_SIGNER_LABEL)));
+const h = (label: string): Hex => keccak256(toHex(label));
+const ROUTER: Address = '0xb46b46b46b46b46b46b46b46b46b46b46b46b46b';
+const USDG: Address = '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168';
+const TSLA: Address = '0x322f0929c4625ed5bad873c95208d54e1c003b2d';
+const NVDA: Address = '0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec';
+const ADAPTER: Address = '0xada0000000000000000000000000000000000001';
+const MAX64 = BigInt('0xffffffffffffffff');
+const MAX256 = BigInt(2) ** BigInt(256) - BigInt(1);
+
+// Raw USDG per raw asset × 1e18: about 1% above the prices of the 2026-10-30 live purchase (TSLA ~393.6, NVDA ~208.4 USDG).
+const limits = [BigInt('397600000'), BigInt('210500000')];
+const intents: { name: string; intent: BasketIntent }[] = [
+  { name: 'typical', intent: {
+    payer: account.address, recipient: account.address, strategyId: h('strategy:feetest'), strategyVersion: 1,
+    definitionHash: '0x089fc9ba2754f4180658c5f809986e606f8ec63d55430e3ab33da2046210a4fa', compositionHash: h('composition:feetest:v1'),
+    inputToken: USDG, maxInput: BigInt(3_000_000), priceLimitsHash: priceLimitsHash(limits),
+    maxIntegratorFeeBps: 30, maxProtocolFeeBps: 10, nonce: BigInt(1), deadline: BigInt(1_800_000_000),
+  } },
+  { name: 'extremes', intent: {
+    payer: account.address, recipient: '0x000000000000000000000000000000000000dead', strategyId: h('strategy:max'),
+    strategyVersion: 4_294_967_295, definitionHash: h('definition:max'), compositionHash: h('composition:max'),
+    inputToken: USDG, maxInput: MAX256, priceLimitsHash: priceLimitsHash([MAX256]),
+    maxIntegratorFeeBps: 65_535, maxProtocolFeeBps: 0, nonce: MAX256, deadline: MAX64,
+  } },
+];
+const sells: { name: string; intent: SellIntent }[] = [
+  { name: 'typical', intent: {
+    seller: account.address, recipient: account.address, strategyId: h('strategy:feetest'), strategyVersion: 1,
+    holdingsHash: holdingsHash([TSLA, NVDA], [BigInt('3795634691032666'), BigInt('7169079509197212')]),
+    outputToken: USDG, minGrossOutput: BigInt(2_900_000), nonce: BigInt(2), deadline: BigInt(1_800_000_000),
+  } },
+];
+const plan: ExecutionPlan = {
+  intentHash: hashIntent(intents[0].intent), expiry: BigInt(1_799_999_000), inputAmount: BigInt(3_000_000),
+  integratorFeeRecipient: '0x000000000000000000000000000000000000fee0', integratorFee: BigInt(9_000), protocolFee: BigInt(3_000),
+  legs: [
+    { tokenOut: TSLA, amountIn: BigInt(1_494_000), minOut: minOutFromPriceLimit(BigInt(1_494_000), limits[0]), adapter: ADAPTER, adapterData: '0x0000000000000000000000000000000000000000000000000000000000000bb8' },
+    { tokenOut: NVDA, amountIn: BigInt(1_494_000), minOut: minOutFromPriceLimit(BigInt(1_494_000), limits[1]), adapter: ADAPTER, adapterData: '0x00000000000000000000000000000000000000000000000000000000000001f4' },
+  ],
+};
+const splits: { amount: bigint; weightsBps: number[] }[] = [
+  { amount: BigInt(2_988_000), weightsBps: [5000, 5000] },
+  { amount: BigInt(1), weightsBps: [5000, 5000] },
+  { amount: BigInt(10), weightsBps: [3333, 3333, 3334] },
+  { amount: BigInt(7), weightsBps: [2500, 2500, 2500, 2500] },
+  { amount: BigInt(999_999), weightsBps: [1, 9999] },
+  { amount: BigInt(123_456_789), weightsBps: [700, 1300, 2000, 3000, 3000] },
+  { amount: MAX256 / BigInt(10_000), weightsBps: [6000, 4000] },
+];
+const minOuts = [
+  { amountIn: BigInt(1_494_000), maxPriceX18: limits[0] },
+  { amountIn: BigInt(1), maxPriceX18: MAX256 },
+  { amountIn: MAX256 / BigInt(10) ** BigInt(18), maxPriceX18: BigInt(1) },
+];
+
+const s = (v: bigint) => v.toString();
+const str = <T extends object>(o: T) => JSON.parse(JSON.stringify(o, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)));
+
+async function main() {
+  const domains = [{ chainId: 4663, router: ROUTER }, { chainId: 8453, router: ROUTER }];
+  const out = {
+    format: 'bag-settlement-vectors/v1',
+    note: 'Generated by scripts/generate-basket-vectors.ts. Checked by contracts/test/BasketTypes.test.ts and lib/domain/settlement/__tests__/basket-types.test.ts.',
+    signerLabel: VECTOR_SIGNER_LABEL,
+    signer: account.address,
+    types: SETTLEMENT_TYPES,
+    domains: domains.map((d) => ({ ...d, separator: domainSeparator(d.chainId, d.router) })),
+    intents: await Promise.all(intents.map(async ({ name, intent }) => ({
+      name, intent: str(intent), structHash: hashIntent(intent),
+      byDomain: await Promise.all(domains.map(async (d) => ({
+        chainId: d.chainId, digest: intentDigest(intent, d.chainId, d.router),
+        signature: await account.signTypedData({ domain: settlementDomain(d.chainId, d.router), types: SETTLEMENT_TYPES, primaryType: 'BasketIntent', message: intent }),
+      }))),
+    }))),
+    sellIntents: await Promise.all(sells.map(async ({ name, intent }) => ({
+      name, intent: str(intent), structHash: hashSellIntent(intent),
+      digest: sellDigest(intent, 4663, ROUTER),
+      signature: await account.signTypedData({ domain: settlementDomain(4663, ROUTER), types: SETTLEMENT_TYPES, primaryType: 'SellIntent', message: intent }),
+    }))),
+    priceLimits: [{ maxPriceX18: limits.map(s), hash: priceLimitsHash(limits) }, { maxPriceX18: [], hash: priceLimitsHash([]) }],
+    holdings: [{ tokens: [TSLA, NVDA], amounts: ['3795634691032666', '7169079509197212'], hash: sells[0].intent.holdingsHash }],
+    plans: [{ name: 'two-legs', plan: str(plan), hash: planHash(plan) }],
+    minOut: minOuts.map((m) => ({ amountIn: s(m.amountIn), maxPriceX18: s(m.maxPriceX18), minOut: s(minOutFromPriceLimit(m.amountIn, m.maxPriceX18)) })),
+    splits: splits.map((x) => ({ amount: s(x.amount), weightsBps: x.weightsBps, parts: splitByWeight(x.amount, x.weightsBps).map(s) })),
+  };
+  writeFileSync(new URL('../contracts/test/vectors/basket-settlement-v1.json', import.meta.url), JSON.stringify(out, null, 2) + '\n');
+  console.log('wrote contracts/test/vectors/basket-settlement-v1.json');
+}
+
+main();

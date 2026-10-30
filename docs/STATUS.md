@@ -126,7 +126,7 @@ prove behavior against a local chain, never against Robinhood Chain.
 | `docs/archive/INVENTORY_*.md`, `docs/archive/CHANGES_SUMMARY.md`, `docs/archive/COWBOY_COLLECTION.md` | HISTORICAL | Inventory / Forge cosmetics, removed from the app |
 | `docs/BAGVAULT_DESIGN.md` | NOT IMPLEMENTED | Design only; no `BagVault.sol` |
 | `docs/BAG_SETTLER_DESIGN.md` | NOT IMPLEMENTED | Earlier proposal; its leg model is superseded by `BAG_SETTLEMENT_ARCHITECTURE.md` |
-| `docs/BAG_SETTLEMENT_ARCHITECTURE.md` | NOT IMPLEMENTED | Intent / plan / router / adapter design; no contract |
+| `docs/BAG_SETTLEMENT_ARCHITECTURE.md` | G1 IN CODE, router NOT IMPLEMENTED | Message types, hashing, target split, adapter interface and `BasketSettled` schema in `contracts/settlement/` + `lib/domain/settlement/`, shared vectors tested in Solidity and TypeScript; no router or adapter, nothing deployed |
 | `docs/ADAPTER_INTERFACE.md` | NOT IMPLEMENTED | Adapter contract and invariants; no contract |
 | `docs/STRATEGY_COMPOSITIONS_DESIGN.md` | CURRENT | Contract + registration step merged (#74); not deployed, migration 0060 not run |
 | `docs/DECISIONS_PRODUCTION_BACKLOG.md` | NOT IMPLEMENTED | Decided, not built (ADR-1..3) |
