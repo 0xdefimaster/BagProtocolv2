@@ -440,3 +440,21 @@ export async function recordRedeemSettlementResult(admin: SupabaseClient, id: st
     .maybeSingle();
   if (error) throw new Error(error.message);
 }
+
+/** Every intent that reached the settlement path (has a settlement plan), created at or after `sinceIso`, oldest first. */
+export async function listSettlementIntentsSince(admin: SupabaseClient, sinceIso: string, pageSize = 500): Promise<RedeemIntent[]> {
+  const out: RedeemIntent[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await admin
+      .from('redeem_intents')
+      .select()
+      .not('settlement_plan', 'is', null)
+      .gte('created_at', sinceIso)
+      .order('created_at', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as RedeemIntentRow[];
+    out.push(...rows.map(fromRow));
+    if (rows.length < pageSize) return out;
+  }
+}

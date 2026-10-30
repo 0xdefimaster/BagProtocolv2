@@ -46,7 +46,7 @@ project and Netlify site from the V1 demo.
 | Execution path used | **Legacy purchase path** (`BAG_EXECUTION_COMPILER_ENABLED` not set: the purchase receipt carries no execution-plan hash). The provider compiler is CURRENT code but not enabled live. |
 | `BagExecutionRouter` (BAG Router) | **Not deployed.** See §3 before enabling. |
 | `RedeemFeeRouter` / fee-taking redemptions | Not exercised live (the live Bag has no fee). |
-| `RedeemSettlement` (fee settlement, §10 of the Composer settlement doc) | **Live**: `0x934a3f266e68DfbFF8eD4F02AA393a36048170a0`. First real sale (AMKR + SPY → USDG, tx `0x7550ac9d…9d3d`) settled through it and reconciled chain ↔ `Settled` ↔ ledger (`docs/REDEEM_SETTLEMENT_DEPLOYMENT.md` §5a). Fee was 0 (no gain); a fee > 0 sale not yet run live. |
+| `RedeemSettlement` (fee settlement, §10 of the Composer settlement doc) | **Live**: version 2 `0x3eCD734eb53370c2795DB6Ca3CB2B1de0BEdF8A3` (configured; replaced version 1 `0x934a3f266e68DfbFF8eD4F02AA393a36048170a0`). First real sale (AMKR + SPY → USDG, tx `0x7550ac9d…9d3d`) settled through version 1 and reconciled chain ↔ `Settled` ↔ ledger (`docs/REDEEM_SETTLEMENT_DEPLOYMENT.md` §5a). Fee was 0 (no gain); a fee > 0 sale not yet run live. |
 | `StrategyRegistry` | Deployed since; see §0. (On 2026-10-05: registration and third-party verification proven only on a local EVM.) |
 | Price authority (Robinhood `/rhj/prices` × multiplier, Chainlink cross-check, LI.FI crypto prices) | Prices were served live (Bag TVL shown); the authority's guard checks have **not** been verified against live data (`docs/ROBINHOOD_PRICE_AUTHORITY.md`). |
 
