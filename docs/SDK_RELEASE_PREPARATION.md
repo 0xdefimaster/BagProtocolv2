@@ -1,8 +1,19 @@
 # SDK release preparation
 
-Candidate: @bagprotocol/sdk 0.3.0. Status: preparation complete when candidate checks pass; publication is gated separately.
+Candidate: @bagprotocol/sdk 0.3.0. Status: **published 2026-10-30** (below).
 
 ## Published package observation
+
+**0.3.0 published 2026-10-30** by the maintainer (`npm publish`, web authentication). Registry read back the same day:
+
+| Field | Value |
+|---|---|
+| `latest` | `0.3.0` |
+| `gitHead` | `e1a8ed4cc943b4eedfefc68c88ed8db116856d53`, the commit whose `release:check` reported `releaseReady: true` |
+| `dist.integrity` | `sha512-3CYDWoOmjZZcM3fkMjbQGYKXLp3nHRpWsVY8g0psixuIEwXjdwQC6oouFkgR4t4DXka8/vpKncY2aDsjQ5CBgw==`, identical to the candidate tarball |
+| `dist.shasum` | `ba4abf216bff64a6ef400d1158b52aa379fee05c` |
+
+Earlier observation (before 0.3.0):
 
 The public npm registry was queried on 2026-10-22. latest is 0.2.1, published 2026-10-20, with gitHead 545dd77c073f8c5ac0df040a6fc0753097fc58ff and integrity sha512-7KFGgcFzv0NlypJyx3Tk1wC+6u+X8gconJHQ+iy9wW4NcuWVqXCK484PyjsN/xTByMuWwGfkFuwihKFUjEzGUg==.
 
