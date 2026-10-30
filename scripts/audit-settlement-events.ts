@@ -6,6 +6,7 @@
  *   npx tsx scripts/audit-settlement-events.ts --from-block=87108715   # explicit start
  *   npx tsx scripts/audit-settlement-events.ts --address=0x… --chunk=5000 --grace-sec=3600
  *   npx tsx scripts/audit-settlement-events.ts --public-rpc                          # ignore the configured RPC URL
+ *   npx tsx scripts/audit-settlement-events.ts --chain-only                          # list events, no database
  *
  * Each event is BOOKED, PENDING (recent, verification may still run), UNBOOKED (ran on chain, never booked from that
  * transaction), USER_MISMATCH or UNKNOWN_REDEMPTION. No key, no transaction, no database write.
@@ -47,11 +48,15 @@ async function main() {
   const fromBlock = fromArg ? BigInt(fromArg) : DEPLOY_BLOCKS[address] ?? fail('Unknown deploy block for this address: pass --from-block.');
   const chunk = BigInt(arg('chunk') ?? '10000');
   const graceSec = Number(arg('grace-sec') ?? '3600');
-  if (!isSupabaseConfigured()) fail('Supabase is not configured (NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY).');
-  // Fail before a long chain scan when the database cannot answer: settlement_plan comes from migration 0053.
-  const probe = await supabaseAdmin().from('redeem_intents').select('id').not('settlement_plan', 'is', null).limit(1);
-  if (probe.error) {
-    fail(`Database check failed: ${probe.error.message}. Is NEXT_PUBLIC_SUPABASE_URL the production project, with migration 0053 applied?`);
+  // --chain-only lists the events without reading the database (no reconciliation).
+  const chainOnly = process.argv.includes('--chain-only');
+  if (!chainOnly) {
+    if (!isSupabaseConfigured()) fail('Supabase is not configured (NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY), or pass --chain-only.');
+    // Fail before a long chain scan when the database cannot answer: settlement_plan comes from migration 0053.
+    const probe = await supabaseAdmin().from('redeem_intents').select('id').not('settlement_plan', 'is', null).limit(1);
+    if (probe.error) {
+      fail(`Database check failed: ${probe.error.message}. Is NEXT_PUBLIC_SUPABASE_URL the production project, with migration 0053 applied? (--chain-only skips the database.)`);
+    }
   }
 
   // --public-rpc ignores ROBINHOOD_RPC_URL / RPC_URL_ROBINHOOD: a quick check of whether the configured provider is
@@ -111,6 +116,13 @@ async function main() {
 
   if (events.length === 0) {
     console.log(`Settlement ${address}: blocks ${fromBlock}–${latest}, 0 Settled events: nothing to reconcile.`);
+    process.exit(0);
+  }
+  if (chainOnly) {
+    console.log(`Settlement ${address}: blocks ${fromBlock}–${latest}, ${events.length} Settled event(s) (not reconciled: --chain-only)`);
+    for (const e of events) {
+      console.log(`  ${new Date(e.blockTimestampSec * 1000).toISOString()} tx ${e.txHash} user ${e.user} redemption ${e.redemptionId} received ${e.received} fee ${e.fee}`);
+    }
     process.exit(0);
   }
   const earliest = events.length ? Math.min(...events.map((e) => e.blockTimestampSec)) : Math.floor(Date.now() / 1000);
