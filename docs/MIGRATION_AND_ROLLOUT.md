@@ -40,6 +40,12 @@ Each phase starts only when the previous gate holds.
   receipt schema.
 - Test vectors (hashes and signatures) shared by Solidity and the SDK.
 - Required: `SOURCE_CONFIRMED`, vectors passing in both.
+- **Status (2026-10-30): in code, pending review.**
+  - Types and hashing: `contracts/settlement/BasketTypes.sol` with `lib/domain/settlement/basket-types.ts`.
+  - Interfaces: `IBasketAdapter.sol` and `IBagSettlementRouter.sol` (event and external surface).
+  - Vectors: `contracts/test/vectors/basket-settlement-v1.json`, from `scripts/generate-basket-vectors.ts`. They pass
+    in Hardhat (`contracts/test/BasketTypes.test.ts`) and in vitest.
+  - The SDK package itself gets the TypeScript side when the router ships (G4).
 
 **G2 — contracts.**
 - Router plus `UniswapV3ExactInAdapter`:

@@ -1,6 +1,9 @@
 # BAG settlement architecture
 
-Status: **NOT IMPLEMENTED: design.** No contract here is written, audited or deployed. Supersedes the leg model of
+Status: **G1 (specification) in code; router NOT IMPLEMENTED.** The message types, hashing, target split, adapter
+interface and receipt event are in `contracts/settlement/` and `lib/domain/settlement/basket-types.ts`, pinned by the
+shared vectors in `contracts/test/vectors/basket-settlement-v1.json` (both sides tested). The router and adapters are
+not written, audited or deployed. Supersedes the leg model of
 `docs/BAG_SETTLER_DESIGN.md`: legs are typed adapter calls, never arbitrary `target` + calldata. The rest of that
 document (wallet paths, launch chains, rejected alternatives) still applies. Adapter contract: `docs/ADAPTER_INTERFACE.md`.
 Rollout and gates: `docs/MIGRATION_AND_ROLLOUT.md`.
@@ -171,7 +174,21 @@ hash per chain.
 
 **Sale direction.**
 - A `SellIntent` names the holdings sold (tokens, exact amounts), the output token, the minimum gross output, the
-  recipient, nonce and deadline.
+  recipient, nonce and deadline:
+
+  ```solidity
+  struct SellIntent {
+      address seller;
+      address recipient;
+      bytes32 strategyId;
+      uint32  strategyVersion;
+      bytes32 holdingsHash;      // keccak256(abi.encode(address[] tokens, uint256[] amounts))
+      address outputToken;
+      uint256 minGrossOutput;
+      uint256 nonce;             // same unordered bitmap as BasketIntent
+      uint64  deadline;
+  }
+  ```
 - The router pulls the holdings, swaps them through the same adapters, and measures the gross output as its own
   balance delta.
 - The performance fee is computed from that measurement and the attested cost basis / loss carry (fee semantics
