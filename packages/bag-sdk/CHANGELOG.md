@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 — unreleased candidate
+## 0.3.0 — 2026-10-30
 
 This candidate contains changes after the npm 0.2.1 publication. bag.json v1 definition, normalization, hash domain and allocation semantics remain frozen.
 
@@ -26,7 +26,12 @@ This candidate contains changes after the npm 0.2.1 publication. bag.json v1 def
 - fetchBag now has a default 15-second request/body deadline; callers can set timeoutMs and AbortSignal.
 - `quote.priceImpactBps` can be negative for LI.FI Composer quotes. `maxPriceImpactBps` applies in both directions (`|impactBps| ≤ maxPriceImpactBps`); a larger favorable gap fails with PRICE_IMPACT_EXCEEDED.
 
-Production factory policy confirmation, final deployment approval and a newly signed purchase verified against its ORIGINAL intent remain release gates. This changelog does not claim live purchase proof or npm publication.
+Release gates closed on 2026-10-30:
+- the production factory policy was confirmed;
+- the Robinhood deployment pin was approved;
+- a live signed purchase was VERIFIED against its original intent (Robinhood Chain, tx `0xec6df6cf…0209`; `docs/SDK_RELEASE_PREPARATION.md`).
+
+Purchase receipt verification is qualified on Robinhood Chain only (README, Chain support).
 
 ## 0.2.1 — published 2026-10-20
 

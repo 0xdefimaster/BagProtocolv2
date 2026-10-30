@@ -16,7 +16,25 @@ It needs no BAG frontend, server or database.
   - `@bagprotocol/sdk/lifi`: `lifiComposer({ apiKey, baseUrl })`, a routing provider for quote/compile (optional peer `@lifi/composer-sdk` `>=0.11.0 <0.12.0`, tested with 0.11.3: `COMPOSER_SDK_COMPAT`).
   - Other sources (a local file, IPFS, wallet storage, a registry `uri`) end in the same `parseBag(text)`.
 - Network access only through what you pass in (a `fetch`, a viem client).
-- Public npm `latest` observed on 2026-10-22: [`@bagprotocol/sdk@0.2.1`](https://www.npmjs.com/package/@bagprotocol/sdk/v/0.2.1). Source release candidate: **0.3.0, not published**. The candidate includes later main-branch and SDK preparation work. The package is MIT-licensed; `bag.json` v1 semantics are frozen.
+- This README describes **0.3.0** (release record: [SDK release preparation](../../docs/SDK_RELEASE_PREPARATION.md)). The package is MIT-licensed; `bag.json` v1 semantics are frozen.
+
+## Chain support
+
+| Capability | Ethereum | Base | Arbitrum | Robinhood Chain |
+|---|---|---|---|---|
+| bag.json parse, validate, normalize, hash | ✅ | ✅ | ✅ | ✅ |
+| StrategyRegistry verification | No registry deployment | No registry deployment | No registry deployment | ✅ |
+| Purchase compile (LI.FI Composer) | Not tested; needs a reviewed deployment pin | Not tested; needs a reviewed deployment pin | Not tested; needs a reviewed deployment pin | ✅ live (pin: `docs/SDK_DEPLOYMENT_PIN_ROBINHOOD.md`) |
+| Purchase receipt `VERIFIED` | Not qualified | Not qualified | Not qualified | ✅ live, with a tracing RPC on the qualified Nitro build |
+
+The core is chain-agnostic across these EVM chains. Execution and receipt evidence are added chain by chain:
+1. A reviewed Composer deployment pin.
+2. A qualified balance reader for that chain's node software.
+3. A StrategyRegistry deployment.
+4. A live `VERIFIED` purchase.
+
+Until a chain has all four, results there are refused or `INDETERMINATE`, never silently accepted. Non-EVM chains
+(Solana) are not supported.
 
 ## JSON Schema
 
@@ -711,7 +729,7 @@ npm pack --dry-run  # what a tarball would contain: dist/, README.md, package.js
 npm run smoke:consumer  # packs, installs the tarball in a fresh temp project, imports every entry point, typechecks a TS consumer
 ```
 
-Node >=24 is the declared runtime baseline. The current **0.3.0 candidate is not published**; npm latest was observed as 0.2.1 on 2026-10-22. See [CHANGELOG](./CHANGELOG.md) and [release preparation](../../docs/SDK_RELEASE_PREPARATION.md) for compatibility evidence and open publication gates. Run `npm run release:check --prefix packages/bag-sdk -- --out <absolute-new-directory>` to build, verify fresh consumers and pack a reviewable candidate without publishing. A passing candidate check does not approve a factory, establish live purchase proof or authorize publication.
+Node >=24 is the declared runtime baseline. See [CHANGELOG](./CHANGELOG.md) and [release preparation](../../docs/SDK_RELEASE_PREPARATION.md) for compatibility evidence and the release gates. Run `npm run release:check --prefix packages/bag-sdk -- --out <absolute-new-directory>` to build, verify fresh consumers and pack a reviewable candidate without publishing. A passing candidate check does not approve a factory, establish live purchase proof or authorize publication.
 
 ## v1 freeze
 
