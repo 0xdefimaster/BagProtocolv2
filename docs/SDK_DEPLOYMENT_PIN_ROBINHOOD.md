@@ -1,7 +1,7 @@
 # SDK deployment pin: LI.FI Composer on Robinhood Chain
 
-Review note for release gate 2 (`packages/bag-sdk/release-gates.json` → `deploymentPinApproved`). The gate stays
-`false` until the maintainer has run the check below and signed the approval section.
+Review note for release gate 2 (`packages/bag-sdk/release-gates.json` → `deploymentPinApproved`). Approved by the
+maintainer on 2026-10-30 after the re-check below (approval section).
 
 ## The pin
 
@@ -56,13 +56,13 @@ npx tsx -e 'import(`viem`).then(async ({createPublicClient,http,keccak256})=>{co
 Expected:
 - `chain 4663`;
 - factory keccak `0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5`;
-- VM 1.2 keccak: record the value printed (it has not been recorded before).
+- VM 1.2 keccak `0x0d0f2d31c4ab65c4b5da60e68efc4d394891881f822943f60ae3c1266519bfb7` (recorded 2026-10-30).
 
 ## Approval
 
 | Field | Value |
 |---|---|
-| Re-check run (date, block) | NOT_YET_RECORDED |
-| Factory keccak matched the pin | NOT_YET_RECORDED |
-| VM 1.2 keccak | NOT_YET_RECORDED |
-| Approved by the maintainer | NO |
+| Re-check run (date, block) | 2026-10-30, Robinhood Chain (4663) block 101381451, public RPC, run by the maintainer |
+| Factory keccak matched the pin | YES: `0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5` |
+| VM 1.2 keccak | `0x0d0f2d31c4ab65c4b5da60e68efc4d394891881f822943f60ae3c1266519bfb7` |
+| Approved by the maintainer | YES, 2026-10-30. A later factory change needs a new review; the pin can be replaced in a patch release. |
