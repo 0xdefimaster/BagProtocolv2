@@ -1,8 +1,7 @@
 # DCA v1: typed-adapter executor, SDK verifier, keeper
 
-Status: **code and local/integration tests only.** Not deployed, not audited, never run against Robinhood Chain
-mainnet. The Robinhood fork test exists but has not been run (it needs `ROBINHOOD_MAINNET_RPC_URL`). The keeper has
-no live mode.
+Status: **code, local/integration tests and one Robinhood fork run.** Not deployed, not audited, nothing sent to
+Robinhood Chain mainnet. The keeper has no live mode.
 
 ## 1. What a user does
 
@@ -106,10 +105,18 @@ the earliest next run by that much. The keeper stops sending `inclusionSlackSeco
 |---|---|---|
 | LOCAL | Hardhat in-process EVM, real BagFactory/Bag/StrategyRegistry code, mock Uniswap and hostile tokens | run, passing |
 | INTEGRATION | keeper store against a real local PostgreSQL 16 | run, passing |
-| FORK | `contracts/test/fork/BagDcaExecutor.fork.test.ts`: real USDG/TSLA/NVDA, SwapRouter02, v3 factory, QuoterV2, StrategyRegistry on a Robinhood fork (BagFactory deployed on the fork) | written, **not run** |
+| FORK | `contracts/test/fork/BagDcaExecutor.fork.test.ts`: real USDG/TSLA/NVDA, SwapRouter02, v3 factory, QuoterV2, StrategyRegistry on a Robinhood fork (BagFactory deployed on the fork) | **run once, passing** (2026-11-02, see below) |
 | MAINNET | — | none; out of scope |
 
-Run the fork test where the RPC is reachable:
+Fork run, 2026-11-02 (maintainer's machine, QuickNode Robinhood RPC, commit `12561ea`, latest block at run time; the
+block number was not pinned or recorded): `1 passing` in 317 s. Run 1 of 10 USDG bought NVDA +24674165895231619 and
+TSLA +12369447494712936 raw (≈ 202.6 and ≈ 404.2 USDG per token), both through the 0.05 % tier QuoterV2 picked, gas
+610178; `verifyDcaReceipt` returned VERIFIED with the executor code hash; a second run in the same window reverted
+`NotDue`; the next day's run passed; a run with TSLA's ceiling at half the market reverted (`Too little received`)
+with no balance or counter change. The transaction hash `0x9783767d…eb6f3` exists only on the local fork. Evidence
+class: TEST_KEY_FORK (Hardhat test accounts, impersonated pool for USDG funding), not a mainnet transaction.
+
+Run the fork test where the RPC is reachable (`ROBINHOOD_FORK_BLOCK` pins a block so re-runs use Hardhat's disk cache):
 
 ```bash
 ROBINHOOD_MAINNET_RPC_URL=<rpc> npx hardhat test nodejs contracts/test/fork/BagDcaExecutor.fork.test.ts
@@ -117,7 +124,9 @@ ROBINHOOD_MAINNET_RPC_URL=<rpc> npx hardhat test nodejs contracts/test/fork/BagD
 
 ## 8. Before any deployment (not done)
 
-1. Run the fork test and a fork soak of the keeper (`npx hardhat node --fork <rpc>`, worker in FORK mode).
+1. Fork test: done once (above). Still open: a pinned-block re-run for a reproducible record, a fork run against the
+   real deployed BagFactory and real BAGs, and a fork soak of the keeper (`npx hardhat node --fork <rpc>`, worker in
+   FORK mode).
 2. Independent audit of `contracts/dca/*` (no audit has been done).
 3. Decide the BagFactory and StrategyRegistry addresses from deployment records (main has no verified BagFactory
    address record) and the `chainLabel` (`robinhood`).
