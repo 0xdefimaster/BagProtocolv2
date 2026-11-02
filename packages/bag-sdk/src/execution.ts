@@ -83,6 +83,21 @@ export function markSignedUsdPriceImpactProvider<T extends ComposerProvider>(pro
  */
 export const SIGNED_PRICE_IMPACT_TOLERANCE_BPS = 1;
 
+/** Logged once per output token by a delivery-proof program: `BagDelivered(token, recipient, before, after)`. */
+export const DELIVERY_PROOF_SIGNATURE = 'BagDelivered(address,address,uint256,uint256)';
+
+/**
+ * The program measures and logs each output's delivery (lifiComposer `deliveryProof`). The log is emitted by the
+ * executor; verifyPurchaseReceipt's 'DELIVERY_LOG' mode reads it instead of historical balance state.
+ */
+export interface DeliveryProof {
+  signature: typeof DELIVERY_PROOF_SIGNATURE;
+  /** The signer: every output is transferred to it before the second balance read. */
+  recipient: string;
+  /** Output tokens in leg order. */
+  tokens: string[];
+}
+
 /** A provider's compiled purchase, normalized. `null` = the provider did not report it (never guessed). */
 export interface ComposerCompileResult {
   transaction: { to: string; data: string; value: string; chainId: number | null };
@@ -103,6 +118,8 @@ export interface ComposerCompileResult {
   validUntilMs?: number | null;
   /** Optional for existing custom providers; no provider-specific objects are passed through. */
   warnings?: ProviderWarning[];
+  /** Present when the program logs its own measured delivery. */
+  deliveryProof?: DeliveryProof | null;
 }
 
 export interface ComposerProvider {
@@ -155,6 +172,8 @@ export interface CompiledPurchase {
   transaction: { to: Hex; data: Hex; value: bigint; chainId: number };
   approvals: { token: Hex; spender: Hex; amountRaw: bigint }[];
   executor: string | null;
+  /** Absent or null: the program carries no delivery log (verify with balance evidence). */
+  deliveryProof?: DeliveryProof | null;
 }
 
 export class ProviderResponseError extends BagSdkError {
@@ -323,11 +342,25 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
     return warning;
   });
 
+  let deliveryProof: DeliveryProof | null = null;
+  if (r.deliveryProof != null) {
+    const d = r.deliveryProof;
+    // The verifier trusts the log only from the executor that ran the program for this signer and these legs.
+    if (d.signature !== DELIVERY_PROOF_SIGNATURE || typeof d.recipient !== 'string' || d.recipient.toLowerCase() !== plan.signer ||
+        !Array.isArray(d.tokens) || d.tokens.length !== plan.legs.length ||
+        d.tokens.some((t, i) => typeof t !== 'string' || t.toLowerCase() !== plan.legs[i].token) ||
+        typeof r.executor !== 'string' || !ADDRESS_RE.test(r.executor)) {
+      fail('delivery proof does not match the plan, its signer or an executor address.', 'OUTPUT_INVALID');
+    }
+    deliveryProof = { signature: DELIVERY_PROOF_SIGNATURE, recipient: plan.signer, tokens: plan.legs.map(l => l.token) };
+  }
+
   return {
     quote: { plan, provider, legs, priceImpactBps, priceImpactUsd, fees, gasLimit: r.gasLimit, requestedAtMs, receivedAtMs, validUntilMs, warnings },
     transaction: { to: tx.to as Hex, data: tx.data as Hex, value, chainId: plan.chainId },
     approvals,
     executor: r.executor,
+    ...(deliveryProof ? { deliveryProof } : {}),
   };
 }
 

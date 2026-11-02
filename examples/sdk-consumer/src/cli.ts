@@ -22,7 +22,8 @@ async function main() {
     const result = await preparePurchase({ bagText: await readFile(file, 'utf8'), inputToken: inputToken as Hex, amountRaw: BigInt(amountRaw), signer: signer as Hex,
       client: client as unknown as PlanningClient, apiKey: required('LIFI_API_KEY'), composerUrl: process.env.COMPOSER_URL ?? 'https://composer.li.quest',
       deployment: { chainId: await client.getChainId(), factory: required('COMPOSER_FACTORY') as Hex, factoryCodeHash: required('COMPOSER_FACTORY_CODE_HASH') as Hex },
-      registry: registryAddress && expectedCreator ? { address: registryAddress as Hex, expectedCreator: expectedCreator as Hex } : undefined });
+      registry: registryAddress && expectedCreator ? { address: registryAddress as Hex, expectedCreator: expectedCreator as Hex } : undefined,
+      deliveryProof: process.env.DELIVERY_PROOF === '1' });
     if (result.simulation.status !== 'OK' && result.simulation.status !== 'NEEDS_APPROVAL') throw new BagSdkError('INVALID_ARGUMENT', 'Simulation is not ready.');
     const minima = JSON.parse(await readFile(minimaFile, 'utf8')) as { token: Hex; amountRaw: string }[];
     const snapshot = createIntent(result.compiled, minima.map(item => ({ token: item.token, amountRaw: BigInt(item.amountRaw) })));
@@ -37,9 +38,12 @@ async function main() {
     const text = await readFile(file, 'utf8');
     restoreIntent(text, trustedHash as Hex);
     const mode = process.env.RECEIPT_EVIDENCE_MODE ?? 'SINGLE_TRANSACTION_BLOCK';
-    if (!['SINGLE_TRANSACTION_BLOCK', 'GETH_TRANSACTION_INDEX', 'ROBINHOOD_NITRO_TRANSACTION_INDEX'].includes(mode)) throw new BagSdkError('INVALID_ARGUMENT');
-    const evidence = withReceiptEvidence(client, { balanceState: mode as ReceiptEvidenceOptions['balanceState'] });
-    const result = await verifySubmitted({ snapshotText: text, trustedIntentHash: trustedHash as Hex, transactionHash: transactionHash as Hex, client: evidence });
+    if (!['SINGLE_TRANSACTION_BLOCK', 'GETH_TRANSACTION_INDEX', 'ROBINHOOD_NITRO_TRANSACTION_INDEX', 'DELIVERY_LOG'].includes(mode)) throw new BagSdkError('INVALID_ARGUMENT');
+    // DELIVERY_LOG reads the program's own BagDelivered logs (a purchase prepared with DELIVERY_PROOF=1); any RPC works.
+    const result = mode === 'DELIVERY_LOG'
+      ? await verifySubmitted({ snapshotText: text, trustedIntentHash: trustedHash as Hex, transactionHash: transactionHash as Hex, client, verification: 'DELIVERY_LOG' })
+      : await verifySubmitted({ snapshotText: text, trustedIntentHash: trustedHash as Hex, transactionHash: transactionHash as Hex,
+        client: withReceiptEvidence(client, { balanceState: mode as ReceiptEvidenceOptions['balanceState'] }) });
     console.log(json(result));
     if (result.status !== 'VERIFIED') process.exitCode = 1;
     return;

@@ -6,14 +6,17 @@
 //   node dist/local-sign.js <bag.json> <amountRaw> [port]
 //
 // Env: RPC_URL, LIFI_API_KEY, COMPOSER_FACTORY, COMPOSER_FACTORY_CODE_HASH, INPUT_TOKEN,
-// optional COMPOSER_URL, QUOTE_MAX_AGE_MS (default 60000), RECEIPT_EVIDENCE_MODE.
+// optional COMPOSER_URL, QUOTE_MAX_AGE_MS (default 60000), RECEIPT_EVIDENCE_MODE, DELIVERY_PROOF=1.
+// With DELIVERY_PROOF=1 the program logs each output's measured delivery and "Verify" reads those logs (any RPC);
+// a missing log is diagnosed by listing which contracts emitted BagDelivered in the receipt.
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { getSdkErrorInfo, simulateBag, type CompiledPurchase, type Hex } from '@bagprotocol/sdk';
+import { DELIVERY_PROOF_SIGNATURE, getSdkErrorInfo, simulateBag, type CompiledPurchase, type Hex } from '@bagprotocol/sdk';
 import { withReceiptEvidence, type ReceiptEvidenceOptions } from '@bagprotocol/sdk/evm';
-import { createPublicClient, encodeFunctionData, http } from 'viem';
+import { isComposeError } from '@lifi/composer-sdk';
+import { createPublicClient, encodeFunctionData, http, keccak256, stringToHex } from 'viem';
 import { createIntent, preparePurchase, restoreIntent, verifySubmitted, type PlanningClient } from './purchase.js';
 
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
@@ -21,6 +24,26 @@ const HASH = /^0x[0-9a-fA-F]{64}$/;
 const approveAbi = [{ type: 'function', name: 'approve', stateMutability: 'nonpayable',
   inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] }] as const;
 const json = (value: unknown) => JSON.stringify(value, (_key, item: unknown) => typeof item === 'bigint' ? item.toString() : item);
+
+/**
+ * Safe diagnostics for a failed request: Composer's typed error fields (kind, path, failed ops) and, for anything
+ * else, the error name and first line with URLs removed (an RPC or API URL can carry a key).
+ */
+function diagnose(error: unknown): Record<string, unknown> | null {
+  if (error instanceof LocalError) return null;
+  const scrub = (v: unknown) => (typeof v === 'string' ? v.replace(/https?:\/\/\S+/g, '<url>').split('\n')[0].slice(0, 500) : undefined);
+  if (isComposeError(error)) {
+    return {
+      composeCode: error.code, kind: error.kind, status: error.status, message: scrub(error.message),
+      path: error.path, port: error.port, fix: scrub(error.fix),
+      failedOps: error.failedOps?.map(o => ({ op: o.op, callId: o.callId, kind: o.kind, message: scrub(o.message), path: o.path, port: o.port, fix: scrub(o.fix) })),
+      succeededOps: error.succeededOps,
+      revert: error.details ? scrub(JSON.stringify(error.details)) : undefined,
+    };
+  }
+  const e = error as { name?: unknown; message?: unknown; code?: unknown };
+  return { name: scrub(e?.name), code: scrub(e?.code), message: scrub(e?.message) };
+}
 
 /** This file's own messages: no credentials or upstream text, so the page may show them as they are. */
 class LocalError extends Error {}
@@ -48,6 +71,7 @@ async function main() {
   if (!ADDRESS.test(inputToken)) throw new LocalError('INPUT_TOKEN is not an address.');
   const maxQuoteAgeMs = Number(process.env.QUOTE_MAX_AGE_MS ?? 60_000);
   const mode = process.env.RECEIPT_EVIDENCE_MODE ?? 'ROBINHOOD_NITRO_TRANSACTION_INDEX';
+  const deliveryProof = process.env.DELIVERY_PROOF === '1';
   const client = createPublicClient({ transport: http(required('RPC_URL'), { retryCount: 0, timeout: 30_000 }) });
   const chainId = await client.getChainId();
   const deployment = { chainId, factory: required('COMPOSER_FACTORY') as Hex, factoryCodeHash: required('COMPOSER_FACTORY_CODE_HASH') as Hex };
@@ -67,7 +91,7 @@ async function main() {
       const signer = body.signer;
       if (typeof signer !== 'string' || !ADDRESS.test(signer)) throw new LocalError('Invalid signer.');
       const result = await preparePurchase({ bagText, inputToken, amountRaw, signer: signer as Hex, client: client as unknown as PlanningClient,
-        deployment, apiKey, composerUrl, maxQuoteAgeMs });
+        deployment, apiKey, composerUrl, maxQuoteAgeMs, deliveryProof });
       if (result.simulation.status !== 'OK' && result.simulation.status !== 'NEEDS_APPROVAL') {
         throw new LocalError(`Simulation is not ready: ${result.simulation.status}.`);
       }
@@ -132,8 +156,16 @@ async function main() {
     async verify() {
       if (!session.intent || !session.purchaseHash) throw new LocalError('No purchase to verify.');
       const evidence = withReceiptEvidence(client, { balanceState: mode as ReceiptEvidenceOptions['balanceState'] });
+      const withProof = restoreIntent(session.intent.text, session.intent.hash).compiled.deliveryProof != null;
       const result = await verifySubmitted({ snapshotText: session.intent.text, trustedIntentHash: session.intent.hash,
-        transactionHash: session.purchaseHash, client: evidence });
+        transactionHash: session.purchaseHash, client: evidence, ...(withProof ? { verification: 'DELIVERY_LOG' as const } : {}) });
+      if (withProof && result.status !== 'VERIFIED') {
+        // Diagnose where BagDelivered logs came from (the executor is the expected emitter).
+        const receipt = await client.getTransactionReceipt({ hash: session.purchaseHash });
+        const disc = keccak256(stringToHex(DELIVERY_PROOF_SIGNATURE)).slice(2).toLowerCase();
+        const emitters = [...new Set(receipt.logs.filter(l => l.data.toLowerCase().includes(disc)).map(l => l.address.toLowerCase()))];
+        return { ...result, deliveryLogEmittersSeen: emitters };
+      }
       if (result.status === 'VERIFIED') {
         await writeFile(session.intent.file.replace(/\.intent\.json$/, '.verified.json'), JSON.stringify(JSON.parse(json(result)), null, 2) + '\n', { flag: 'wx' }).catch(() => undefined);
       }
@@ -168,7 +200,9 @@ async function main() {
       const body = raw ? JSON.parse(raw) as Record<string, unknown> : {};
       send(res, 200, json(await handlers[name](body)));
     } catch (error) {
-      send(res, 400, json({ error: error instanceof LocalError ? { code: 'LOCAL', message: error.message } : getSdkErrorInfo(error) }));
+      const detail = diagnose(error);
+      if (detail) console.error('Request failed:', JSON.stringify(detail));
+      send(res, 400, json({ error: error instanceof LocalError ? { code: 'LOCAL', message: error.message } : { ...getSdkErrorInfo(error), ...(detail ? { detail } : {}) } }));
     }
   });
   server.listen(port, '127.0.0.1', () => {
@@ -200,7 +234,7 @@ const TOKEN='__TOKEN__', CHAIN=Number('__CHAIN__'); let account=null, legs=[];
 const $=id=>document.getElementById(id);
 const log=m=>{$('log').textContent+=new Date().toLocaleTimeString()+'  '+m+'\\n';$('log').scrollTop=1e9};
 async function api(name,body){const r=await fetch('/api/'+name,{method:'POST',headers:{'content-type':'application/json','x-session-token':TOKEN},body:JSON.stringify(body||{})});
- const j=await r.json(); if(!r.ok) throw new Error((j.error&&(j.error.code+': '+(j.error.message||'')))||'error'); return j}
+ const j=await r.json(); if(!r.ok) throw new Error((j.error&&(j.error.code+': '+(j.error.message||'')+(j.error.detail?'\\n'+JSON.stringify(j.error.detail,null,2):'')))||'error'); return j}
 const eth=()=>{if(!window.ethereum) throw new Error('Tarayıcıda cüzdan yok (MetaMask).'); return window.ethereum};
 async function checkWallet(){const id=Number(await eth().request({method:'eth_chainId'}));
  if(id!==CHAIN){await eth().request({method:'wallet_switchEthereumChain',params:[{chainId:'0x'+CHAIN.toString(16)}]})}

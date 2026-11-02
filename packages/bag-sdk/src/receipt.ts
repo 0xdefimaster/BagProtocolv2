@@ -1,6 +1,6 @@
 import { BagSdkError } from './errors';
 import { keccak256 } from 'viem';
-import type { CompiledPurchase } from './execution';
+import { DELIVERY_PROOF_SIGNATURE, type CompiledPurchase } from './execution';
 import type { Hex } from './types';
 
 /** Mined transaction fields used to bind a receipt to the compiled direct call. */
@@ -74,12 +74,13 @@ export type PurchaseReceiptIssueCode =
   | 'INVALID_RECEIPT_LOGS' | 'OUTPUT_BELOW_MINIMUM'
   | 'INVALID_CALL_TRACE' | 'COMPILED_CALL_NOT_EXECUTED' | 'AMBIGUOUS_CALL_TRACE'
   | 'BALANCE_EVIDENCE_UNAVAILABLE' | 'INVALID_BALANCE_EVIDENCE' | 'INPUT_SPEND_EXCEEDS_PLAN'
-  | 'INPUT_BALANCE_BELOW_PLAN' | 'KEPT_INPUT_MISSING';
+  | 'INPUT_BALANCE_BELOW_PLAN' | 'KEPT_INPUT_MISSING'
+  | 'DELIVERY_PROOF_UNAVAILABLE' | 'INVALID_DELIVERY_LOG';
 
 export interface PurchaseReceiptVerification {
   status: 'VERIFIED' | 'FAILED' | 'INDETERMINATE';
   /** The caller explicitly chooses the weaker event-only mode if desired; balance evidence is the default. */
-  evidence: 'TRANSACTION_AND_TRANSFER_LOGS' | 'TRANSACTION_AND_BALANCE_DELTAS';
+  evidence: 'TRANSACTION_AND_TRANSFER_LOGS' | 'TRANSACTION_AND_BALANCE_DELTAS' | 'TRANSACTION_AND_DELIVERY_LOGS';
   balanceScope: PurchaseBalanceEvidence['scope'] | null;
   spentInputRaw: bigint | null;
   transactionBinding: 'DIRECT' | 'CALL_TRACE' | null;
@@ -115,8 +116,15 @@ export interface VerifyPurchaseReceiptOptions {
   minimumReceived: readonly { token: string; amountRaw: bigint }[];
   /** Positive safe integer; 1 means mined, not economic finality. No polling or waiting. */
   confirmations?: number;
-  /** Default BALANCE_DELTA: no automatic fallback to event-only evidence. */
-  verification?: 'BALANCE_DELTA' | 'TRANSFER_LOGS';
+  /**
+   * Default BALANCE_DELTA: no automatic fallback to event-only evidence.
+   * DELIVERY_LOG reads the program's own `BagDelivered` logs (compiled with lifiComposer `deliveryProof`): the
+   * balances it read before and after delivery, inside the transaction, from the executor. Any RPC that returns
+   * receipts suffices; no historical state or tracing. The input-token debit is not measured in this mode.
+   */
+  verification?: 'BALANCE_DELTA' | 'TRANSFER_LOGS' | 'DELIVERY_LOG';
+  /** DELIVERY_LOG only: contracts accepted as the log emitter. Default: the compiled executor (the signer's proxy). */
+  deliveryLogEmitters?: readonly string[];
 }
 
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
@@ -168,10 +176,51 @@ function checkCallTrace(tx: PurchaseReceiptTransaction, compiled: CompiledPurcha
   return matches === 1 ? null : matches === 0 ? 'COMPILED_CALL_NOT_EXECUTED' : 'AMBIGUOUS_CALL_TRACE';
 }
 
+const DELIVERY_DISCRIMINATOR = keccak256(new TextEncoder().encode(DELIVERY_PROOF_SIGNATURE));
+const addressWord = (address: string) => `0x${address.slice(2).toLowerCase().padStart(64, '0')}`;
+
+/**
+ * BagDelivered logs from the accepted emitters, one per planned token. Composer's custom-event log carries the
+ * signature's keccak256 as a data word followed by the payload words (token, recipient, before, after); the layout
+ * around them is not assumed beyond that order.
+ */
+function readDeliveryLogs(logs: readonly PurchaseReceiptLog[], compiled: CompiledPurchase, emitters: readonly string[]):
+    Map<string, { beforeRaw: bigint; afterRaw: bigint }> | { issue: 'DELIVERY_PROOF_UNAVAILABLE' | 'INVALID_DELIVERY_LOG' } {
+  const proof = compiled.deliveryProof!;
+  const recipient = addressWord(proof.recipient);
+  const planned = new Map(proof.tokens.map(t => [addressWord(t), t.toLowerCase()]));
+  const found = new Map<string, { beforeRaw: bigint; afterRaw: bigint }>();
+  for (const log of logs) {
+    if (!emitters.some(e => same(log.address, e))) continue;
+    const data = log.data.slice(2).toLowerCase();
+    if (data.length % 64 !== 0) continue;
+    const words = Array.from({ length: data.length / 64 }, (_, i) => `0x${data.slice(i * 64, i * 64 + 64)}`);
+    const d = words.indexOf(DELIVERY_DISCRIMINATOR.toLowerCase());
+    if (d < 0) continue;
+    const hits = words.flatMap((w, j) => (j > d && j + 3 < words.length && planned.has(w) && words[j + 1] === recipient ? [j] : []));
+    if (hits.length !== 1) return { issue: 'INVALID_DELIVERY_LOG' };
+    const token = planned.get(words[hits[0]])!;
+    if (found.has(token)) return { issue: 'INVALID_DELIVERY_LOG' };
+    found.set(token, { beforeRaw: BigInt(words[hits[0] + 2]), afterRaw: BigInt(words[hits[0] + 3]) });
+  }
+  return found.size === planned.size ? found : { issue: 'DELIVERY_PROOF_UNAVAILABLE' };
+}
+
 function minimumsFor(compiled: CompiledPurchase, options: VerifyPurchaseReceiptOptions): Map<string, bigint> {
   const plan = compiled.quote.plan;
-  if (options.verification !== undefined && options.verification !== 'BALANCE_DELTA' && options.verification !== 'TRANSFER_LOGS') {
+  if (options.verification !== undefined && !['BALANCE_DELTA', 'TRANSFER_LOGS', 'DELIVERY_LOG'].includes(options.verification)) {
     throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: unknown verification mode.');
+  }
+  if (options.verification === 'DELIVERY_LOG') {
+    const d = compiled.deliveryProof;
+    if (!d || d.signature !== DELIVERY_PROOF_SIGNATURE || !same(d.recipient, plan.signer) || d.tokens.length !== plan.legs.length ||
+        d.tokens.some((t, i) => !same(t, plan.legs[i].token))) {
+      throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: DELIVERY_LOG needs a purchase compiled with a matching delivery proof.');
+    }
+    const emitters = options.deliveryLogEmitters ?? [compiled.executor];
+    if (!Array.isArray(emitters) || emitters.length === 0 || emitters.some(e => typeof e !== 'string' || !ADDRESS.test(e))) {
+      throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: DELIVERY_LOG needs the executor (or explicit emitter addresses).');
+    }
   }
   if (!HASH.test(options.transactionHash)) throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: invalid transaction hash.');
   if (!Number.isSafeInteger(options.confirmations ?? 1) || (options.confirmations ?? 1) < 1) {
@@ -214,9 +263,11 @@ export async function verifyPurchaseReceipt(
   const minimums = minimumsFor(compiled, options);
   const plan = compiled.quote.plan;
   const { client, transactionHash } = options;
-  const balanceMode = options.verification !== 'TRANSFER_LOGS';
+  const mode = options.verification ?? 'BALANCE_DELTA';
+  const balanceMode = mode === 'BALANCE_DELTA';
   const result: PurchaseReceiptVerification = {
-    status: 'INDETERMINATE', evidence: balanceMode ? 'TRANSACTION_AND_BALANCE_DELTAS' : 'TRANSACTION_AND_TRANSFER_LOGS', transactionHash,
+    status: 'INDETERMINATE', transactionHash,
+    evidence: mode === 'BALANCE_DELTA' ? 'TRANSACTION_AND_BALANCE_DELTAS' : mode === 'TRANSFER_LOGS' ? 'TRANSACTION_AND_TRANSFER_LOGS' : 'TRANSACTION_AND_DELIVERY_LOGS',
     balanceScope: null, spentInputRaw: null, transactionBinding: null,
     chainId: plan.chainId, blockNumber: null, confirmations: BigInt(0), outputs: [],
     kept: plan.kept ? { ...plan.kept } : null, keptBalanceVerified: false,
@@ -314,9 +365,22 @@ export async function verifyPurchaseReceipt(
       const count = counts.get(token)!;
       const netReceivedRaw = count.received - count.sent;
       return { token, receivedRaw: count.received, sentRaw: count.sent, netReceivedRaw, minimumRaw,
-        satisfied: !balanceMode && netReceivedRaw >= minimumRaw,
+        satisfied: mode === 'TRANSFER_LOGS' && netReceivedRaw >= minimumRaw,
         balanceBeforeRaw: null, balanceAfterRaw: null, balanceDeltaRaw: null };
     });
+    if (mode === 'DELIVERY_LOG') {
+      const delivered = readDeliveryLogs(receipt.logs, compiled, options.deliveryLogEmitters ?? [compiled.executor as string]);
+      if ('issue' in delivered) {
+        return stop('INDETERMINATE', delivered.issue, delivered.issue === 'INVALID_DELIVERY_LOG'
+          ? 'A BagDelivered log is malformed, duplicated or names an unplanned token or recipient.'
+          : 'A planned output has no BagDelivered log from the accepted emitter.');
+      }
+      result.outputs = result.outputs.map(output => {
+        const d = delivered.get(output.token)!;
+        const delta = d.afterRaw - d.beforeRaw;
+        return { ...output, balanceBeforeRaw: d.beforeRaw, balanceAfterRaw: d.afterRaw, balanceDeltaRaw: delta, satisfied: delta >= output.minimumRaw };
+      });
+    }
     if (balanceMode) {
       if (!client.getPurchaseBalanceChanges) return stop('INDETERMINATE', 'BALANCE_EVIDENCE_UNAVAILABLE', 'Transaction-scoped balance reads are required; event-only fallback is not automatic.');
       const tokens = [...minimums.keys()];
