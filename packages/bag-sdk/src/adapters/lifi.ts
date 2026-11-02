@@ -1,8 +1,8 @@
 import { BagSdkError } from '../errors';
-import { createComposeSdk, materialisers, resources } from '@lifi/composer-sdk';
+import { createComposeSdk, materialisers, raw, resources } from '@lifi/composer-sdk';
 import type { Bindable } from '@lifi/composer-sdk';
 import type { ComposerCompileRequest, ComposerCompileResult, ComposerProvider } from '../execution';
-import { markSignedUsdPriceImpactProvider, ProviderResponseError } from '../execution';
+import { DELIVERY_PROOF_SIGNATURE, markSignedUsdPriceImpactProvider, ProviderResponseError } from '../execution';
 import { planPartition } from '../partition';
 import type { ComposerAccount } from './composer-account';
 export { resolveLifiComposerAccount, type ComposerAccount, type ComposerAccountClient, type ComposerDeployment } from './composer-account';
@@ -18,6 +18,14 @@ export { resolveLifiComposerAccount, type ComposerAccount, type ComposerAccountC
 //     that swap's on-chain `amountOutMin`),
 //   - outputs swept to the signer,
 // then compiles it with Composer's documented API.
+//
+// With `deliveryProof`, each leg also proves its own delivery inside the same program (Composer's balance read,
+// arithmetic, invariant and log ops, in flow order):
+//   - before any swap, the signer's balance of every output token is read (`core.staticCall` balanceOf);
+//   - each swap output is transferred to the signer explicitly (`core.transfer`), not left to the final sweep;
+//   - the balance is read again, `after − before` must be > 0 (`invariant.gt`; `core.subtract` reverts below 0);
+//   - `BagDelivered(token, recipient, before, after)` is logged (`core.emitEvent4`).
+// The receipt then carries the measured delivery, readable with any RPC (verifyPurchaseReceipt 'DELIVERY_LOG').
 //
 // Credentials and endpoint are the CALLER's: `apiKey` is required (Composer
 // rejects unauthenticated requests) and is never stored or logged by the SDK;
@@ -64,9 +72,25 @@ export interface LifiComposerOptions {
   timeoutMs?: number;
   /** Independent chain observation from resolveLifiComposerAccount; never derive this from the compile response. */
   account?: ComposerAccount;
+  /** Add per-leg delivery measurement and the BagDelivered log to the program (see the header). Default false. */
+  deliveryProof?: boolean;
 }
 
 const legNode = (i: number) => `swap_${i}`;
+const deliverNode = (i: number) => `deliver_${i}`;
+const BALANCE_OF = 'function balanceOf(address account) view returns (uint256)';
+const word = (address: string) => `0x${address.slice(2).toLowerCase().padStart(64, '0')}`;
+
+type ComposeOutputs = Awaited<ReturnType<ReturnType<ReturnType<typeof createComposeSdk>['flow']>['compile']>>['outputs'];
+
+/** The terminal delivery of leg `i` under delivery proof: the swap output must be consumed by exactly its transfer. */
+function deliveredOutput(outputs: ComposeOutputs, i: number): ComposeOutputs[string] | undefined {
+  const swapped = outputs[`${legNode(i)}.amountOut`];
+  if (swapped && (swapped.role !== 'consumed' || swapped.consumedBy !== deliverNode(i))) {
+    throw new BagSdkError('OUTPUT_INVALID', 'LI.FI Composer did not route the swap output through its delivery transfer.');
+  }
+  return outputs[`${deliverNode(i)}.transferred`];
+}
 
 export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
   if (!options.apiKey) throw new BagSdkError('COMPOSER_CONFIGURATION_INVALID', 'lifiComposer: apiKey is required (your own LI.FI API key).');
@@ -112,9 +136,26 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
           bind: { amountIn },
           config: { resourceOut: { kind: 'erc20', token: req.legs[i].token as `0x${string}`, chainId }, slippage: req.slippageBps / 10000 },
         });
+      const proof = options.deliveryProof === true;
+      const balanceOf = (id: string, token: string) =>
+        builder.core.staticCall(id, { bind: { account: builder.context.sender }, config: { target: token as `0x${string}`, functionSignature: BALANCE_OF } });
 
+      // Flow order is execution order: the "before" reads precede every swap.
+      const before = proof ? req.legs.map((l, i) => balanceOf(`balance_before_${i}`, l.token)) : [];
       const legInputs = partitionAcross(builder as unknown as PartitionBuilder, builder.inputs.amountIn, req.legs.map((l) => l.legBps));
-      legInputs.forEach((amountIn, i) => swap(i, amountIn));
+      const swaps = legInputs.map((amountIn, i) => swap(i, amountIn));
+      if (proof) {
+        swaps.forEach((s, i) => builder.core.transfer(deliverNode(i), { bind: { amount: s.amountOut, recipient: builder.context.sender }, config: {} }));
+        req.legs.forEach((l, i) => {
+          const after = balanceOf(`balance_after_${i}`, l.token);
+          const delta = builder.core.subtract(`delivered_${i}`, { bind: { a: after.result, b: before[i].result } });
+          builder.invariant.gt(`delivered_positive_${i}`, { bind: { value: delta.result }, config: { threshold: '0' } });
+          builder.core.emitEvent4(`delivery_log_${i}`, {
+            bind: { value0: raw.literal('bytes32', word(l.token)), value1: builder.context.sender, value2: before[i].result, value3: after.result },
+            config: { signature: DELIVERY_PROOF_SIGNATURE },
+          });
+        });
+      }
 
       const result = await builder.compile({
         signer: req.signer as `0x${string}`,
@@ -153,7 +194,8 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
         approvals: (result.approvals ?? []).map((a) => ({ token: a.token, spender: a.spender, amountRaw: String(a.amount) })),
         legs: req.legs.map((_, i) => {
           // Composer keys outputs by output port (`swap_<i>.amountOut`). A missing minimum means no floor is enforced (never 0).
-          const o = outputs[`${legNode(i)}.amountOut`];
+          // With delivery proof the swap output is consumed by its explicit transfer, whose `transferred` port is terminal.
+          const o = proof ? deliveredOutput(outputs, i) : outputs[`${legNode(i)}.amountOut`];
           if (o && (o.role !== 'terminal' || o.owner?.toLowerCase() !== req.signer.toLowerCase() || o.delivery.when !== 'now' || o.resource.chainId !== chainId)) {
             throw new BagSdkError('OUTPUT_INVALID', 'LI.FI Composer output is not immediate terminal delivery on the requested chain to the signer.');
           }
@@ -174,6 +216,7 @@ export function lifiComposer(options: LifiComposerOptions): ComposerProvider {
         gasLimit: result.transactionRequest.gasLimit ?? null,
         fees: fees.map((f) => ({ token: f.token, recipient: f.recipient, recipientAddress: f.recipientAddress, bps: f.bps, amountRaw: f.amount ?? null })),
         validUntilMs: result.fill?.validUntilMs ?? null,
+        deliveryProof: proof ? { signature: DELIVERY_PROOF_SIGNATURE, recipient: req.signer, tokens: req.legs.map(l => l.token) } : null,
         warnings: warnings.map((w) => ({ kind: w.kind, message: w.message,
           ...(w.path !== undefined ? { path: w.path } : {}),
           ...(w.port !== undefined ? { port: w.port } : {}),

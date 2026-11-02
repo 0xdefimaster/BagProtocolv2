@@ -79,7 +79,9 @@ Steps on the page:
 5. Approve and buy. If the quote expires after the approval, get a new quote; the approval stays.
 6. Verify with the SDK after a few blocks.
 
-Verification needs an RPC with `debug_traceCall` and `txIndex` on the qualified Nitro build. Alchemy's and the
+With `DELIVERY_PROOF=1` (SDK 0.4), the program logs each output's measured delivery and "Verify" reads those logs, so any RPC that returns receipts works. If verification still fails, the page lists which contracts emitted the `BagDelivered` log. The CLI equivalent is `RECEIPT_EVIDENCE_MODE=DELIVERY_LOG npm run verify -- …`.
+
+Without delivery proof, verification needs an RPC with `debug_traceCall` and `txIndex` on the qualified Nitro build. Alchemy's and the
 public Robinhood endpoints did not serve it on 2026-10-30. If the page shows `INDETERMINATE` /
 `BALANCE_EVIDENCE_UNAVAILABLE`, run `npm run verify` later with a qualified `RPC_URL` and
 `RECEIPT_EVIDENCE_MODE=ROBINHOOD_NITRO_TRANSACTION_INDEX`. Never send the purchase again.

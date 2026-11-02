@@ -25,6 +25,8 @@ export async function preparePurchase(options: {
   bagText: string; inputToken: Hex; amountRaw: bigint; signer: Hex; client: PlanningClient;
   deployment: ComposerDeployment; apiKey: string; composerUrl: string; maxQuoteAgeMs?: number;
   registry?: { address: Hex; expectedCreator: Hex };
+  /** Have the program measure and log each output's delivery, so any RPC can verify it later (SDK 0.4). */
+  deliveryProof?: boolean;
 }) {
   const parsed = parseBag(options.bagText);
   if (!parsed.ok) invalid('Invalid bag.json; inspect parseBag findings before preparing.');
@@ -41,7 +43,7 @@ export async function preparePurchase(options: {
     address: options.inputToken, abi: [{ type: 'function', name: 'decimals', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] }], functionName: 'decimals',
   }));
   const compiled = await compileBag(bag, { inputToken: options.inputToken, amountRaw: options.amountRaw, inputTokenDecimals, signer: options.signer, tokens }, {
-    provider: lifiComposer({ apiKey: options.apiKey, baseUrl: options.composerUrl, account }), trust: account.trust,
+    provider: lifiComposer({ apiKey: options.apiKey, baseUrl: options.composerUrl, account, deliveryProof: options.deliveryProof }), trust: account.trust,
   });
   const simulation = await simulateBag(compiled, { client: options.client, maxQuoteAgeMs: options.maxQuoteAgeMs ?? 30_000 });
   if (simulation.status === 'QUOTE_EXPIRED') throw new BagSdkError('QUOTE_EXPIRED');
@@ -137,10 +139,15 @@ export async function submitWithWallet(options: {
 /** Separate from submission: incomplete evidence must never trigger an automatic second purchase. */
 export async function verifySubmitted(options: {
   snapshotText: string; trustedIntentHash: Hex; transactionHash: Hex; client: PurchaseReceiptClient; confirmations?: number;
+  /** DELIVERY_LOG needs a purchase compiled with delivery proof; the default reads balance evidence. */
+  verification?: 'BALANCE_DELTA' | 'DELIVERY_LOG';
+  deliveryLogEmitters?: readonly string[];
 }) {
   const intent = restoreIntent(options.snapshotText, options.trustedIntentHash);
   return verifyPurchaseReceipt(intent.compiled, { client: options.client, transactionHash: options.transactionHash,
-    confirmations: options.confirmations ?? 3, minimumReceived: intent.minimumReceived });
+    confirmations: options.confirmations ?? 3, minimumReceived: intent.minimumReceived,
+    ...(options.verification ? { verification: options.verification } : {}),
+    ...(options.deliveryLogEmitters ? { deliveryLogEmitters: options.deliveryLogEmitters } : {}) });
 }
 
 export interface EthereumProvider { request(args: { method: string; params?: readonly unknown[] }): Promise<unknown> }

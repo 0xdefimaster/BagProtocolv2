@@ -60,6 +60,7 @@ export {
 export { planPurchase, PurchasePlanError, SDK_EXECUTION_ACCOUNTING, V1_EXECUTION_POLICY, type PlannedLeg, type PurchasePlan, type PurchaseRequest } from './purchase';
 export {
   compileBag,
+  DELIVERY_PROOF_SIGNATURE,
   ProviderResponseError,
   quoteBag,
   simulateBag,
@@ -67,6 +68,7 @@ export {
   type ComposerCompileRequest,
   type ComposerCompileResult,
   type ComposerProvider,
+  type DeliveryProof,
   type ExecutionTrustPolicy,
   type ProviderFee,
   type ProviderWarning,

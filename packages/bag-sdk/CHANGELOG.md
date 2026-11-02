@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 — unreleased candidate
+
+- **Delivery proof** (`lifiComposer({ deliveryProof: true })`): the Composer program reads the signer's balance of every output token before the swaps, transfers each output to the signer explicitly, reads the balance again, asserts a positive delta on chain (`invariant.gt`, and `core.subtract` reverts below zero) and logs `BagDelivered(address token, address recipient, uint256 before, uint256 after)` (`core.emitEvent4`). The compiled purchase carries `deliveryProof` (signature, recipient, tokens).
+- **`verifyPurchaseReceipt(..., { verification: 'DELIVERY_LOG' })`** reads those logs from the executor (or `deliveryLogEmitters`) and compares each measured delta with the reviewed wallet minimum. Any RPC that returns receipts is enough: no tracing or historical state. The input-token debit is not measured in this mode. The mined transaction is still bound to the compiled call (DIRECT, or CALL_TRACE where a trace exists).
+- Exports `DELIVERY_PROOF_SIGNATURE` and the `DeliveryProof` type. Without the option, flows and results are unchanged.
+
+Release gate 3 needs a live purchase with delivery proof VERIFIED in DELIVERY_LOG mode; which contract emits the Composer log (the proxy is expected) is confirmed by that run.
+
 ## 0.3.0 — 2026-10-30
 
 This candidate contains changes after the npm 0.2.1 publication. bag.json v1 definition, normalization, hash domain and allocation semantics remain frozen.

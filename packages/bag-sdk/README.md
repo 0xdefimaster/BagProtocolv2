@@ -592,6 +592,39 @@ It prints an unsigned purchase and a separate wallet-state simulation result. A 
 `live-compile.ts`, 0.001 ETH into `feetest` for a wallet with its proxy as the trusted target: 8/8 PASS, simulation OK.
 Nothing was signed or sent.
 
+## Delivery proof (0.4.0 candidate)
+
+`lifiComposer({ apiKey, baseUrl, account, deliveryProof: true })` makes the purchase prove its own delivery inside
+the same transaction, using Composer ops that run in flow order:
+
+1. **Before any swap:** read the signer's balance of every output token (`core.staticCall`, `balanceOf`).
+2. **Delivery:** swap, then transfer each output to the signer explicitly (`core.transfer`).
+3. **After delivery:** read the balances again.
+4. **Check:** `delta = after − before`. `core.subtract` reverts below zero and `invariant.gt` requires `delta > 0`.
+5. **Log:** `BagDelivered(address token, address recipient, uint256 before, uint256 after)` (`core.emitEvent4`).
+
+The compiled purchase carries `deliveryProof`. Verify it with any RPC that returns receipts:
+
+```ts
+const result = await verifyPurchaseReceipt(compiled, {
+  client, transactionHash, minimumReceived, verification: 'DELIVERY_LOG',
+});
+```
+
+The verifier reads the `BagDelivered` logs from the executor (the signer's Composer proxy), or from
+`deliveryLogEmitters` when given. It requires exactly one log per planned token, naming the signer, and compares
+each delta with the reviewed wallet minimum. The mined transaction must still match the compiled call: `DIRECT`, or
+`CALL_TRACE` for a delegated wallet with a tracing reader.
+
+What this mode does not cover:
+- **Input debit:** it does not measure the input-token debit. Use balance evidence for that.
+- **Trust:** the logged values come from the program Composer compiled for this flow, so trusting them is the same
+  trust as trusting the compiled swaps.
+
+The on-chain check is `delta > 0`. The reviewed minimum is chosen after the quote, so it is compared off chain;
+each swap's own `amountOutMinimum` still applies on chain. The extra reads, transfers, checks and logs cost
+additional gas per leg.
+
 ## Verify a submitted purchase
 
 Keep the original compiled purchase and the wallet-reviewed output minimums. After submission, use your trusted public client:
