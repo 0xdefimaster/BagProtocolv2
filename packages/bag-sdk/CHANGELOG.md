@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — not part of the 0.4.0 candidate
+
+- **`@bagprotocol/sdk/dca`** (new subpath, DCA v1 for `contracts/dca/BagDcaExecutor.sol`): EIP-712 types and id of a `DcaAuthorization`, `buildDcaAuthorization` from a bag.json (registered composition, v1 rules per run), `checkDcaTerms`, the executor's split, ceiling minimums, composition hash and calendar (`dcaRunDue`, `dcaMissedWindows`), the executor ABI, and `verifyDcaReceipt`: VERIFIED only from a canonical, confirmed receipt with exactly one `PurchaseExecuted` and one `AssetDelivered` per signed asset (signed order, recipient, delta ≥ minReceived ≥ the signed ceiling minimum); unexpected, duplicate or undecodable events FAIL; missing evidence is INDETERMINATE. New error code `DCA_TERMS_INVALID`.
+- The executor is not deployed and has not been audited. Publish 0.4.0 from its own merge commit, not from a tree that contains this entry.
+
 ## 0.4.0 — unreleased candidate
 
 - **Delivery proof** (`lifiComposer({ deliveryProof: true })`): the Composer program reads the signer's balance of every output token before the swaps, transfers each output to the signer explicitly, reads the balance again, asserts a positive delta on chain (`invariant.gt`, and `core.subtract` reverts below zero) and logs `BagDelivered(address token, address recipient, uint256 before, uint256 after)` (`core.emitEvent4`). The compiled purchase carries `deliveryProof` (signature, recipient, tokens).

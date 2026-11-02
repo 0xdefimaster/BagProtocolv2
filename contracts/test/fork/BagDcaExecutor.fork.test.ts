@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { network } from 'hardhat';
 import { getAddress, hashTypedData, keccak256, parseAbi, parseEventLogs, stringToHex, toHex, zeroHash, type Hex } from 'viem';
 import { DCA_TYPES } from '../helpers/dca-types';
+import { verifyDcaReceipt, type DcaReceiptClient } from '../../../packages/bag-sdk/src/dca';
 
 // -----------------------------------------------------------------------------
 // ROBINHOOD CHAIN FORK TEST (chain 4663 state, local EDR fork). NOT a mainnet
@@ -139,6 +140,9 @@ describe('BagDcaExecutor on a Robinhood Chain fork (real USDG/TSLA/NVDA, real Un
     assert.equal(delivered[0].args.balanceAfter - delivered[0].args.balanceBefore, (await bal(A.NVDA, recipient.account.address)) - nvdaBefore);
     assert.equal(delivered[1].args.balanceAfter - delivered[1].args.balanceBefore, (await bal(A.TSLA, recipient.account.address)) - tslaBefore);
     for (const d of delivered) assert.ok(d.args.balanceAfter - d.args.balanceBefore >= d.args.minReceived);
+    const v = await verifyDcaReceipt({ client: pc as unknown as DcaReceiptClient, transactionHash: r1.transactionHash, auth, deployment: { chainId: domain.chainId, executor: executor.address }, executionIndex: 0n, expectedExecutorCodeHash: keccak256((await pc.getCode({ address: executor.address }))!) });
+    assert.deepEqual(v.issues, []);
+    assert.equal(v.status, 'VERIFIED');
     console.log(`fork run 1: tx ${r1.transactionHash} gas ${r1.gasUsed}; NVDA +${delivered[0].args.balanceAfter - delivered[0].args.balanceBefore} TSLA +${delivered[1].args.balanceAfter - delivered[1].args.balanceBefore}; fees ${fees}`);
 
     // 7. Same window again: NotDue. Next day: run 2 passes.

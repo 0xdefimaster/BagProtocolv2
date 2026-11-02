@@ -22,6 +22,10 @@
       "types": "./dist/adapters/lifi.d.ts",
       "import": "./dist/adapters/lifi.js"
     },
+    "./dca": {
+      "types": "./dist/dca.d.ts",
+      "import": "./dist/dca.js"
+    },
     "./schema": "./schema/bag.v1.schema.json"
   },
   "files": [
