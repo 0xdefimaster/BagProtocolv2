@@ -42,6 +42,9 @@ const QUOTER = parseAbi(['function quoteExactInputSingle((address tokenIn, addre
 
 describe('BagDcaExecutor on a Robinhood Chain fork (real USDG/TSLA/NVDA, real Uniswap v3)', { skip: RPC ? false : 'ROBINHOOD_MAINNET_RPC_URL not set' }, () => {
   it('runs a 2-asset DCA through the real SwapRouter02 and refuses a run above the ceiling', async () => {
+    const t0 = Date.now();
+    const step = (msg: string) => console.log(`  [fork +${Math.round((Date.now() - t0) / 1000)}s] ${msg}`);
+    step('connecting to the fork (every new contract/storage read is fetched from the RPC; first run takes minutes)');
     const { viem } = await network.connect('robinhoodFork');
     const pc = await viem.getPublicClient();
     const tc = await viem.getTestClient();
@@ -50,6 +53,7 @@ describe('BagDcaExecutor on a Robinhood Chain fork (real USDG/TSLA/NVDA, real Un
     const read = (address: Hex, abi: any, functionName: string, args: unknown[] = []) => pc.readContract({ address, abi, functionName, args } as any) as Promise<any>;
 
     // 1. The real contracts are there and consistent.
+    step('1. The real contracts are there and consistent.');
     for (const [name, addr] of Object.entries(A)) assert.notEqual(await pc.getCode({ address: addr }), undefined, `${name} has code`);
     assert.equal(getAddress(await read(A.SWAP_ROUTER02, ROUTER, 'factory')), A.V3_FACTORY, 'SwapRouter02.factory() is the v3 factory');
     assert.equal(await read(A.USDG, ERC20, 'decimals'), 6);
@@ -57,6 +61,7 @@ describe('BagDcaExecutor on a Robinhood Chain fork (real USDG/TSLA/NVDA, real Un
     assert.equal(await read(A.NVDA, ERC20, 'decimals'), 18);
 
     // 2. Best existing USDG pool per asset and its quote for 5 USDG (QuoterV2, simulated).
+    step('2. Best existing USDG pool per asset and its quote for 5 USDG (QuoterV2, simulated).');
     const leg = 5_000_000n;
     const best: Record<string, { fee: number; out: bigint }> = {};
     for (const asset of [A.NVDA, A.TSLA]) {
@@ -74,12 +79,14 @@ describe('BagDcaExecutor on a Robinhood Chain fork (real USDG/TSLA/NVDA, real Un
     }
 
     // 3. Deploy the adapter (real router + factory) and the executor (real StrategyRegistry).
+    step('3. Deploy the adapter (real router + factory) and the executor (real StrategyRegistry).');
     const adapter = await viem.deployContract('UniswapV3ExactInAdapter', [A.SWAP_ROUTER02, A.V3_FACTORY]);
     const bagFactoryAddr = (process.env.DCA_FORK_BAG_FACTORY as Hex | undefined) ?? (await viem.deployContract('BagFactory', [creator.account.address, creator.account.address, 0n, 10n ** 16n])).address;
     const bagFactory = await viem.getContractAt('BagFactory', bagFactoryAddr, { client: { wallet: creator } });
     const executor = await viem.deployContract('BagDcaExecutor', [bagFactoryAddr, A.STRATEGY_REGISTRY, adapter.address, 'robinhood']);
 
     // 4. A BAG of NVDA/TSLA 50/50, registered composition rows sorted by symbol.
+    step('4. A BAG of NVDA/TSLA 50/50, registered composition rows sorted by symbol.');
     // Ceiling = quoted price + 3 % (a test choice, NOT an independent fair price).
     const price = (out: bigint) => (leg * 10n ** 18n) / out; // USDG raw per whole token
     const assets = [
@@ -92,6 +99,7 @@ describe('BagDcaExecutor on a Robinhood Chain fork (real USDG/TSLA/NVDA, real Un
     const bagId = (await bagFactory.read.deriveBagId([creator.account.address, ref])) as Hex;
 
     // 5. Fund the owner on the fork from a USDG pool we do not trade against.
+    step('5. Fund the owner on the fork from a USDG pool we do not trade against.');
     let holder: Hex | null = null;
     for (const fee of FEES) {
       const pool = (await read(A.V3_FACTORY, FACTORY, 'getPool', [A.USDG, A.WETH, fee])) as Hex;
@@ -127,6 +135,7 @@ describe('BagDcaExecutor on a Robinhood Chain fork (real USDG/TSLA/NVDA, real Un
     const fees = [best[A.NVDA].fee, best[A.TSLA].fee];
 
     // 6. Run 1: exact debit, delivery to the recipient, one AssetDelivered per asset.
+    step('6. Run 1: exact debit, delivery to the recipient, one AssetDelivered per asset.');
     const ownerBefore = await bal(A.USDG, owner.account.address);
     const nvdaBefore = await bal(A.NVDA, recipient.account.address);
     const tslaBefore = await bal(A.TSLA, recipient.account.address);
@@ -146,6 +155,7 @@ describe('BagDcaExecutor on a Robinhood Chain fork (real USDG/TSLA/NVDA, real Un
     console.log(`fork run 1: tx ${r1.transactionHash} gas ${r1.gasUsed}; NVDA +${delivered[0].args.balanceAfter - delivered[0].args.balanceBefore} TSLA +${delivered[1].args.balanceAfter - delivered[1].args.balanceBefore}; fees ${fees}`);
 
     // 7. Same window again: NotDue. Next day: run 2 passes.
+    step('7. Same window again: NotDue. Next day: run 2 passes.');
     await assert.rejects(run(0n, fees), /NotDue/);
     await tc.increaseTime({ seconds: 86_400 });
     await tc.mine({ blocks: 1 });
@@ -153,6 +163,7 @@ describe('BagDcaExecutor on a Robinhood Chain fork (real USDG/TSLA/NVDA, real Un
     assert.equal(r2.status, 'success');
 
     // 8. A ceiling far below the market: the whole run reverts, nothing moves.
+    step('8. A ceiling far below the market: the whole run reverts, nothing moves.');
     const low = { ...auth, nonce: 2n, assets: [assets[0], { ...assets[1], maxPriceRaw: assets[1].maxPriceRaw / 2n }] };
     const lowSig = await owner.signTypedData({ account: owner.account, domain, types: DCA_TYPES, primaryType: 'DcaAuthorization', message: low });
     const lowId = hashTypedData({ domain, types: DCA_TYPES, primaryType: 'DcaAuthorization', message: low });

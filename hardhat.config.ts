@@ -59,7 +59,11 @@ export default defineConfig({
       type: 'edr-simulated',
       chainType: 'l1',
       forking: process.env.ROBINHOOD_MAINNET_RPC_URL
-        ? { url: process.env.ROBINHOOD_MAINNET_RPC_URL }
+        ? {
+            url: process.env.ROBINHOOD_MAINNET_RPC_URL,
+            // Pinning a block lets Hardhat cache fork reads on disk, so a re-run is fast.
+            ...(process.env.ROBINHOOD_FORK_BLOCK ? { blockNumber: BigInt(process.env.ROBINHOOD_FORK_BLOCK) } : {}),
+          }
         : undefined,
     },
   },
