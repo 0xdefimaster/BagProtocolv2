@@ -6,7 +6,7 @@
 - **`verifyPurchaseReceipt(..., { verification: 'DELIVERY_LOG' })`** reads those logs from the executor (or `deliveryLogEmitters`) and compares each measured delta with the reviewed wallet minimum. Any RPC that returns receipts is enough: no tracing or historical state. The input-token debit is not measured in this mode. The mined transaction is still bound to the compiled call (DIRECT, or CALL_TRACE where a trace exists).
 - Exports `DELIVERY_PROOF_SIGNATURE` and the `DeliveryProof` type. Without the option, flows and results are unchanged.
 
-Release gate 3 needs a live purchase with delivery proof VERIFIED in DELIVERY_LOG mode; which contract emits the Composer log (the proxy is expected) is confirmed by that run.
+Release gate 3 closed on 2026-11-02: a live purchase with delivery proof was VERIFIED in DELIVERY_LOG mode through the public Robinhood RPC. The logs came from the signer's proxy. An independent balance-delta verification matched them exactly (`docs/SDK_RELEASE_PREPARATION.md`).
 
 ## 0.3.0 — 2026-10-30
 

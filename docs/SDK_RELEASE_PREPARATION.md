@@ -68,6 +68,33 @@ Outputs, all above the reviewed wallet minima:
 A wallet minimum is checked only with transaction-scoped balance evidence. Without a qualified reader the result
 is `INDETERMINATE`, not a failure.
 
+## Live purchase with delivery proof (0.4.0 release gate 3)
+
+On 2026-11-02 the 0.4.0 candidate was tested from its packed tarball, through the consumer page with `DELIVERY_PROOF=1`.
+It compiled a purchase with `deliveryProof`, which Composer accepted, and the wallet signed it:
+
+| Field | Value |
+|---|---|
+| Strategy / input | `feetest` v1 (TSLA 50% / NVDA 50%), 3 USDG |
+| Wallet | `0x3690895b48cea6f1f6c8e66fa9b332858f8eb1b7`, MetaMask, plain EOA |
+| Purchase | tx `0xf5b768fd4b0ecda8809c2b034d70d2efd369fb005ce592db0a29f259c4e5f41d`, block 104158615 |
+| Original intent hash | `0x949248a16ee43506f895370632e53fd9562f4f6e2a83e9608164b7ade4983e9d` |
+
+The same purchase was verified twice, independently:
+
+| Verification | RPC | Result |
+|---|---|---|
+| `DELIVERY_LOG` (the program's `BagDelivered` logs) | Public Robinhood RPC, no tracing | `VERIFIED`, `DIRECT` binding, logs emitted by the signer's proxy |
+| `BALANCE_DELTA` (transaction-scoped balance reads) | Qualified Nitro tracing reader | `VERIFIED`, `TRANSACTION` scope, input debit 3000000 |
+
+| Token | Logged before → after | Independently read before → after | Reviewed minimum |
+|---|---|---|---|
+| TSLA `0x322f…3b2d` | 0 → 3722166643967319 | 0 → 3722166643967319 | 3685078307780736 |
+| NVDA `0xd060…9eec` | 0 → 7205279865181046 | 0 → 7205279865181046 | 7133227066529235 |
+
+The logged values match the independent balance reads exactly. The wallet held neither token before the purchase:
+the 2026-10-30 purchase had been sold since.
+
 ## Reproducible candidate checks
 
 From a clean checkout, use Node 24 and the repository's locked dependencies. A reviewable candidate is prepared with:
