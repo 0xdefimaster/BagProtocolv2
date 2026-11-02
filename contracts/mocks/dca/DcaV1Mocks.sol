@@ -206,3 +206,28 @@ contract DcaMock1271Wallet {
         return err == ECDSA.RecoverError.NoError && got == signer ? bytes4(0x1626ba7e) : bytes4(0xffffffff);
     }
 }
+
+/// QuoterV2 `quoteExactInputSingle` over DcaMockSwapRouter02's rates (reverts when the pool does not exist).
+contract DcaMockQuoterV2 {
+    struct QuoteExactInputSingleParams {
+        address tokenIn;
+        address tokenOut;
+        uint256 amountIn;
+        uint24 fee;
+        uint160 sqrtPriceLimitX96;
+    }
+
+    DcaMockSwapRouter02 public immutable router;
+    DcaMockV3Factory public immutable factory;
+
+    constructor(DcaMockSwapRouter02 router_, DcaMockV3Factory factory_) {
+        router = router_;
+        factory = factory_;
+    }
+
+    function quoteExactInputSingle(QuoteExactInputSingleParams memory p) external view returns (uint256 amountOut, uint160, uint32, uint256) {
+        require(factory.getPool(p.tokenIn, p.tokenOut, p.fee) != address(0), 'no pool');
+        amountOut = (p.amountIn * router.rateNum(p.tokenOut)) / router.rateDen(p.tokenOut);
+        return (amountOut, 0, 0, 0);
+    }
+}
