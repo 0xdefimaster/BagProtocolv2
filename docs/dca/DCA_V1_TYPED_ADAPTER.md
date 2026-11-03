@@ -206,6 +206,10 @@ npx hardhat node --fork <rpc> --fork-block-number <block>
 DCA_SOAK_MODE=FORK DCA_SOAK_DATABASE_URL=<throwaway postgres> DCA_SOAK_PG_RESTART_CMD="docker restart dca-pg" npx tsx scripts/dca-keeper-soak.ts
 ```
 
+Without a PostgreSQL on the machine, `DCA_SOAK_STORE=memory` runs the same soak with the in-memory store; the
+Postgres restart and append-only checks are then reported SKIPPED (they are covered by the LOCAL_NODE runs above).
+A LOCAL memory-store run (seed 5, 12 cycles) passed 47/47.
+
 ## 9. Security follow-ups (status)
 
 | # | Issue | Status | What was done / what remains |

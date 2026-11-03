@@ -9,6 +9,10 @@
  *   DCA_SOAK_MODE=LOCAL|FORK DCA_SOAK_RPC=http://127.0.0.1:8545 DCA_SOAK_DATABASE_URL=postgres://… \
  *   [DCA_SOAK_PG_RESTART_CMD="docker restart dca-pg"] [DCA_SOAK_CYCLES=10] [DCA_SOAK_SEED=1] npx tsx scripts/dca-keeper-soak.ts
  *
+ * Without a PostgreSQL: DCA_SOAK_STORE=memory keeps the keeper state in this process (MemoryKeeperStore, same
+ * semantics; a restarted keeper reuses it, like a database that survived). The Postgres-specific checks (restart
+ * with a write-ahead record, append-only events) are then reported as SKIPPED.
+ *
  * Signers are the dev node's unlocked accounts (no private key is read). Writes soak-evidence/<mode>-<time>.json.
  */
 import { execSync } from 'node:child_process';
@@ -23,12 +27,14 @@ import { DCA_AUTHORIZATION_TYPES, DCA_EXECUTOR_ABI, dcaAuthorizationId, type Dca
 import { createViemKeeperChain } from '../lib/dca/keeper/chain';
 import { DcaKeeper, type KeeperAlert } from '../lib/dca/keeper/keeper';
 import { PostgresKeeperStore } from '../lib/dca/keeper/postgres-store';
+import { MemoryKeeperStore, type KeeperStore } from '../lib/dca/keeper/store';
 import type { KeeperJob } from '../lib/dca/keeper/types';
 
 const MODE = (process.env.DCA_SOAK_MODE ?? 'LOCAL').toUpperCase() as 'LOCAL' | 'FORK';
 const RPC = process.env.DCA_SOAK_RPC ?? 'http://127.0.0.1:8545';
+const MEMORY = (process.env.DCA_SOAK_STORE ?? '').toLowerCase() === 'memory';
 const DB = process.env.DCA_SOAK_DATABASE_URL;
-const PG_RESTART = process.env.DCA_SOAK_PG_RESTART_CMD;
+const PG_RESTART = MEMORY ? undefined : process.env.DCA_SOAK_PG_RESTART_CMD;
 const CYCLES = Number(process.env.DCA_SOAK_CYCLES ?? 10);
 let seed = Number(process.env.DCA_SOAK_SEED ?? 1) >>> 0;
 const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
@@ -82,7 +88,7 @@ async function main() {
   const version = String(await req('web3_clientVersion'));
   const chainId = Number(await req('eth_chainId'));
   if (!/hardhat|edr|anvil/i.test(version) || chainId !== 31337) throw new Error(`refusing: not a local dev node (client "${version.slice(0, 40)}", chain ${chainId})`);
-  if (!DB) throw new Error('DCA_SOAK_DATABASE_URL is required (a throwaway database; the soak creates the dca_keeper schema)');
+  if (!DB && !MEMORY) throw new Error('DCA_SOAK_DATABASE_URL is required (a throwaway database; the soak creates the dca_keeper schema), or set DCA_SOAK_STORE=memory');
   const accounts = (await req('eth_accounts')) as Hex[];
   const [keeperAddr, ownerAddr, owner2Addr, recipientAddr, creatorAddr] = accounts.map((a) => a.toLowerCase() as Hex);
   const wallet = (a: Hex) => createWalletClient({ account: a, transport: base });
@@ -195,13 +201,16 @@ async function main() {
     pools.push(p);
     return p;
   };
-  const store0 = new PostgresKeeperStore(mkPool());
-  await store0.migrate();
-  await mkPool().query('truncate dca_keeper.events, dca_keeper.jobs, dca_keeper.accounts');
+  const memoryStore = new MemoryKeeperStore();
+  const store0: KeeperStore & { events?: PostgresKeeperStore['events'] } = MEMORY ? memoryStore : new PostgresKeeperStore(mkPool());
+  if (!MEMORY) {
+    await (store0 as PostgresKeeperStore).migrate();
+    await mkPool().query('truncate dca_keeper.events, dca_keeper.jobs, dca_keeper.accounts');
+  }
   const chainClient = createPublicClient({ transport: faultyTransport });
   const keeperChain = createViemKeeperChain({ publicClient: chainClient as any, walletClient: wallet(keeperAddr) as any, quoter, v3Factory: v3 });
   const tokens = [tsla, nvda];
-  const mkKeeper = (holder: string, store = new PostgresKeeperStore(mkPool())) => ({
+  const mkKeeper = (holder: string, store: KeeperStore = MEMORY ? memoryStore : new PostgresKeeperStore(mkPool())) => ({
     holder, store,
     keeper: new DcaKeeper({
       store, chain: keeperChain, mode: 'SEND', holder, executorCodeHash, assetAllowed: (a) => tokens.includes(a.toLowerCase() as Hex),
@@ -253,7 +262,7 @@ async function main() {
   await tick(w1);
   // the process dies mid-flight: it still holds the leases it took (a real crash never releases them)
   await due();
-  await w1.store.claimDue('worker-1', 0, 4_000, 10);
+  await w1.store.claimDue('worker-1', Date.now(), 4_000, 10);
   jA = await job(ids.A);
   const inflight = jA.pending;
   check('P2 restart', 'write-ahead record with nonce and hash stored before the crash', !!inflight?.hash && inflight.nonce >= 0, `nonce ${inflight?.nonce}`);
@@ -362,7 +371,7 @@ async function main() {
     check('P8 Postgres restart', 'write-ahead record survived the restart unchanged', walAfter?.hash === wal.hash && walAfter?.nonce === wal.nonce);
     check('P8 Postgres restart', 'the in-flight purchase reconciled once', jA.confirmed.filter((c) => c.window === 6n && !c.reorged).length === 1 && !jA.pending);
   } else {
-    check('P8 Postgres restart', 'SKIPPED: DCA_SOAK_PG_RESTART_CMD not set', true);
+    check('P8 Postgres restart', MEMORY ? 'SKIPPED: DCA_SOAK_STORE=memory (no database)' : 'SKIPPED: DCA_SOAK_PG_RESTART_CMD not set', true);
   }
 
   // P9 two workers, two jobs, same keeper account
@@ -465,12 +474,14 @@ async function main() {
     check('final', `${name}: every closed window is bought or recorded missed, never both`, overlap.length === 0 && gaps.length === 0, `accounted through ${j.accountedThrough}, bought ${bought.size}, missed ${missed.size}`);
     phases[`job${name}`] = { runs: live.length, windows: onChain.map(String), missed: j.missed.map((m) => `${m.window}:${m.reason}`), attempts: j.attempts.map((a) => `${a.window}:${a.outcome}`) };
   }
-  const events = await store0.events(ids.A);
-  check('final', 'Postgres append-only log holds the runs and the missed windows', events.filter((e) => e.kind === 'RUN').length >= (await windowsOnChain(ids.A)).length && events.some((e) => e.kind === 'MISSED_WINDOW'));
+  if (store0.events) {
+    const events = await store0.events(ids.A);
+    check('final', 'Postgres append-only log holds the runs and the missed windows', events.filter((e) => e.kind === 'RUN').length >= (await windowsOnChain(ids.A)).length && events.some((e) => e.kind === 'MISSED_WINDOW'));
+  } else check('final', 'SKIPPED: append-only Postgres log (DCA_SOAK_STORE=memory)', true);
 
   const report = {
     schema: 'bag-dca-keeper-soak/v1', mode: MODE, evidenceClass: MODE === 'FORK' ? 'TEST_KEY_FORK (local dev node forking Robinhood; nothing broadcast)' : 'LOCAL_NODE (mock Uniswap)',
-    commit: execSync('git rev-parse HEAD').toString().trim(), node: version.slice(0, 40), postgresRestart: PG_RESTART ? 'ran' : 'skipped',
+    commit: execSync('git rev-parse HEAD').toString().trim(), node: version.slice(0, 40), store: MEMORY ? 'MEMORY' : 'POSTGRES', postgresRestart: PG_RESTART ? 'ran' : 'skipped',
     cycles: CYCLES, seed: Number(process.env.DCA_SOAK_SEED ?? 1), durationS: Math.round((Date.now() - T0) / 1000),
     passed: checks.filter((c) => c.ok).length, failed: checks.filter((c) => !c.ok).length,
     alerts: Object.entries(alerts.reduce((m, a) => ({ ...m, [a.kind]: (m[a.kind] ?? 0) + 1 }), {} as Record<string, number>)),
