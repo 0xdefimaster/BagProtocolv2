@@ -42,6 +42,8 @@ const callOrder: string[] = [];
 const transitions: { from: string; to: string }[] = [];
 let transitionSucceeds = true;
 let basisResult: { ok: true; consumedBasisQuote: bigint; lossCarryQuote: bigint } | { ok: false; reason: string };
+// Per-test override of a leg's price fields (confidence, timestamp, …) or a thrown source error; null = verified.
+let priceOverride: ((address: string) => Record<string, unknown> | Error | undefined) | null = null;
 const basis = (b: string, c: string) => ({ ok: true as const, consumedBasisQuote: parseDec(b), lossCarryQuote: parseDec(c) });
 
 vi.mock('@/lib/config/robinhood-chain', async (orig) => ({ ...(await orig<object>()), DEPLOYED_CONTRACTS: { redeemSettlement: SETTLEMENT } }));
@@ -98,7 +100,21 @@ vi.mock('@/lib/server/asset-repo', () => ({
 }));
 // AMKR $56.50, SPY $770 → 0.02 AMKR ≈ $1.13, 0.0017 SPY ≈ $1.309
 vi.mock('@/lib/server/price-provider', () => ({
-  getPriceProvider: () => ({ getPrice: async ({ address }: { address: string }) => ({ price: address.toLowerCase() === AMKR ? '56.5' : '770' }) }),
+  getPriceProvider: () => ({
+    getPrice: async (asset: { address: string }) => {
+      const scripted = priceOverride?.(asset.address.toLowerCase());
+      if (scripted instanceof Error) throw scripted;
+      return {
+        asset,
+        price: asset.address.toLowerCase() === AMKR ? '56.5' : '770',
+        quoteCurrency: 'USD',
+        timestamp: new Date().toISOString(),
+        source: 'robinhood-api:prices:test|verify:chainlink:feed:0bps',
+        confidence: 1,
+        ...scripted,
+      };
+    },
+  }),
 }));
 vi.mock('@/lib/blockchain/robinhood-public-client', () => ({
   getRobinhoodPublicClient: () => ({
@@ -131,7 +147,8 @@ vi.mock('@/lib/blockchain/lifi-composer-adapter', async (orig) => ({
 
 const svc = await import('../redeem-settlement-attestation');
 const { out } = await import('@/lib/blockchain/__tests__/composer-fixtures');
-const { ExecutionPriceTooLowError } = await import('../redeem-fee-attestation');
+const { ExecutionPriceTooLowError, PriceUnavailableForSaleError } = await import('../redeem-fee-attestation');
+const { PriceSourceDisagreementError } = await import('@/lib/domain/basket-protocol/pricing/bag-price-router');
 const { quoteSettlement, attestSettlement } = svc;
 
 const admin = {
@@ -171,6 +188,9 @@ beforeEach(() => {
   basisResult = basis('2', '0');
   otherIntents = [];
   openOthersHook = null;
+  priceOverride = null;
+  delete process.env.FEE_SALE_REDUCED_CONFIDENCE_MAX_DEVIATION_BPS;
+  delete process.env.FEE_SALE_PRICE_MAX_AGE_SECONDS;
   callOrder.length = 0;
   savedPlans.length = 0;
   savedAttested.length = 0;
@@ -222,6 +242,73 @@ describe('phase 1 — quoteSettlement: quote, price quality, plan; signs nothing
     intent = { ...intent, expiresAt: new Date(Date.now() + 60 * 1000).toISOString() };
     const q = await quoteSettlement(admin, 'user', intent.id as string);
     expect(q.plan.expiresAt).toBe(intent.expiresAt);
+  });
+});
+
+// Reference-price confidence (lib/domain/basket-protocol/redeem/sale-price-confidence.ts). The AMKR leg is worth
+// 0.02 × $56.50 = 1.130000 USDG; the SPY leg (1.309 USDG) stays above its value throughout.
+describe('phase 1 — reference-price confidence decides the band; a refused leg means no plan and no signature', () => {
+  const AMKR_VALUE = 1_130_000;
+  const amkrBelow = (bps: number) => {
+    const amountOut = Math.floor((AMKR_VALUE * (10_000 - bps)) / 10_000);
+    legOutputs[0] = { amountOut: String(amountOut), amountOutMin: String(Math.floor(amountOut * 0.99)) };
+  };
+  const onlyAmkr = (fields: Record<string, unknown> | Error) => (a: string) => (a === AMKR ? fields : undefined);
+
+  it('(1) high confidence: the normal 500 bps band — a leg 3% below its verified value is planned', async () => {
+    amkrBelow(300);
+    const q = await quoteSettlement(admin, 'user', intent.id as string);
+    expect(q.plan.grossMinimumRaw).toBeDefined();
+    expect(savedPlans).toHaveLength(1);
+  });
+
+  it('(2) Chainlink unavailable (confidence 0.5): the stricter band — 3% below is refused, 0.9% below passes', async () => {
+    priceOverride = onlyAmkr({ confidence: 0.5, source: 'robinhood-api:prices:AMKR|verify:chainlink-unavailable' });
+    amkrBelow(300);
+    await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toMatchObject({ name: 'ExecutionPriceTooLowError', maxDeviationBps: 100 });
+    expect(savedPlans).toHaveLength(0);
+    amkrBelow(90);
+    await quoteSettlement(admin, 'user', intent.id as string);
+    expect(savedPlans).toHaveLength(1);
+  });
+
+  it('(2b) the stricter band is configurable (FEE_SALE_REDUCED_CONFIDENCE_MAX_DEVIATION_BPS) and a bad value refuses', async () => {
+    priceOverride = onlyAmkr({ confidence: 0.5 });
+    amkrBelow(90);
+    process.env.FEE_SALE_REDUCED_CONFIDENCE_MAX_DEVIATION_BPS = '50';
+    await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toMatchObject({ name: 'ExecutionPriceTooLowError', maxDeviationBps: 50 });
+    process.env.FEE_SALE_REDUCED_CONFIDENCE_MAX_DEVIATION_BPS = '900'; // wider than the verified band
+    await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(PriceUnavailableForSaleError);
+    expect(savedPlans).toHaveLength(0);
+  });
+
+  it('(3) missing confidence fails closed', async () => {
+    priceOverride = onlyAmkr({ confidence: undefined });
+    await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toThrow(/CONFIDENCE_MISSING/);
+    expect(savedPlans).toHaveLength(0);
+  });
+
+  it('(4) a stale price fails closed', async () => {
+    priceOverride = onlyAmkr({ timestamp: new Date(Date.now() - 6 * 60 * 1000).toISOString() });
+    await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toThrow(/PRICE_STALE/);
+    expect(savedPlans).toHaveLength(0);
+  });
+
+  it('(5) price sources disagree: fails closed', async () => {
+    priceOverride = onlyAmkr(new PriceSourceDisagreementError({ chain: 'robinhood', address: AMKR }, BigInt(350), 'robinhood-api', 'chainlink'));
+    await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(PriceUnavailableForSaleError);
+    expect(savedPlans).toHaveLength(0);
+  });
+
+  it('(6) a quote below the threshold produces no attestation signature', async () => {
+    priceOverride = onlyAmkr({ confidence: 0.5 });
+    amkrBelow(300);
+    await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(ExecutionPriceTooLowError);
+    await expect(attestSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(svc.SettlementPlanMissingError);
+    expect(savedPlans).toHaveLength(0);
+    expect(savedAttested).toHaveLength(0);
+    expect(finalBuilds).toHaveLength(0); // the signature is only ever passed into the final build
+    expect(callOrder).not.toContain('claim');
   });
 });
 

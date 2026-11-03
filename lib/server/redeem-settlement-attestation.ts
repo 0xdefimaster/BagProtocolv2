@@ -3,7 +3,7 @@ import { getAddress, zeroAddress } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { computeOnChainBagId } from '@/lib/domain/basket-protocol/onchain';
 import { computeB0Fee, decimalToRawCeil, feeBasisFromPositionPnl } from '@/lib/domain/basket-protocol/redeem/performance-fee-b0';
-import { FEE_REDEEM_MAX_PRICE_DEVIATION_BPS, referenceValueRaw, selectRedeemLegQuote } from '@/lib/domain/basket-protocol/redeem/redeem-quote-quality';
+import { referenceValueRaw, selectRedeemLegQuote } from '@/lib/domain/basket-protocol/redeem/redeem-quote-quality';
 import { computePositionPnl } from '@/lib/domain/basket-protocol/accounting/position-pnl';
 import { assetIdentityKey } from '@/lib/domain/basket-protocol/asset-identity';
 import { getAssetsByIdentities } from '@/lib/server/asset-repo';
@@ -42,6 +42,8 @@ import {
   PriceUnavailableForSaleError,
   SaleNoLongerCoveredError,
   SaleQuoteExpiredError,
+  feeSalePricePolicy,
+  referencePriceForFeeSale,
 } from '@/lib/server/redeem-fee-attestation';
 
 // -----------------------------------------------------------------------------
@@ -300,6 +302,7 @@ export async function quoteSettlement(admin: SupabaseClient, userId: string, int
 
   // #16 price quality: each leg's quoted output against its value at BAG's verified price.
   const priceProvider = getPriceProvider();
+  const policy = feeSalePricePolicy(swapLegs[0].token);
   const decimalsByKey = new Map(
     (await getAssetsByIdentities(admin, swapLegs.map((l) => ({ chain: l.chain, address: l.token })))).map((a) => [assetIdentityKey({ chain: a.chain, address: a.address }), a.decimals])
   );
@@ -309,17 +312,15 @@ export async function quoteSettlement(admin: SupabaseClient, userId: string, int
     const out = expected !== null ? BigInt(expected) : null;
     const decimals = decimalsByKey.get(assetIdentityKey({ chain: leg.chain, address: leg.token }));
     if (decimals === undefined) throw new PriceUnavailableForSaleError(leg.token, 'asset not in the registry');
-    let priceUsd: string;
-    try {
-      priceUsd = (await priceProvider.getPrice({ chain: leg.chain, address: leg.token })).price;
-    } catch (e) {
-      throw new PriceUnavailableForSaleError(leg.token, (e as Error).message);
-    }
+    // The band depends on how well the reference is verified (sale-price-confidence.ts): 500 bps verified, a stricter
+    // configurable band when Chainlink could not be read, and no plan at all for a missing confidence, a stale price or
+    // disagreeing sources.
+    const { priceUsd, maxDeviationBps } = await referencePriceForFeeSale(priceProvider, { chain: leg.chain, address: leg.token }, leg.token, policy);
     const reference = referenceValueRaw(leg.amountRaw, decimals, priceUsd, ROBINHOOD_REWARD_TOKEN.decimals);
     if (reference <= BigInt(0)) throw new PriceUnavailableForSaleError(leg.token, 'amount too small to value');
-    const selection = selectRedeemLegQuote(out === null ? [] : [{ feeTier: 0, amountOut: out }], reference, FEE_REDEEM_MAX_PRICE_DEVIATION_BPS);
+    const selection = selectRedeemLegQuote(out === null ? [] : [{ feeTier: 0, amountOut: out }], reference, maxDeviationBps);
     if (!selection.ok && selection.reason === 'NO_QUOTE') throw new PriceUnavailableForSaleError(leg.token, 'no Composer quote for this leg');
-    if (!selection.ok) throw new ExecutionPriceTooLowError(leg.token, selection.deviationBps, FEE_REDEEM_MAX_PRICE_DEVIATION_BPS);
+    if (!selection.ok) throw new ExecutionPriceTooLowError(leg.token, selection.deviationBps, maxDeviationBps);
     // The floor Composer enforces on chain for this leg. Without one there is no
     // guaranteed minimum to sign the user's floor against, so the sale is refused
     // rather than assuming quote × (1 − slippage).
