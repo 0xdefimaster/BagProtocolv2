@@ -40,7 +40,7 @@
 - [x] Unified Strategy API
 - [x] Read-only BAG MCP
 - [x] Standalone `bag.json` SDK
-- [ ] Public SDK distribution
+- [x] Public SDK distribution (`@bagprotocol/sdk` 0.3.0 on npm, 2026-10-30; 0.4.0 is a candidate, not published)
 
 ---
 

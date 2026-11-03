@@ -1,7 +1,7 @@
 # Status — what is current, what is live, what each document is
 
 One place that says which parts of this repository describe the system as it
-is today. Last updated 2026-10-20. When a document and this page disagree,
+is today. Last updated 2026-11-03 (status matrix below; older sections keep their own dates). When a document and this page disagree,
 this page and the code win.
 
 Labels:
@@ -12,6 +12,29 @@ Labels:
 - **NOT IMPLEMENTED** — a design or decision; no code (or no production code).
 - **SPIKE** — a time-boxed feasibility experiment; its code is not the product path.
 - **HISTORICAL** — a point-in-time report; accurate when written, superseded since.
+
+## Status matrix (2026-11-03)
+
+Labels: **IMPLEMENTED** (code exists) · **MERGED** (on `main`) · **DEPLOYED** (contract on a live chain) ·
+**LIVE VERIFIED** (a real, user-signed mainnet transaction verified) · **NOT VERIFIED** · **NOT AUDITED** ·
+**NOT IMPLEMENTED**. Local EVM tests, fork tests, deployments and real user-signed transactions are different
+evidence and are never counted as each other. **No contract in this repository has had an independent audit.**
+
+| Component | Status | Evidence / gap |
+|---|---|---|
+| `bag.json` v1 format, hash, validation (SDK core) | MERGED · published in SDK 0.3.0 | v1 semantics frozen (`packages/bag-sdk/README.md`) |
+| `@bagprotocol/sdk` 0.3.0 | **Published on npm (2026-10-30)** · LIVE VERIFIED purchase (2026-10-30, Robinhood) | `docs/SDK_RELEASE_PREPARATION.md` |
+| `@bagprotocol/sdk` 0.4.0 (delivery proof, `DELIVERY_LOG`) | MERGED (#143) · **candidate, NOT published** (`publicationApproved: false`) · LIVE VERIFIED purchase from the candidate tarball (2026-11-02) | `packages/bag-sdk/release-gates.json`; source version 0.4.0 ≠ published 0.3.0 |
+| LI.FI Composer integration | MERGED · LIVE (Robinhood purchases and sales); package `@lifi/composer-sdk` 0.11.3; production factory = VM 1.2 (pinned) | `docs/SDK_COMPOSER_TRUST.md`, `docs/SDK_DEPLOYMENT_PIN_ROBINHOOD.md`; Composer's own VM is not audited by BAG |
+| `BagFactory` / `Bag` (Robinhood) | DEPLOYED · LIVE VERIFIED (user-signed `createBag`) · NOT AUDITED | §0; the address lives in `FACTORY_ADDRESS_ROBINHOOD` (no deployment record on `main`) |
+| `StrategyRegistry` (Robinhood) | DEPLOYED (`0x907c…09a8`) · LIVE VERIFIED registration · NOT AUDITED | `docs/STRATEGY_REGISTRY_DESIGN.md` §0 |
+| `RedeemSettlement` v2 (Robinhood) | DEPLOYED and configured · LIVE VERIFIED **with fee 0 only** · **fee > 0 NOT VERIFIED** · NOT AUDITED | `docs/REDEEM_SETTLEMENT_DEPLOYMENT.md` |
+| Price authority guards (Robinhood prices, Chainlink cross-check) | MERGED · guard checks **NOT VERIFIED** against live data | `docs/ROBINHOOD_PRICE_AUTHORITY.md` |
+| `BagExecutionRouter` (BAG Router) | MERGED · **NOT DEPLOYED**, disabled (§3) | plan-signer trust model unresolved |
+| Settlement router G1 (types, hashing, vectors) | MERGED · router itself NOT IMPLEMENTED | #141 |
+| `StrategyCompositions` | MERGED · NOT DEPLOYED (migration 0060 not run) | `docs/STRATEGY_COMPOSITIONS_DESIGN.md` |
+| DCA v1 (executor, adapter, SDK `/dca`, keeper) | IMPLEMENTED on **Draft PR #145, NOT MERGED** · NOT DEPLOYED · NOT AUDITED · local + Robinhood-fork tests only | `docs/dca/` on that branch |
+| Chains other than Robinhood (Base, Arbitrum, Ethereum) | Format support only (chain ids in the SDK and app config) · **NOT qualified**: no BAG contracts, deployment pin or live verification on them | — |
 
 ## 0. Latest live checks (Robinhood Chain, 2026-10-17)
 
@@ -58,7 +81,7 @@ project and Netlify site from the V1 demo.
 | Which execution path did the live purchase use? | **Resolved**: legacy path | No execution-plan hash on its receipt; compiler flag not set |
 | Redeem receipt showed "Unknown provider" / "Not recorded" | **Resolved, verified live** (PR #12): LI.FI Composer, "Received 2.45405 USDG · read from the tx receipt" | `execution-receipts.test.ts` models the live redeem |
 | Passport showed the deployed composition as "not recorded on-chain" | **Resolved, verified live** (PR #12), no migration: on-chain version 1 shows its composition hash | `bag-deployment-local-evm.integration.test.ts`: deploy tx → BagCreated → Bag address → `compositionHash()` → Passport → bag.json; ambiguous history → null |
-| `StrategyRegistry` deployed and verified by a third party on Robinhood Chain | **Open** | Local EVM only |
+| `StrategyRegistry` deployed and verified by a third party on Robinhood Chain | **Resolved (deployment)**: deployed and a live registration verified (§0); its runtime code matched this repository's artifact on a Robinhood fork (DCA PR #145 real-BAG test, 2026-11-03) | `docs/STRATEGY_REGISTRY_DESIGN.md` |
 | Registry panel with a real wallet extension | **Open** | — |
 | Realized P&L after a partial sale, checked live | **Open** | — |
 | Price authority guard checks against live data | **Open** | `docs/ROBINHOOD_PRICE_AUTHORITY.md` |
