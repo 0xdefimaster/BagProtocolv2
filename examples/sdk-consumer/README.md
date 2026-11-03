@@ -20,8 +20,20 @@ So today:
 - Use the published `0.3.0` for the quickstart alone, or the tarball route for everything.
 
 Exact dependency versions: `@bagprotocol/sdk 0.4.0`, `@lifi/composer-sdk 0.11.3`, `viem 2.56.0`, `typescript 5.9.3`,
-`@types/node 24.19.0`. Node ≥ 24 is the declared engine. The smoke runs below also passed on Node 22.22, with npm's
-engine warnings.
+`@types/node 24.19.0`. Node ≥ 24 is the supported runtime: every check below was run on **Node 24.22.2** (npm 11.19.1).
+
+### Which SDK version do you need?
+
+| You want to… | Minimum SDK | Published? | Notes |
+|---|---|---|---|
+| Validate, normalize and hash a `bag.json` offline (`quickstart.mjs`) | **0.3.0** | Yes (npm) | No network, no key |
+| Compile a live LI.FI Composer purchase (unsigned) | **0.3.0** | Yes (npm) | Needs your LI.FI key, an RPC, and a reviewed deployment pin. Robinhood Chain only |
+| Verify a receipt with a qualified tracing RPC (`ROBINHOOD_NITRO_TRANSACTION_INDEX` / `GETH_TRANSACTION_INDEX`) | **0.3.0** | Yes (npm) | Needs `debug_traceCall` with `txIndex` on the qualified node build; few public RPCs serve it |
+| Verify a receipt from delivery logs (`DELIVERY_PROOF=1`, `DELIVERY_LOG`), with any RPC | **0.4.0** | **No: candidate**, tarball only | Release gate 3 was closed on a live Robinhood purchase on 2026-11-02; publication is a separate owner decision |
+| Run this whole starter (`npm run build`: `local-sign.ts` imports `DELIVERY_PROOF_SIGNATURE`) | **0.4.0** | **No: candidate**, tarball only | With 0.3.0 from npm, use `quickstart.mjs` and your own code built from `src/purchase.ts` without delivery proof |
+
+Adoption status: no independent third-party developer has completed a live integration with this starter yet.
+Every live result referenced here was produced by the maintainer.
 
 ## Quickstart (5 minutes, published package, offline)
 
@@ -191,12 +203,16 @@ npm run smoke:published-quickstart --prefix packages/bag-sdk
 This installs the **published** `@bagprotocol/sdk@0.3.0` from npm into a temporary directory and runs the
 quickstart. Expected: `{"status":"PASS","sdkVersion":"0.3.0","dependencySource":"NPM_REGISTRY",...}`.
 
+Last run: 2026-11-03, Node 24.22.2, from clean temporary directories outside the BAG repository. That includes
+following the quickstart above verbatim, with output identical to the expected JSON.
+
 | Verified | Not verified |
 |---|---|
 | Quickstart against the published 0.3.0 (npm) and the 0.4.0 tarball; same frozen hash | That 0.4.0 installs from npm (not published) |
-| Offline demo: snapshot integrity, minima, receipts (synthetic), HTTP deadlines | Any live compile, purchase or receipt from **this run**. The 2026-10-30 live Robinhood purchase was done by the maintainer, not by these smokes |
-| Strict NodeNext types against the packed tarball | Browser bundlers; Node < 24 beyond a smoke run on 22.22 |
+| Offline demo: snapshot integrity, minima, receipts (synthetic), HTTP deadlines | Any live compile, purchase or receipt from **this run**. The live Robinhood purchases (2026-10-30, 2026-11-02) were made by the maintainer, not by these smokes |
+| Strict NodeNext types (`strict`, `skipLibCheck: false`) against the packed tarball, on Node 24 | Browser bundlers; Node < 24 |
 | No network in the demo; npm registry only in the published smoke | Base, Arbitrum and Ethereum execution (no pin, no registry, no receipt qualification) |
+| — | Use by an independent external developer (none yet) |
 
 ## Prepare a live unsigned intent
 
