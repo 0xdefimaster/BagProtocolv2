@@ -123,7 +123,7 @@ describe('BagDcaExecutor ↔ SDK parity', () => {
     // the receipt of another authorization's run does not verify this one
     const b = clone(a);
     b.nonce = 99n;
-    const vb = await verifyDcaReceipt({ client, transactionHash: receipt.transactionHash, auth: b, deployment });
+    const vb = await verifyDcaReceipt({ client, transactionHash: receipt.transactionHash, auth: b, deployment, expectedExecutorCodeHash: keccak256(code) });
     assert.equal(vb.status, 'FAILED');
     // a mined, reverted run
     await c.router.write.setRate([c.tsla.address, 10n ** 18n, USDG(1000)]);
@@ -133,7 +133,7 @@ describe('BagDcaExecutor ↔ SDK parity', () => {
     const latest = await c.publicClient.getBlock({ blockTag: 'latest' });
     const hash = latest.transactions[0] as Hex;
     assert.equal((await c.publicClient.getTransactionReceipt({ hash })).status, 'reverted');
-    const failed = await verifyDcaReceipt({ client, transactionHash: hash, auth: a, deployment });
+    const failed = await verifyDcaReceipt({ client, transactionHash: hash, auth: a, deployment, expectedExecutorCodeHash: keccak256(code) });
     assert.equal(failed.status, 'FAILED');
     assert.deepEqual(failed.issues.map((i) => i.code), ['TRANSACTION_REVERTED']);
   });

@@ -17,7 +17,8 @@
  * DCA_EXECUTOR, DCA_QUOTER (default Robinhood QuoterV2), DCA_V3_FACTORY (default Robinhood v3 factory),
  * DCA_KEEPER_PRIVATE_KEY (FORK only; a local test key), DCA_EXECUTOR_CODE_HASH (keccak256 of the reviewed executor
  * runtime code; required to send), DCA_ASSET_ALLOWLIST (comma-separated token addresses; required to send), DCA_KEEPER_HOLDER, DCA_KEEPER_INTERVAL_MS (15000),
- * DCA_KEEPER_HEALTH_PORT (8787, bound to 127.0.0.1), DCA_KEEPER_ALERT_WEBHOOK, DCA_LOG_CHUNK (10000).
+ * DCA_KEEPER_HEALTH_PORT (8787, bound to 127.0.0.1), DCA_KEEPER_ALERT_WEBHOOK, DCA_LOG_CHUNK (10000),
+ * DCA_REORG_DEPTH (64; fallback finality depth, see docs/dca/DCA_V1_TYPED_ADAPTER.md §9), DCA_MIN_CONFIRMATIONS (1).
  */
 import { readFileSync } from 'node:fs';
 import { hostname } from 'node:os';
@@ -92,11 +93,20 @@ async function main() {
     const codeHash = env('DCA_EXECUTOR_CODE_HASH', mode === 'FORK') as Hex | undefined;
     const allow = (env('DCA_ASSET_ALLOWLIST', mode === 'FORK') ?? '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
     if (allow.some((a) => !/^0x[0-9a-f]{40}$/.test(a))) throw new Error('DCA_ASSET_ALLOWLIST must be comma-separated addresses');
+    // Finality: a run is final only below the RPC's `finalized` block (Robinhood: the parent-chain-finalized batch).
+    // A sending keeper refuses an RPC without that tag; reorgDepth/minConfirmations are explicit settings.
+    if (mode === 'FORK' && (await chain.finalizedBlock()) === null && process.env.DCA_ALLOW_NO_FINALIZED_TAG !== '1') {
+      throw new Error('the RPC does not serve the `finalized` block tag; refusing to send (DCA_ALLOW_NO_FINALIZED_TAG=1 overrides for local nodes)');
+    }
+    const reorgDepth = BigInt(env('DCA_REORG_DEPTH', false) ?? '64');
+    const minConfirmations = BigInt(env('DCA_MIN_CONFIRMATIONS', false) ?? '1');
     let worker: KeeperWorker | null = null;
     const keeper = new DcaKeeper({
       store, chain, mode: (mode === 'FORK' ? 'SEND' : 'PAPER') as KeeperMode,
       holder: env('DCA_KEEPER_HOLDER', false) ?? `${hostname()}:${process.pid}`,
       executorCodeHash: codeHash,
+      reorgDepth,
+      minConfirmations,
       assetAllowed: allow.length ? (a: Hex) => allow.includes(a.toLowerCase()) : undefined,
       onAlert: (a) => worker?.alert(a),
     });

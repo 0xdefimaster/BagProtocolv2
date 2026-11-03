@@ -203,15 +203,17 @@ describe('BagDcaExecutor — allowedCaller', () => {
     assert.equal((await c.state(a)).runs, 1);
   });
 
-  it('when zero (ANY), a third party can execute with no keeper floor: only the signed ceiling bounds the price', async () => {
+  it('a zero allowedCaller ("anyone may execute") is refused for every caller: v1 has no ANY mode', async () => {
     const c = await setup();
-    const a = c.auth; // allowedCaller = 0
+    const a = clone(c.auth);
+    a.allowedCaller = zeroAddress;
     const sig = await c.sign(a);
-    await c.router.write.setRate([c.tsla.address, E18, USDG(419)]); // worse than market, still under the 420 ceiling
     await c.at(a.schedule.startsAt + 1n);
+    const before = await snapshot(c, a);
+    await assert.rejects(c.execute(a, sig), /CallerNotAllowed/); // the keeper
     const asOther = await c.viem.getContractAt('BagDcaExecutor', c.executor.address, { client: { wallet: c.other } });
-    await asOther.write.execute([a, { authorizationId: c.idOf(a), window: 0n, deadline: a.schedule.startsAt + 600n, fees: [3000, 3000], minOutFloors: [] }, sig]);
-    assert.equal((await c.state(a)).runs, 1, 'accepted: this is the documented ANY-caller risk, bounded by the ceiling');
+    await assert.rejects(asOther.write.execute([a, { authorizationId: c.idOf(a), window: 0n, deadline: a.schedule.startsAt + 600n, fees: [3000, 3000], minOutFloors: [] }, sig]), /CallerNotAllowed/);
+    await assertNothingMoved(c, a, before);
   });
 
   it('allowedCaller is signed: changing it changes the id', async () => {

@@ -163,7 +163,7 @@ export interface DcaAuthorization {
   owner: Hex;
   recipient: Hex;
   inputToken: Hex;
-  /** Only this address may execute (the owner's keeper). Zero address = anyone (see `summarizeDcaAuthorization`). */
+  /** The only address that may execute (the owner's keeper). Required; v1 has no "anyone may execute" mode. */
   allowedCaller: Hex;
   bag: { bagId: Hex; bagVersion: bigint; compositionHash: Hex; definitionHash: Hex; strategyId: Hex; strategyVersion: number };
   assets: DcaAssetLimit[];
@@ -291,6 +291,7 @@ export function checkDcaTerms(auth: DcaAuthorization, deployment?: { adapter?: s
   const p: string[] = [];
   const special = [deployment?.executor, deployment?.adapter, deployment?.swapRouter, auth.route.adapter, auth.route.swapRouter].filter(Boolean).map((x) => x!.toLowerCase());
   if (/^0x0{40}$/i.test(auth.owner)) p.push('owner is zero');
+  if (!auth.allowedCaller || /^0x0{40}$/i.test(auth.allowedCaller)) p.push('allowedCaller is required (the keeper address)');
   if (/^0x0{40}$/i.test(auth.recipient) || special.includes(auth.recipient.toLowerCase())) p.push('recipient is zero or a contract of the route');
   if (/^0x0{40}$/i.test(auth.inputToken) || special.includes(auth.inputToken.toLowerCase())) p.push('input token is zero or a contract of the route');
   const s = auth.schedule;
@@ -346,10 +347,11 @@ export interface DcaTermsInput {
   recipient?: string;
   inputToken: string;
   /**
-   * Who may call `execute`: the keeper's address (recommended), or 'ANY'. With 'ANY' any caller can choose the moment
-   * and skip the keeper's quote floor, so a run can be pushed to any price up to the ceilings in one transaction.
+   * The keeper's address: the only caller `execute` accepts. Required. (An "anyone may execute" mode would let any
+   * caller choose the moment and skip the keeper's quote floor, pushing a run to any price up to the ceilings in one
+   * transaction; v1 refuses it on chain.)
    */
-  allowedCaller: string | 'ANY';
+  allowedCaller: string;
   /** Input token precision; required when the strategy sets a positive minInvestment (each run is one purchase). */
   inputTokenDecimals?: number;
   /** On-chain BAG identity read from BagFactory/Bag (and StrategyRegistry when registered). */
@@ -384,9 +386,9 @@ export function buildDcaAuthorization(input: DcaTermsInput): DcaAuthorization {
   const recipient = input.recipient === undefined ? owner : addr(input.recipient, 'recipient');
   const inputToken = addr(input.inputToken, 'inputToken');
   if (isNativeToken(inputToken)) fail('the native token cannot fund a DCA; use an ERC-20 the owner approves.');
-  if (input.allowedCaller === undefined) fail("allowedCaller is required: the keeper's address, or 'ANY'.");
-  const allowedCaller = input.allowedCaller === 'ANY' ? (`0x${'0'.repeat(40)}` as Hex) : addr(input.allowedCaller, 'allowedCaller');
-  if (/^0x0{40}$/.test(allowedCaller) && input.allowedCaller !== 'ANY') fail("allowedCaller zero address: pass 'ANY' explicitly.");
+  if (input.allowedCaller === undefined) fail("allowedCaller is required: the keeper's address.");
+  const allowedCaller = addr(input.allowedCaller, 'allowedCaller');
+  if (/^0x0{40}$/.test(allowedCaller)) fail('allowedCaller cannot be the zero address: v1 has no "anyone may execute" mode.');
   if (!Number.isInteger(input.runs) || input.runs < 1 || input.runs > 0xffffffff) fail('runs must be a positive integer.');
   if (typeof input.amountPerRunRaw !== 'bigint' || input.amountPerRunRaw <= ZERO) fail('amountPerRunRaw must be a positive bigint.');
   const minInvestment = rules.minInvestmentAmount.value;
@@ -438,8 +440,8 @@ export function buildDcaAuthorization(input: DcaTermsInput): DcaAuthorization {
 export interface DcaSummary {
   owner: Hex;
   recipient: Hex;
-  /** Who may execute. ANY: anyone can pick the moment and price (up to the ceilings). */
-  caller: { kind: 'ONLY'; address: Hex } | { kind: 'ANY'; risk: 'ANY_CALLER_CAN_EXECUTE_UP_TO_CEILING' };
+  /** The only address that may execute: the keeper, which chooses timing and fee tier within the ceilings. */
+  caller: { kind: 'ONLY'; address: Hex; trust: 'KEEPER_CAN_EXECUTE_UP_TO_CEILING' };
   /** The ERC-20 approval the owner gives: exactly the total budget; funds stay in the wallet until each run. */
   approval: { token: Hex; spender: 'EXECUTOR'; amountRaw: bigint };
   perRunRaw: bigint;
@@ -462,7 +464,7 @@ export function summarizeDcaAuthorization(auth: DcaAuthorization): DcaSummary {
   return {
     owner: auth.owner,
     recipient: auth.recipient,
-    caller: /^0x0{40}$/i.test(auth.allowedCaller) ? { kind: 'ANY', risk: 'ANY_CALLER_CAN_EXECUTE_UP_TO_CEILING' } : { kind: 'ONLY', address: auth.allowedCaller },
+    caller: { kind: 'ONLY', address: auth.allowedCaller, trust: 'KEEPER_CAN_EXECUTE_UP_TO_CEILING' },
     approval: { token: auth.inputToken, spender: 'EXECUTOR', amountRaw: s.totalBudget },
     perRunRaw: s.amountPerRun,
     runs: s.maxRuns,
@@ -503,12 +505,12 @@ export interface DcaReceiptClient {
 
 export type DcaReceiptIssueCode =
   | 'RPC_CHAIN_MISMATCH' | 'RPC_ERROR' | 'NOT_MINED' | 'NON_CANONICAL_RECEIPT' | 'INSUFFICIENT_CONFIRMATIONS' | 'REMOVED_LOG'
-  | 'EXECUTOR_CODE_MISMATCH' | 'EXECUTOR_CODE_UNAVAILABLE'
+  | 'EXECUTOR_CODE_MISMATCH' | 'EXECUTOR_CODE_UNAVAILABLE' | 'EXECUTOR_CODE_UNCHECKED'
   | 'TRANSACTION_REVERTED' | 'UNDECODABLE_EXECUTOR_LOG' | 'NO_PURCHASE_EVENT' | 'DUPLICATE_PURCHASE_EVENT' | 'EXECUTION_INDEX_MISMATCH'
   | 'PURCHASE_EVENT_MISMATCH' | 'WINDOW_MISMATCH' | 'MISSING_DELIVERY' | 'DUPLICATE_DELIVERY' | 'UNEXPECTED_DELIVERY'
   | 'DELIVERY_ORDER' | 'RECIPIENT_MISMATCH' | 'DELIVERY_BELOW_MINIMUM' | 'MINIMUM_BELOW_CEILING';
 
-const INDETERMINATE_CODES: readonly DcaReceiptIssueCode[] = ['RPC_ERROR', 'NOT_MINED', 'NON_CANONICAL_RECEIPT', 'INSUFFICIENT_CONFIRMATIONS', 'REMOVED_LOG', 'EXECUTOR_CODE_UNAVAILABLE'];
+const INDETERMINATE_CODES: readonly DcaReceiptIssueCode[] = ['RPC_ERROR', 'NOT_MINED', 'NON_CANONICAL_RECEIPT', 'INSUFFICIENT_CONFIRMATIONS', 'REMOVED_LOG', 'EXECUTOR_CODE_UNAVAILABLE', 'EXECUTOR_CODE_UNCHECKED'];
 
 export interface DcaDelivery {
   token: Hex;
@@ -548,6 +550,12 @@ export interface VerifyDcaReceiptOptions {
   minConfirmations?: bigint;
   /** keccak256 of the executor's runtime code (from the reviewed build). When set, the code at the block is checked. */
   expectedExecutorCodeHash?: Hex;
+  /**
+   * Without `expectedExecutorCodeHash` the events could come from any contract at that address, so the result is at
+   * most INDETERMINATE (`EXECUTOR_CODE_UNCHECKED`). Set this to true only for tests and local tooling, to get
+   * VERIFIED without the code check; never in production verification.
+   */
+  allowUncheckedExecutorCode?: boolean;
 }
 
 /**
@@ -598,6 +606,9 @@ export async function verifyDcaReceipt(o: VerifyDcaReceiptOptions): Promise<DcaR
     const head = await client.getBlockNumber({ cacheTime: 0 });
     out.confirmations = head >= receipt.blockNumber ? head - receipt.blockNumber + ONE : ZERO;
     if (out.confirmations < (o.minConfirmations ?? ONE)) issue('INSUFFICIENT_CONFIRMATIONS', `${out.confirmations} < ${o.minConfirmations ?? ONE}`);
+    if (!o.expectedExecutorCodeHash && !o.allowUncheckedExecutorCode) {
+      issue('EXECUTOR_CODE_UNCHECKED', 'no expectedExecutorCodeHash: the executor code was not checked against the reviewed build');
+    }
     if (o.expectedExecutorCodeHash) {
       if (!client.getCode) issue('EXECUTOR_CODE_UNAVAILABLE', 'reader has no getCode');
       else {

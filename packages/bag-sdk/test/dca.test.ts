@@ -94,15 +94,14 @@ describe('buildDcaAuthorization', () => {
     expectRefusal(() => build({ route: { adapter: ADAPTER, swapRouter: ROUTER, allowedFees: [2500] } }), /allowedFees/);
     expectRefusal(() => build({ amountPerRunRaw: B(1), totalBudgetRaw: B(5) }), /nothing to buy/);
     expectRefusal(() => build({ allowedCaller: undefined as never }), /allowedCaller is required/);
-    expectRefusal(() => build({ allowedCaller: `0x${'0'.repeat(40)}` }), /pass 'ANY' explicitly/);
+    expectRefusal(() => build({ allowedCaller: `0x${'0'.repeat(40)}` }), /zero address/);
+    expectRefusal(() => build({ allowedCaller: 'ANY' }), /not an address/);
   });
 
-  it('allowedCaller: a keeper address is signed as is; ANY is the zero address and the summary flags its risk', () => {
+  it('allowedCaller: the keeper address is signed; the summary states the keeper is trusted within the ceilings', () => {
     expect(build().allowedCaller).toBe(KEEPER);
-    expect(summarizeDcaAuthorization(build()).caller).toEqual({ kind: 'ONLY', address: KEEPER });
-    const any = build({ allowedCaller: 'ANY' });
-    expect(any.allowedCaller).toBe(`0x${'0'.repeat(40)}`);
-    expect(summarizeDcaAuthorization(any).caller).toEqual({ kind: 'ANY', risk: 'ANY_CALLER_CAN_EXECUTE_UP_TO_CEILING' });
+    expect(summarizeDcaAuthorization(build()).caller).toEqual({ kind: 'ONLY', address: KEEPER, trust: 'KEEPER_CAN_EXECUTE_UP_TO_CEILING' });
+    expect(checkDcaTerms({ ...build(), allowedCaller: `0x${'0'.repeat(40)}` })).toContain('allowedCaller is required (the keeper address)');
   });
 });
 
@@ -178,7 +177,8 @@ function client(o: Partial<{ logs: DcaReceiptLog[]; chainId: number; status: 'su
     getCode: async () => o.code ?? '0x6001',
   };
 }
-const verify = (c: DcaReceiptClient, extra: Partial<Parameters<typeof verifyDcaReceipt>[0]> = {}) => verifyDcaReceipt({ client: c, transactionHash: TX, auth: AUTH, deployment: DEP, ...extra });
+// Logic tests below skip the code check explicitly; the code check itself is tested on its own.
+const verify = (c: DcaReceiptClient, extra: Partial<Parameters<typeof verifyDcaReceipt>[0]> = {}) => verifyDcaReceipt({ client: c, transactionHash: TX, auth: AUTH, deployment: DEP, allowUncheckedExecutorCode: true, ...extra });
 const codes = (r: { issues: { code: string }[] }) => r.issues.map((i) => i.code);
 
 describe('verifyDcaReceipt', () => {
@@ -238,6 +238,13 @@ describe('verifyDcaReceipt', () => {
     expect((await verify(broken)).status).toBe('INDETERMINATE');
     const noCode: DcaReceiptClient = { ...client(), getCode: undefined };
     expect((await verify(noCode, { expectedExecutorCodeHash: keccak256('0x6001') })).status).toBe('INDETERMINATE');
+  });
+
+  it('without expectedExecutorCodeHash the result is at most INDETERMINATE (EXECUTOR_CODE_UNCHECKED), never VERIFIED', async () => {
+    const r = await verify(client(), { allowUncheckedExecutorCode: false });
+    expect(r.status).toBe('INDETERMINATE');
+    expect(codes(r)).toEqual(['EXECUTOR_CODE_UNCHECKED']);
+    expect((await verify(client(), { allowUncheckedExecutorCode: false, expectedExecutorCodeHash: keccak256('0x6001') })).status).toBe('VERIFIED');
   });
 
   it('the id binds the deployment: the same logs do not verify an authorization for another executor', async () => {

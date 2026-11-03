@@ -52,7 +52,7 @@ authorization's state leak into another.
 
 | ID | Severity | Finding | Status |
 |---|---|---|---|
-| M-1 | Medium | **Any-caller authorizations (`allowedCaller = 0`) can be executed at the worst price up to the ceilings.** Any caller chooses the moment, the fee tier (from the signed set) and passes no floor; a contract can move a pool, call `execute` and move it back in one transaction, extracting up to (ceiling − market) on every leg. | MITIGATED by the signed `allowedCaller`; the SDK requires an explicit `'ANY'` and flags it. ACCEPTED RISK for ANY. Recommendation: the signing page defaults to the keeper and shows the ANY risk. |
+| M-1 | Medium | **Any-caller authorizations (`allowedCaller = 0`) could be executed at the worst price up to the ceilings.** Any caller chooses the moment, the fee tier (from the signed set) and passes no floor; a contract can move a pool, call `execute` and move it back in one transaction, extracting up to (ceiling − market) on every leg. | **FIXED** (2026-11-03, after an external review raised it as P1): `allowedCaller` is mandatory; zero is refused on chain and by the SDK. |
 | M-2 | Medium | **The keeper is trusted within the ceilings.** With `allowedCaller` set, the keeper still chooses timing, fee tier and the floor; a malicious or compromised keeper (or its key) can do what M-1 describes. | ACCEPTED RISK (design: the ceiling is the only on-chain price bound). Mitigations available off chain: tight ceilings, keeper key custody, monitoring of delivered price vs a reference. An on-chain TWAP bound was not implemented (adds oracle risk on thin pools). |
 | L-1 | Low | **Token trust.** Delivery is measured with the asset's own `balanceOf`; a malicious asset (registered by a BAG creator) can fake deliveries or block them. A malicious input token is the owner's own choice. | ACCEPTED RISK on chain; MITIGATED in the keeper (token allowlist required to send). |
 | L-2 | Low | **BAG creator can halt a DCA** by recording a new version (`BagChanged` on every later run). No loss; the owner must re-sign. | ACCEPTED (fail-closed by design); the keeper records the windows as missed with the reason. |
@@ -67,6 +67,18 @@ authorization's state leak into another.
 | I-6 | Info | No pause or upgrade: an executor bug needs a new deployment, new signatures, and owners revoking approvals. | Recommendation: an incident runbook (announce, keeper stop, approval revocation guidance) before deployment. |
 | I-7 | Info | EIP-712 hashing is hand-written; equality with viem's `hashTypedData` is enforced by random-case parity tests and the SDK verifier. | No action. |
 
+### Second review (external AI-assisted static review, 2026-11-03) — DCA items
+
+| Item | Assessment | Status |
+|---|---|---|
+| `allowedCaller = ANY` weakens price protection (P1) | Agreed (same as M-1). | **FIXED**: mandatory `allowedCaller`. |
+| No independent audit / live-network keeper validation (P1, release blocker) | Agreed. | **OPEN**: audit; Robinhood finality lag and sequencer behaviour of replacements are measured only on a live network, which needs a separate decision. |
+| `reorgDepth` 64 / `minConfirmations` 1 defaults | Partly: finality already uses the RPC's `finalized` tag when served; depth is a floor. | **MITIGATED**: sending refuses an RPC without the tag; both values are explicit settings. |
+| Signing screen not built | Agreed. | **OPEN** (product work; `summarizeDcaAuthorization` gives the fields to show). |
+| Token trust depends on the keeper allowlist (P2) | Agreed (L-1). | ACCEPTED on chain; keeper allowlist required to send; tokens shown before signing. |
+| SDK code-hash check optional (P2) | Agreed. | **FIXED**: VERIFIED requires `expectedExecutorCodeHash` (or an explicit test-only opt-out). |
+| Real-BAG fork test counted any non-registry error as "registry passed" | Agreed (test false-positive risk). | **FIXED**: registry passage proven positively (`BadRunParams(1)` probe); swap-leg failures limited to an explicit list. |
+
 ### Adapter notes
 
 `swapExactIn` is callable by anyone with their own tokens and has no standing state. It never spends tokens others
@@ -78,5 +90,5 @@ during a swap reverts (`ReentrancyGuard`). No delegatecall, no arbitrary call, n
 ## Conclusion
 
 Within this review's limits the contracts enforce what the owner signs. The open risks are design-level and
-documented (M-1, M-2, L-1–L-5). Before deployment: an independent audit, an incident runbook (I-6), and the
+documented (M-2, L-1–L-5; M-1 fixed). Before deployment: an independent audit, an incident runbook (I-6), and the
 deployment conditions in `docs/dca/DCA_V1_TYPED_ADAPTER.md` §8.

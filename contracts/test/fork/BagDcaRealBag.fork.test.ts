@@ -40,7 +40,14 @@ const REGISTRY_ABI = parseAbi([
 ]);
 const ROUTER_FACTORY_ABI = parseAbi(['function bagFactory() view returns (address)']);
 const ERRORS = [...DCA_EXECUTOR_ABI, ...DCA_ADAPTER_ABI];
-const REGISTRY_ERRORS = /^(UnknownBag|BagChanged|CompositionMismatch|StrategyNotRegistered|InvalidTerms\(13\))/;
+/**
+ * Registry passage is proven POSITIVELY, not by the absence of a registry error: a simulation with an empty `fees`
+ * array is refused `BadRunParams(1)` by `_runMinimums`, which the executor reaches only after the signature, the
+ * terms, `_checkRegistry` (BagFactory, Bag version and composition, StrategyRegistry.matches) and `_reserve` passed.
+ */
+const REGISTRY_PASSED = /^BadRunParams\(1\)/;
+/** The only swap-leg failures an authentic BAG may end with (an asset without a usable Uniswap v3 route or depth). */
+const KNOWN_SWAP_FAILURES = /^(PoolNotFound|InputNotFullySpent|OutputBelowMinimum|OutputMismatch|Error\(Too little received\)|Error\(Transaction reverted: function call failed to execute\))/;
 const uuidRef = (uuid: string) => `0x${uuid.replace(/-/g, '').padStart(64, '0')}` as Hex;
 const lc = (x: string) => x.toLowerCase();
 
@@ -182,16 +189,19 @@ describe('BagDcaExecutor on a Robinhood Chain fork (REAL BagFactory, BAGs and St
       }
     };
     const clone = (a: Auth): Auth => ({ ...a, bag: { ...a.bag }, assets: a.assets.map((x) => ({ ...x })), schedule: { ...a.schedule }, route: { ...a.route } });
+    /** BadRunParams(1) ⇔ every check up to and including the registry and the calendar passed (see REGISTRY_PASSED). */
+    const registryProbe = async (a: Auth) => (await simulate(a, [])).result;
 
     step('5. authentic BAGs: the registry checks pass; full purchase where every asset routes');
     const results: Record<string, unknown> = {};
     let purchased = 0;
     for (const b of bags) {
       const { auth, fees } = await buildAuth(b);
+      const probe = await registryProbe(auth);
+      assert.match(probe, REGISTRY_PASSED, `${b.uuid}: the registry probe did not reach the run parameters: ${probe}`);
       const sim = await simulate(auth, fees);
-      const accepted = sim.result === 'OK' || !REGISTRY_ERRORS.test(sim.result);
-      assert.ok(accepted, `${b.uuid}: authentic BAG rejected by a registry check: ${sim.result}`);
-      const r: Record<string, unknown> = { strategyId: auth.bag.strategyId, strategyVersion: auth.bag.strategyVersion, simulation: sim.result, registryChecksPassed: true };
+      assert.ok(sim.result === 'OK' || KNOWN_SWAP_FAILURES.test(sim.result), `${b.uuid}: unexpected failure after the registry checks: ${sim.result}`);
+      const r: Record<string, unknown> = { strategyId: auth.bag.strategyId, strategyVersion: auth.bag.strategyVersion, registryProbe: probe, simulation: sim.result, swapOutcome: sim.result === 'OK' ? 'PURCHASE' : 'KNOWN_SWAP_FAILURE' };
       if (sim.result === 'OK') {
         const hash = await executor.write.execute(sim.args as any, { account: keeper.account });
         const receipt = await pc.waitForTransactionReceipt({ hash });
@@ -240,24 +250,24 @@ describe('BagDcaExecutor on a Robinhood Chain fork (REAL BagFactory, BAGs and St
       ? ((await read(A.STRATEGY_REGISTRY, REGISTRY_ABI, 'deriveStrategyId', [unregistered.creator, uuidRef(unregistered.uuid)])) as Hex)
       : keccak256(toHex('unregistered-strategy'));
     const regCases: [string, { id: Hex; version: number; definitionHash: Hex } | null, (r: string) => boolean, string][] = [
-      ['validRegistered', s, (r) => r === 'OK' || !REGISTRY_ERRORS.test(r), 'passes the registry check'],
+      ['validRegistered', s, (r) => REGISTRY_PASSED.test(r), 'passes the registry check (probe reaches BadRunParams(1))'],
       ['wrongVersionNext', { ...s, version: s.version + 1 }, (r) => /^StrategyNotRegistered/.test(r), 'StrategyNotRegistered'],
       ['wrongVersionZero', { ...s, version: 0 }, (r) => /^StrategyNotRegistered/.test(r), 'StrategyNotRegistered'],
       ['wrongDefinitionHash', { ...s, definitionHash: keccak256(toHex('another definition')) }, (r) => /^StrategyNotRegistered/.test(r), 'StrategyNotRegistered'],
       ['unregisteredStrategyId', { ...s, id: unregisteredId }, (r) => /^StrategyNotRegistered/.test(r), 'StrategyNotRegistered'],
-      ['zeroStrategyIdVersionZero', null, (r) => r === 'OK' || !REGISTRY_ERRORS.test(r), 'registry not consulted; passes'],
+      ['zeroStrategyIdVersionZero', null, (r) => REGISTRY_PASSED.test(r), 'registry not consulted; passes (probe reaches BadRunParams(1))'],
     ];
     const regResults: Record<string, string> = {};
     for (const [name, strategy, ok, expect] of regCases) {
-      const { auth, fees } = await buildAuth(reg!, { strategy, nonce: 100n + BigInt(Object.keys(regResults).length) });
-      const { result } = await simulate(auth, fees);
+      const { auth } = await buildAuth(reg!, { strategy, nonce: 100n + BigInt(Object.keys(regResults).length) });
+      const result = await registryProbe(auth);
       regResults[name] = result;
       assert.ok(ok(result), `${name}: expected ${expect}, got ${result}`);
     }
     {
-      const { auth, fees } = await buildAuth(reg!, { strategy: null, nonce: 199n });
+      const { auth } = await buildAuth(reg!, { strategy: null, nonce: 199n });
       auth.bag.strategyVersion = s.version; // zero id with a version
-      const { result } = await simulate(auth, fees);
+      const result = await registryProbe(auth);
       regResults.zeroStrategyIdWithVersion = result;
       assert.match(result, /^InvalidTerms\(13\)/);
     }

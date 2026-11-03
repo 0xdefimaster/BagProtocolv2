@@ -13,7 +13,7 @@ import { ceilingMinTs, clone, DAY, E18, legAmountsTs, REVOCATION_TYPES, rng, set
 //
 //   I1  owner USDG spent == runs × amountPerRun (per authorization), never more than the budget
 //   I2  runs ≤ maxRuns; at most one run per window; ≥ one period between runs
-//   I3  only allowedCaller (when set) ever gets a run through
+//   I3  only the signed allowedCaller ever gets a run through
 //   I4  no run after revocation
 //   I5  executor and adapter hold only what was pushed into them (no input or asset left from a run)
 //   I6  no allowance left: executor→adapter, adapter→router
@@ -47,7 +47,7 @@ describe('BagDcaExecutor — stateful fuzz (local EVM)', () => {
     it(`seed ${seed.toString(16)}: 200 random actions keep every invariant`, async () => {
       const c = await setup();
       const r = rng(seed);
-      // Two authorizations of the same owner: one keeper-only, one ANY caller.
+      // Two authorizations of the same owner (different schedules), both bound to the keeper; the attacker tries both.
       const keeperOnly = clone(c.auth);
       keeperOnly.allowedCaller = c.keeper.account.address;
       keeperOnly.schedule = { ...keeperOnly.schedule, maxRuns: 30, totalBudget: USDG(300), periodSeconds: DAY, expiresAt: keeperOnly.schedule.startsAt + 40n * DAY };
@@ -137,7 +137,7 @@ describe('BagDcaExecutor — stateful fuzz (local EVM)', () => {
             succeeded++;
             runs.push({ auth: i, window, t: tNext });
             // I3, I4: only an allowed caller, never after revocation, never a tampered authorization
-            assert.ok(!(i === 0 && attacker), `${what}: an attacker executed a keeper-only authorization`);
+            assert.ok(!attacker, `${what}: an attacker executed an authorization bound to the keeper`);
             assert.ok(!revoked[i], `${what}: executed after revocation`);
             assert.ok(!tamper, `${what}: a tampered authorization executed`);
             // I7: every asset delivered, each ≥ its ceiling minimum
@@ -178,7 +178,7 @@ describe('BagDcaExecutor — stateful fuzz (local EVM)', () => {
         assert.deepEqual(after.allowances, [0n, 0n], `step ${step}: allowance left`);
       }
       assert.ok(succeeded >= 3, `seed ${seed}: too few successful runs to be meaningful (${succeeded})`);
-      console.log(`  seed ${seed.toString(16)}: ${actions} actions, ${succeeded} runs (${runs.filter((x) => x.auth === 0).length} keeper-only, ${runs.filter((x) => x.auth === 1).length} any-caller), revoked ${revoked.join('/')}`);
+      console.log(`  seed ${seed.toString(16)}: ${actions} actions, ${succeeded} runs (${runs.filter((x) => x.auth === 0).length} daily, ${runs.filter((x) => x.auth === 1).length} half-daily), revoked ${revoked.join('/')}`);
     });
   }
 });

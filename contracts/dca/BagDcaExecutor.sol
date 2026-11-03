@@ -30,7 +30,7 @@ interface IDcaStrategyRegistry {
 /// @notice Non-custodial automated DCA into one BAG. The owner signs ONE EIP-712
 /// `DcaAuthorization` and approves this contract for at most the total budget
 /// of the input token; the funds stay in the owner's wallet. On each run a
-/// keeper (anyone) calls `execute`; this contract re-checks every signed limit
+/// keeper (the signed `allowedCaller`) calls `execute`; this contract re-checks every signed limit
 /// on chain, pulls exactly one run's amount, buys every asset of the BAG
 /// through the pinned typed adapter and delivers each one straight to the
 /// signed recipient, with one `AssetDelivered` event per asset.
@@ -42,7 +42,7 @@ interface IDcaStrategyRegistry {
 /// BAG, the assets, the amounts, the recipient, the venue or a lower minimum.
 ///
 /// The per-asset price limit (`maxPriceRaw`) is a CEILING the owner accepts,
-/// not a fair price: a keeper (or anyone it colludes with) can execute at any
+/// not a fair price: the keeper (or anyone it colludes with) can execute at any
 /// price up to that ceiling. If any asset cannot be bought within its ceiling
 /// the whole run reverts; nothing moves and the window is not consumed. A
 /// window that closes without a run is never made up (no catch-up).
@@ -93,10 +93,10 @@ contract BagDcaExecutor is EIP712, ReentrancyGuard {
         uint24[] allowedFees;
     }
 
-    /// @notice `allowedCaller`: when non-zero, only this address may call `execute` for the
-    /// authorization (the owner's chosen keeper). Zero means anyone may execute; then any
-    /// caller can pick the moment and pass no keeper floor, so a run can be pushed to any
-    /// price up to the ceilings (e.g. by moving the pool in the same transaction).
+    /// @notice `allowedCaller`: the only address that may call `execute` for the authorization
+    /// (the owner's chosen keeper). Required: v1 has no "anyone may execute" mode, because any
+    /// caller could pick the moment, pass no keeper floor and push a run to any price up to the
+    /// ceilings (e.g. by moving the pool in the same transaction).
     struct DcaAuthorization {
         address owner;
         address recipient;
@@ -199,7 +199,7 @@ contract BagDcaExecutor is EIP712, ReentrancyGuard {
     error RevokedAuthorization(bytes32 authorizationId);
     /// @dev 1 owner, 2 recipient, 3 input token, 4 schedule, 5 budget, 6 asset count,
     /// 7 asset address, 8 weights, 9 price limit, 10 duplicate asset, 11 route,
-    /// 12 fee tier list, 13 BAG hashes, 14 symbol, 15 decimals bound.
+    /// 12 fee tier list, 13 BAG hashes, 14 symbol, 15 decimals bound, 16 allowedCaller missing.
     error InvalidTerms(uint256 code);
     error UnknownBag(bytes32 bagId);
     error BagChanged(uint256 version, bytes32 compositionHash);
@@ -235,7 +235,7 @@ contract BagDcaExecutor is EIP712, ReentrancyGuard {
 
     // ------------------------------------------------------------- execute
 
-    /// @notice Runs one purchase of the authorized DCA. Callable by anyone; every limit
+    /// @notice Runs one purchase of the authorized DCA. Callable only by the signed `allowedCaller`; every limit
     /// is the owner's. Reverts as a whole (nothing moves, no counter changes) when any
     /// check fails, including any asset above its price ceiling.
     function execute(
@@ -247,7 +247,7 @@ contract BagDcaExecutor is EIP712, ReentrancyGuard {
         if (r.authorizationId != id) revert AuthorizationMismatch(id, r.authorizationId);
         RunState storage st = _state[a.owner][id];
         if (st.revoked) revert RevokedAuthorization(id);
-        if (a.allowedCaller != address(0) && msg.sender != a.allowedCaller) revert CallerNotAllowed(msg.sender);
+        if (msg.sender != a.allowedCaller) revert CallerNotAllowed(msg.sender); // a zero allowedCaller can never match
         if (!SignatureChecker.isValidSignatureNow(a.owner, id, ownerSignature)) revert InvalidOwnerSignature();
         _checkTerms(a);
         _checkRegistry(a);
@@ -353,6 +353,7 @@ contract BagDcaExecutor is EIP712, ReentrancyGuard {
 
     function _checkTerms(DcaAuthorization calldata a) private view {
         if (a.owner == address(0)) revert InvalidTerms(1);
+        if (a.allowedCaller == address(0)) revert InvalidTerms(16);
         if (a.recipient == address(0) || a.recipient == address(this) || a.recipient == address(adapter) || a.recipient == swapRouter) revert InvalidTerms(2);
         if (a.inputToken == address(0) || a.inputToken == address(adapter) || a.inputToken == swapRouter) revert InvalidTerms(3);
         Schedule calldata s = a.schedule;

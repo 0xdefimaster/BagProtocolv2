@@ -109,7 +109,7 @@ export async function setup(opts: { strategy?: boolean; adapter?: 'real' | 'misb
     owner: owner.account.address,
     recipient: recipient.account.address,
     inputToken: usdg.address,
-    allowedCaller: zeroAddress,
+    allowedCaller: keeper.account.address, // v1 requires the keeper's address
     bag: { bagId, bagVersion: 1n, compositionHash: comp, definitionHash, strategyId, strategyVersion: opts.strategy ? 1 : 0 },
     assets,
     schedule: { amountPerRun: USDG(10), totalBudget: USDG(50), maxRuns: 5, startsAt, periodSeconds: DAY, expiresAt: startsAt + 5n * DAY },
