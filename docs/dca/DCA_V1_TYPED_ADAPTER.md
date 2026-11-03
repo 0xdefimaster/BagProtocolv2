@@ -1,7 +1,8 @@
 # DCA v1: typed-adapter executor, SDK verifier, keeper
 
-Status: **code, local/integration tests and one Robinhood fork run.** Not deployed, not audited, nothing sent to
-Robinhood Chain mainnet. The keeper has no live mode.
+Status: **code, local/integration tests, a keeper soak on a local node with real Postgres, and one Robinhood fork run
+of an earlier build.** Not deployed, not audited, nothing sent to Robinhood Chain mainnet. The keeper has no live mode.
+The executor changed after that fork run (signed `allowedCaller`, §1): the pinned fork evidence in §7 must be re-run.
 
 ## 1. What a user does
 
@@ -13,7 +14,9 @@ Robinhood Chain mainnet. The keeper has no live mode.
 The signed fields: owner, recipient, input token, BAG reference (bagId, bagVersion, compositionHash, definitionHash,
 strategyId, strategyVersion), the asset list with a per-asset price **ceiling** (`maxPriceRaw`, input raw units per
 whole token), the schedule (amountPerRun, totalBudget = amountPerRun × maxRuns, maxRuns, startsAt, periodSeconds,
-expiresAt), the route (adapter, SwapRouter02, allowed fee tiers) and a nonce.
+expiresAt), the route (adapter, SwapRouter02, allowed fee tiers), a nonce, and `allowedCaller`: the only address that
+may call `execute` (the owner's keeper), or zero for anyone. The SDK builder makes the caller an explicit choice
+(`allowedCaller: <keeper> | 'ANY'`) and the summary flags ANY as `ANY_CALLER_CAN_EXECUTE_UP_TO_CEILING`.
 
 ## 2. What happens on each run
 
@@ -84,12 +87,22 @@ contract ceils). Zero price is refused; decimals above 36 are refused; arithmeti
 write-ahead record.
 
 - Claims: `FOR UPDATE SKIP LOCKED`, leases on the database clock, `save` refused without the lease.
-- Write-ahead before every send, in one transaction with the nonce: nonce = max(chain pending count, highest
-  unresolved write-ahead nonce of the account + 1); a unique index forbids two unresolved records with one nonce.
-- Reconcile before anything else: purchase logged → record (and verify with the SDK); receipt reverted, nonce used
-  elsewhere, or not in the mempool after a timeout → clear and log; still pending → wait. Never re-sent blind.
-- Back-fill runs other keepers sent; re-check recent runs for reorgs (block hash) and let the chain counters decide.
-- Every run is verified with `verifyDcaReceipt`; anything but VERIFIED raises an alert.
+- Write-ahead before every send, in one transaction with the nonce, under a per-account row lock: nonce = the lowest
+  nonce ≥ the account's mined count that no other unresolved write-ahead record holds (a nonce freed by a dropped
+  transaction is reused, so no gap blocks later ones); a unique index forbids two unresolved records with one nonce.
+  One store per keeper account: replicas share the key AND the database.
+- Reconcile before anything else: purchase logged → record (and verify with the SDK); any broadcast hash mined and
+  reverted, or the nonce used without a run → clear and log; a broadcast the node still holds (looked up by hash) →
+  wait, then REPLACE it with the same nonce at +25 % gas price after `replaceAfterMs`, and once the run's deadline has
+  passed CANCEL it (0-value self-transfer, same nonce); after `maxReplacements` raise STUCK_NONCE and keep waiting;
+  a broadcast the node no longer holds → DROPPED after `dropGraceMs`. Never re-sent blind, never cleared while held.
+- Back-fill runs other keepers sent; re-check recent runs for reorgs (block hash) until they are final: final means
+  below BOTH the RPC's `finalized` tag (when served) and `reorgDepth` (64) blocks, so an RPC that reports `latest` as
+  finalized does not end the checks early. A reorged run is marked, alerted, and the chain counters decide (re-buy).
+- Every run is verified with `verifyDcaReceipt` at `minConfirmations` and, in SEND mode, against the reviewed executor
+  code hash (mandatory, see §9); INDETERMINATE runs are re-verified on later ticks; anything but VERIFIED alerts.
+- SEND mode also requires an output-token policy (`assetAllowed`, `DCA_ASSET_ALLOWLIST`); `addJob` refuses other
+  assets, a different executor build, and an authorization whose `allowedCaller` is another address.
 - Funding, gas and RPC failures are visible states with alerts; health on `/healthz` and `/status` (127.0.0.1).
 - Modes: PAPER (default, no key, no sends) and FORK (sends only to a local dev node, guarded by client version and
   chain id). There is no LIVE mode.
@@ -99,16 +112,63 @@ write-ahead record.
 Known behaviour: because a run must also be ≥ one period after the previous one, each run's inclusion latency shifts
 the earliest next run by that much. The keeper stops sending `inclusionSlackSeconds` (60 s) before a window ends.
 
-## 7. Evidence classes
+## 7. Evidence
 
 | Class | What | Status |
 |---|---|---|
 | LOCAL | Hardhat in-process EVM, real BagFactory/Bag/StrategyRegistry code, mock Uniswap and hostile tokens | run, passing |
 | INTEGRATION | keeper store against a real local PostgreSQL 16 | run, passing |
-| FORK | `contracts/test/fork/BagDcaExecutor.fork.test.ts`: real USDG/TSLA/NVDA, SwapRouter02, v3 factory, QuoterV2, StrategyRegistry on a Robinhood fork (BagFactory deployed on the fork) | **run once, passing** (2026-11-02, see below) |
+| LOCAL_NODE soak | `scripts/dca-keeper-soak.ts` on a Hardhat node (mock Uniswap) with PostgreSQL 16 and real restarts | run 3×, 49/49 checks each (below) |
+| FORK | `contracts/test/fork/BagDcaExecutor.fork.test.ts` (synthetic BAG) | run once on an earlier build, passing (2026-11-02, below); **re-run pinned: pending** |
+| FORK, real BAG | `contracts/test/fork/BagDcaRealBag.fork.test.ts`: the real BagFactory, BAGs and StrategyRegistry | written; **not run yet** |
+| FORK soak | `scripts/dca-keeper-soak.ts` against `npx hardhat node --fork …` | written; **not run yet** |
 | MAINNET | — | none; out of scope |
 
-Fork run, 2026-11-02 (maintainer's machine, QuickNode Robinhood RPC, commit `12561ea`, latest block at run time; the
+**Pinned fork evidence.** `npx tsx scripts/dca-fork-evidence.ts` pins a block (`ROBINHOOD_FORK_BLOCK`, or the
+chain's `finalized` block), runs both fork tests twice at it, compares the two runs field by field (except timings)
+and writes `fork-evidence/<block>/summary.json` (block, block hash, commit, per-test evidence, gas, token deltas,
+error names; the RPC URL is never written). The harness proves the pin (first local block = pinned + 1, parent hash
+= pinned block hash).
+
+**Real BAG infrastructure.** main has no BagFactory address record (the app reads `FACTORY_ADDRESS_ROBINHOOD` from
+its environment). The candidate (`contracts/test/fork/real-bags.robinhood.json`, from the research branch) is not
+trusted: the test requires the code at the address to be this repository's BagFactory (immutables and metadata
+masked), every candidate Bag to be this repository's Bag with `factory()` pointing back, `bagId` =
+`deriveBagId(creator, uuid)`, a `BagCreated` log where the RPC serves the range, and the bag.json document to
+reproduce the on-chain composition hash; it compares the address with `FACTORY_ADDRESS_ROBINHOOD` and
+`BagExecutionRouter.bagFactory()` when they are configured (`.env.local`). It then checks, against the executor
+deployed on the fork: authentic BAGs pass the registry checks (a full purchase where every asset routes); a wrong BAG
+id (`UnknownBag`), version or composition hash (`BagChanged`), and an altered asset, order, weight or symbol
+(`CompositionMismatch`) are refused. StrategyRegistry with a non-zero id (a3caff05 v2, registered): valid passes;
+next version, version 0, another definitionHash and an unregistered id → `StrategyNotRegistered`; zero id with
+version 0 passes without consulting the registry; zero id with a version → `InvalidTerms(13)`.
+
+**Keeper soak (LOCAL_NODE, 2026-11-03).** `scripts/dca-keeper-soak.ts`, Hardhat node 3.14 (EDR), PostgreSQL 16 with
+real `pg_ctl restart -m fast`, three jobs (A, B buy; C has ceilings at half the market). Scripted phases: scheduled run
+(VERIFIED with code hash); keeper crash with a transaction in flight (dead process's leases honoured, the restarted
+keeper waits for the same nonce/hash, recorded once); no second purchase in a window (keeper sends nothing, a direct
+`execute` reverts `NotDue`); next period; dropped transaction (re-sent, one run); reverted transaction (owner pulled
+the allowance in the same block; recorded, re-bought once); RPC outage (every job RPC_ERROR, nothing sent, recovered);
+Postgres restart with a write-ahead record (record unchanged, reconciled once); two workers on one account and store
+(each window once); two unobserved windows and C's windows recorded missed, never made up; reorg via
+`evm_snapshot`/`evm_revert` (run marked reorged, REORG alert, re-bought once); stuck transaction replaced at the same
+nonce. Then randomized cycles. Final invariants per job: one `PurchaseExecuted` per window, keeper record = chain,
+`getState().runs` = event count, every live run VERIFIED with the code hash, no unresolved write-ahead record, every
+closed window bought or missed and never both, append-only events hold the runs and missed windows.
+
+| Seed | Random cycles | Faults drawn | Checks | Duration |
+|---|---|---|---|---|
+| 1 | 12 | drop 2, rpc 3, replace 2, revert 2, none 2, twoWorkers 1 | 49 / 49 | 63 s |
+| 3 | 26 | twoWorkers 6, drop 4, restartKeeper 4, replace 3, pgRestart 3, rpc 3, revert 2, none 1 | 49 / 49 | 124 s |
+| 11 | 26 | rpc 5, none 5, replace 5, twoWorkers 4, drop 3, restartKeeper 3, revert 1 | 49 / 49 | 112 s |
+
+Reports: `docs/dca/evidence/soak-local-seed{1,3,11}.json`. The soak found two keeper bugs, fixed in this branch: the
+log scan used viem's cached block number (a just-mined purchase was not found for ~4 s, so the keeper kept waiting),
+and the nonce allocator did not reuse a dropped transaction's nonce (a gap that would block every later transaction).
+
+**Older fork run (earlier executor build, unpinned; superseded):**
+
+2026-11-02 (maintainer's machine, QuickNode Robinhood RPC, commit `12561ea`, latest block at run time; the
 block number was not pinned or recorded): `1 passing` in 317 s. Run 1 of 10 USDG bought NVDA +24674165895231619 and
 TSLA +12369447494712936 raw (≈ 202.6 and ≈ 404.2 USDG per token), both through the 0.05 % tier QuoterV2 picked, gas
 610178; `verifyDcaReceipt` returned VERIFIED with the executor code hash; a second run in the same window reverted
@@ -116,20 +176,36 @@ TSLA +12369447494712936 raw (≈ 202.6 and ≈ 404.2 USDG per token), both throu
 with no balance or counter change. The transaction hash `0x9783767d…eb6f3` exists only on the local fork. Evidence
 class: TEST_KEY_FORK (Hardhat test accounts, impersonated pool for USDG funding), not a mainnet transaction.
 
-Run the fork test where the RPC is reachable (`ROBINHOOD_FORK_BLOCK` pins a block so re-runs use Hardhat's disk cache):
+Run (where the Robinhood RPC is reachable):
 
 ```bash
-ROBINHOOD_MAINNET_RPC_URL=<rpc> npx hardhat test nodejs contracts/test/fork/BagDcaExecutor.fork.test.ts
+ROBINHOOD_MAINNET_RPC_URL=<rpc> npx tsx scripts/dca-fork-evidence.ts
 ```
+
+```bash
+npx hardhat node --fork <rpc> --fork-block-number <block>
+```
+
+```bash
+DCA_SOAK_MODE=FORK DCA_SOAK_DATABASE_URL=<throwaway postgres> DCA_SOAK_PG_RESTART_CMD="docker restart dca-pg" npx tsx scripts/dca-keeper-soak.ts
+```
+
+## 9. Security follow-ups (status)
+
+| # | Issue | Status | What was done / what remains |
+|---|---|---|---|
+| 1 | Executor runtime code hash in keeper receipt validation | **FIXED (keeper)** | SEND mode refuses to start without `executorCodeHash`; `addJob` refuses an executor whose on-chain code differs; every run is verified with it (`codeChecked` recorded). In the SDK `expectedExecutorCodeHash` stays an OPTIONAL parameter: a direct SDK user who omits it gets `executorCodeChecked: false`, not a code check. |
+| 2 | Anyone can `execute` with empty `minOutFloors`, skipping the keeper's quote floor (only the signed ceiling binds) | **MITIGATED** (when `allowedCaller` is set) / **ACCEPTED RISK** (when ANY) | New signed `allowedCaller`: only the owner's keeper can execute, so no third party can pick the moment, move the pool in the same transaction and execute up to the ceiling. Tests: `CallerNotAllowed`, and the ANY case executing at a worse-than-market price under the ceiling (documented risk). The keeper itself is trusted not to do this within the ceiling; the ceiling remains the only on-chain price bound. |
+| 3 | Output-token trust (a malicious `balanceOf` can fake deliveries) | **ACCEPTED RISK (contract)** / **MITIGATED (keeper)** | The executor and adapter measure deliveries through the token's own `balanceOf`; a token that lies consistently cannot be detected on chain. Tokens are fixed by the BAG's registered composition (creator's choice, shown before signing). The keeper requires a token allowlist in SEND mode and refuses other assets. No reviewed on-chain token registry exists in the repo; the allowlist is operator configuration. |
+| 4 | Confirmation, finality and reorgs | **MITIGATED** | `minConfirmations` (default 1) with re-verification of INDETERMINATE runs; reorg checks until a run is below both the `finalized` tag and `reorgDepth`; a reorged run is marked, alerted and re-bought only if the chain counters say so (soak P11). Finality on Robinhood (Arbitrum Orbit) follows the parent-chain batch; `reorgDepth` should be set from the chain's actual batch-posting lag before LIVE. |
+| 5 | Pending timeout, replacement, nonce recovery | **FIXED** | Mempool presence by hash; replacement at the same nonce with a fee bump; cancel after the run deadline; STUCK_NONCE alert after the limit; lowest-free nonce allocation (no gap after a drop); DROPPED only after a grace period. Unit tests (stuck, cancel, gap) and soak (P5, P12, randomized drop/replace). Not yet exercised against Robinhood's sequencer, which has no public mempool. |
 
 ## 8. Before any deployment (not done)
 
-1. Fork test: done once (above). Still open: a pinned-block re-run for a reproducible record, a fork run against the
-   real deployed BagFactory and real BAGs, and a fork soak of the keeper (`npx hardhat node --fork <rpc>`, worker in
-   FORK mode).
+1. Run `scripts/dca-fork-evidence.ts` (pinned, twice, both fork tests) and the FORK soak; record the summaries here.
 2. Independent audit of `contracts/dca/*` (no audit has been done).
-3. Decide the BagFactory and StrategyRegistry addresses from deployment records (main has no verified BagFactory
-   address record) and the `chainLabel` (`robinhood`).
+3. Record the BagFactory address in a deployment record on main (deploy tx, block, deployer), cross-checked by the
+   real-BAG fork test; until then its only provenance is the app environment and the research branch.
 4. Deploy adapter then executor from a reviewed build; verify runtime bytecode; pin the executor code hash for
    `verifyDcaReceipt({ expectedExecutorCodeHash })`.
 5. Signing page that shows `summarizeDcaAuthorization` (ceiling semantics, approval amount) and decodes the typed data.

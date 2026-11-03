@@ -1,0 +1,422 @@
+{
+  "schema": "bag-dca-keeper-soak/v1",
+  "mode": "LOCAL",
+  "evidenceClass": "LOCAL_NODE (mock Uniswap)",
+  "commit": "d589883a0d9783ecfcba0798b61bf839ee025483",
+  "node": "HardhatNetwork/3.14.0/@nomicfoundation/e",
+  "postgresRestart": "ran",
+  "cycles": 12,
+  "seed": 1,
+  "durationS": 63,
+  "passed": 49,
+  "failed": 0,
+  "alerts": [
+    [
+      "TX_NOT_INCLUDED",
+      5
+    ],
+    [
+      "RPC_ERROR",
+      5
+    ],
+    [
+      "REORG",
+      2
+    ]
+  ],
+  "checks": [
+    {
+      "phase": "P1 scheduled run",
+      "check": "window 0 bought and VERIFIED (executor code hash checked)",
+      "ok": true,
+      "detail": "[[\"0\",\"VERIFIED\"]]"
+    },
+    {
+      "phase": "P1 scheduled run",
+      "check": "job C (ceilings at half the market) is WAITING_PRICE, nothing sent",
+      "ok": true
+    },
+    {
+      "phase": "P2 restart",
+      "check": "write-ahead record with nonce and hash stored before the crash",
+      "ok": true,
+      "detail": "nonce 103"
+    },
+    {
+      "phase": "P2 restart",
+      "check": "the restarted keeper cannot take the job while the dead process's lease is valid",
+      "ok": true
+    },
+    {
+      "phase": "P2 restart",
+      "check": "after lease expiry the restarted keeper reconciles: tx still in the mempool → waits, sends nothing new",
+      "ok": true
+    },
+    {
+      "phase": "P2 restart",
+      "check": "the in-flight purchase recorded once after mining",
+      "ok": true,
+      "detail": "state DONE_THIS_WINDOW; runs 0:VERIFIED,1:VERIFIED; pending -; attempts "
+    },
+    {
+      "phase": "P3 no double purchase",
+      "check": "no new transaction in an already bought window",
+      "ok": true
+    },
+    {
+      "phase": "P3 no double purchase",
+      "check": "a direct second execute in the window is refused by the contract",
+      "ok": true,
+      "detail": "NotDue"
+    },
+    {
+      "phase": "P3 no double purchase",
+      "check": "at most one PurchaseExecuted per window for 0x1780222b",
+      "ok": true,
+      "detail": "windows 0,1"
+    },
+    {
+      "phase": "P4 next period",
+      "check": "window 2 bought",
+      "ok": true,
+      "detail": "state DONE_THIS_WINDOW; runs 0:VERIFIED,1:VERIFIED,2:VERIFIED; pending -; attempts "
+    },
+    {
+      "phase": "P5 dropped",
+      "check": "node dropped the transaction",
+      "ok": true
+    },
+    {
+      "phase": "P5 dropped",
+      "check": "DROPPED recorded and the window bought by the re-send",
+      "ok": true
+    },
+    {
+      "phase": "P6 reverted",
+      "check": "the keeper transaction reverted on chain",
+      "ok": true
+    },
+    {
+      "phase": "P6 reverted",
+      "check": "REVERTED recorded, the window then bought once",
+      "ok": true
+    },
+    {
+      "phase": "P7 RPC failure",
+      "check": "every job RPC_ERROR, nothing sent during the outage",
+      "ok": true,
+      "detail": "RPC_ERROR,RPC_ERROR,RPC_ERROR"
+    },
+    {
+      "phase": "P7 RPC failure",
+      "check": "RPC_ERROR alerts raised",
+      "ok": true
+    },
+    {
+      "phase": "P7 RPC failure",
+      "check": "recovered: window 5 bought after the outage",
+      "ok": true
+    },
+    {
+      "phase": "P8 Postgres restart",
+      "check": "database back after the restart",
+      "ok": true,
+      "detail": "ticks failed during the outage (expected)"
+    },
+    {
+      "phase": "P8 Postgres restart",
+      "check": "write-ahead record survived the restart unchanged",
+      "ok": true
+    },
+    {
+      "phase": "P8 Postgres restart",
+      "check": "the in-flight purchase reconciled once",
+      "ok": true
+    },
+    {
+      "phase": "P9 two workers",
+      "check": "at most one PurchaseExecuted per window for 0x1780222b",
+      "ok": true,
+      "detail": "windows 0,1,2,3,4,5,6,7"
+    },
+    {
+      "phase": "P9 two workers",
+      "check": "at most one PurchaseExecuted per window for 0xc8747d5f",
+      "ok": true,
+      "detail": "windows 0,1,2,3,4,5,6,7"
+    },
+    {
+      "phase": "P9 two workers",
+      "check": "both jobs bought window 7 exactly once",
+      "ok": true
+    },
+    {
+      "phase": "P10 missed windows",
+      "check": "windows 8 and 9 recorded NOT_OBSERVED for A; never made up",
+      "ok": true
+    },
+    {
+      "phase": "P10 missed windows",
+      "check": "job C: every closed window recorded WAITING_PRICE (or NOT_OBSERVED), no run",
+      "ok": true,
+      "detail": "10 missed"
+    },
+    {
+      "phase": "P11 reorg",
+      "check": "run recorded, then marked reorged after its block disappeared",
+      "ok": true
+    },
+    {
+      "phase": "P11 reorg",
+      "check": "REORG alert raised",
+      "ok": true
+    },
+    {
+      "phase": "P11 reorg",
+      "check": "the window bought again on the new chain, exactly one live run",
+      "ok": true
+    },
+    {
+      "phase": "P12 replacement",
+      "check": "replacement sent with the same nonce and a higher gas price",
+      "ok": true
+    },
+    {
+      "phase": "P12 replacement",
+      "check": "exactly one transaction mined for that nonce, one run",
+      "ok": true
+    },
+    {
+      "phase": "final",
+      "check": "A: one run per window on chain",
+      "ok": true
+    },
+    {
+      "phase": "final",
+      "check": "A: keeper record = chain (windows)",
+      "ok": true,
+      "detail": "keeper 23, chain 23"
+    },
+    {
+      "phase": "final",
+      "check": "A: chain counter = PurchaseExecuted count",
+      "ok": true
+    },
+    {
+      "phase": "final",
+      "check": "A: every live run VERIFIED with the code hash",
+      "ok": true
+    },
+    {
+      "phase": "final",
+      "check": "A: no unresolved write-ahead record",
+      "ok": true
+    },
+    {
+      "phase": "final",
+      "check": "A: every closed window is bought or recorded missed, never both",
+      "ok": true,
+      "detail": "accounted through 24, bought 23, missed 2"
+    },
+    {
+      "phase": "final",
+      "check": "B: one run per window on chain",
+      "ok": true
+    },
+    {
+      "phase": "final",
+      "check": "B: keeper record = chain (windows)",
+      "ok": true,
+      "detail": "keeper 23, chain 23"
+    },
+    {
+      "phase": "final",
+      "check": "B: chain counter = PurchaseExecuted count",
+      "ok": true
+    },
+    {
+      "phase": "final",
+      "check": "B: every live run VERIFIED with the code hash",
+      "ok": true
+    },
+    {
+      "phase": "final",
+      "check": "B: no unresolved write-ahead record",
+      "ok": true
+    },
+    {
+      "phase": "final",
+      "check": "B: every closed window is bought or recorded missed, never both",
+      "ok": true,
+      "detail": "accounted through 24, bought 23, missed 2"
+    },
+    {
+      "phase": "final",
+      "check": "C: one run per window on chain",
+      "ok": true
+    },
+    {
+      "phase": "final",
+      "check": "C: keeper record = chain (windows)",
+      "ok": true,
+      "detail": "keeper 0, chain 0"
+    },
+    {
+      "phase": "final",
+      "check": "C: chain counter = PurchaseExecuted count",
+      "ok": true
+    },
+    {
+      "phase": "final",
+      "check": "C: every live run VERIFIED with the code hash",
+      "ok": true
+    },
+    {
+      "phase": "final",
+      "check": "C: no unresolved write-ahead record",
+      "ok": true
+    },
+    {
+      "phase": "final",
+      "check": "C: every closed window is bought or recorded missed, never both",
+      "ok": true,
+      "detail": "accounted through 24, bought 0, missed 24"
+    },
+    {
+      "phase": "final",
+      "check": "Postgres append-only log holds the runs and the missed windows",
+      "ok": true
+    }
+  ],
+  "phases": {
+    "cycle": [
+      "window 13 drop: A bought, B bought",
+      "window 14 rpc: A bought, B bought",
+      "window 15 replace: A bought, B bought",
+      "window 16 none: A bought, B bought",
+      "window 17 rpc: A bought, B bought",
+      "window 18 revert: A bought, B bought",
+      "window 19 none: A bought, B bought",
+      "window 20 replace: A bought, B bought",
+      "window 21 rpc: A bought, B bought",
+      "window 22 revert: A bought, B bought",
+      "window 23 twoWorkers: A bought, B bought",
+      "window 24 drop: A bought, B bought"
+    ],
+    "jobA": {
+      "runs": 23,
+      "windows": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18",
+        "19",
+        "20",
+        "21",
+        "22",
+        "23",
+        "24"
+      ],
+      "missed": [
+        "8:NOT_OBSERVED",
+        "9:NOT_OBSERVED"
+      ],
+      "attempts": [
+        "3:DROPPED",
+        "4:REVERTED",
+        "11:REORGED",
+        "12:REPLACED",
+        "13:DROPPED",
+        "15:REPLACED",
+        "18:REVERTED",
+        "20:REPLACED",
+        "22:REVERTED",
+        "24:DROPPED"
+      ]
+    },
+    "jobB": {
+      "runs": 23,
+      "windows": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18",
+        "19",
+        "20",
+        "21",
+        "22",
+        "23",
+        "24"
+      ],
+      "missed": [
+        "8:NOT_OBSERVED",
+        "9:NOT_OBSERVED"
+      ],
+      "attempts": [
+        "11:REORGED",
+        "12:REPLACED",
+        "13:DROPPED",
+        "15:REPLACED",
+        "20:REPLACED",
+        "24:DROPPED"
+      ]
+    },
+    "jobC": {
+      "runs": 0,
+      "windows": [],
+      "missed": [
+        "0:WAITING_PRICE",
+        "1:WAITING_PRICE",
+        "2:WAITING_PRICE",
+        "3:WAITING_PRICE",
+        "4:WAITING_PRICE",
+        "5:WAITING_PRICE",
+        "6:WAITING_PRICE",
+        "7:WAITING_PRICE",
+        "8:NOT_OBSERVED",
+        "9:NOT_OBSERVED",
+        "10:WAITING_PRICE",
+        "11:WAITING_PRICE",
+        "12:WAITING_PRICE",
+        "13:WAITING_PRICE",
+        "14:WAITING_PRICE",
+        "15:WAITING_PRICE",
+        "16:WAITING_PRICE",
+        "17:WAITING_PRICE",
+        "18:WAITING_PRICE",
+        "19:WAITING_PRICE",
+        "20:WAITING_PRICE",
+        "21:WAITING_PRICE",
+        "22:WAITING_PRICE",
+        "23:WAITING_PRICE"
+      ],
+      "attempts": []
+    }
+  }
+}
