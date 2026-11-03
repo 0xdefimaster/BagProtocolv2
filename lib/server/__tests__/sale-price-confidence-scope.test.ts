@@ -14,6 +14,7 @@ const src = (rel: string) => readFileSync(join(root, rel), 'utf8');
 const POLICY_MARKERS = ['sale-price-confidence', 'referencePriceForFeeSale', 'feeSalePricePolicy', 'salePriceDeviationLimit'];
 
 describe('(7) the non-fee sale path is not altered', () => {
+  // (The read-only fee-liquidity reporter is meant to mirror the policy and is tested in fee-router-executability.test.ts.)
   it('only the two fee-sale attestation modules use the policy', () => {
     expect(src('lib/server/redeem-settlement-attestation.ts')).toContain('referencePriceForFeeSale');
     expect(src('lib/server/redeem-fee-attestation.ts')).toContain('referencePriceForFeeSale');
@@ -22,7 +23,6 @@ describe('(7) the non-fee sale path is not altered', () => {
       'lib/server/payment-value.ts',
       'lib/server/purchase-execution.ts',
       'app/api/bags/[id]/redeem-preview/route.ts',
-      'lib/domain/basket-protocol/redeem/fee-router-executability.ts',
     ]) {
       const text = src(file);
       for (const m of POLICY_MARKERS) expect(text, `${file} must not use ${m}`).not.toContain(m);

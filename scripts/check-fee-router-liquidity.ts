@@ -9,7 +9,7 @@
  *   npx tsx scripts/check-fee-router-liquidity.ts --usd=25,100,500      # several sale sizes
  *   npx tsx scripts/check-fee-router-liquidity.ts --symbols=AMKR,SOXX   # only these
  *   npx tsx scripts/check-fee-router-liquidity.ts --out=liquidity.json  # also write the results as JSON
- *   npx tsx scripts/check-fee-router-liquidity.ts --max-deviation-bps=300  # allowed deviation (default: the attestation's, 5%)
+ *   npx tsx scripts/check-fee-router-liquidity.ts --max-deviation-bps=300  # analysis OVERRIDE (default: the fee-sale confidence policy per token)
  *
  * Each sale leg is judged by the attestation's own rule (redeem-quote-quality.ts): best Uniswap v3 tier, compared
  * with BAG's verified price. STATUS: PASS (would be signed) · UNSAFE (a quote exists but is too far below the
@@ -40,6 +40,7 @@ import { COMMON_FEE_TIERS } from '../lib/blockchain/robinhood-swap-builder';
 import { DEFAULT_COMPOSER_SLIPPAGE_BPS } from '../lib/blockchain/lifi-purchase-quote';
 import { FEE_REDEEM_MAX_PRICE_DEVIATION_BPS } from '../lib/domain/basket-protocol/redeem/redeem-quote-quality';
 import { getPriceProvider } from '../lib/server/price-provider';
+import { salePriceDeviationLimit, salePricePolicyFromEnv } from '../lib/domain/basket-protocol/redeem/sale-price-confidence';
 import {
   checkFeeRouterExecutability,
   formatExecutabilityRow,
@@ -100,7 +101,11 @@ async function main() {
     process.exit(2);
   }
   const onlySymbols = arg('symbols')?.split(',').map((s) => s.trim().toUpperCase());
-  const maxDeviationBps = arg('max-deviation-bps') ? Number(arg('max-deviation-bps')) : FEE_REDEEM_MAX_PRICE_DEVIATION_BPS;
+  // Default: each token's band comes from the fee-sale confidence policy, exactly as the attestation decides it
+  // (500 bps verified, the stricter reduced band, or refused). --max-deviation-bps is an analysis OVERRIDE and is
+  // labelled as such in every row: it is not what the attestation would do.
+  const overrideBps = arg('max-deviation-bps') ? Number(arg('max-deviation-bps')) : null;
+  const policy = salePricePolicyFromEnv();
 
   const rpcUrl = process.env.RPC_URL_ROBINHOOD || ROBINHOOD_RPC_URL;
   // Never print the RPC URL itself: API keys live in its path or query.
@@ -137,10 +142,14 @@ async function main() {
 
   // BAG's verified price per token — the same provider (and strictness) the attestation uses.
   const priceProvider = getPriceProvider();
-  const prices = new Map<string, { price: string | null; error?: string }>();
+  const prices = new Map<string, { price: string | null; error?: string; band?: number; tier?: 'VERIFIED' | 'REDUCED_CONFIDENCE' | 'OVERRIDE' }>();
   for (const a of assets) {
     try {
-      prices.set(a.address, { price: (await priceProvider.getPrice({ chain: 'robinhood', address: a.address })).price });
+      const p = await priceProvider.getPrice({ chain: 'robinhood', address: a.address });
+      const d = salePriceDeviationLimit(p, policy);
+      if (!d.ok) prices.set(a.address, { price: null, error: `reference price refused: ${d.reason}` });
+      else if (overrideBps !== null) prices.set(a.address, { price: p.price, band: overrideBps, tier: 'OVERRIDE' });
+      else prices.set(a.address, { price: p.price, band: d.maxDeviationBps, tier: d.tier });
     } catch (e) {
       prices.set(a.address, { price: null, error: (e as Error).message.split('\n')[0] });
     }
@@ -165,7 +174,8 @@ async function main() {
           ...(p.error ? { priceError: p.error } : {}),
           slippageBps: DEFAULT_COMPOSER_SLIPPAGE_BPS,
           feeTiers: COMMON_FEE_TIERS,
-          maxDeviationBps,
+          maxDeviationBps: p.band ?? FEE_REDEEM_MAX_PRICE_DEVIATION_BPS, // unused when price is null
+          ...(p.tier ? { priceTier: p.tier } : {}),
           quote,
         });
       }
@@ -176,7 +186,14 @@ async function main() {
   for (const r of results) if (r.error) r.error = r.error.split(rpcUrl).join(rpcLabel);
 
   console.log(
-    `Robinhood Chain ${chainId} via ${rpcLabel} · best of Uniswap v3 tiers ${COMMON_FEE_TIERS.join('/')} · refused when more than ${maxDeviationBps / 100}% below BAG's verified price · min = quote × ${(10000 - DEFAULT_COMPOSER_SLIPPAGE_BPS) / 100}%`
+    `Robinhood Chain ${chainId} via ${rpcLabel} · best of Uniswap v3 tiers ${COMMON_FEE_TIERS.join('/')} · band per token: ` +
+      (overrideBps !== null
+        ? `OVERRIDE ${overrideBps / 100}% (analysis only — NOT the attestation's rule)`
+        : `${policy.normalMaxDeviationBps / 100}% Chainlink-verified, ${policy.reducedConfidenceMaxDeviationBps / 100}% Chainlink-unavailable${policy.breakGlass ? ' (BREAK-GLASS)' : ''}, otherwise refused`) +
+      ` · min = quote × ${(10000 - DEFAULT_COMPOSER_SLIPPAGE_BPS) / 100}%`
+  );
+  console.log(
+    'ESTIMATE, INCOMPLETE: this checks the legacy RedeemFeeRouter leg (direct Uniswap v3). The active fee path, RedeemSettlement, quotes through LI.FI Composer and is not simulated here; a PASS is not a guarantee that a settlement sale would be planned.'
   );
   console.log(['TOKEN'.padEnd(8), 'STATUS'.padEnd(13), 'TIER'.padEnd(6), 'SIZE'.padEnd(11), 'QUOTE'.padEnd(11), 'VERIFIED'.padEnd(11), 'GROSS MIN'.padEnd(11), 'SIGN', 'REASON'].join(' '));
   for (const r of results) console.log(formatExecutabilityRow(r, usdg.decimals));
@@ -187,12 +204,12 @@ async function main() {
       .map(([k, v]) => `${k} ${v}`)
       .join(' · ');
   console.log(`\n${pass}/${results.length} PASS · ${count((r) => r.status)} · reasons: ${count((r) => r.reason)}`);
-  console.log('PASS = the attestation would sign it · UNSAFE = a quote exists but is too far below the verified price: refused · FAIL = no quote or no verified price · INDETERMINATE = RPC error, re-run.');
+  console.log('PASS = the legacy attestation would sign it · UNSAFE = a quote exists but is too far below the reference: refused · FAIL = no quote, no price, or a price the confidence policy refuses · INDETERMINATE = RPC error, re-run.');
   console.log('Read-only: no transaction was sent. Results are a snapshot; prices and pools move.');
 
   const out = arg('out');
   if (out) {
-    writeFileSync(out, JSON.stringify({ checkedAt: new Date().toISOString(), chainId, rpc: rpcLabel, maxDeviationBps, sizesUsd: sizes, feeTiers: COMMON_FEE_TIERS, slippageBps: DEFAULT_COMPOSER_SLIPPAGE_BPS, results }, null, 2));
+    writeFileSync(out, JSON.stringify({ checkedAt: new Date().toISOString(), chainId, rpc: rpcLabel, estimate: 'LEGACY_FEE_ROUTER_LEG_ONLY', overrideBps, policy, sizesUsd: sizes, feeTiers: COMMON_FEE_TIERS, slippageBps: DEFAULT_COMPOSER_SLIPPAGE_BPS, results }, null, 2));
     console.log(`Wrote ${out}`);
   }
   process.exit(pass === results.length ? 0 : 1);

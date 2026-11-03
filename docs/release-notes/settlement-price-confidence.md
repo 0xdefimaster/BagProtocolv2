@@ -10,27 +10,43 @@ quantity × reference price (`redeem-quote-quality.ts`). Until now both
 fee-sale paths read only `.price` from the price router, so every reference
 price got the same 500 bps band, whether it had been verified or not.
 
-The band now depends on how well the price router verified the reference
-(`lib/domain/basket-protocol/redeem/sale-price-confidence.ts`):
+The band now depends on how the price router verified the reference
+(`lib/domain/basket-protocol/redeem/sale-price-confidence.ts`). The policy accepts exactly two
+**source-qualified states**. Both the confidence value and the source label must match; `confidence` is a label
+of the state, not a calibrated probability, so nothing between the two values is interpolated.
 
-| Router result | Meaning | Fee-sale decision |
+| Router result (`confidence` + `source`) | Meaning | Fee-sale decision |
 |---|---|---|
-| `confidence: 1` | Robinhood API price agrees with Chainlink, within `ROBINHOOD_PRICE_MAX_DEVIATION_BPS` (200) | **VERIFIED**: 500 bps band (unchanged) |
-| `confidence: 0.5`, source `…\|verify:chainlink-unavailable` | A feed is configured but could not be read, or its round is stale; the API price was not verified | **REDUCED_CONFIDENCE**: `FEE_SALE_REDUCED_CONFIDENCE_MAX_DEVIATION_BPS`, default **100** |
-| no `confidence` | No feed is configured for the stock token, or the price is a crypto (LI.FI / TWAP) price | **refused** (`CONFIDENCE_MISSING`) |
-| confidence < 0.5, not a number, or outside [0, 1] | — | **refused** |
-| timestamp missing, unparseable, or more than 30 s in the future | — | **refused** (`TIMESTAMP_INVALID`) |
-| older than `FEE_SALE_PRICE_MAX_AGE_SECONDS` (300) | — | **refused** (`PRICE_STALE`) |
-| router throws `PriceSourceDisagreementError` (> 200 bps) or any source error | — | **refused** (unchanged) |
+| `1` + `…\|verify:chainlink:<feed>:<n>bps` | The Robinhood API price agrees with Chainlink, within `ROBINHOOD_PRICE_MAX_DEVIATION_BPS` (200) | **VERIFIED**: 500 bps band (unchanged) |
+| `0.5` + `…\|verify:chainlink-unavailable` | A feed is configured, but its round could not be read or is stale; the API price is unverified | **REDUCED_CONFIDENCE**: `FEE_SALE_REDUCED_CONFIDENCE_MAX_DEVIATION_BPS`, default **100** |
+| no `confidence` | No feed configured (stock token), or a crypto price (LI.FI / TWAP) | refused (`CONFIDENCE_MISSING`) |
+| `1` without the Chainlink-verified label, or `0.5` without the unavailable label | The label does not match the state | refused (`SOURCE_NOT_QUALIFIED`) |
+| any other number (0.75, 0.99, 0, …) | Not a state the router produces | refused (`CONFIDENCE_UNEXPECTED`) |
+| not a number | — | refused (`CONFIDENCE_INVALID`) |
+| timestamp missing, unparseable, or more than 30 s in the future | — | refused (`TIMESTAMP_INVALID`) |
+| older than `FEE_SALE_PRICE_MAX_AGE_SECONDS` (300) | — | refused (`PRICE_STALE`) |
+| the router throws `PriceSourceDisagreementError` (> 200 bps) or any source error | — | refused (unchanged) |
 
-A refusal means phase 1 (`quoteSettlement`) records no plan, so phase 2
-(`attestSettlement`) has nothing to sign and the attestor key signs nothing.
-The legacy `signFeeAttestation` (RedeemFeeRouter) path applies the same policy
+The labels are produced and parsed in one place: `bag-price-router.ts`, via `stockPriceVerification()` with exact,
+anchored patterns. The router and the policy therefore cannot drift apart unnoticed. The tests run the real router
+into the policy.
+
+On a refusal, phase 1 (`quoteSettlement`) records no plan, so phase 2 (`attestSettlement`) has nothing to sign.
+The attestor key signs nothing. The legacy `signFeeAttestation` (RedeemFeeRouter) path applies the same policy
 before it signs.
 
-Configuration errors fail closed. An invalid value (for example `1%`, `-1`, or a
-band above 500) refuses the sale as `PRICE_UNAVAILABLE`; it never falls back to
-a wider default.
+### Configuration and break-glass
+
+| Setting | Allowed | Notes |
+|---|---|---|
+| `FEE_SALE_REDUCED_CONFIDENCE_MAX_DEVIATION_BPS` | 0–200 (default 100) | **Recommended: leave unset (100), or set it lower.** 0 = only quotes at or above the unverified reference |
+| … 201–499 | only with `FEE_SALE_REDUCED_CONFIDENCE_BREAK_GLASS=1` | Explicit operator override. Every sale that uses it logs `[fee-sale] break-glass …`. Remove the flag when the incident ends |
+| … 500 or more | never, not even with break-glass | It would treat an unverified price exactly like a verified one |
+| `FEE_SALE_REDUCED_CONFIDENCE_BREAK_GLASS` | `1` or unset | Any other value is a configuration error |
+| `FEE_SALE_PRICE_MAX_AGE_SECONDS` | > 0 (default 300) | — |
+
+Configuration errors fail closed. An invalid value (`1%`, `-1`, 250 without the flag, 500) refuses the sale as
+`PRICE_UNAVAILABLE`; it never falls back to a wider default.
 
 ## What does not change
 
@@ -41,10 +57,15 @@ a wider default.
   check, and the API and Chainlink staleness limits.
 - The contracts, the signed `Settlement` struct, the plan schema and the
   Composer floors.
-- Read-only reporting tools (`scripts/check-fee-router-liquidity.ts`,
-  `fee-router-executability.ts`) still assume the 500 bps band. They can show a
-  leg as executable that the attestation now refuses, when the reference is
-  not verified. This is a known divergence.
+- Read-only reporting tools now follow the policy:
+  - `scripts/check-fee-router-liquidity.ts` judges each token with the band the policy gives its price. A refused
+    price is reported as `PRICE_POLICY_REFUSED`. `--max-deviation-bps` remains only as an analysis override and is
+    labelled `OVERRIDE` in every row.
+  - The script states that it is an **incomplete estimate**: it simulates the legacy RedeemFeeRouter leg (direct
+    Uniswap v3). The active RedeemSettlement path quotes through LI.FI Composer and is not simulated.
+- New `scripts/check-fee-sale-feed-coverage.ts` (read-only) lists fee-bearing Bags and whether each leg has the
+  required Chainlink feed (`--probe` also prices each leg now). It has **not been run against production data**:
+  it needs the owner's Supabase credentials. It reads the current version's recipe assets only.
 
 ## The provisional 100 bps band: trade-offs
 
@@ -67,7 +88,8 @@ a wider default.
     this halts fee sales during a feed outage.
   - Refusing confidence 0.5 outright was not chosen, because a short RPC
     outage would then block every fee sale.
-  - Values up to 500 are allowed, but 500 removes the distinction altogether.
+  - 201–499 is break-glass only, and 500 or more is rejected, because 500 would remove the distinction
+    altogether. The ordinary ceiling of 200 equals the router's own API-vs-Chainlink disagreement limit.
 - **Revisit** once real fee-sale data exists (the positive-fee runbook), using
   observed deviation distributions per pool rather than this estimate.
 
@@ -97,13 +119,14 @@ a wider default.
   (scripted sources) feeding the policy.
 - `lib/server/__tests__/redeem-settlement-attestation.test.ts`, block
   "reference-price confidence":
-  1. A high-confidence leg 3% below its reference is planned.
-  2. At confidence 0.5, 3% below is refused (band 100) and 0.9% below passes.
-     The env band is configurable, and a bad value refuses the sale.
-  3. Missing confidence is refused.
-  4. A stale price is refused.
-  5. Source disagreement is refused.
-  6. A refused quote leaves no plan, no claim, no final build and no
+  1. A Chainlink-verified leg 3% below its reference is planned.
+  2. Chainlink-unavailable: 3% below is refused (band 100) and 0.9% below passes. The env band is configurable;
+     500, 900 and 250 without break-glass refuse; 250 with break-glass is allowed and logged.
+  3. Confidence 1 without Chainlink evidence, 0.5 with an unrelated source, and 0.75 are all refused.
+  4. Missing confidence is refused.
+  5. Stale, empty and future timestamps are refused.
+  6. Source disagreement is refused.
+  7. A refused quote leaves no plan, no claim, no final build and no
      signature; phase 2 fails with `NO_PLAN`.
 - `lib/server/__tests__/redeem-fee-attestation-b0.test.ts`: the same policy on
   the legacy RedeemFeeRouter path.

@@ -136,7 +136,7 @@ export async function referencePriceForFeeSale(
   token: string,
   policy: SalePricePolicy,
   now: Date = new Date()
-): Promise<{ priceUsd: string; maxDeviationBps: number; tier: 'VERIFIED' | 'REDUCED_CONFIDENCE' }> {
+): Promise<{ priceUsd: string; maxDeviationBps: number; tier: 'VERIFIED' | 'REDUCED_CONFIDENCE'; breakGlass: boolean }> {
   let price;
   try {
     price = await priceProvider.getPrice(asset);
@@ -145,7 +145,11 @@ export async function referencePriceForFeeSale(
   }
   const decision = salePriceDeviationLimit(price, policy, now);
   if (!decision.ok) throw new PriceUnavailableForSaleError(token, `reference price refused: ${decision.reason}`);
-  return { priceUsd: price.price, maxDeviationBps: decision.maxDeviationBps, tier: decision.tier };
+  if (decision.breakGlass) {
+    // Operator override in force (FEE_SALE_REDUCED_CONFIDENCE_BREAK_GLASS=1): never silent.
+    console.warn(`[fee-sale] break-glass reduced-confidence band ${decision.maxDeviationBps} bps used for ${token}`);
+  }
+  return { priceUsd: price.price, maxDeviationBps: decision.maxDeviationBps, tier: decision.tier, breakGlass: decision.breakGlass };
 }
 
 /** The sale's quote expired before the fee was attested; nothing is signed. */

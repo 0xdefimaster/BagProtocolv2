@@ -16,7 +16,9 @@ import { referenceValueRaw, selectRedeemLegQuote, tokenAmountForValue, type Tier
 //   UNSAFE  a quote exists but is too far below the verified value — refused
 //           (before the price-quality rule, the first run on 2026-10-05 showed
 //           such sales would have been signed at up to a ~99% loss)
-//   FAIL    no quote at all (NO_QUOTE), or no verified price (PRICE_UNAVAILABLE)
+//   FAIL    no quote at all (NO_QUOTE), no price (PRICE_UNAVAILABLE), or a price the
+//           fee-sale confidence policy refuses (PRICE_POLICY_REFUSED,
+//           sale-price-confidence.ts) — the attestation would sign nothing either way
 //   INDETERMINATE  the RPC failed: no reliable result either way — not "impossible"
 // -----------------------------------------------------------------------------
 
@@ -33,11 +35,14 @@ export interface ExecutabilityInput {
   priceError?: string;
   slippageBps: number;
   feeTiers: readonly number[];
+  /** The band the attestation would use for THIS price: from salePriceDeviationLimit (500 verified, stricter reduced). */
   maxDeviationBps: number;
+  /** The price's tier under the fee-sale confidence policy, reported with the result. */
+  priceTier?: 'VERIFIED' | 'REDUCED_CONFIDENCE' | 'OVERRIDE';
   quote: QuoteFn;
 }
 
-export type ExecutabilityReason = 'OK' | 'SETTLEMENT_TOKEN' | 'PRICE_DEVIATION' | 'NO_QUOTE' | 'PRICE_UNAVAILABLE' | 'RPC_ERROR';
+export type ExecutabilityReason = 'OK' | 'SETTLEMENT_TOKEN' | 'PRICE_DEVIATION' | 'NO_QUOTE' | 'PRICE_UNAVAILABLE' | 'PRICE_POLICY_REFUSED' | 'RPC_ERROR';
 export type ExecutabilityStatus = 'PASS' | 'UNSAFE' | 'FAIL' | 'INDETERMINATE';
 
 export interface ExecutabilityResult {
@@ -58,16 +63,27 @@ export interface ExecutabilityResult {
   deviationBps: number | null;
   /** quote × (1 − slippage): the leg's minimum output when signed. */
   grossMinimumRaw: string | null;
+  /** The band applied, and the price tier it came from (null when no band applies). */
+  maxDeviationBps: number | null;
+  priceTier: 'VERIFIED' | 'REDUCED_CONFIDENCE' | 'OVERRIDE' | null;
   error?: string;
 }
 
 export async function checkFeeRouterExecutability(input: ExecutabilityInput): Promise<ExecutabilityResult> {
   const { token, usdg, sizeUsd, priceUsd, slippageBps, feeTiers, maxDeviationBps, quote } = input;
-  const base = { symbol: token.symbol, address: token.address, sizeUsd, feeTier: null, tokenAmountRaw: null, quoteRaw: null, referenceRaw: null, deviationBps: null, grossMinimumRaw: null };
+  const base = {
+    symbol: token.symbol, address: token.address, sizeUsd, feeTier: null, tokenAmountRaw: null, quoteRaw: null, referenceRaw: null, deviationBps: null, grossMinimumRaw: null,
+    maxDeviationBps: null as number | null, priceTier: null as ExecutabilityResult['priceTier'],
+  };
   // A holding already in USDG is a "no swap" leg in RedeemFeeRouter: always signed, nothing to quote.
   if (token.address.toLowerCase() === usdg.address.toLowerCase()) return { ...base, status: 'PASS', executable: true, reason: 'SETTLEMENT_TOKEN' };
   if (!Number.isFinite(sizeUsd) || sizeUsd <= 0) throw new Error('sizeUsd must be positive');
-  if (priceUsd === null) return { ...base, status: 'FAIL', executable: false, reason: 'PRICE_UNAVAILABLE', ...(input.priceError ? { error: input.priceError } : {}) };
+  if (priceUsd === null) {
+    const refused = input.priceError?.startsWith('reference price refused:') === true;
+    return { ...base, status: 'FAIL', executable: false, reason: refused ? 'PRICE_POLICY_REFUSED' : 'PRICE_UNAVAILABLE', ...(input.priceError ? { error: input.priceError } : {}) };
+  }
+  base.maxDeviationBps = maxDeviationBps;
+  base.priceTier = input.priceTier ?? null;
 
   const amount = tokenAmountForValue(sizeUsd, token.decimals, priceUsd);
   const referenceRaw = referenceValueRaw(amount, token.decimals, priceUsd, usdg.decimals);
@@ -116,7 +132,10 @@ export function formatExecutabilityRow(r: ExecutabilityResult, usdgDecimals: num
     `$${usd(r.referenceRaw, usdgDecimals)}`.padEnd(11),
     `$${usd(r.grossMinimumRaw, usdgDecimals)}`.padEnd(11),
     (r.executable ? 'YES' : 'NO').padEnd(4),
-    r.reason + (r.deviationBps !== null ? `  ${(r.deviationBps / 100).toFixed(2)}% below verified` : '') + (r.error ? `  (${shortError(r.error)})` : ''),
+    r.reason +
+      (r.deviationBps !== null ? `  ${(r.deviationBps / 100).toFixed(2)}% below reference` : '') +
+      (r.maxDeviationBps !== null ? `  [band ${r.maxDeviationBps / 100}%${r.priceTier ? ` ${r.priceTier}` : ''}]` : '') +
+      (r.error ? `  (${shortError(r.error)})` : ''),
   ].join(' ');
 }
 

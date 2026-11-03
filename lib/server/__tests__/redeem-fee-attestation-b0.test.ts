@@ -67,7 +67,7 @@ vi.mock('@/lib/server/price-provider', () => ({
   getPriceProvider: () => ({
     getPrice: async () => {
       if (legPrice instanceof Error) throw legPrice;
-      return { price: legPrice, quoteCurrency: 'USD', timestamp: new Date().toISOString(), source: 'test|verify:chainlink:feed:0bps', confidence: 1, ...legPriceFields };
+      return { price: legPrice, quoteCurrency: 'USD', timestamp: new Date().toISOString(), source: 'robinhood-api:prices:AMKR:mid×1.000000000000000000|verify:chainlink:0x00000000000000000000000000000000000c1a1e:0bps', confidence: 1, ...legPriceFields };
     },
   }),
 }));
@@ -212,7 +212,7 @@ describe('signFeeAttestation — B0 floor-based fee', () => {
     });
 
     it('Chainlink unavailable (confidence 0.5): the stricter 100 bps band — 3% below refused, 1% below passes', async () => {
-      legPriceFields = { confidence: 0.5 };
+      legPriceFields = { confidence: 0.5, source: 'robinhood-api:prices:AMKR:mid×1.000000000000000000|verify:chainlink-unavailable' };
       tierQuote = () => BigInt(58_200_000); // 3% below $60
       await expect(signFeeAttestation(admin, 'investor', intent.id)).rejects.toMatchObject({ name: 'ExecutionPriceTooLowError', maxDeviationBps: 100 });
       tierQuote = () => BigInt(59_400_000); // exactly 1%

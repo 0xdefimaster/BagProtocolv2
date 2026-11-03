@@ -109,7 +109,7 @@ vi.mock('@/lib/server/price-provider', () => ({
         price: asset.address.toLowerCase() === AMKR ? '56.5' : '770',
         quoteCurrency: 'USD',
         timestamp: new Date().toISOString(),
-        source: 'robinhood-api:prices:test|verify:chainlink:feed:0bps',
+        source: 'robinhood-api:prices:AMKR:mid×1.000000000000000000|verify:chainlink:0x00000000000000000000000000000000000c1a1e:0bps',
         confidence: 1,
         ...scripted,
       };
@@ -191,6 +191,7 @@ beforeEach(() => {
   priceOverride = null;
   delete process.env.FEE_SALE_REDUCED_CONFIDENCE_MAX_DEVIATION_BPS;
   delete process.env.FEE_SALE_PRICE_MAX_AGE_SECONDS;
+  delete process.env.FEE_SALE_REDUCED_CONFIDENCE_BREAK_GLASS;
   callOrder.length = 0;
   savedPlans.length = 0;
   savedAttested.length = 0;
@@ -253,6 +254,8 @@ describe('phase 1 — reference-price confidence decides the band; a refused leg
     const amountOut = Math.floor((AMKR_VALUE * (10_000 - bps)) / 10_000);
     legOutputs[0] = { amountOut: String(amountOut), amountOutMin: String(Math.floor(amountOut * 0.99)) };
   };
+  // The router's two source-qualified states (bag-price-router.ts): confidence travels with an exact source suffix.
+  const UNAVAILABLE = { confidence: 0.5, source: 'robinhood-api:prices:AMKR:mid×1.000000000000000000|verify:chainlink-unavailable' };
   const onlyAmkr = (fields: Record<string, unknown> | Error) => (a: string) => (a === AMKR ? fields : undefined);
 
   it('(1) high confidence: the normal 500 bps band — a leg 3% below its verified value is planned', async () => {
@@ -263,7 +266,7 @@ describe('phase 1 — reference-price confidence decides the band; a refused leg
   });
 
   it('(2) Chainlink unavailable (confidence 0.5): the stricter band — 3% below is refused, 0.9% below passes', async () => {
-    priceOverride = onlyAmkr({ confidence: 0.5, source: 'robinhood-api:prices:AMKR|verify:chainlink-unavailable' });
+    priceOverride = onlyAmkr(UNAVAILABLE);
     amkrBelow(300);
     await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toMatchObject({ name: 'ExecutionPriceTooLowError', maxDeviationBps: 100 });
     expect(savedPlans).toHaveLength(0);
@@ -273,18 +276,52 @@ describe('phase 1 — reference-price confidence decides the band; a refused leg
   });
 
   it('(2b) the stricter band is configurable (FEE_SALE_REDUCED_CONFIDENCE_MAX_DEVIATION_BPS) and a bad value refuses', async () => {
-    priceOverride = onlyAmkr({ confidence: 0.5 });
+    priceOverride = onlyAmkr(UNAVAILABLE);
     amkrBelow(90);
     process.env.FEE_SALE_REDUCED_CONFIDENCE_MAX_DEVIATION_BPS = '50';
     await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toMatchObject({ name: 'ExecutionPriceTooLowError', maxDeviationBps: 50 });
-    process.env.FEE_SALE_REDUCED_CONFIDENCE_MAX_DEVIATION_BPS = '900'; // wider than the verified band
-    await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(PriceUnavailableForSaleError);
+    for (const bad of ['900', '500', '250']) {
+      // 900/500: not below the verified band; 250: above 200 without the break-glass flag.
+      process.env.FEE_SALE_REDUCED_CONFIDENCE_MAX_DEVIATION_BPS = bad;
+      await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(PriceUnavailableForSaleError);
+    }
     expect(savedPlans).toHaveLength(0);
+    // Explicit break-glass: 250 bps is then allowed (and logged), still never the verified 500.
+    process.env.FEE_SALE_REDUCED_CONFIDENCE_MAX_DEVIATION_BPS = '250';
+    process.env.FEE_SALE_REDUCED_CONFIDENCE_BREAK_GLASS = '1';
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    amkrBelow(240);
+    await quoteSettlement(admin, 'user', intent.id as string);
+    expect(savedPlans).toHaveLength(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('break-glass'));
+    warn.mockRestore();
   });
 
   it('(3) missing confidence fails closed', async () => {
     priceOverride = onlyAmkr({ confidence: undefined });
     await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toThrow(/CONFIDENCE_MISSING/);
+    expect(savedPlans).toHaveLength(0);
+  });
+
+  it('(3b) confidence 1 without Chainlink evidence, 0.5 with an unrelated source, or an in-between value: refused', async () => {
+    for (const fields of [
+      { confidence: 1, source: 'robinhood-api:prices:AMKR:mid×1.000000000000000000' }, // no feed configured, yet labelled 1
+      { confidence: 1, source: 'lifi:token-price' },
+      { confidence: 0.5, source: 'robinhood-api:prices:AMKR:mid×1.000000000000000000|verify:chainlink:0x00000000000000000000000000000000000c1a1e:0bps' },
+      { confidence: 0.5, source: 'twap:uniswap-v3' },
+      { confidence: 0.75, source: 'robinhood-api:prices:AMKR:mid×1.000000000000000000|verify:chainlink-unavailable' },
+    ]) {
+      priceOverride = onlyAmkr(fields);
+      await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toThrow(/SOURCE_NOT_QUALIFIED|CONFIDENCE_UNEXPECTED/);
+    }
+    expect(savedPlans).toHaveLength(0);
+  });
+
+  it('(4b) a missing or future timestamp fails closed', async () => {
+    priceOverride = onlyAmkr({ timestamp: '' });
+    await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toThrow(/TIMESTAMP_INVALID/);
+    priceOverride = onlyAmkr({ timestamp: new Date(Date.now() + 5 * 60 * 1000).toISOString() });
+    await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toThrow(/TIMESTAMP_INVALID/);
     expect(savedPlans).toHaveLength(0);
   });
 
@@ -301,7 +338,7 @@ describe('phase 1 — reference-price confidence decides the band; a refused leg
   });
 
   it('(6) a quote below the threshold produces no attestation signature', async () => {
-    priceOverride = onlyAmkr({ confidence: 0.5 });
+    priceOverride = onlyAmkr(UNAVAILABLE);
     amkrBelow(300);
     await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(ExecutionPriceTooLowError);
     await expect(attestSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(svc.SettlementPlanMissingError);

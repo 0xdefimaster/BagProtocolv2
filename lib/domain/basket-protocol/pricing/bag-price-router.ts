@@ -49,6 +49,41 @@ export class PriceSourceDisagreementError extends PriceUnavailableError {
 
 export type AssetClass = 'STOCK_TOKEN' | 'CRYPTO';
 
+// -----------------------------------------------------------------------------
+// The two verification states a Stock Token price can leave this router with.
+// They are DISCRETE STATES, not probabilities: `confidence` 1 / 0.5 is a label
+// that always travels with an exact source suffix. Consumers that act on the
+// state (sale-price-confidence.ts) must check BOTH — never a numeric range.
+// -----------------------------------------------------------------------------
+
+/** `confidence` of an API price that agreed with its Chainlink feed. */
+export const STOCK_PRICE_CHAINLINK_VERIFIED_CONFIDENCE = 1;
+/** `confidence` of an API price whose configured Chainlink feed could not be read (down, stale, invalid round). */
+export const STOCK_PRICE_CHAINLINK_UNAVAILABLE_CONFIDENCE = 0.5;
+const CHAINLINK_UNAVAILABLE_SUFFIX = '|verify:chainlink-unavailable';
+const verifiedSuffix = (chainlinkSource: string, dev: bigint) => `|verify:${chainlinkSource}:${dev}bps`;
+
+// `robinhood-api:prices:<SYMBOL>:mid×<multiplier>` (robinhood-stock-api.ts) — the only primary this router verifies.
+const PRIMARY = String.raw`robinhood-api:prices:[A-Za-z0-9.\-]+:mid×\d+(?:\.\d+)?`;
+const VERIFIED_RE = new RegExp(`^${PRIMARY}\\|verify:chainlink:(0x[0-9a-f]{40}):(\\d+)bps$`);
+const UNAVAILABLE_RE = new RegExp(`^${PRIMARY}\\|verify:chainlink-unavailable$`);
+
+export type StockPriceVerification =
+  | { state: 'CHAINLINK_VERIFIED'; feed: string; deviationBps: number }
+  | { state: 'CHAINLINK_UNAVAILABLE' };
+
+/**
+ * Which verification state a price's `source` records, or null when it is not one this router produces (no feed
+ * configured, a crypto/TWAP/CoinGecko price, a mock, or anything malformed). Exact match, anchored on both ends.
+ */
+export function stockPriceVerification(source: unknown): StockPriceVerification | null {
+  if (typeof source !== 'string') return null;
+  const v = VERIFIED_RE.exec(source);
+  if (v) return { state: 'CHAINLINK_VERIFIED', feed: v[1], deviationBps: Number(v[2]) };
+  if (UNAVAILABLE_RE.test(source)) return { state: 'CHAINLINK_UNAVAILABLE' };
+  return null;
+}
+
 export class BagPriceRouter implements PriceProvider {
   private readonly maxDeviationBps: bigint;
   constructor(private readonly config: BagPriceRouterConfig) {
@@ -92,13 +127,13 @@ export class BagPriceRouter implements PriceProvider {
     try {
       onchain = await this.config.chainlink.getPrice(asset);
     } catch {
-      return { ...primary, source: `${primary.source}|verify:chainlink-unavailable`, confidence: 0.5 };
+      return { ...primary, source: `${primary.source}${CHAINLINK_UNAVAILABLE_SUFFIX}`, confidence: STOCK_PRICE_CHAINLINK_UNAVAILABLE_CONFIDENCE };
     }
     const a = parseUnsignedDecimal(primary.price)!;
     const b = parseUnsignedDecimal(onchain.price)!;
     if (a === BigInt(0) || b === BigInt(0)) throw new PriceUnavailableError(asset);
     const dev = deviationBps(a, b);
     if (dev > this.maxDeviationBps) throw new PriceSourceDisagreementError(asset, dev, primary.source, onchain.source);
-    return { ...primary, source: `${primary.source}|verify:${onchain.source}:${dev}bps`, confidence: 1 };
+    return { ...primary, source: `${primary.source}${verifiedSuffix(onchain.source, dev)}`, confidence: STOCK_PRICE_CHAINLINK_VERIFIED_CONFIDENCE };
   }
 }
