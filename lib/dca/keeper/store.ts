@@ -23,11 +23,13 @@ export interface KeeperStore {
   /** When the job should next be looked at (ms since epoch). */
   setNextCheck(id: string, nextCheckMs: number): Promise<void>;
   /**
-   * Write-ahead with nonce allocation, atomically and serialised per keeper account: the nonce is
-   * max(chainPending, highest nonce of any unresolved write-ahead record of `job.pending.from` + 1); `job.pending`
-   * is stored with it. Returns the nonce, or null when `holder` lost the lease (nothing stored).
+   * Write-ahead with nonce allocation, atomically and serialised per keeper account: the nonce is the LOWEST nonce
+   * ≥ `chainLatest` (the account's mined transaction count) that no other unresolved write-ahead record of
+   * `job.pending.from` holds, so a nonce freed by a dropped or never-sent transaction is reused instead of leaving a
+   * gap that would block every later transaction. Requires that the keeper account sends only through this store.
+   * `job.pending` is stored with the nonce. Returns it, or null when `holder` lost the lease (nothing stored).
    */
-  writeAhead(job: KeeperJob, holder: string, nowMs: number, chainPending: number): Promise<number | null>;
+  writeAhead(job: KeeperJob, holder: string, nowMs: number, chainLatest: number): Promise<number | null>;
   list(): Promise<KeeperJob[]>;
 }
 
@@ -38,6 +40,14 @@ export const deserializeJob = (text: string | object): KeeperJob =>
     v && typeof v === 'object' && Object.keys(v).length === 1 && typeof v[BIG] === 'string' ? BigInt(v[BIG]) : v,
   );
 const clone = (job: KeeperJob): KeeperJob => deserializeJob(serializeJob(job));
+
+/** The lowest nonce ≥ `from` not in `held`. */
+export function lowestFreeNonce(from: number, held: Iterable<number>): number {
+  const h = new Set(held);
+  let n = from;
+  while (h.has(n)) n++;
+  return n;
+}
 
 export const isActive = (job: KeeperJob) => !['COMPLETED', 'EXPIRED', 'REVOKED'].includes(job.state) || job.pending !== null;
 
@@ -81,13 +91,14 @@ export class MemoryKeeperStore implements KeeperStore {
     const j = this.jobs.get(id.toLowerCase());
     if (j) j.nextCheckMs = nextCheckMs;
   }
-  async writeAhead(job: KeeperJob, holder: string, nowMs: number, chainPending: number) {
+  async writeAhead(job: KeeperJob, holder: string, nowMs: number, chainLatest: number) {
     if (!job.pending) throw new Error('writeAhead: job.pending is required');
     const from = job.pending.from.toLowerCase();
-    let n = chainPending;
+    const held = new Set<number>();
     for (const { job: other } of this.jobs.values()) {
-      if (other.id.toLowerCase() !== job.id.toLowerCase() && other.pending && other.pending.from.toLowerCase() === from) n = Math.max(n, other.pending.nonce + 1);
+      if (other.id.toLowerCase() !== job.id.toLowerCase() && other.pending && other.pending.nonce >= 0 && other.pending.from.toLowerCase() === from) held.add(other.pending.nonce);
     }
+    const n = lowestFreeNonce(chainLatest, held);
     const next = { ...job, pending: { ...job.pending, nonce: n } };
     return (await this.save(next, holder, nowMs)) ? n : null;
   }

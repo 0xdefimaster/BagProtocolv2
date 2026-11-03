@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { network } from 'hardhat';
-import { hashTypedData, keccak256, stringToHex, toHex, zeroHash, type Hex } from 'viem';
+import { hashTypedData, keccak256, stringToHex, toHex, zeroAddress, zeroHash, type Hex } from 'viem';
 import { splitByWeight } from '../../../packages/bag-sdk/src/split';
 import { DCA_TYPES } from './dca-types';
 
@@ -16,7 +16,7 @@ export const REVOCATION_TYPES = { Revocation: [{ name: 'owner', type: 'address' 
 
 export type Asset = { asset: Hex; symbol: string; weightBps: number; decimals: number; maxPriceRaw: bigint };
 export type Auth = {
-  owner: Hex; recipient: Hex; inputToken: Hex;
+  owner: Hex; recipient: Hex; inputToken: Hex; allowedCaller: Hex;
   bag: { bagId: Hex; bagVersion: bigint; compositionHash: Hex; definitionHash: Hex; strategyId: Hex; strategyVersion: number };
   assets: Asset[];
   schedule: { amountPerRun: bigint; totalBudget: bigint; maxRuns: number; startsAt: bigint; periodSeconds: bigint; expiresAt: bigint };
@@ -109,6 +109,7 @@ export async function setup(opts: { strategy?: boolean; adapter?: 'real' | 'misb
     owner: owner.account.address,
     recipient: recipient.account.address,
     inputToken: usdg.address,
+    allowedCaller: zeroAddress,
     bag: { bagId, bagVersion: 1n, compositionHash: comp, definitionHash, strategyId, strategyVersion: opts.strategy ? 1 : 0 },
     assets,
     schedule: { amountPerRun: USDG(10), totalBudget: USDG(50), maxRuns: 5, startsAt, periodSeconds: DAY, expiresAt: startsAt + 5n * DAY },

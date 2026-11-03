@@ -37,6 +37,7 @@ export function makeAuth(nonce = B(1)): DcaAuthorization {
     owner: owner.address.toLowerCase() as Hex,
     recipient: owner.address.toLowerCase() as Hex,
     inputToken: USDG,
+    allowedCaller: KEEPER,
     bag: { bagId: `0x${'ab'.repeat(32)}`, bagVersion: B(1), compositionHash: dcaCompositionHash('robinhood', assets), definitionHash: `0x${'cd'.repeat(32)}`, strategyId: `0x${'00'.repeat(32)}`, strategyVersion: 0 },
     assets,
     schedule: { amountPerRun: B(10_000_000), totalBudget: B(50_000_000), maxRuns: 5, startsAt: START, periodSeconds: DAY, expiresAt: START + B(5) * DAY },
@@ -46,7 +47,10 @@ export function makeAuth(nonce = B(1)): DcaAuthorization {
 }
 export const signAuth = (a: DcaAuthorization) => owner.signTypedData(dcaAuthorizationTypedData(a, DEP) as any);
 
-type Tx = { hash: Hex; nonce: number; call: ExecuteCall };
+type Tx = { hash: Hex; nonce: number; call: ExecuteCall | null; gasPrice: bigint };
+/** The fake executor's runtime code and its hash (what a reviewed build would pin). */
+export const FAKE_EXECUTOR_CODE = '0x6001600155' as Hex;
+export const FAKE_EXECUTOR_CODE_HASH = keccak256(FAKE_EXECUTOR_CODE);
 type Mined = { status: 'success' | 'reverted'; blockNumber: bigint; blockHash: Hex; logs: any[]; window?: bigint; id?: Hex };
 
 /** An in-memory executor + chain. Applies BagDcaExecutor's rules when a block is mined. */
@@ -85,6 +89,7 @@ export class FakeChain implements KeeperChain {
     },
     getBlock: async ({ blockNumber }) => ({ hash: this.blockHashes.get(blockNumber) ?? null, timestamp: this.blockTimes.get(blockNumber) ?? B(0) }),
     getBlockNumber: async () => this.blockNumber,
+    getCode: async () => this.executorCode,
   };
   async verifyOwnerSignature(o: Hex, td: any, sig: Hex) {
     return verifyTypedData({ address: o, ...td, signature: sig });
@@ -103,8 +108,14 @@ export class FakeChain implements KeeperChain {
   async keeperBalance() {
     return this.keeperWei;
   }
+  /** `pending` counts only nonces contiguous from the mined count (as nodes do; a gap leaves later ones queued). */
   async nonces() {
-    return { latest: this.minedNonce, pending: this.pendingLag ? this.minedNonce : this.minedNonce + this.mempool.length };
+    let p = this.minedNonce;
+    if (!this.pendingLag) while (this.mempool.some((t) => t.nonce === p)) p++;
+    return { latest: this.minedNonce, pending: p };
+  }
+  async inMempool(hash: Hex) {
+    return this.mempool.some((t) => t.hash.toLowerCase() === hash.toLowerCase());
   }
   async gasPrice() {
     return B(1_000_000_000);
@@ -116,6 +127,31 @@ export class FakeChain implements KeeperChain {
   async receipt(hash: Hex) {
     const m = this.mined.get(hash.toLowerCase());
     return m ? { status: m.status, blockNumber: m.blockNumber, blockHash: m.blockHash } : null;
+  }
+  /** Runtime code at the executor (tests swap it to model a different deployment). */
+  executorCode: Hex = FAKE_EXECUTOR_CODE;
+  /** Transactions priced below this stay in the mempool (a stuck broadcast). */
+  minIncludedGasPrice = B(0);
+  finalized: bigint | null = null;
+  async finalizedBlock() {
+    return this.finalized;
+  }
+  async codeHash() {
+    return keccak256(this.executorCode);
+  }
+  private broadcast(tx: Tx) {
+    const prev = this.mempool.find((x) => x.nonce === tx.nonce);
+    if (prev) {
+      if (tx.gasPrice * B(100) < prev.gasPrice * B(110)) throw new Error('replacement transaction underpriced');
+      this.mempool = this.mempool.filter((x) => x !== prev);
+    } else if (tx.nonce < this.minedNonce) throw new Error('nonce too low');
+    this.sent.push(tx);
+    this.mempool.push(tx);
+  }
+  async sendCancel(nonce: number, gasPrice: bigint) {
+    const tx = { hash: keccak256(toHex(`cancel:${this.sent.length}:${nonce}`)), nonce, call: null, gasPrice };
+    this.broadcast(tx);
+    return tx.hash;
   }
   async blockHashAt(n: bigint) {
     return this.blockHashes.get(n) ?? null;
@@ -129,6 +165,8 @@ export class FakeChain implements KeeperChain {
   private refusal(call: ExecuteCall): string | null {
     const id = dcaAuthorizationId(call.authorization, DEP).toLowerCase();
     if (call.run.authorizationId.toLowerCase() !== id) return 'AuthorizationMismatch';
+    const sender = (this.keeper ?? call.authorization.allowedCaller).toLowerCase();
+    if (!/^0x0{40}$/i.test(call.authorization.allowedCaller) && call.authorization.allowedCaller.toLowerCase() !== sender) return 'CallerNotAllowed';
     const st = this.states.get(id) ?? { runs: 0, spent: B(0), lastWindow: B(0), lastRunAt: B(0), revoked: false };
     const due = dcaRunDue(call.authorization, st, this.time);
     if (due.state !== 'DUE') return due.state === 'REVOKED' ? 'RevokedAuthorization' : 'NotDue';
@@ -149,11 +187,10 @@ export class FakeChain implements KeeperChain {
     const r = this.refusal(call);
     return r ? { ok: false as const, reason: r } : { ok: true as const, gas: B(400_000) };
   }
-  async sendExecute(_e: Hex, call: ExecuteCall, nonce: number) {
+  async sendExecute(_e: Hex, call: ExecuteCall, nonce: number, _gas: bigint, gasPrice: bigint) {
     if (this.sendMode === 'throwBeforeBroadcast') throw new Error('process died before broadcast');
-    const tx = { hash: keccak256(toHex(`tx:${this.sent.length}:${nonce}`)), nonce, call: JSON.parse(JSON.stringify(call, (_k, v) => (typeof v === 'bigint' ? `${v}n` : v)), (_k, v) => (typeof v === 'string' && /^\d+n$/.test(v) ? BigInt(v.slice(0, -1)) : v)) };
-    this.sent.push(tx);
-    this.mempool.push(tx);
+    const tx = { hash: keccak256(toHex(`tx:${this.sent.length}:${nonce}`)), nonce, gasPrice, call: JSON.parse(JSON.stringify(call, (_k, v) => (typeof v === 'bigint' ? `${v}n` : v)), (_k, v) => (typeof v === 'string' && /^\d+n$/.test(v) ? BigInt(v.slice(0, -1)) : v)) };
+    this.broadcast(tx);
     if (this.sendMode === 'broadcastThenThrow') throw new Error('connection reset after broadcast');
     return tx.hash;
   }
@@ -163,8 +200,14 @@ export class FakeChain implements KeeperChain {
     const blockHash = keccak256(toHex(`block:${this.blockNumber}:${this.time}:${Math.random()}`));
     this.blockHashes.set(this.blockNumber, blockHash);
     this.blockTimes.set(this.blockNumber, this.time);
-    for (const tx of this.mempool.sort((a, b) => a.nonce - b.nonce)) {
-      this.minedNonce = Math.max(this.minedNonce, tx.nonce + 1);
+    const included = this.mempool.filter((x) => x.gasPrice >= this.minIncludedGasPrice).sort((a, b) => a.nonce - b.nonce);
+    for (const tx of included) {
+      if (tx.nonce !== this.minedNonce) break; // a stuck lower nonce blocks the rest
+      this.minedNonce = tx.nonce + 1;
+      if (!tx.call) {
+        this.mined.set(tx.hash.toLowerCase(), { status: 'success', blockNumber: this.blockNumber, blockHash, logs: [] });
+        continue;
+      }
       const reason = this.refusal(tx.call);
       const a = tx.call.authorization;
       const id = dcaAuthorizationId(a, DEP).toLowerCase() as Hex;
@@ -184,7 +227,7 @@ export class FakeChain implements KeeperChain {
         const before = this.recipientBal.get(x.asset) ?? B(0);
         const out = (legs[i] * B(10) ** B(18)) / this.prices.get(x.asset)!;
         this.recipientBal.set(x.asset, before + out);
-        const min = tx.call.run.minOutFloors[i] > mins[i] ? tx.call.run.minOutFloors[i] : mins[i];
+        const min = tx.call!.run.minOutFloors[i] > mins[i] ? tx.call!.run.minOutFloors[i] : mins[i];
         return {
           address: EXECUTOR, logIndex: i, transactionHash: tx.hash, blockHash, blockNumber: this.blockNumber,
           topics: encodeEventTopics({ abi: DCA_EXECUTOR_ABI, eventName: 'AssetDelivered', args: { owner: a.owner, authorizationId: id, executionIndex: index } }),
@@ -199,7 +242,7 @@ export class FakeChain implements KeeperChain {
       this.mined.set(tx.hash.toLowerCase(), { status: 'success', blockNumber: this.blockNumber, blockHash, logs, window, id });
       this.logs.push({ window, executionIndex: index, hash: tx.hash, blockNumber: this.blockNumber, blockHash, id });
     }
-    this.mempool = [];
+    this.mempool = this.mempool.filter((x) => x.nonce >= this.minedNonce);
   }
   /** Replaces the latest block: its purchases disappear and the counters roll back. */
   reorgLatest() {

@@ -5,7 +5,7 @@ import type { Hex } from 'viem';
 import { DcaKeeper } from '../keeper/keeper';
 import { PostgresKeeperStore } from '../keeper/postgres-store';
 import type { KeeperJob } from '../keeper/types';
-import { B, DEP, FakeChain, KEEPER, makeAuth, signAuth, START } from './fake-chain';
+import { B, DEP, FAKE_EXECUTOR_CODE_HASH, FakeChain, KEEPER, makeAuth, signAuth, START } from './fake-chain';
 
 // -----------------------------------------------------------------------------
 // INTEGRATION: PostgresKeeperStore against a REAL PostgreSQL (TEST_DATABASE_URL,
@@ -126,10 +126,12 @@ describe('PostgresKeeperStore', () => {
   });
 
   it('two keeper processes on one Postgres store and one chain: each window bought exactly once over a whole schedule', async () => {
+    // isolate from the jobs the earlier tests left behind (their write-ahead records hold nonces of the same account)
+    await pool.query(`update dca_keeper.jobs set active = false, pending_from = null, pending_nonce = null`);
     const chain = new FakeChain();
     chain.allowance = B(10) ** B(12);
     const clock = { ms: Date.now() };
-    const mk = (holder: string) => new DcaKeeper({ store, chain, mode: 'SEND', holder, now: () => clock.ms, pendingTimeoutMs: 600_000 });
+    const mk = (holder: string) => new DcaKeeper({ store, chain, mode: 'SEND', holder, now: () => clock.ms, pendingTimeoutMs: 600_000, executorCodeHash: FAKE_EXECUTOR_CODE_HASH, assetAllowed: () => true });
     const k1 = mk('P1');
     const k2 = mk('P2');
     const auths = [makeAuth(B(9001)), makeAuth(B(9002)), makeAuth(B(9003))];

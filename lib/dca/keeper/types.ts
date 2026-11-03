@@ -47,7 +47,16 @@ export interface PendingTx {
   window: bigint;
   from: Hex;
   nonce: number;
+  /** The latest broadcast hash (a replacement or cancel supersedes the previous one). */
   hash: Hex | null;
+  /** Every hash broadcast with this nonce: the original, replacements and a cancel. Any one of them may be mined. */
+  hashes?: Hex[];
+  /** Legacy gas price (wei) of the latest broadcast; replacements bump it. */
+  gasPrice?: bigint;
+  lastSentAt?: number;
+  replacements?: number;
+  /** A cancel (0-value self-transfer with this nonce) was sent because the run's deadline passed. */
+  cancelling?: boolean;
   preparedAt: number;
   /** The exact RunParams prepared (fees, floors, deadline): what the mined call is compared with. */
   run: { window: bigint; deadline: bigint; fees: number[]; minOutFloors: bigint[] };
@@ -64,6 +73,10 @@ export interface ConfirmedRun {
   issues: string[];
   /** Set when a later check found the block was reorganised away. */
   reorged: boolean;
+  /** The block is at or below the chain's finalized block (or `reorgDepth` deep when the RPC has no finalized tag). */
+  finalized?: boolean;
+  /** The executor's runtime code hash was checked against the reviewed build when this run was verified. */
+  codeChecked?: boolean;
 }
 
 export interface MissedWindow {
@@ -75,7 +88,7 @@ export interface MissedWindow {
 export interface AttemptRecord {
   at: number;
   window: bigint | null;
-  outcome: 'REVERTED' | 'NONCE_USED_ELSEWHERE' | 'DROPPED' | 'UNSENT' | 'SIMULATION_REVERTED' | 'REORGED';
+  outcome: 'REVERTED' | 'NONCE_USED_ELSEWHERE' | 'DROPPED' | 'UNSENT' | 'SIMULATION_REVERTED' | 'REORGED' | 'REPLACED' | 'CANCEL_SENT' | 'CANCELLED';
   detail: string;
   hash?: Hex | null;
 }

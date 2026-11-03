@@ -15,7 +15,8 @@
  *
  * Environment (never logged): DCA_KEEPER_DATABASE_URL (Postgres; the keeper's OWN database), DCA_RPC_URL,
  * DCA_EXECUTOR, DCA_QUOTER (default Robinhood QuoterV2), DCA_V3_FACTORY (default Robinhood v3 factory),
- * DCA_KEEPER_PRIVATE_KEY (FORK only; a local test key), DCA_KEEPER_HOLDER, DCA_KEEPER_INTERVAL_MS (15000),
+ * DCA_KEEPER_PRIVATE_KEY (FORK only; a local test key), DCA_EXECUTOR_CODE_HASH (keccak256 of the reviewed executor
+ * runtime code; required to send), DCA_ASSET_ALLOWLIST (comma-separated token addresses; required to send), DCA_KEEPER_HOLDER, DCA_KEEPER_INTERVAL_MS (15000),
  * DCA_KEEPER_HEALTH_PORT (8787, bound to 127.0.0.1), DCA_KEEPER_ALERT_WEBHOOK, DCA_LOG_CHUNK (10000).
  */
 import { readFileSync } from 'node:fs';
@@ -50,6 +51,9 @@ async function assertLocalDevNode(rpc: (m: string) => Promise<unknown>) {
 async function main() {
   const [cmd, arg] = process.argv.slice(2);
   const pool = new Pool({ connectionString: env('DCA_KEEPER_DATABASE_URL') });
+  // An idle client losing its connection (database restart, network) must not crash the worker: the pool drops it and
+  // the next query reconnects; the tick that hit the outage fails and is retried.
+  pool.on('error', (e) => process.stderr.write(`postgres pool: ${(e as Error).message.split('\n')[0]}\n`));
   const store = new PostgresKeeperStore(pool);
   try {
     if (cmd === 'migrate') {
@@ -85,10 +89,15 @@ async function main() {
     const sinks: AlertSink[] = [consoleAlertSink];
     const hook = env('DCA_KEEPER_ALERT_WEBHOOK', false);
     if (hook) sinks.push(webhookAlertSink(hook));
+    const codeHash = env('DCA_EXECUTOR_CODE_HASH', mode === 'FORK') as Hex | undefined;
+    const allow = (env('DCA_ASSET_ALLOWLIST', mode === 'FORK') ?? '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+    if (allow.some((a) => !/^0x[0-9a-f]{40}$/.test(a))) throw new Error('DCA_ASSET_ALLOWLIST must be comma-separated addresses');
     let worker: KeeperWorker | null = null;
     const keeper = new DcaKeeper({
       store, chain, mode: (mode === 'FORK' ? 'SEND' : 'PAPER') as KeeperMode,
       holder: env('DCA_KEEPER_HOLDER', false) ?? `${hostname()}:${process.pid}`,
+      executorCodeHash: codeHash,
+      assetAllowed: allow.length ? (a: Hex) => allow.includes(a.toLowerCase()) : undefined,
       onAlert: (a) => worker?.alert(a),
     });
     worker = new KeeperWorker(keeper, { mode, intervalMs: Number(env('DCA_KEEPER_INTERVAL_MS', false) ?? 15_000), sinks });

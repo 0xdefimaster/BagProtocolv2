@@ -27,6 +27,7 @@ const RECIPIENT = '0x2222222222222222222222222222222222222222' as Hex;
 const EXECUTOR = '0x3333333333333333333333333333333333333333' as Hex;
 const ADAPTER = '0x4444444444444444444444444444444444444444' as Hex;
 const ROUTER = '0xcaf681a66d020601342297493863e78c959e5cb2' as Hex;
+const KEEPER = '0x5555555555555555555555555555555555555555' as Hex;
 const DEP = { chainId: 4663, executor: EXECUTOR };
 const DAY = BigInt(86_400);
 const START = BigInt(1_800_000_000);
@@ -50,6 +51,7 @@ const build = (over: Partial<Parameters<typeof buildDcaAuthorization>[0]> = {}) 
     owner: OWNER,
     recipient: RECIPIENT,
     inputToken: USDG,
+    allowedCaller: KEEPER,
     registry: { bagId: `0x${'ab'.repeat(32)}`, bagVersion: 1, compositionHash: COMPOSITION },
     amountPerRunRaw: B(10_000_000),
     runs: 5,
@@ -91,6 +93,16 @@ describe('buildDcaAuthorization', () => {
     expectRefusal(() => build({ maxPriceRaw: { [TSLA]: B(1) } }), /maxPriceRaw/);
     expectRefusal(() => build({ route: { adapter: ADAPTER, swapRouter: ROUTER, allowedFees: [2500] } }), /allowedFees/);
     expectRefusal(() => build({ amountPerRunRaw: B(1), totalBudgetRaw: B(5) }), /nothing to buy/);
+    expectRefusal(() => build({ allowedCaller: undefined as never }), /allowedCaller is required/);
+    expectRefusal(() => build({ allowedCaller: `0x${'0'.repeat(40)}` }), /pass 'ANY' explicitly/);
+  });
+
+  it('allowedCaller: a keeper address is signed as is; ANY is the zero address and the summary flags its risk', () => {
+    expect(build().allowedCaller).toBe(KEEPER);
+    expect(summarizeDcaAuthorization(build()).caller).toEqual({ kind: 'ONLY', address: KEEPER });
+    const any = build({ allowedCaller: 'ANY' });
+    expect(any.allowedCaller).toBe(`0x${'0'.repeat(40)}`);
+    expect(summarizeDcaAuthorization(any).caller).toEqual({ kind: 'ANY', risk: 'ANY_CALLER_CAN_EXECUTE_UP_TO_CEILING' });
   });
 });
 

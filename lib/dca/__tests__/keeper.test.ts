@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { dcaAuthorizationId, dcaCeilingMinimums } from '../../../packages/bag-sdk/src/dca';
 import { DcaKeeper, planRun, type KeeperAlert } from '../keeper/keeper';
-import { B, DAY, DEP, FakeChain, makeAuth, signAuth, START, TSLA } from './fake-chain';
+import { B, DAY, DEP, FAKE_EXECUTOR_CODE_HASH, FakeChain, KEEPER, makeAuth, NVDA, signAuth, START, TSLA } from './fake-chain';
 import { MemoryKeeperStore } from '../keeper/store';
 
 // -----------------------------------------------------------------------------
@@ -11,12 +11,15 @@ import { MemoryKeeperStore } from '../keeper/store';
 // (local Hardhat EVM); the Postgres store has its own integration test.
 // -----------------------------------------------------------------------------
 
-async function setup(o: { mode?: 'PAPER' | 'SEND'; store?: MemoryKeeperStore; chain?: FakeChain; holder?: string; clock?: { ms: number } } = {}) {
+async function setup(o: { mode?: 'PAPER' | 'SEND'; store?: MemoryKeeperStore; chain?: FakeChain; holder?: string; clock?: { ms: number }; keeperOptions?: Partial<ConstructorParameters<typeof DcaKeeper>[0]> } = {}) {
   const chain = o.chain ?? new FakeChain();
   const store = o.store ?? new MemoryKeeperStore();
   const alerts: KeeperAlert[] = [];
   const clock = o.clock ?? { ms: 1_000_000 };
-  const keeper = new DcaKeeper({ store, chain, mode: o.mode ?? 'SEND', holder: o.holder ?? 'w1', now: () => clock.ms, onAlert: (a) => alerts.push(a), pendingTimeoutMs: 600_000 });
+  const keeper = new DcaKeeper({
+    store, chain, mode: o.mode ?? 'SEND', holder: o.holder ?? 'w1', now: () => clock.ms, onAlert: (a) => alerts.push(a), pendingTimeoutMs: 600_000,
+    executorCodeHash: FAKE_EXECUTOR_CODE_HASH, assetAllowed: (a) => [TSLA, NVDA].includes(a), ...(o.keeperOptions ?? {}),
+  });
   const auth = makeAuth();
   const job = await keeper.addJob({ authorization: auth, ownerSignature: await signAuth(auth), deployment: DEP });
   /** Advances the wall clock by 20 s, makes every job due now, and ticks. */
@@ -97,6 +100,7 @@ describe('DcaKeeper', () => {
     chain.at(START + B(100));
     await tick();
     chain.mempool = []; // dropped by the node
+    expect((await tick())[0].state).toBe('PENDING_TX'); // 20 s: inside the drop grace period
     const [j] = await tick();
     expect(j.attempts.map((a) => a.outcome)).toContain('DROPPED');
     expect(alerts.map((a) => a.kind)).toContain('TX_NOT_INCLUDED');
@@ -106,14 +110,13 @@ describe('DcaKeeper', () => {
     expect(chain.sent).toHaveLength(2);
   });
 
-  it('two independent keepers race for one window: one run, the other reverts and back-fills the winner', async () => {
+  it('two keepers sharing one account but NOT one store (a misconfiguration) race: still one run; the loser back-fills it', async () => {
     const chain = new FakeChain();
     const a = await setup({ chain, holder: 'A' });
     const b = await setup({ chain, holder: 'B' });
     chain.at(START + B(100));
     await a.tick();
-    await b.tick();
-    expect(chain.mempool).toHaveLength(2);
+    await b.tick(); // B allocates the same nonce (it cannot see A's write-ahead); the node refuses it as an underpriced replacement
     chain.mine();
     const [ja] = await a.tick();
     const [jb] = await b.tick();
@@ -121,7 +124,8 @@ describe('DcaKeeper', () => {
     expect(ja.confirmed).toHaveLength(1);
     expect(jb.confirmed).toHaveLength(1);
     expect(ja.confirmed[0].hash).toBe(jb.confirmed[0].hash);
-    expect([...ja.attempts, ...jb.attempts].map((x) => x.outcome)).toContain('REVERTED');
+    expect(jb.pending).toBeNull();
+    expect(jb.attempts.map((x) => x.outcome)).toContain('UNSENT');
   });
 
   it('a shared store leases each job to one worker at a time', async () => {
@@ -241,4 +245,129 @@ describe('DcaKeeper', () => {
     const nonces = jobs.map((j) => j.pending!.nonce).sort();
     expect(nonces).toEqual([0, 1]);
   });
+
+  it('SEND mode refuses to start without the reviewed executor code hash or a token policy', async () => {
+    const chain = new FakeChain();
+    const store = new MemoryKeeperStore();
+    expect(() => new DcaKeeper({ store, chain, mode: 'SEND', holder: 'x', assetAllowed: () => true })).toThrow(/executorCodeHash/);
+    expect(() => new DcaKeeper({ store, chain, mode: 'SEND', holder: 'x', executorCodeHash: FAKE_EXECUTOR_CODE_HASH })).toThrow(/assetAllowed/);
+  });
+
+  it('addJob refuses: another executor build, assets outside the token policy, an authorization for another caller', async () => {
+    const chain = new FakeChain();
+    const { keeper } = await setup({ chain });
+    const a = makeAuth(B(7));
+    chain.executorCode = '0x6002';
+    await expect(keeper.addJob({ authorization: a, ownerSignature: await signAuth(a), deployment: DEP })).rejects.toThrow(/code hash/);
+    chain.executorCode = '0x6001600155';
+    const strict = new DcaKeeper({ store: new MemoryKeeperStore(), chain, mode: 'SEND', holder: 's', executorCodeHash: FAKE_EXECUTOR_CODE_HASH, assetAllowed: (x) => x === TSLA });
+    await expect(strict.addJob({ authorization: a, ownerSignature: await signAuth(a), deployment: DEP })).rejects.toThrow(/token policy.*NVDA/);
+    const other = { ...makeAuth(B(8)), allowedCaller: '0x00000000000000000000000000000000000000cc' as const };
+    await expect(keeper.addJob({ authorization: other, ownerSignature: await signAuth(other), deployment: DEP })).rejects.toThrow(/may only be executed by/);
+  });
+
+  it('every run is verified against the reviewed executor code; a run under different code is not VERIFIED', async () => {
+    const { chain, tick, alerts } = await setup();
+    chain.at(START + B(100));
+    await tick();
+    chain.mine();
+    const [j] = await tick();
+    expect(j.confirmed[0]).toMatchObject({ verification: 'VERIFIED', codeChecked: true });
+    chain.at(START + DAY + B(100));
+    await tick();
+    chain.executorCode = '0x6002'; // the code at the address changed (e.g. a different deployment answered)
+    chain.mine();
+    const [k] = await tick();
+    expect(k.confirmed[1].verification).toBe('FAILED');
+    expect(alerts.map((a) => a.kind)).toContain('VERIFICATION_NOT_VERIFIED');
+  });
+
+  it('confirmations: a run below minConfirmations is INDETERMINATE, then re-verified VERIFIED once deep enough; finalized runs stop being re-checked', async () => {
+    const { chain, tick } = await setup({ keeperOptions: { minConfirmations: B(3), reorgDepth: B(2) } });
+    chain.at(START + B(100));
+    await tick();
+    chain.mine();
+    const [j] = await tick();
+    expect(j.confirmed[0].verification).toBe('INDETERMINATE');
+    chain.mine();
+    chain.mine();
+    const [k] = await tick();
+    expect(k.confirmed.filter((c) => !c.reorged).map((c) => c.verification)).toEqual(['VERIFIED']);
+    chain.finalized = chain.blockNumber;
+    const [m] = await tick();
+    expect(m.confirmed[0].finalized).toBe(true);
+  });
+
+  it('stuck broadcast: replaced with the same nonce and a higher gas price, STUCK_NONCE after the limit, never cleared or duplicated', async () => {
+    const { chain, tick, alerts } = await setup();
+    chain.minIncludedGasPrice = B(10) ** B(12); // nothing at 1 gwei gets in
+    chain.at(START + B(100));
+    const [j] = await tick();
+    const nonce = j.pending!.nonce;
+    for (let i = 0; i < 4; i++) {
+      await tick(); // 20 s
+      await tick(); // 40 s
+      await tick(); // 60 s → replacement due
+      chain.mine();
+    }
+    const [k] = await tick();
+    expect(k.pending!.nonce).toBe(nonce);
+    expect(k.attempts.filter((a) => a.outcome === 'REPLACED').length).toBe(3);
+    expect(alerts.map((a) => a.kind)).toContain('STUCK_NONCE');
+    expect(new Set(chain.mempool.map((t) => t.nonce)).size).toBe(1);
+    chain.minIncludedGasPrice = B(0);
+    chain.mine();
+    const [m] = await tick();
+    expect(m.pending).toBeNull();
+    expect(m.confirmed).toHaveLength(1);
+    expect(chain.logs).toHaveLength(1);
+  });
+
+  it('stuck past the run deadline: cancelled at the same nonce, the nonce freed, the window bought by a fresh run', async () => {
+    const { chain, tick } = await setup({ keeperOptions: { deadlineSeconds: B(60) } });
+    chain.minIncludedGasPrice = B(1_500_000_000); // 1 and 1.25 gwei stay stuck; the second cancel (1.5625 gwei) gets in
+    chain.at(START + B(100));
+    await tick();
+    chain.at(START + B(400)); // past the 60 s deadline
+    await tick();
+    await tick();
+    const [j] = await tick();
+    expect(j.attempts.map((a) => a.outcome)).toContain('CANCEL_SENT');
+    for (let i = 0; i < 6 && chain.mempool.length && chain.mempool[0].gasPrice < chain.minIncludedGasPrice; i++) {
+      await tick();
+      await tick();
+      await tick();
+    }
+    chain.mine();
+    const [k] = await tick(); // cancel mined → CANCELLED → same tick sends a fresh run
+    expect(k.attempts.map((a) => a.outcome)).toContain('CANCELLED');
+    chain.minIncludedGasPrice = B(0);
+    chain.mine();
+    const [m] = await tick();
+    expect(m.confirmed.map((c) => c.window)).toEqual([B(0)]);
+    expect(chain.logs).toHaveLength(1);
+    expect(KEEPER).toBeTruthy();
+  });
+
+  it('a nonce freed by a dropped transaction is reused (no nonce gap blocks the other jobs)', async () => {
+    const chain = new FakeChain();
+    const s = await setup({ chain });
+    const b = makeAuth(B(2));
+    await s.keeper.addJob({ authorization: b, ownerSignature: await signAuth(b), deployment: DEP });
+    chain.allowance = B(100_000_000);
+    chain.at(START + B(100));
+    const first = await s.tick(); // A → nonce 0, B → nonce 1
+    expect(first.map((j) => j.pending!.nonce).sort()).toEqual([0, 1]);
+    const a = first.find((j) => j.pending!.nonce === 0)!;
+    chain.mempool = chain.mempool.filter((t) => t.nonce !== 0); // the node drops nonce 0; nonce 1 now waits behind a gap
+    chain.mine();
+    expect(chain.logs).toHaveLength(0);
+    await s.tick(); // inside the drop grace
+    const again = await s.tick(); // A: DROPPED → re-sent, must reuse nonce 0
+    expect(again.find((j) => j.id === a.id)!.pending!.nonce).toBe(0);
+    chain.mine();
+    await s.tick();
+    expect(chain.logs).toHaveLength(2); // both jobs bought window 0
+  });
 });
+

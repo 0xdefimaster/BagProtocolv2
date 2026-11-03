@@ -93,10 +93,15 @@ contract BagDcaExecutor is EIP712, ReentrancyGuard {
         uint24[] allowedFees;
     }
 
+    /// @notice `allowedCaller`: when non-zero, only this address may call `execute` for the
+    /// authorization (the owner's chosen keeper). Zero means anyone may execute; then any
+    /// caller can pick the moment and pass no keeper floor, so a run can be pushed to any
+    /// price up to the ceilings (e.g. by moving the pool in the same transaction).
     struct DcaAuthorization {
         address owner;
         address recipient;
         address inputToken;
+        address allowedCaller;
         BagRef bag;
         AssetLimit[] assets;
         Schedule schedule;
@@ -134,7 +139,7 @@ contract BagDcaExecutor is EIP712, ReentrancyGuard {
     bytes32 public constant ROUTE_TYPEHASH = keccak256('Route(address adapter,address swapRouter,uint24[] allowedFees)');
     bytes32 public constant AUTHORIZATION_TYPEHASH =
         keccak256(
-            'DcaAuthorization(address owner,address recipient,address inputToken,BagRef bag,AssetLimit[] assets,Schedule schedule,Route route,uint256 nonce)'
+            'DcaAuthorization(address owner,address recipient,address inputToken,address allowedCaller,BagRef bag,AssetLimit[] assets,Schedule schedule,Route route,uint256 nonce)'
             'AssetLimit(address asset,string symbol,uint16 weightBps,uint8 decimals,uint256 maxPriceRaw)'
             'BagRef(bytes32 bagId,uint256 bagVersion,bytes32 compositionHash,bytes32 definitionHash,bytes32 strategyId,uint32 strategyVersion)'
             'Route(address adapter,address swapRouter,uint24[] allowedFees)'
@@ -190,6 +195,7 @@ contract BagDcaExecutor is EIP712, ReentrancyGuard {
     error InvalidChainLabel();
     error AuthorizationMismatch(bytes32 expected, bytes32 given);
     error InvalidOwnerSignature();
+    error CallerNotAllowed(address caller);
     error RevokedAuthorization(bytes32 authorizationId);
     /// @dev 1 owner, 2 recipient, 3 input token, 4 schedule, 5 budget, 6 asset count,
     /// 7 asset address, 8 weights, 9 price limit, 10 duplicate asset, 11 route,
@@ -241,6 +247,7 @@ contract BagDcaExecutor is EIP712, ReentrancyGuard {
         if (r.authorizationId != id) revert AuthorizationMismatch(id, r.authorizationId);
         RunState storage st = _state[a.owner][id];
         if (st.revoked) revert RevokedAuthorization(id);
+        if (a.allowedCaller != address(0) && msg.sender != a.allowedCaller) revert CallerNotAllowed(msg.sender);
         if (!SignatureChecker.isValidSignatureNow(a.owner, id, ownerSignature)) revert InvalidOwnerSignature();
         _checkTerms(a);
         _checkRegistry(a);
@@ -339,7 +346,7 @@ contract BagDcaExecutor is EIP712, ReentrancyGuard {
             keccak256(abi.encode(SCHEDULE_TYPEHASH, a.schedule)),
             keccak256(abi.encode(ROUTE_TYPEHASH, a.route.adapter, a.route.swapRouter, keccak256(abi.encodePacked(fees))))
         ];
-        return keccak256(abi.encode(AUTHORIZATION_TYPEHASH, a.owner, a.recipient, a.inputToken, parts[0], parts[1], parts[2], parts[3], a.nonce));
+        return keccak256(abi.encode(AUTHORIZATION_TYPEHASH, a.owner, a.recipient, a.inputToken, a.allowedCaller, parts[0], parts[1], parts[2], parts[3], a.nonce));
     }
 
     // ------------------------------------------------------------- checks

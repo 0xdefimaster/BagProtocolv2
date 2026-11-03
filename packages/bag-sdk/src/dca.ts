@@ -36,6 +36,7 @@ export const DCA_AUTHORIZATION_TYPES = {
     { name: 'owner', type: 'address' },
     { name: 'recipient', type: 'address' },
     { name: 'inputToken', type: 'address' },
+    { name: 'allowedCaller', type: 'address' },
     { name: 'bag', type: 'BagRef' },
     { name: 'assets', type: 'AssetLimit[]' },
     { name: 'schedule', type: 'Schedule' },
@@ -85,7 +86,7 @@ export const DCA_EXECUTOR_ABI = parseAbi([
   'struct AssetLimit { address asset; string symbol; uint16 weightBps; uint8 decimals; uint256 maxPriceRaw; }',
   'struct Schedule { uint256 amountPerRun; uint256 totalBudget; uint32 maxRuns; uint64 startsAt; uint64 periodSeconds; uint64 expiresAt; }',
   'struct Route { address adapter; address swapRouter; uint24[] allowedFees; }',
-  'struct DcaAuthorization { address owner; address recipient; address inputToken; BagRef bag; AssetLimit[] assets; Schedule schedule; Route route; uint256 nonce; }',
+  'struct DcaAuthorization { address owner; address recipient; address inputToken; address allowedCaller; BagRef bag; AssetLimit[] assets; Schedule schedule; Route route; uint256 nonce; }',
   'struct RunParams { bytes32 authorizationId; uint64 window; uint64 deadline; uint24[] fees; uint256[] minOutFloors; }',
   'struct RunState { uint32 runs; uint256 spent; uint64 lastWindow; uint64 lastRunAt; bool revoked; }',
   'function execute(DcaAuthorization a, RunParams r, bytes ownerSignature) returns (uint256 executionIndex)',
@@ -109,6 +110,7 @@ export const DCA_EXECUTOR_ABI = parseAbi([
   'error InvalidChainLabel()',
   'error AuthorizationMismatch(bytes32 expected, bytes32 given)',
   'error InvalidOwnerSignature()',
+  'error CallerNotAllowed(address caller)',
   'error RevokedAuthorization(bytes32 authorizationId)',
   'error InvalidTerms(uint256 code)',
   'error UnknownBag(bytes32 bagId)',
@@ -161,6 +163,8 @@ export interface DcaAuthorization {
   owner: Hex;
   recipient: Hex;
   inputToken: Hex;
+  /** Only this address may execute (the owner's keeper). Zero address = anyone (see `summarizeDcaAuthorization`). */
+  allowedCaller: Hex;
   bag: { bagId: Hex; bagVersion: bigint; compositionHash: Hex; definitionHash: Hex; strategyId: Hex; strategyVersion: number };
   assets: DcaAssetLimit[];
   schedule: { amountPerRun: bigint; totalBudget: bigint; maxRuns: number; startsAt: bigint; periodSeconds: bigint; expiresAt: bigint };
@@ -341,6 +345,11 @@ export interface DcaTermsInput {
   /** Defaults to the owner. */
   recipient?: string;
   inputToken: string;
+  /**
+   * Who may call `execute`: the keeper's address (recommended), or 'ANY'. With 'ANY' any caller can choose the moment
+   * and skip the keeper's quote floor, so a run can be pushed to any price up to the ceilings in one transaction.
+   */
+  allowedCaller: string | 'ANY';
   /** Input token precision; required when the strategy sets a positive minInvestment (each run is one purchase). */
   inputTokenDecimals?: number;
   /** On-chain BAG identity read from BagFactory/Bag (and StrategyRegistry when registered). */
@@ -375,6 +384,9 @@ export function buildDcaAuthorization(input: DcaTermsInput): DcaAuthorization {
   const recipient = input.recipient === undefined ? owner : addr(input.recipient, 'recipient');
   const inputToken = addr(input.inputToken, 'inputToken');
   if (isNativeToken(inputToken)) fail('the native token cannot fund a DCA; use an ERC-20 the owner approves.');
+  if (input.allowedCaller === undefined) fail("allowedCaller is required: the keeper's address, or 'ANY'.");
+  const allowedCaller = input.allowedCaller === 'ANY' ? (`0x${'0'.repeat(40)}` as Hex) : addr(input.allowedCaller, 'allowedCaller');
+  if (/^0x0{40}$/.test(allowedCaller) && input.allowedCaller !== 'ANY') fail("allowedCaller zero address: pass 'ANY' explicitly.");
   if (!Number.isInteger(input.runs) || input.runs < 1 || input.runs > 0xffffffff) fail('runs must be a positive integer.');
   if (typeof input.amountPerRunRaw !== 'bigint' || input.amountPerRunRaw <= ZERO) fail('amountPerRunRaw must be a positive bigint.');
   const minInvestment = rules.minInvestmentAmount.value;
@@ -403,6 +415,7 @@ export function buildDcaAuthorization(input: DcaTermsInput): DcaAuthorization {
     owner,
     recipient,
     inputToken,
+    allowedCaller,
     bag: {
       bagId: bytes32(input.registry.bagId, 'registry.bagId'),
       bagVersion: BigInt(input.registry.bagVersion),
@@ -425,6 +438,8 @@ export function buildDcaAuthorization(input: DcaTermsInput): DcaAuthorization {
 export interface DcaSummary {
   owner: Hex;
   recipient: Hex;
+  /** Who may execute. ANY: anyone can pick the moment and price (up to the ceilings). */
+  caller: { kind: 'ONLY'; address: Hex } | { kind: 'ANY'; risk: 'ANY_CALLER_CAN_EXECUTE_UP_TO_CEILING' };
   /** The ERC-20 approval the owner gives: exactly the total budget; funds stay in the wallet until each run. */
   approval: { token: Hex; spender: 'EXECUTOR'; amountRaw: bigint };
   perRunRaw: bigint;
@@ -447,6 +462,7 @@ export function summarizeDcaAuthorization(auth: DcaAuthorization): DcaSummary {
   return {
     owner: auth.owner,
     recipient: auth.recipient,
+    caller: /^0x0{40}$/i.test(auth.allowedCaller) ? { kind: 'ANY', risk: 'ANY_CALLER_CAN_EXECUTE_UP_TO_CEILING' } : { kind: 'ONLY', address: auth.allowedCaller },
     approval: { token: auth.inputToken, spender: 'EXECUTOR', amountRaw: s.totalBudget },
     perRunRaw: s.amountPerRun,
     runs: s.maxRuns,

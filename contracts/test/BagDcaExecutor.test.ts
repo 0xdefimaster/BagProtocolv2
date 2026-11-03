@@ -186,6 +186,42 @@ describe('BagDcaExecutor — authorization, signatures, replay, revocation', () 
   });
 });
 
+describe('BagDcaExecutor — allowedCaller', () => {
+  it('when set, only that address can execute; anyone else gets CallerNotAllowed and nothing moves', async () => {
+    const c = await setup();
+    const a = clone(c.auth);
+    a.allowedCaller = c.keeper.account.address;
+    const sig = await c.sign(a);
+    await c.at(a.schedule.startsAt + 1n);
+    const asOther = await c.viem.getContractAt('BagDcaExecutor', c.executor.address, { client: { wallet: c.other } });
+    const r = { authorizationId: c.idOf(a), window: 0n, deadline: a.schedule.startsAt + 600n, fees: [3000, 3000], minOutFloors: [] };
+    const before = await snapshot(c, a);
+    await assert.rejects(asOther.write.execute([a, r, sig]), /CallerNotAllowed/);
+    await assertNothingMoved(c, a, before);
+    await c.at(a.schedule.startsAt + 2n);
+    await c.execute(a, sig); // the keeper
+    assert.equal((await c.state(a)).runs, 1);
+  });
+
+  it('when zero (ANY), a third party can execute with no keeper floor: only the signed ceiling bounds the price', async () => {
+    const c = await setup();
+    const a = c.auth; // allowedCaller = 0
+    const sig = await c.sign(a);
+    await c.router.write.setRate([c.tsla.address, E18, USDG(419)]); // worse than market, still under the 420 ceiling
+    await c.at(a.schedule.startsAt + 1n);
+    const asOther = await c.viem.getContractAt('BagDcaExecutor', c.executor.address, { client: { wallet: c.other } });
+    await asOther.write.execute([a, { authorizationId: c.idOf(a), window: 0n, deadline: a.schedule.startsAt + 600n, fees: [3000, 3000], minOutFloors: [] }, sig]);
+    assert.equal((await c.state(a)).runs, 1, 'accepted: this is the documented ANY-caller risk, bounded by the ceiling');
+  });
+
+  it('allowedCaller is signed: changing it changes the id', async () => {
+    const c = await setup();
+    const a = clone(c.auth);
+    a.allowedCaller = c.other.account.address;
+    assert.notEqual(c.idOf(a), c.idOf(c.auth));
+  });
+});
+
 describe('BagDcaExecutor — schedule and time', () => {
   it('before start NotDue; wrong planned window WrongWindow; past the keeper deadline RunDeadlinePassed', async () => {
     const c = await setup();

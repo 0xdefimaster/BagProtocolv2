@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Hex } from 'viem';
+import { keccak256, type Hex } from 'viem';
 import { createViemKeeperChain } from '../../lib/dca/keeper/chain';
 import { DcaKeeper, type KeeperAlert } from '../../lib/dca/keeper/keeper';
 import { MemoryKeeperStore } from '../../lib/dca/keeper/store';
@@ -21,7 +21,13 @@ describe('DcaKeeper → BagDcaExecutor (local EVM)', () => {
     const alerts: KeeperAlert[] = [];
     const store = new MemoryKeeperStore();
     let wall = 1_000_000;
-    const keeper = new DcaKeeper({ store, chain, mode: 'SEND', holder: 'local', now: () => wall, onAlert: (a) => alerts.push(a) });
+    // The reviewed build's runtime for these constructor arguments: here the code this test just deployed.
+    const executorCodeHash = keccak256((await c.publicClient.getCode({ address: c.executor.address }))!);
+    const tokens = [c.tsla.address, c.nvda.address].map((x) => x.toLowerCase());
+    const keeper = new DcaKeeper({
+      store, chain, mode: 'SEND', holder: 'local', now: () => wall, onAlert: (a) => alerts.push(a),
+      executorCodeHash, assetAllowed: (a) => tokens.includes(a.toLowerCase()),
+    });
     const deployment = { chainId: c.chainId, executor: c.executor.address };
     const job = await keeper.addJob({ authorization: c.auth, ownerSignature: await c.sign(c.auth), deployment });
     const tickAt = async (t: bigint) => {
@@ -56,7 +62,7 @@ describe('DcaKeeper → BagDcaExecutor (local EVM)', () => {
       assert.equal(j.state, w === 4n ? 'EXPIRED' : 'DONE_THIS_WINDOW', `window ${w}`);
     }
     assert.deepEqual(j.missed.map((m) => [m.window, m.reason]), [[1n, 'WAITING_PRICE']]);
-    assert.deepEqual(j.confirmed.map((r) => [r.window, r.verification]), [[0n, 'VERIFIED'], [2n, 'VERIFIED'], [3n, 'VERIFIED'], [4n, 'VERIFIED']]);
+    assert.deepEqual(j.confirmed.map((r) => [r.window, r.verification, r.codeChecked]), [[0n, 'VERIFIED', true], [2n, 'VERIFIED', true], [3n, 'VERIFIED', true], [4n, 'VERIFIED', true]]);
     const st = await c.state(c.auth);
     assert.equal(st.runs, 4);
     assert.equal(await c.bal(c.usdg, c.auth.owner), USDG(1000) - USDG(40), 'one run (10 USDG) was never spent');

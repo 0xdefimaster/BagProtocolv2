@@ -4,6 +4,7 @@ export const DCA_TYPES = {
     { name: 'owner', type: 'address' },
     { name: 'recipient', type: 'address' },
     { name: 'inputToken', type: 'address' },
+    { name: 'allowedCaller', type: 'address' },
     { name: 'bag', type: 'BagRef' },
     { name: 'assets', type: 'AssetLimit[]' },
     { name: 'schedule', type: 'Schedule' },

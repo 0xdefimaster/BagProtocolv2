@@ -1,6 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import type { Hex } from 'viem';
-import { deserializeJob, isActive, serializeJob, type KeeperStore } from './store';
+import { deserializeJob, isActive, lowestFreeNonce, serializeJob, type KeeperStore } from './store';
 import type { KeeperJob } from './types';
 
 // -----------------------------------------------------------------------------
@@ -196,17 +196,17 @@ export class PostgresKeeperStore implements KeeperStore {
     await this.pool.query(`update dca_keeper.jobs set next_check_at = to_timestamp($2::double precision / 1000) where id = $1`, [id.toLowerCase(), nextCheckMs]);
   }
 
-  async writeAhead(job: KeeperJob, holder: string, _nowMs: number, chainPending: number): Promise<number | null> {
+  async writeAhead(job: KeeperJob, holder: string, _nowMs: number, chainLatest: number): Promise<number | null> {
     if (!job.pending) throw new Error('writeAhead: job.pending is required');
     const from = job.pending.from.toLowerCase() as Hex;
     return this.tx(async (c) => {
       await c.query(`insert into dca_keeper.accounts (address) values ($1) on conflict do nothing`, [from]);
       await c.query(`select 1 from dca_keeper.accounts where address = $1 for update`, [from]);
       const { rows } = await c.query(
-        `select coalesce(max(pending_nonce) + 1, 0)::text as next from dca_keeper.jobs where pending_from = $1 and id <> $2`,
+        `select pending_nonce::text as n from dca_keeper.jobs where pending_from = $1 and id <> $2 and pending_nonce is not null`,
         [from, job.id.toLowerCase()],
       );
-      const n = Math.max(chainPending, Number(rows[0].next));
+      const n = lowestFreeNonce(chainLatest, rows.map((r: { n: string }) => Number(r.n)));
       const ok = await this.saveIn(c, { ...job, pending: { ...job.pending!, nonce: n } }, holder);
       return ok ? n : null;
     });
