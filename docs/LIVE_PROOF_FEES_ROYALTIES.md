@@ -5,8 +5,9 @@ Phase 1, item 1 of `docs/PLAN.md`. Goal: show, with Robinhood Chain transactions
 credits the root creator a royalty that the creator then withdraws.
 
 Status (2026-11-03): **none of the three tests has been run live.** RedeemSettlement v2 is deployed and configured
-(`docs/REDEEM_SETTLEMENT_DEPLOYMENT.md`); the only live settlement so far had fee 0. Positive-fee settlement and the
-fork royalty remain unproven until the transactions below exist and verify.
+(`docs/REDEEM_SETTLEMENT_DEPLOYMENT.md` §0), but no sale through v2 is recorded. The only recorded live settlement
+(2026-10-06, §5a) went through the now-superseded v1, and its fee was 0. Positive-fee settlement and the fork royalty
+remain unproven until the transactions below exist and verify.
 
 The owner performs the transactions with their own wallets. Nothing here needs or uses a private key in
 the repository. Verification is read-only: `scripts/verify-money-flows.ts`.
