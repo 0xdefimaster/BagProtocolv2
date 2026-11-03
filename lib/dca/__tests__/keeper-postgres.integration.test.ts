@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 import type { Hex } from 'viem';
 import { DcaKeeper } from '../keeper/keeper';
 import { PostgresKeeperStore } from '../keeper/postgres-store';
+import { endPoolCompletely } from '@/lib/server/__tests__/integration/pg-close';
 import type { KeeperJob } from '../keeper/types';
 import { B, DEP, FAKE_EXECUTOR_CODE_HASH, FakeChain, KEEPER, makeAuth, signAuth, START } from './fake-chain';
 
@@ -36,9 +37,14 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await pool?.end();
-  await admin?.query(`drop database if exists ${dbName} with (force)`);
-  await admin?.end();
+  // Every client socket of the store's pool must be closed before the drop: pool.end() resolves earlier, and a forced
+  // drop would then send 57P01 to a still-open, listener-less client (pg-close.ts).
+  if (pool) await endPoolCompletely(pool);
+  try {
+    await admin?.query(`drop database if exists ${dbName} with (force)`);
+  } finally {
+    if (admin) await endPoolCompletely(admin);
+  }
 });
 
 const id = (n: number) => `0x${n.toString(16).padStart(64, '0')}` as Hex;
