@@ -1,11 +1,11 @@
 {
   "status": "CANDIDATES — not evidence. contracts/test/fork/BagDcaRealBag.fork.test.ts re-verifies every value on a pinned Robinhood fork and fails if any does not hold.",
   "sources": {
-    "bagFactory": "research branch claude/dca-keeper-evidence, research/bag-dca-proto/results/executor-2026-10-25-followup/fork-registry/results.json (deployment.realContracts.BAG_FACTORY, 11231 bytes). main has no BagFactory address record; the app reads it from FACTORY_ADDRESS_ROBINHOOD (environment). The test also compares it with FACTORY_ADDRESS_ROBINHOOD and BagExecutionRouter.bagFactory() when those are configured.",
+    "bagFactory": "The address itself is NOT stored here: the deployment keeps FACTORY_ADDRESS_ROBINHOOD as a secret (Netlify scans the repo for its value). The test reads it from FACTORY_ADDRESS_ROBINHOOD (environment or .env.local) and requires keccak256(lowercase address bytes) to equal bagFactoryKeccak256, the hash of the candidate recorded on research branch claude/dca-keeper-evidence (fork-registry results.json, deployment.realContracts.BAG_FACTORY, 11231 bytes). It is also compared with BagExecutionRouter.bagFactory() when that is configured.",
     "strategyRegistry": "docs/STRATEGY_REGISTRY_DESIGN.md §0 (deploy tx 0x453db80f…518e, block 85332074) and packages/bag-sdk/src/registry.ts",
     "bags": "bag.json documents: 955df6e0 and a3caff05 from the same research branch (packages/bag-sdk/test/fixtures, commit 8de9070a); 170e5e72 (feetest) is packages/bag-sdk/test/fixtures/feetest.v1.bag.json on main, registered v1 per docs/STRATEGY_REGISTRY_DESIGN.md"
   },
-  "bagFactory": "0x7ce5a81df434755f38cb5f67ad49a8bb3c8e6f72",
+  "bagFactoryKeccak256": "0x3a89aa6eb9eb40f772c339d8e9b4f867d5feffca72600da583ec2a09b912492b",
   "strategyRegistry": "0x907cc27d644c8ea1c24b8320ad09ecf2819209a8",
   "bags": [
     {

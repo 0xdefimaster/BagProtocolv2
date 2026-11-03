@@ -131,8 +131,12 @@ error names; the RPC URL is never written). The harness proves the pin (first lo
 = pinned block hash).
 
 **Real BAG infrastructure.** main has no BagFactory address record (the app reads `FACTORY_ADDRESS_ROBINHOOD` from
-its environment). The candidate (`contracts/test/fork/real-bags.robinhood.json`, from the research branch) is not
-trusted: the test requires the code at the address to be this repository's BagFactory (immutables and metadata
+its environment, kept as a secret in Netlify, whose build scans the repository for its value; the repository
+therefore stores only `keccak256` of the research candidate and the test reads the address from
+`FACTORY_ADDRESS_ROBINHOOD`, in the environment or `.env.local`). Independent signal (2026-11-03): that scan found the
+configured value in this branch's earlier candidate file, so the research candidate is the address the deployed app
+is configured with (deploy-preview context). That ties it to the app's configuration, not to a deployment
+transaction; the on-chain checks below still decide. The address is not trusted: the test requires the code at the address to be this repository's BagFactory (immutables and metadata
 masked), every candidate Bag to be this repository's Bag with `factory()` pointing back, `bagId` =
 `deriveBagId(creator, uuid)`, a `BagCreated` log where the RPC serves the range, and the bag.json document to
 reproduce the on-chain composition hash; it compares the address with `FACTORY_ADDRESS_ROBINHOOD` and

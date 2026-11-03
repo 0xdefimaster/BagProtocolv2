@@ -52,26 +52,28 @@ describe('BagDcaExecutor on a Robinhood Chain fork (REAL BagFactory, BAGs and St
     ev.set('fork', fork);
     const read = (address: Hex, abi: any, functionName: string, args: unknown[] = []) => pc.readContract({ address, abi, functionName, args } as any) as Promise<any>;
     const [keeper, owner, recipient] = await viem.getWalletClients();
-    const factoryAddr = getAddress(CANDIDATES.bagFactory);
+    // The factory address comes from the app configuration (FACTORY_ADDRESS_ROBINHOOD, a deployment secret); the
+    // repository only holds the hash of the research candidate, so the two must agree.
+    const configured = process.env.FACTORY_ADDRESS_ROBINHOOD;
+    assert.ok(configured && /^0x[0-9a-fA-F]{40}$/.test(configured), 'FACTORY_ADDRESS_ROBINHOOD (the app\'s BagFactory) is required for the real-BAG fork test');
+    const factoryAddr = getAddress(configured);
+    const candidateMatches = keccak256(factoryAddr.toLowerCase() as Hex) === CANDIDATES.bagFactoryKeccak256;
 
     // ---------------------------------------------------------------- the factory
     step('1. BagFactory: code = this repository\'s BagFactory, cross-checked with the app configuration');
     const factoryCode = compareRuntime(await pc.getCode({ address: factoryAddr }), 'BagFactory');
     assert.ok(factoryCode.bytes > 0, 'BagFactory candidate has code at the fork block');
     assert.ok(factoryCode.masked, `BagFactory runtime differs from the compiled artifact (${factoryCode.bytes} vs ${factoryCode.artifactBytes} bytes)`);
-    const crossChecks: Record<string, unknown> = {};
-    const configured = process.env.FACTORY_ADDRESS_ROBINHOOD;
-    if (configured) {
-      crossChecks.FACTORY_ADDRESS_ROBINHOOD = lc(configured) === lc(factoryAddr) ? 'MATCH' : `MISMATCH (${configured})`;
-      assert.equal(lc(configured), lc(factoryAddr), 'the app is configured with another BagFactory');
-    } else crossChecks.FACTORY_ADDRESS_ROBINHOOD = 'NOT_PROVIDED';
+    const crossChecks: Record<string, unknown> = { researchCandidateHash: candidateMatches ? 'MATCH' : 'MISMATCH' };
+    assert.ok(candidateMatches, 'FACTORY_ADDRESS_ROBINHOOD is not the research candidate (bagFactoryKeccak256)');
     const routerAddr = process.env.BAG_EXECUTION_ROUTER_ADDRESS as Hex | undefined;
     if (routerAddr) {
       const bound = await read(routerAddr, ROUTER_FACTORY_ABI, 'bagFactory');
       crossChecks.BagExecutionRouter_bagFactory = lc(bound) === lc(factoryAddr) ? 'MATCH' : `MISMATCH (${bound})`;
       assert.equal(lc(bound), lc(factoryAddr), 'the configured BagExecutionRouter is bound to another BagFactory');
     } else crossChecks.BagExecutionRouter_bagFactory = 'NOT_PROVIDED';
-    ev.set('bagFactory', { address: factoryAddr, ...factoryCode, owner: await read(factoryAddr, FACTORY_ABI, 'owner'), creationFeeCap: await read(factoryAddr, FACTORY_ABI, 'creationFeeCap'), crossChecks });
+    // evidence records the address hash only: the address is a deployment secret in Netlify's scan
+    ev.set('bagFactory', { addressKeccak256: keccak256(factoryAddr.toLowerCase() as Hex), ...factoryCode, owner: await read(factoryAddr, FACTORY_ABI, 'owner'), creationFeeCap: await read(factoryAddr, FACTORY_ABI, 'creationFeeCap'), crossChecks });
 
     step('2. StrategyRegistry: code = this repository\'s StrategyRegistry');
     const registryCode = compareRuntime(await pc.getCode({ address: A.STRATEGY_REGISTRY }), 'StrategyRegistry');
