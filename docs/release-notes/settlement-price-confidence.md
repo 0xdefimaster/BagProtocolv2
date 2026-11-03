@@ -63,9 +63,59 @@ Configuration errors fail closed. An invalid value (`1%`, `-1`, 250 without the 
     labelled `OVERRIDE` in every row.
   - The script states that it is an **incomplete estimate**: it simulates the legacy RedeemFeeRouter leg (direct
     Uniswap v3). The active RedeemSettlement path quotes through LI.FI Composer and is not simulated.
-- New `scripts/check-fee-sale-feed-coverage.ts` (read-only) lists fee-bearing Bags and whether each leg has the
-  required Chainlink feed (`--probe` also prices each leg now). It has **not been run against production data**:
-  it needs the owner's Supabase credentials. It reads the current version's recipe assets only.
+- New `scripts/check-fee-sale-feed-coverage.ts` is the **release gate** for this change (details below). It has
+  **not been run against production data**: it needs the owner's Supabase credentials.
+
+## Release gate: `scripts/check-fee-sale-feed-coverage.ts`
+
+Read-only: SELECTs only, no transaction, no key. Run it in the production environment before deploying:
+
+```bash
+npx tsx scripts/check-fee-sale-feed-coverage.ts --probe --out=fee-sale-coverage.json
+```
+
+**Which assets it requires.** It uses the real sale path's assets, not the current recipe:
+- A fee sale happens when the seller is not the creator and the rate (`performanceFeeBpsLocked ?? currentRecipe.performanceFeeBps`)
+  is above 0. Such a sale sells the seller's own `bag_investor_holdings` rows.
+- Every asset that a fee-paying holder holds is therefore required, including assets from earlier versions
+  (`HELD_FROM_EARLIER_VERSION`).
+- An earlier-version asset that nobody holds any more is not required.
+- The current recipe's assets are required too (`CURRENT_RECIPE_NOT_HELD`), because future buyers buy them.
+- The creator's own position sells through the free path. It is counted but not gated.
+
+**Inventory integrity.** `bags`, `bag_investor_holdings` and `assets` are read in pages ordered by primary key,
+with an exact total count, and current versions are read by id. The scan is accepted only if all of these hold:
+- every page succeeded;
+- the count never changed;
+- no row was seen twice;
+- the rows read equal the count;
+- every current version was found.
+
+Otherwise the result is `INCOMPLETE` (exit 2). A partial scan is never reported as a result.
+
+**Statuses.**
+- `FEED_CONFIGURED` is a configuration fact only.
+- With `--probe`, every required priced leg is priced through the app's own router and policy:
+  - `VERIFIED_NOW`: Chainlink-verified and accepted by the policy at that moment. This is the only passing answer.
+  - `NOT_VERIFIED_NOW`: a determinate "no", for example feed unreadable (the reduced band is an outage mode, not a
+    release state), sources disagree, stale, market closed, or a policy refusal.
+  - `PROBE_ERROR`: no determinate answer (source outage, unexpected error).
+
+| Exit | Meaning |
+|---|---|
+| 0 | Inventory complete; static coverage complete or `NO_FEE_BEARING_POSITIONS`; with `--probe`, every required leg `VERIFIED_NOW` |
+| 1 | Determinate gap: missing feed, crypto or unknown asset, unsupported chain, or any `NOT_VERIFIED_NOW` |
+| 2 | No determinate answer: Supabase or configuration error, incomplete scan, an undeterminable fee, or any `PROBE_ERROR` |
+
+**Run it during US market hours.** Outside them, Stock Token quotes can be halted, have wide spreads, or have stale
+Chainlink rounds. The probe then correctly answers `NOT_VERIFIED_NOW` (exit 1), but that does not mean the feed
+configuration is wrong.
+
+**Limits:**
+- Required legs come from the books (`bag_investor_holdings`). A sale sells min(books, wallet balance), so a leg the
+  wallet no longer holds is still required here. That over-approximates, in the safe direction.
+- A passing gate is a price and feed check at one moment. It is **not** evidence that a positive-fee settlement works
+  (`docs/runbooks/POSITIVE_FEE_SALE.md`).
 
 ## The provisional 100 bps band: trade-offs
 
