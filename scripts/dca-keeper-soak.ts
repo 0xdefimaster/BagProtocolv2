@@ -146,6 +146,8 @@ async function main() {
   const bagFactory = await deploy('BagFactory', [creatorAddr, creatorAddr, 0n, 10n ** 16n]);
   const executor = await deploy('BagDcaExecutor', [bagFactory, registry, adapter, 'robinhood'], 'dca/BagDcaExecutor.sol');
   const executorCodeHash = keccak256((await pc.getCode({ address: executor }))!);
+  // executor events are searched from its deployment block: on a fork, a range from block 0 would be sent upstream
+  const deployBlock = (await latest()).number!;
   const assetsBase = [
     { asset: nvda, symbol: 'NVDA', weightBps: 5000, decimals: 18 },
     { asset: tsla, symbol: 'TSLA', weightBps: 5000, decimals: 18 },
@@ -230,7 +232,7 @@ async function main() {
   };
   const job = async (id: Hex) => (await store0.get(id))!;
   const executorEvents = async (eventName: 'PurchaseExecuted') =>
-    (await pc.getContractEvents({ address: executor, abi: DCA_EXECUTOR_ABI, eventName, fromBlock: 0n, toBlock: 'latest' })) as any[];
+    (await pc.getContractEvents({ address: executor, abi: DCA_EXECUTOR_ABI, eventName, fromBlock: deployBlock, toBlock: 'latest' })) as any[];
   const windowsOnChain = async (id: Hex) => (await executorEvents('PurchaseExecuted')).filter((l) => l.args.authorizationId.toLowerCase() === id).map((l) => BigInt(l.args.window));
   let windowIndex = -1n;
   /** Moves the node to `k` windows after the start (offset grows so the ≥ one-period gap always holds). */
