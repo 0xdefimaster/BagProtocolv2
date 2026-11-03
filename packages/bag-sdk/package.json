@@ -37,6 +37,7 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "smoke:consumer": "node scripts/consumer-smoke.mjs",
     "smoke:starter": "node scripts/starter-smoke.mjs",
+    "smoke:published-quickstart": "node scripts/published-quickstart-smoke.mjs",
     "release:check": "node scripts/release-candidate.mjs"
   },
   "peerDependencies": {

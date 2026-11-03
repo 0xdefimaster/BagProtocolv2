@@ -1,0 +1,21 @@
+{
+  "bagJson": 1,
+  "definition": {
+    "kind": "STATIC_BASKET",
+    "chain": "ethereum",
+    "mutability": "MUTABLE",
+    "assets": [
+      { "chain": "ethereum", "address": "0x0000000000000000000000000000000000000001", "decimals": 18, "weightBps": 5000 },
+      { "chain": "ethereum", "address": "0x0000000000000000000000000000000000000002", "decimals": 18, "weightBps": 5000 }
+    ],
+    "rules": {
+      "weightBounds": { "minBps": 100, "maxBps": 7000 },
+      "maxAssets": 10,
+      "minInvestment": { "amount": "0", "measuredAs": "PAYMENT_TOKEN_AMOUNT" },
+      "swapSlippageBps": 100,
+      "rebalance": { "frequency": "MANUAL", "driftThresholdBps": 500 },
+      "performanceFeeBps": 0,
+      "noRouteAssetPolicy": "BLOCK"
+    }
+  }
+}
