@@ -2,8 +2,8 @@
 
 Status: **code, local/integration tests, keeper soaks (local node with PostgreSQL; Robinhood fork with the memory
 store), and a pinned Robinhood fork run of the synthetic-BAG test.** Not deployed, not audited, nothing sent to Robinhood Chain mainnet. The keeper has no live mode.
-The pinned fork run and the FORK soak used the current executor (with the signed `allowedCaller`, §1); the
-2026-11-02 fork run of the earlier build is superseded. The real-BAG / StrategyRegistry fork test still has to pass.
+The pinned fork runs and the FORK soak used the current executor (with the signed `allowedCaller`, §1); the
+2026-11-02 fork run of the earlier build is superseded.
 
 ## 1. What a user does
 
@@ -121,7 +121,7 @@ the earliest next run by that much. The keeper stops sending `inclusionSlackSeco
 | INTEGRATION | keeper store against a real local PostgreSQL 16 | run, passing |
 | LOCAL_NODE soak | `scripts/dca-keeper-soak.ts` on a Hardhat node (mock Uniswap) with PostgreSQL 16 and real restarts | run 3×, 49/49 checks each (below) |
 | FORK | `contracts/test/fork/BagDcaExecutor.fork.test.ts` (synthetic BAG) | **pinned block 104733042, run twice, passing, identical** (2026-11-03, below) |
-| FORK, real BAG | `contracts/test/fork/BagDcaRealBag.fork.test.ts`: the real BagFactory, BAGs and StrategyRegistry | run 2026-11-03: **stopped at the first check** (factory bytecode comparison, below); comparison fixed, **re-run pending** |
+| FORK, real BAG | `contracts/test/fork/BagDcaRealBag.fork.test.ts`: the real BagFactory, BAGs and StrategyRegistry | **pinned block 104733042, run twice, passing, reproducible** (2026-11-03, commit `419520a`, below) |
 | FORK soak | `scripts/dca-keeper-soak.ts` against `npx hardhat node --fork … --fork-block-number 104733042`, in-memory store | **run 2026-11-03: 47/47 passed** (below) |
 | MAINNET | — | none; out of scope |
 
@@ -142,6 +142,36 @@ length (11231 bytes) but differs after masking immutables and the trailing metad
 code, so its runtime also carries Bag's 53-byte metadata hash (at offset 11125); the comparison masked only the last
 one. It now masks every embedded metadata blob and reports the byte ranges that still differ, so a remaining
 difference is either confirmed as metadata-only or shown exactly. Re-run pending.
+
+**Pinned run with the real BAG infrastructure, 2026-11-03** (maintainer's machine, `scripts/dca-fork-evidence.ts`,
+commit `419520a`, block 104733042, `FACTORY_ADDRESS_ROBINHOOD` from `.env.local`; `BAG_EXECUTION_ROUTER_ADDRESS`
+not configured, so that cross-check did not run). `allPassed: true, reproducible: true`; both tests passed in both
+runs (cold 809 s, cached 95 s), the console results identical across runs:
+
+- Synthetic BAG: run 1 gas 611129, NVDA +24461366238836552, TSLA +12362881132413682; run 2 gas 538324 (same as the
+  first pinned run at commit `4df146c`).
+- BagFactory at the configured address: runtime = this repository's BagFactory once immutables and the embedded
+  metadata are masked (`MATCH`, not byte-exact: different constructor values/metadata). StrategyRegistry: match.
+  Three candidate BAGs found on the factory and verified (Bag code, `factory()` back-pointer, `bagId` derivation,
+  document = on-chain composition hash). **Two of them were bought in full** through the real factory, registry and
+  Uniswap v3 pools, each verified by the SDK with the executor code hash: 955df6e0 (GME/ASML/COIN/AAPL, strategyId
+  zero) and feetest 170e5e72 (TSLA/NVDA) **with its registered non-zero strategyId (v1), so `StrategyRegistry.matches`
+  ran on a real purchase path** (the test fails if an authentic BAG is refused by a registry check). The third,
+  a3caff05 (whose research evidence already showed an asset without a usable v3 route), passed every registry check
+  and then reverted inside the swap legs with no revert data.
+- Altered bindings on 955df6e0 v1, all refused as expected: wrong BAG id → `UnknownBag`; wrong version and wrong
+  composition hash → `BagChanged(1, 0xb01f…0148)`; altered asset, ordering, weights and symbol →
+  `CompositionMismatch(…, 0xb01f…0148)`.
+- StrategyRegistry through the executor with a non-zero strategyId (a3caff05 `0x72ec…8cae`, registered v2):
+  `matches` returned true directly; the valid authorization passed the registry check (it then stopped in the swap
+  legs, as above); version 3, version 0 and another definitionHash → `StrategyNotRegistered`; an unregistered id
+  (955df6e0's) → `StrategyNotRegistered`; zero id with version 0 passed without consulting the registry; zero id with
+  a version → `InvalidTerms(13)`.
+
+An earlier pinned attempt (block 104710833, commit `4df146c`, real-BAG test then still failing on the bytecode check)
+compared the synthetic test across its two runs: token deltas and outcomes identical, `gasUsed` different (run 1
+611457 in one run). Gas is therefore recorded but not guaranteed identical across runs at one block; outcomes and
+deltas are. The full per-test summary of the 104733042 run stayed on the maintainer's machine.
 
 **Real BAG infrastructure.** main has no BagFactory address record (the app reads `FACTORY_ADDRESS_ROBINHOOD` from
 its environment, kept as a secret in Netlify, whose build scans the repository for its value; the repository
@@ -237,8 +267,8 @@ A LOCAL memory-store run (seed 5, 12 cycles) passed 47/47.
 
 ## 8. Before any deployment (not done)
 
-1. Re-run `scripts/dca-fork-evidence.ts` at block 104733042 so the real-BAG / StrategyRegistry fork test runs with the
-   fixed bytecode comparison (the synthetic test and the FORK soak are done); a FORK soak with PostgreSQL is optional.
+1. Fork evidence is done (pinned synthetic and real-BAG tests, FORK soak). Optional: a FORK soak with PostgreSQL and
+   a run with `BAG_EXECUTION_ROUTER_ADDRESS` configured.
 2. Independent audit of `contracts/dca/*` (no audit has been done).
 3. Record the BagFactory address in a deployment record on main (deploy tx, block, deployer), cross-checked by the
    real-BAG fork test; until then its only provenance is the app environment and the research branch.
