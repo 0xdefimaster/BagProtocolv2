@@ -13,7 +13,8 @@ the repository. Verification is read-only: `scripts/verify-money-flows.ts`.
   on realized gain above the investor's basis (high-water mark, loss carry), transfers it in USDG
   **directly to the creator's wallet**, the rest to the investor, and emits `Settled`. No vault in
   between.
-- **Fork royalty, on-chain (RedeemSettlement v2, not deployed yet)**: 20% of a fork's performance fee goes to
+- **Fork royalty, on-chain (RedeemSettlement v2: deployed 2026-10-13, configured in Netlify 2026-10-29, see
+  `docs/REDEEM_SETTLEMENT_DEPLOYMENT.md`; a sale with fee > 0 has not been run live yet)**: 20% of a fork's performance fee goes to
   the root creator in the sale transaction (`RoyaltyPaid`). Test 3 below; `docs/FORK_ROYALTY_ONCHAIN.md`.
 - **Fork royalty, legacy** (1.5% of a deposit into a fork, no longer accrued by new purchases): after the purchase, the
   `settle-creator-rewards` scheduled job calls `CreatorRewardsVault.settleReward` from the settler

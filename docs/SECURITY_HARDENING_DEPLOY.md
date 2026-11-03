@@ -19,7 +19,8 @@ removed:
 | --- | --- |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project settings → API → roll the service role / secret key |
 | `SESSION_SECRET` | New random value, **at least 32 characters** (`openssl rand -base64 48`). Rotating it signs everyone out. |
-| `DEPLOYER_PRIVATE_KEY`, `CREATOR_REWARDS_DEPLOYER_PRIVATE_KEY`, `CREATOR_REWARDS_SETTLEMENT_PRIVATE_KEY`, `BAG_ROUTER_PLAN_SIGNER_KEY`, `REDEEM_FEE_ATTESTOR_PRIVATE_KEY` | New wallets. Move any funds off the old ones, then point the contracts at the new addresses (`setPlanSigner`, `setFeeAttestor`, `setSettler`). |
+| `REDEEM_SETTLEMENT_ATTESTOR_PRIVATE_KEY` (the **active** sale-settlement attestor) | New plain EOA holding nothing. The RedeemSettlement owner calls `setAttestor(new)` on the configured contract (`REDEEM_SETTLEMENT_ADDRESS`, `docs/REDEEM_SETTLEMENT_DEPLOYMENT.md`), then the new key is set in Netlify and the site redeployed. Until `setAttestor` lands, sales with the new key are refused on chain; with the old key still configured after it lands, likewise. |
+| `DEPLOYER_PRIVATE_KEY`, `CREATOR_REWARDS_DEPLOYER_PRIVATE_KEY`, `CREATOR_REWARDS_SETTLEMENT_PRIVATE_KEY`, `BAG_ROUTER_PLAN_SIGNER_KEY`, `REDEEM_FEE_ATTESTOR_PRIVATE_KEY` (legacy `RedeemFeeRouter`, not the active sale path) | New wallets. Move any funds off the old ones, then point the contracts at the new addresses (`setPlanSigner`, `setFeeAttestor`, `setSettler`). |
 | `LIFI_API_KEY`, `ALCHEMY_API_KEY`, `COINGECKO_API_KEY` | Provider dashboards |
 | `CRON_SECRET` | New random value |
 
@@ -44,6 +45,10 @@ update the deployed addresses, re-run the allowlist sync
 `RedeemFeeRouter` as a settler on `CreatorRewardsVault`.
 
 ### Privileged keys
+
+`REDEEM_SETTLEMENT_ATTESTOR_PRIVATE_KEY` signs every live sale's settlement terms: who is paid (user, creator,
+root creator), the executor (the user's Composer proxy), the fee inputs and the user's minimum proceeds; keep it in an isolated signer, never on a wallet that holds funds, and rotate it with `setAttestor` as
+above if it may have been exposed.
 
 `BAG_ROUTER_PLAN_SIGNER_KEY` and `REDEEM_FEE_ATTESTOR_PRIVATE_KEY` are not
 just "attestation" keys. The plan signer chooses every swap leg's calldata,

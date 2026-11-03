@@ -1,6 +1,8 @@
 # LI.FI Composer → BAG fee settlement: feasibility study
 
-Status: **STUDY + P1 RESULTS**. 2026-10-05.
+Status: **STUDY + P1 RESULTS**. 2026-10-05. **Historical:** deployment statements below ("not deployed") describe
+2026-10-05. The current state is in `docs/REDEEM_SETTLEMENT_DEPLOYMENT.md` (RedeemSettlement v2 deployed and
+configured) and `docs/STATUS.md`.
 
 > **P1 result (§7):** on Robinhood Chain, in real transactions, a LI.FI swap of
 > AMKR (a token with no Uniswap v3 route) into USDG delivered its actual output
