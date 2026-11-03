@@ -4,6 +4,10 @@ Phase 1, item 1 of `docs/PLAN.md`. Goal: show, with Robinhood Chain transactions
 (1) a non-creator's profitable sale pays the creator a performance fee, and (2) a deposit into a fork
 credits the root creator a royalty that the creator then withdraws.
 
+Status (2026-11-03): **none of the three tests has been run live.** RedeemSettlement v2 is deployed and configured
+(`docs/REDEEM_SETTLEMENT_DEPLOYMENT.md`); the only live settlement so far had fee 0. Positive-fee settlement and the
+fork royalty remain unproven until the transactions below exist and verify.
+
 The owner performs the transactions with their own wallets. Nothing here needs or uses a private key in
 the repository. Verification is read-only: `scripts/verify-money-flows.ts`.
 
@@ -52,7 +56,7 @@ the repository. Verification is read-only: `scripts/verify-money-flows.ts`.
    If nothing appears within ~15 minutes, check the settler prerequisites above.
 4. With **C**, open Profile → Creator Rewards → Claim. Copy the transaction hash: **WITHDRAW_TX**.
 
-## Test 3: fork royalty at sale (after RedeemSettlement v2 is deployed)
+## Test 3: fork royalty at sale (RedeemSettlement v2 is deployed and configured; this test has not been run)
 
 1. With **F**, fork Bag **A** into Bag **B**, set a performance fee above 0 on **B**, and deploy it.
 2. With **I**, buy a small amount of **B**, wait until the position is in profit after costs, and sell it.
