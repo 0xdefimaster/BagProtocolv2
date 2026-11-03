@@ -1,8 +1,9 @@
 # DCA v1: typed-adapter executor, SDK verifier, keeper
 
-Status: **code, local/integration tests, a keeper soak on a local node with real Postgres, and one Robinhood fork run
-of an earlier build.** Not deployed, not audited, nothing sent to Robinhood Chain mainnet. The keeper has no live mode.
-The executor changed after that fork run (signed `allowedCaller`, §1): the pinned fork evidence in §7 must be re-run.
+Status: **code, local/integration tests, keeper soaks (local node with PostgreSQL; Robinhood fork with the memory
+store), and a pinned Robinhood fork run of the synthetic-BAG test.** Not deployed, not audited, nothing sent to Robinhood Chain mainnet. The keeper has no live mode.
+The pinned fork run and the FORK soak used the current executor (with the signed `allowedCaller`, §1); the
+2026-11-02 fork run of the earlier build is superseded. The real-BAG / StrategyRegistry fork test still has to pass.
 
 ## 1. What a user does
 
@@ -121,7 +122,7 @@ the earliest next run by that much. The keeper stops sending `inclusionSlackSeco
 | LOCAL_NODE soak | `scripts/dca-keeper-soak.ts` on a Hardhat node (mock Uniswap) with PostgreSQL 16 and real restarts | run 3×, 49/49 checks each (below) |
 | FORK | `contracts/test/fork/BagDcaExecutor.fork.test.ts` (synthetic BAG) | **pinned block 104733042, run twice, passing, identical** (2026-11-03, below) |
 | FORK, real BAG | `contracts/test/fork/BagDcaRealBag.fork.test.ts`: the real BagFactory, BAGs and StrategyRegistry | run 2026-11-03: **stopped at the first check** (factory bytecode comparison, below); comparison fixed, **re-run pending** |
-| FORK soak | `scripts/dca-keeper-soak.ts` against `npx hardhat node --fork …` | written; **not run yet** |
+| FORK soak | `scripts/dca-keeper-soak.ts` against `npx hardhat node --fork … --fork-block-number 104733042`, in-memory store | **run 2026-11-03: 47/47 passed** (below) |
 | MAINNET | — | none; out of scope |
 
 **Pinned fork evidence.** `npx tsx scripts/dca-fork-evidence.ts` pins a block (`ROBINHOOD_FORK_BLOCK`, or the
@@ -178,7 +179,21 @@ closed window bought or missed and never both, append-only events hold the runs 
 | 3 | 26 | twoWorkers 6, drop 4, restartKeeper 4, replace 3, pgRestart 3, rpc 3, revert 2, none 1 | 49 / 49 | 124 s |
 | 11 | 26 | rpc 5, none 5, replace 5, twoWorkers 4, drop 3, restartKeeper 3, revert 1 | 49 / 49 | 112 s |
 
-Reports: `docs/dca/evidence/soak-local-seed{1,3,11}.json`. The soak found two keeper bugs, fixed in this branch: the
+Reports: `docs/dca/evidence/soak-local-seed{1,3,11}.json`.
+
+**Keeper soak (FORK, 2026-11-03).** Maintainer's machine, `npx hardhat node --fork <QuickNode Robinhood RPC>
+--fork-block-number 104733042` (local dev node, chain id 31337; nothing broadcast), commit `419520a`,
+`DCA_SOAK_STORE=memory` (no PostgreSQL on that machine), 12 randomized cycles, seed 1. Real USDG, TSLA, NVDA and
+Uniswap v3 (QuoterV2 picked the 0.05 % tier for both assets); executor and adapter deployed on the fork; BAG
+deployed on the fork. **47 passed, 0 failed** in 124 s: every scripted phase P1–P7 and P9–P12 above passed on real
+pools (VERIFIED with the code hash; crash mid-flight reconciled once; no double purchase and a direct `execute`
+refused `NotDue`; dropped, reverted and stuck transactions; RPC outage; two workers; missed windows; reorg); P8
+(Postgres restart) and the append-only check were SKIPPED (memory store; covered by the LOCAL_NODE runs). Final
+invariants: jobs A and B 22 runs each, keeper record = chain = `getState().runs`, every live run VERIFIED, no
+unresolved write-ahead record, windows 0–23 each bought or recorded missed (3 missed per job: the two unobserved
+windows of P10 and one randomized-cycle window that closed before its retry, reason recorded) and never both; job C
+(ceilings at half the market) bought nothing and recorded 24 missed windows. The full report stayed on the
+maintainer's machine (`soak-evidence/fork-2026-11-03T04-01-35-540Z.json`); the console summary is the record here. The soak found two keeper bugs, fixed in this branch: the
 log scan used viem's cached block number (a just-mined purchase was not found for ~4 s, so the keeper kept waiting),
 and the nonce allocator did not reuse a dropped transaction's nonce (a gap that would block every later transaction).
 
@@ -222,7 +237,8 @@ A LOCAL memory-store run (seed 5, 12 cycles) passed 47/47.
 
 ## 8. Before any deployment (not done)
 
-1. Run `scripts/dca-fork-evidence.ts` (pinned, twice, both fork tests) and the FORK soak; record the summaries here.
+1. Re-run `scripts/dca-fork-evidence.ts` at block 104733042 so the real-BAG / StrategyRegistry fork test runs with the
+   fixed bytecode comparison (the synthetic test and the FORK soak are done); a FORK soak with PostgreSQL is optional.
 2. Independent audit of `contracts/dca/*` (no audit has been done).
 3. Record the BagFactory address in a deployment record on main (deploy tx, block, deployer), cross-checked by the
    real-BAG fork test; until then its only provenance is the app environment and the research branch.
