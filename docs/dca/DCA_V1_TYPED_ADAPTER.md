@@ -269,7 +269,8 @@ A LOCAL memory-store run (seed 5, 12 cycles) passed 47/47.
 
 1. Fork evidence is done (pinned synthetic and real-BAG tests, FORK soak). Optional: a FORK soak with PostgreSQL and
    a run with `BAG_EXECUTION_ROUTER_ADDRESS` configured.
-2. Independent audit of `contracts/dca/*` (no audit has been done).
+2. Independent audit of `contracts/dca/*` (no audit has been done). An internal review by the author is in
+   `docs/dca/DCA_V1_INTERNAL_REVIEW.md` (no Critical/High; two Medium design risks; not an audit).
 3. Record the BagFactory address in a deployment record on main (deploy tx, block, deployer), cross-checked by the
    real-BAG fork test; until then its only provenance is the app environment and the research branch.
 4. Deploy adapter then executor from a reviewed build; verify runtime bytecode; pin the executor code hash for
