@@ -5,7 +5,9 @@ agent or by CI. No private key, seed phrase or `.env` value belongs in this file
 
 **What it proves:** a non-creator's profitable sale pays the creator a performance fee in USDG, in the sale
 transaction itself, and the chain and BAG's books describe the same economic event. Today this is
-**NOT VERIFIED**: the only live RedeemSettlement sales so far had fee 0 (`docs/REDEEM_SETTLEMENT_DEPLOYMENT.md` §5a).
+**NOT VERIFIED**: the only recorded live RedeemSettlement sale went through v1 (2026-10-06), and its fee was 0
+(`docs/REDEEM_SETTLEMENT_DEPLOYMENT.md` §5a). No sale through the configured v2 is recorded, so this run is also the
+first recorded v2 settlement.
 
 **What it does not prove:** fork royalty (Test 3 in `docs/LIVE_PROOF_FEES_ROYALTIES.md`), any other chain, or
 anything about an audit.
