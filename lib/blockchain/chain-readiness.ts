@@ -10,14 +10,22 @@ import { BAG_CHAINS, type BagChain } from '@/lib/config/chains';
 // and an unset one is reported NOT_CONFIGURED — never guessed, never borrowed
 // from another chain.
 //
-// A chain is production-qualified only when gates A–E all hold with evidence;
-// this module can establish A, B and C and probe the RPC for D. A live
-// purchase/receipt (D) and an independent consumer run (E) are owner steps.
+// Gate B is split by who needs it:
+//   B_CORE  StrategyRegistry — what the standalone SDK provenance flow reads.
+//   B_APP   BagFactory + StrategyCompositions — only when the BAG application
+//           itself is deployed on that chain.
+// An absent B_APP contract leaves the SDK path untouched (NOT_CONFIGURED, not
+// FAIL); a deployed one that does not match its artifact is a FAIL.
+//
+// A chain is production-qualified only when its gates hold with evidence;
+// this module can establish A, B_CORE, B_APP and C and probe the RPC for D. A
+// live purchase/receipt (D) and an independent consumer run (E) are owner steps.
 // -----------------------------------------------------------------------------
 
 export type CheckStatus = 'PASS' | 'FAIL' | 'NOT_CONFIGURED' | 'UNSUPPORTED';
+export type ReadinessGate = 'A' | 'B_CORE' | 'B_APP' | 'C' | 'D';
 export interface ReadinessCheck {
-  gate: 'A' | 'B' | 'C' | 'D';
+  gate: ReadinessGate;
   name: string;
   status: CheckStatus;
   detail: string;
@@ -42,6 +50,7 @@ const ERC20_ABI = [
   { type: 'function', name: 'symbol', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
   { type: 'function', name: 'decimals', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] },
 ] as const;
+const REGISTRY_GETTER_ABI = [{ type: 'function', name: 'registry', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] }] as const;
 const COMPOSER_ABI = [
   { type: 'function', name: 'predictProxyAddress', stateMutability: 'view', inputs: [{ name: 'owner', type: 'address' }], outputs: [{ type: 'address' }] },
   { type: 'function', name: 'owner', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
@@ -121,21 +130,46 @@ export async function checkChainReadiness({ chain, client, env, artifacts }: Rea
   await token('SETTLEMENT_STABLECOIN', cfg.sweepOutputToken.address, cfg.sweepOutputToken.symbol, cfg.sweepOutputToken.decimals);
 
   // ---- Gate B: BAG contracts (addresses only from env, never defaulted) ----------------------------------
-  const bagContract = async (name: 'StrategyRegistry' | 'BagFactory' | 'StrategyCompositions', envName: string) => {
+  const bagContract = async (gate: 'B_CORE' | 'B_APP', name: 'StrategyRegistry' | 'BagFactory' | 'StrategyCompositions', envName: string): Promise<Hex | null> => {
+    const id = name.toUpperCase();
     const addr = envAddress(env, envName);
-    if (addr === null) return push('B', `${name.toUpperCase()}_DEPLOYED`, 'NOT_CONFIGURED', `${envName} unset (no default; deploy, then set it)`);
-    if (addr === 'INVALID') return push('B', `${name.toUpperCase()}_DEPLOYED`, 'FAIL', `${envName} is not an address`);
+    if (addr === null) {
+      push(gate, `${id}_DEPLOYED`, 'NOT_CONFIGURED', `${envName} unset (no default; deploy, then set it)`);
+      return null;
+    }
+    if (addr === 'INVALID') {
+      push(gate, `${id}_DEPLOYED`, 'FAIL', `${envName} is not an address`);
+      return null;
+    }
     const code = await safe(() => client.getCode({ address: addr }));
-    if (code instanceof Error || !code || code === '0x') return push('B', `${name.toUpperCase()}_DEPLOYED`, 'FAIL', `${addr}: no code`);
-    push('B', `${name.toUpperCase()}_DEPLOYED`, 'PASS', `${addr}: ${(code.length - 2) / 2} bytes, keccak ${keccak256(code)}`);
+    if (code instanceof Error || !code || code === '0x') {
+      push(gate, `${id}_DEPLOYED`, 'FAIL', `${addr}: no code`);
+      return null;
+    }
+    push(gate, `${id}_DEPLOYED`, 'PASS', `${addr}: ${(code.length - 2) / 2} bytes, keccak ${keccak256(code)}`);
     const art = artifacts[name];
-    if (!art) return push('B', `${name.toUpperCase()}_BYTECODE`, 'NOT_CONFIGURED', 'no compiled artifact (npx hardhat compile)');
-    const cmp = runtimeMatchesArtifact(code, art);
-    push('B', `${name.toUpperCase()}_BYTECODE`, cmp.masked ? 'PASS' : 'FAIL', cmp.masked ? (cmp.exact ? 'exact match' : 'match (immutables and metadata masked)') : `differs (${cmp.bytes} vs ${cmp.artifactBytes} bytes)`);
+    if (!art) push(gate, `${id}_BYTECODE`, 'NOT_CONFIGURED', 'no compiled artifact (npx hardhat compile)');
+    else {
+      const cmp = runtimeMatchesArtifact(code, art);
+      const immutables = Object.values(art.immutableReferences ?? {}).reduce((n, refs) => n + refs.length, 0);
+      push(
+        gate,
+        `${id}_BYTECODE`,
+        cmp.masked ? 'PASS' : 'FAIL',
+        cmp.masked ? `${cmp.exact ? 'exact match' : 'match'} (${immutables} immutable slot(s) and metadata masked)` : `differs (${cmp.bytes} vs ${cmp.artifactBytes} bytes)`
+      );
+    }
+    return addr;
   };
-  await bagContract('StrategyRegistry', `STRATEGY_REGISTRY_ADDRESS_${K}`);
-  await bagContract('BagFactory', `FACTORY_ADDRESS_${K}`);
-  await bagContract('StrategyCompositions', `STRATEGY_COMPOSITIONS_ADDRESS_${K}`);
+  const registry = await bagContract('B_CORE', 'StrategyRegistry', `STRATEGY_REGISTRY_ADDRESS_${K}`);
+  await bagContract('B_APP', 'BagFactory', `FACTORY_ADDRESS_${K}`);
+  const compositions = await bagContract('B_APP', 'StrategyCompositions', `STRATEGY_COMPOSITIONS_ADDRESS_${K}`);
+  if (compositions) {
+    // Its immutable registry is masked in the bytecode comparison, so check its VALUE: it must be this chain's registry.
+    const bound = await safe(() => client.readContract({ address: compositions, abi: REGISTRY_GETTER_ABI, functionName: 'registry' }));
+    const ok = typeof bound === 'string' && registry !== null && getAddress(bound) === registry;
+    push('B_APP', 'STRATEGYCOMPOSITIONS_REGISTRY', ok ? 'PASS' : 'FAIL', `registry() = ${bound instanceof Error ? 'unreadable' : String(bound)}, configured ${registry ?? 'none'}`);
+  }
 
   // ---- Gate C: Composer deployment pin for THIS chain ----------------------------------------------------
   const factory = envAddress(env, `COMPOSER_FACTORY_${K}`);
@@ -178,13 +212,33 @@ export async function checkChainReadiness({ chain, client, env, artifacts }: Rea
 }
 
 export type GateStatus = 'PASS' | 'FAIL' | 'INCOMPLETE';
-export function summarizeGates(checks: ReadinessCheck[]): Record<'A' | 'B' | 'C' | 'D', GateStatus> {
-  const gate = (g: ReadinessCheck['gate']): GateStatus => {
+export interface ReadinessSummary {
+  gates: Record<ReadinessGate, GateStatus>;
+  /**
+   * The standalone SDK path (provenance + Composer purchase + receipt): needs A, B_CORE, C — and D/E, which only the
+   * owner can establish. READ_ONLY_CHECKS_PASS is therefore the best this module can say; never "qualified".
+   */
+  sdkPath: 'READ_ONLY_CHECKS_PASS' | 'BLOCKED' | 'INCOMPLETE';
+  /** The BAG application on this chain: additionally needs B_APP. */
+  appPath: 'READ_ONLY_CHECKS_PASS' | 'BLOCKED' | 'INCOMPLETE';
+}
+
+export function summarizeGates(checks: ReadinessCheck[]): ReadinessSummary {
+  const gate = (g: ReadinessGate): GateStatus => {
     const cs = checks.filter((c) => c.gate === g);
     if (cs.some((c) => c.status === 'FAIL')) return 'FAIL';
     if (cs.length === 0 || cs.some((c) => c.status !== 'PASS')) return 'INCOMPLETE';
     return 'PASS';
   };
-  // D is never PASS from read-only checks: it needs a live purchase whose receipt the SDK verifies (owner step).
-  return { A: gate('A'), B: gate('B'), C: gate('C'), D: gate('D') === 'FAIL' ? 'FAIL' : 'INCOMPLETE' };
+  const gates: Record<ReadinessGate, GateStatus> = {
+    A: gate('A'),
+    B_CORE: gate('B_CORE'),
+    B_APP: gate('B_APP'),
+    C: gate('C'),
+    // D is never PASS from read-only checks: it needs a live purchase whose receipt the SDK verifies (owner step).
+    D: gate('D') === 'FAIL' ? 'FAIL' : 'INCOMPLETE',
+  };
+  const path = (needed: ReadinessGate[]) =>
+    needed.some((g) => gates[g] === 'FAIL') ? ('BLOCKED' as const) : needed.every((g) => gates[g] === 'PASS') ? ('READ_ONLY_CHECKS_PASS' as const) : ('INCOMPLETE' as const);
+  return { gates, sdkPath: path(['A', 'B_CORE', 'C']), appPath: path(['A', 'B_CORE', 'B_APP', 'C']) };
 }

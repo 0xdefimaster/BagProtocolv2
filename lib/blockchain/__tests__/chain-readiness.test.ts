@@ -52,7 +52,11 @@ describe('checkChainReadiness (base)', () => {
       COMPOSER_PIN: 'NOT_CONFIGURED',
       RPC_DEBUG_TRACE_CALL: 'UNSUPPORTED',
     });
-    expect(summarizeGates(checks)).toEqual({ A: 'PASS', B: 'INCOMPLETE', C: 'INCOMPLETE', D: 'INCOMPLETE' });
+    expect(summarizeGates(checks)).toEqual({
+      gates: { A: 'PASS', B_CORE: 'INCOMPLETE', B_APP: 'INCOMPLETE', C: 'INCOMPLETE', D: 'INCOMPLETE' },
+      sdkPath: 'INCOMPLETE',
+      appPath: 'INCOMPLETE',
+    });
   });
 
   it("`.env.example`'s 0xdeployed-… placeholder is NOT_CONFIGURED; any other non-address is a FAIL", async () => {
@@ -96,7 +100,7 @@ describe('checkChainReadiness (base)', () => {
     const env = { COMPOSER_FACTORY_BASE: COMPOSER, COMPOSER_FACTORY_CODE_HASH_BASE: keccak256(COMPOSER_CODE), COMPOSER_TEST_SIGNER: SIGNER };
     const ok = await checkChainReadiness({ chain: 'base', client: fakeChain({ code: { [COMPOSER.toLowerCase()]: COMPOSER_CODE, [PROXY.toLowerCase()]: '0x01' } }), env, artifacts: {} });
     expect(byName(ok)).toMatchObject({ COMPOSER_FACTORY_CODE_HASH: 'PASS', COMPOSER_PROXY_PREDICTION: 'PASS' });
-    expect(summarizeGates(ok).C).toBe('PASS');
+    expect(summarizeGates(ok).gates.C).toBe('PASS');
 
     const badHash = await checkChainReadiness({ chain: 'base', client: fakeChain({ code: { [COMPOSER.toLowerCase()]: '0x60016003' } }), env, artifacts: {} });
     expect(byName(badHash).COMPOSER_FACTORY_CODE_HASH).toBe('FAIL');
@@ -110,6 +114,44 @@ describe('checkChainReadiness (base)', () => {
     expect(byName(notOwner).COMPOSER_PROXY_PREDICTION).toBe('FAIL');
   });
 
+  it('B_CORE vs B_APP: an SDK-only chain (registry + pin, no app contracts) is not blocked by the missing app contracts', async () => {
+    const env = {
+      STRATEGY_REGISTRY_ADDRESS_BASE: REGISTRY,
+      COMPOSER_FACTORY_BASE: COMPOSER,
+      COMPOSER_FACTORY_CODE_HASH_BASE: keccak256(COMPOSER_CODE),
+      COMPOSER_TEST_SIGNER: SIGNER,
+    };
+    const client = fakeChain({ code: { [REGISTRY.toLowerCase()]: REGISTRY_CODE, [COMPOSER.toLowerCase()]: COMPOSER_CODE } });
+    const checks = await checkChainReadiness({ chain: 'base', client, env, artifacts: { StrategyRegistry: { deployedBytecode: REGISTRY_CODE } } });
+    expect(checks.filter((c) => c.gate === 'B_APP').map((c) => c.status)).toEqual(['NOT_CONFIGURED', 'NOT_CONFIGURED']);
+    expect(summarizeGates(checks)).toEqual({
+      gates: { A: 'PASS', B_CORE: 'PASS', B_APP: 'INCOMPLETE', C: 'PASS', D: 'INCOMPLETE' },
+      sdkPath: 'READ_ONLY_CHECKS_PASS',
+      appPath: 'INCOMPLETE',
+    });
+  });
+
+  it('B_APP: a deployed app contract that is wrong blocks the app path, not the SDK path; compositions must point at this registry', async () => {
+    const COMPOSITIONS = '0x000000000000000000000000000000000000b006' as Hex;
+    const env = {
+      STRATEGY_REGISTRY_ADDRESS_BASE: REGISTRY,
+      FACTORY_ADDRESS_BASE: FACTORY, // no code there
+      STRATEGY_COMPOSITIONS_ADDRESS_BASE: COMPOSITIONS,
+      COMPOSER_FACTORY_BASE: COMPOSER,
+      COMPOSER_FACTORY_CODE_HASH_BASE: keccak256(COMPOSER_CODE),
+      COMPOSER_TEST_SIGNER: SIGNER,
+    };
+    const client = fakeChain({ code: { [REGISTRY.toLowerCase()]: REGISTRY_CODE, [COMPOSER.toLowerCase()]: COMPOSER_CODE, [COMPOSITIONS.toLowerCase()]: '0x01' } });
+    const read = client.readContract;
+    client.readContract = async (args) => (args.functionName === 'registry' ? '0x000000000000000000000000000000000000dead' : read(args));
+    const checks = await checkChainReadiness({ chain: 'base', client, env, artifacts: { StrategyRegistry: { deployedBytecode: REGISTRY_CODE } } });
+    expect(byName(checks)).toMatchObject({ BAGFACTORY_DEPLOYED: 'FAIL', STRATEGYCOMPOSITIONS_DEPLOYED: 'PASS', STRATEGYCOMPOSITIONS_REGISTRY: 'FAIL' });
+    const s = summarizeGates(checks);
+    expect(s.gates.B_APP).toBe('FAIL');
+    expect(s.sdkPath).toBe('READ_ONLY_CHECKS_PASS');
+    expect(s.appPath).toBe('BLOCKED');
+  });
+
   it('the Robinhood pin is not read for Base: only *_BASE variables count', async () => {
     const env = { COMPOSER_FACTORY_ROBINHOOD: COMPOSER, COMPOSER_FACTORY_CODE_HASH_ROBINHOOD: keccak256(COMPOSER_CODE), COMPOSER_FACTORY: COMPOSER };
     const checks = await checkChainReadiness({ chain: 'base', client: fakeChain({ code: { [COMPOSER.toLowerCase()]: COMPOSER_CODE } }), env, artifacts: {} });
@@ -119,7 +161,7 @@ describe('checkChainReadiness (base)', () => {
   it('D is never PASS from read-only checks, even when the RPC serves debug_traceCall', async () => {
     const checks = await checkChainReadiness({ chain: 'base', client: fakeChain({ trace: true }), env: {}, artifacts: {} });
     expect(byName(checks).RPC_DEBUG_TRACE_CALL).toBe('PASS');
-    expect(summarizeGates(checks).D).toBe('INCOMPLETE');
+    expect(summarizeGates(checks).gates.D).toBe('INCOMPLETE');
   });
 });
 

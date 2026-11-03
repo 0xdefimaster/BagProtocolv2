@@ -1,10 +1,9 @@
 import './load-env';
-import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
 import { createPublicClient, http } from 'viem';
 import { scriptRpcUrl } from './rpc-url';
 import { isBagChain } from '../lib/config/chains';
-import { checkChainReadiness, summarizeGates, type ReadinessClient, type RuntimeArtifact } from '../lib/blockchain/chain-readiness';
+import { checkChainReadiness, summarizeGates, type ReadinessClient } from '../lib/blockchain/chain-readiness';
+import { loadRuntimeArtifact } from '../lib/blockchain/chain-readiness-artifacts';
 
 // -----------------------------------------------------------------------------
 // scripts/verify-chain-readiness.ts — READ-ONLY chain qualification report
@@ -15,18 +14,14 @@ import { checkChainReadiness, summarizeGates, type ReadinessClient, type Runtime
 //
 // Reads (all optional except the RPC; unset → NOT_CONFIGURED, never defaulted):
 //   <CHAIN>_RPC_URL (or ALCHEMY_API_KEY)                     — scripts/rpc-url.ts
-//   STRATEGY_REGISTRY_ADDRESS_<CHAIN>, FACTORY_ADDRESS_<CHAIN>, STRATEGY_COMPOSITIONS_ADDRESS_<CHAIN>
+//   STRATEGY_REGISTRY_ADDRESS_<CHAIN>                               — B_CORE (SDK provenance)
+//   FACTORY_ADDRESS_<CHAIN>, STRATEGY_COMPOSITIONS_ADDRESS_<CHAIN>   — B_APP (only if the BAG app runs there)
 //   COMPOSER_FACTORY_<CHAIN>, COMPOSER_FACTORY_CODE_HASH_<CHAIN>   — a pin YOU reviewed for this chain
 //   COMPOSER_TEST_SIGNER                                    — any address; only read
 //
 // Exit 0: no check FAILED (NOT_CONFIGURED / UNSUPPORTED are not failures, and
 // are not qualification either). Exit 1: at least one FAIL.
 // -----------------------------------------------------------------------------
-
-function loadArtifact(name: string): RuntimeArtifact | undefined {
-  const file = join('artifacts', 'contracts', `${name}.sol`, `${name}.json`);
-  return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as RuntimeArtifact) : undefined;
-}
 
 async function main() {
   const chain = process.argv[2];
@@ -36,11 +31,12 @@ async function main() {
     chain,
     client,
     env: process.env,
-    artifacts: { StrategyRegistry: loadArtifact('StrategyRegistry'), BagFactory: loadArtifact('BagFactory'), StrategyCompositions: loadArtifact('StrategyCompositions') },
+    artifacts: { StrategyRegistry: loadRuntimeArtifact('StrategyRegistry'), BagFactory: loadRuntimeArtifact('BagFactory'), StrategyCompositions: loadRuntimeArtifact('StrategyCompositions') },
   });
-  for (const c of checks) console.log(`${c.gate}  ${c.status.padEnd(14)} ${c.name.padEnd(28)} ${c.detail}`);
-  const gates = summarizeGates(checks);
-  console.log(JSON.stringify({ chain, gates, liveReceiptProof: 'OWNER_STEP', independentConsumer: 'OWNER_STEP' }));
+  for (const c of checks) console.log(`${c.gate.padEnd(6)} ${c.status.padEnd(14)} ${c.name.padEnd(32)} ${c.detail}`);
+  const summary = summarizeGates(checks);
+  console.log(JSON.stringify({ chain, ...summary, liveReceiptProof: 'OWNER_STEP', independentConsumer: 'OWNER_STEP' }));
+  console.log('sdkPath needs A, B_CORE (StrategyRegistry), C; appPath also B_APP (BagFactory, StrategyCompositions). D and E are owner steps: neither path is "qualified" from this report.');
   if (checks.some((c) => c.status === 'FAIL')) process.exitCode = 1;
 }
 
