@@ -119,8 +119,8 @@ the earliest next run by that much. The keeper stops sending `inclusionSlackSeco
 | LOCAL | Hardhat in-process EVM, real BagFactory/Bag/StrategyRegistry code, mock Uniswap and hostile tokens | run, passing |
 | INTEGRATION | keeper store against a real local PostgreSQL 16 | run, passing |
 | LOCAL_NODE soak | `scripts/dca-keeper-soak.ts` on a Hardhat node (mock Uniswap) with PostgreSQL 16 and real restarts | run 3×, 49/49 checks each (below) |
-| FORK | `contracts/test/fork/BagDcaExecutor.fork.test.ts` (synthetic BAG) | run once on an earlier build, passing (2026-11-02, below); **re-run pinned: pending** |
-| FORK, real BAG | `contracts/test/fork/BagDcaRealBag.fork.test.ts`: the real BagFactory, BAGs and StrategyRegistry | written; **not run yet** |
+| FORK | `contracts/test/fork/BagDcaExecutor.fork.test.ts` (synthetic BAG) | **pinned block 104733042, run twice, passing, identical** (2026-11-03, below) |
+| FORK, real BAG | `contracts/test/fork/BagDcaRealBag.fork.test.ts`: the real BagFactory, BAGs and StrategyRegistry | run 2026-11-03: **stopped at the first check** (factory bytecode comparison, below); comparison fixed, **re-run pending** |
 | FORK soak | `scripts/dca-keeper-soak.ts` against `npx hardhat node --fork …` | written; **not run yet** |
 | MAINNET | — | none; out of scope |
 
@@ -129,6 +129,18 @@ chain's `finalized` block), runs both fork tests twice at it, compares the two r
 and writes `fork-evidence/<block>/summary.json` (block, block hash, commit, per-test evidence, gas, token deltas,
 error names; the RPC URL is never written). The harness proves the pin (first local block = pinned + 1, parent hash
 = pinned block hash).
+
+**Pinned run, 2026-11-03** (maintainer's machine, `scripts/dca-fork-evidence.ts`, commit `4df146c`; block
+104733042 from the `finalized` tag, hash `0x177a3a28…41b1`, timestamp 1793675328; the harness confirmed the pin).
+Synthetic BAG test: `passing` in both runs (337 s cold, 41 s with the fork cache), and the two runs agree on every
+recorded field (`reproducible: true`): run 1 spent 10 USDG and delivered NVDA +24461366238836552 and TSLA
++12362881132413682 raw, gas 611129, SDK `VERIFIED` with the executor code hash; the same window again `NotDue`; the
+next day's run gas 538324; TSLA's ceiling at half the market reverted `Too little received` with nothing moved.
+Real-BAG test: failed at its first assertion in both runs: the code at the configured BagFactory has the artifact's
+length (11231 bytes) but differs after masking immutables and the trailing metadata. BagFactory embeds Bag's creation
+code, so its runtime also carries Bag's 53-byte metadata hash (at offset 11125); the comparison masked only the last
+one. It now masks every embedded metadata blob and reports the byte ranges that still differ, so a remaining
+difference is either confirmed as metadata-only or shown exactly. Re-run pending.
 
 **Real BAG infrastructure.** main has no BagFactory address record (the app reads `FACTORY_ADDRESS_ROBINHOOD` from
 its environment, kept as a secret in Netlify, whose build scans the repository for its value; the repository

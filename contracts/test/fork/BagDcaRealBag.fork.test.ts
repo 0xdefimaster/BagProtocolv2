@@ -63,7 +63,7 @@ describe('BagDcaExecutor on a Robinhood Chain fork (REAL BagFactory, BAGs and St
     step('1. BagFactory: code = this repository\'s BagFactory, cross-checked with the app configuration');
     const factoryCode = compareRuntime(await pc.getCode({ address: factoryAddr }), 'BagFactory');
     assert.ok(factoryCode.bytes > 0, 'BagFactory candidate has code at the fork block');
-    assert.ok(factoryCode.masked, `BagFactory runtime differs from the compiled artifact (${factoryCode.bytes} vs ${factoryCode.artifactBytes} bytes)`);
+    assert.ok(factoryCode.masked, `BagFactory runtime differs from the compiled artifact beyond immutables and metadata (${factoryCode.bytes} vs ${factoryCode.artifactBytes} bytes; differing [offset,length]: ${JSON.stringify(factoryCode.diffRanges)}; metadata blobs at ${factoryCode.metadataBlobs.join(',')} differ: ${factoryCode.metadataBlobsDiffer})`);
     const crossChecks: Record<string, unknown> = { researchCandidateHash: candidateMatches ? 'MATCH' : 'MISMATCH' };
     assert.ok(candidateMatches, 'FACTORY_ADDRESS_ROBINHOOD is not the research candidate (bagFactoryKeccak256)');
     const routerAddr = process.env.BAG_EXECUTION_ROUTER_ADDRESS as Hex | undefined;
@@ -77,7 +77,7 @@ describe('BagDcaExecutor on a Robinhood Chain fork (REAL BagFactory, BAGs and St
 
     step('2. StrategyRegistry: code = this repository\'s StrategyRegistry');
     const registryCode = compareRuntime(await pc.getCode({ address: A.STRATEGY_REGISTRY }), 'StrategyRegistry');
-    assert.ok(registryCode.masked, 'StrategyRegistry runtime differs from the compiled artifact');
+    assert.ok(registryCode.masked, `StrategyRegistry runtime differs from the compiled artifact (differing [offset,length]: ${JSON.stringify(registryCode.diffRanges)})`);
     ev.set('strategyRegistry', { address: A.STRATEGY_REGISTRY, ...registryCode });
 
     // ---------------------------------------------------------------- the bags
@@ -96,7 +96,7 @@ describe('BagDcaExecutor on a Robinhood Chain fork (REAL BagFactory, BAGs and St
         continue;
       }
       const code = compareRuntime(await pc.getCode({ address: bag }), 'Bag');
-      assert.ok(code.masked, `${c.uuid}: Bag runtime differs from the compiled artifact`);
+      assert.ok(code.masked, `${c.uuid}: Bag runtime differs from the compiled artifact (differing [offset,length]: ${JSON.stringify(code.diffRanges)})`);
       const [onBagId, onRef, creator, onFactory, version, compositionHash] = await Promise.all(
         ['bagId', 'offChainRef', 'creator', 'factory', 'version', 'compositionHash'].map((f) => read(bag, BAG_ABI, f)),
       );

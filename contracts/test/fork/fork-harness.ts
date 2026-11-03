@@ -1,7 +1,7 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { network } from 'hardhat';
-import { getAddress, keccak256, parseAbi, type Hex } from 'viem';
+import { getAddress, parseAbi, type Hex } from 'viem';
 
 // -----------------------------------------------------------------------------
 // Shared harness for the Robinhood FORK tests (local EDR fork of chain 4663;
@@ -77,37 +77,7 @@ export async function connectPinnedFork(log: (m: string) => void) {
   return { viem, pc, tc, fork: { number: forkNumber, hash: forkBlock.hash!, timestamp: forkBlock.timestamp, pinned: PINNED !== null } };
 }
 
-type Artifact = { deployedBytecode: Hex; immutableReferences?: Record<string, { start: number; length: number }[]> };
-export const artifact = (name: string): Artifact => JSON.parse(readFileSync(join('artifacts', 'contracts', `${name}.sol`, `${name}.json`), 'utf8'));
-
-/**
- * Compares on-chain runtime code with this repository's compiled artifact. `exact`: byte-identical. `masked`:
- * identical once the constructor-set immutables and the trailing CBOR metadata (source/compiler fingerprint)
- * are zeroed on both sides, i.e. the same contract code with other constructor values or comments.
- */
-export function compareRuntime(onChain: Hex | undefined, name: string) {
-  const a = artifact(name);
-  const hex = (x: string) => Buffer.from(x.slice(2), 'hex');
-  const code = hex(onChain ?? '0x');
-  const want = hex(a.deployedBytecode);
-  const strip = (b: Buffer) => {
-    if (b.length < 2) return b;
-    const n = b.readUInt16BE(b.length - 2);
-    return n + 2 <= b.length ? b.subarray(0, b.length - n - 2) : b;
-  };
-  const mask = (b: Buffer) => {
-    const c = Buffer.from(b);
-    for (const refs of Object.values(a.immutableReferences ?? {})) for (const r of refs) c.fill(0, r.start, r.start + r.length);
-    return c;
-  };
-  return {
-    bytes: code.length,
-    artifactBytes: want.length,
-    codeKeccak: keccak256(onChain ?? '0x'),
-    exact: code.equals(want),
-    masked: code.length === want.length && strip(mask(code)).equals(strip(mask(want))),
-  };
-}
+export { artifact, compareRuntime } from './runtime-compare';
 
 /** The revert's error name (and args) from a viem error, or the revert string. */
 export function errorName(e: unknown): string {
