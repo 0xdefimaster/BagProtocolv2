@@ -720,22 +720,25 @@ This local-only script deploys a fixture and submits three local transactions in
 
 Helpers for `contracts/dca/BagDcaExecutor.sol` (not deployed, not audited). The owner signs one EIP-712
 `DcaAuthorization` and approves the executor for exactly the total budget; funds stay in the wallet until each run.
-A keeper calls `execute`; the contract re-checks every limit and buys every asset through a pinned Uniswap v3
+Only the keeper the owner signed (`allowedCaller`, required, never zero) can call `execute`; the contract re-checks
+every limit and buys every asset through a pinned Uniswap v3
 SwapRouter02 adapter, delivering straight to the signed recipient with one `AssetDelivered` event per asset.
 
 ```ts
 import { buildDcaAuthorization, dcaAuthorizationTypedData, summarizeDcaAuthorization, verifyDcaReceipt } from '@bagprotocol/sdk/dca';
 
-const auth = buildDcaAuthorization({ bag, owner, inputToken: USDG, registry, amountPerRunRaw, runs, totalBudgetRaw,
-  startsAt, periodSeconds, maxPriceRaw, route: { adapter, swapRouter }, nonce });
+const auth = buildDcaAuthorization({ bag, owner, inputToken: USDG, allowedCaller: keeper, registry, amountPerRunRaw, runs,
+  totalBudgetRaw, startsAt, periodSeconds, maxPriceRaw, route: { adapter, swapRouter }, nonce });
 const typedData = dcaAuthorizationTypedData(auth, { chainId: 4663, executor }); // show summarizeDcaAuthorization(auth)
 const v = await verifyDcaReceipt({ client, transactionHash, auth, deployment: { chainId: 4663, executor }, expectedExecutorCodeHash });
-// v.status: VERIFIED | FAILED | INDETERMINATE (missing or unstable evidence is never VERIFIED)
+// v.status: VERIFIED | FAILED | INDETERMINATE (missing or unstable evidence is never VERIFIED;
+// without expectedExecutorCodeHash the result is at most INDETERMINATE: EXECUTOR_CODE_UNCHECKED)
 ```
 
 `maxPriceRaw` is a per-asset **ceiling**, not a fair price: a run may execute anywhere up to it. If any asset is above its
 ceiling the whole run reverts and that window is lost (no catch-up). The verifier's trust root is the executor code at
-`deployment.executor`; pass `expectedExecutorCodeHash` from the reviewed build to check it.
+`deployment.executor`: `expectedExecutorCodeHash` (from the reviewed build) is required for VERIFIED;
+`allowUncheckedExecutorCode: true` exists for tests and local tooling only.
 
 ## Error handling and HTTP retrieval
 

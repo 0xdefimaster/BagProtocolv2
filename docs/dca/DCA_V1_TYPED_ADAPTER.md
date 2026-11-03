@@ -2,8 +2,9 @@
 
 Status: **code, local/integration tests, keeper soaks (local node with PostgreSQL; Robinhood fork with the memory
 store), and a pinned Robinhood fork run of the synthetic-BAG test.** Not deployed, not audited, nothing sent to Robinhood Chain mainnet. The keeper has no live mode.
-The pinned fork runs and the FORK soak used the current executor (with the signed `allowedCaller`, §1); the
-2026-11-02 fork run of the earlier build is superseded.
+The pinned fork runs and the FORK soak (commit `419520a`) predate commit `9d3b993`, which changed the executor's
+bytecode (mandatory `allowedCaller`); they must be re-run on the current commit before they count as evidence for it.
+The 2026-11-02 fork run of the earlier build is superseded.
 
 ## 1. What a user does
 
@@ -22,7 +23,8 @@ execute within the ceilings (`KEEPER_CAN_EXECUTE_UP_TO_CEILING`).
 
 ## 2. What happens on each run
 
-A keeper (anyone) calls `execute(authorization, runParams, ownerSignature)`. The executor, in order:
+The owner's keeper — the signed, non-zero `allowedCaller`, and only it — calls `execute(authorization, runParams,
+ownerSignature)`. The executor, in order:
 
 | Check | Where |
 |---|---|
@@ -78,7 +80,7 @@ creator stops every authorization for the old one (`BagChanged`); the owner must
 ## 5. Price ceilings
 
 `minOut = max(ceil(leg × 10^decimals / maxPriceRaw), keeperFloor)`. The ceiling is the owner's own choice, **not a
-fair price**: a keeper (or a searcher sandwiching the keeper's transaction) can execute at any price up to it. The
+fair price**: the keeper (or a searcher sandwiching the keeper's transaction) can make a run execute at any price up to it. The
 keeper narrows this in practice with a floor at the fresh QuoterV2 quote minus `slippageBps` (default 100), but the
 contract only guarantees the ceiling. At exactly the ceiling a run may fail by one raw unit (venue floors, the
 contract ceils). Zero price is refused; decimals above 36 are refused; arithmetic is full-precision (`mulDiv`).
