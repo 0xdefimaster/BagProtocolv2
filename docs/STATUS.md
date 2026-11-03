@@ -34,7 +34,8 @@ evidence and are never counted as each other. **No contract in this repository h
 | Settlement router G1 (types, hashing, vectors) | MERGED · router itself NOT IMPLEMENTED | #141 |
 | `StrategyCompositions` | MERGED · NOT DEPLOYED (migration 0060 not run) | `docs/STRATEGY_COMPOSITIONS_DESIGN.md` |
 | DCA v1 (executor, adapter, SDK `/dca`, keeper) | IMPLEMENTED on **Draft PR #145, NOT MERGED** · NOT DEPLOYED · NOT AUDITED · local + Robinhood-fork tests only | `docs/dca/` on that branch |
-| Chains other than Robinhood (Base, Arbitrum, Ethereum) | Format support only (chain ids in the SDK and app config) · **NOT qualified**: no BAG contracts, deployment pin or live verification on them | — |
+| Fee-sale reference-price confidence (stricter band when Chainlink is unavailable; fail closed on missing confidence / stale / disagreeing price) | IMPLEMENTED on **Draft PR #147, NOT MERGED** · NOT DEPLOYED | `docs/release-notes/settlement-price-confidence.md` on that branch |
+| Chains other than Robinhood (Base, Arbitrum, Ethereum) | Format support only (chain ids in the SDK and app config) · **NOT qualified**: no BAG contracts, deployment pin or live verification on them. Base readiness plan + read-only check: Draft PR #150 | `docs/chains/` on that branch |
 
 ## 0. Latest live checks (Robinhood Chain, 2026-10-17)
 
