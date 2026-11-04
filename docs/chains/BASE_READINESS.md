@@ -103,6 +103,25 @@ caller-owned registry). Route availability and liquidity are the provider's quot
 | Simulation | OK, reverted, target without code, wrong chain | `eth_call` from the signer |
 | Receipt and balance-delta verification | `DELIVERY_LOG` VERIFIED for all 4; below minimum FAILED; reverted FAILED; missing log INDETERMINATE; EIP-7702 send INDETERMINATE; other-chain RPC FAILED | The 2026-11-04 purchase (gate D) was verified live; re-check it with the starter's `npm run verify` |
 
+**Live run, 2026-11-04 (maintainer, Alchemy Base RPC, signer `0x49Dadd…FE46`): `VERDICT PASS`, 4 of 4.**
+Nothing was signed or sent.
+
+- Chain 8453 matches the profile. The Composer proxy `0x0a6B…96F7` is now deployed, so the compiled target is the
+  proxy.
+- Every token was recognised from the chain, and every scenario passed screening.
+- All four compiled with delivery proof:
+
+  | Scenario | Minimum output | Impact |
+  |---|---|---|
+  | ETH → USDC | 1151266 | 67 bps |
+  | USDC → WETH | 847528954279960 | −18 bps |
+  | USDC → cbBTC | 2512 | −2 bps |
+  | WETH → USDC | 230173 | 66 bps |
+
+- **Simulation:** ETH → USDC returned `OK`, a full `eth_call`. The three ERC-20 scenarios stopped at
+  `NEEDS_APPROVAL` (allowance 0). Their swap call itself was therefore **not** simulated: that needs an approval, or
+  a state override.
+
 Run the live check yourself, read only:
 
 ```bash
