@@ -16,6 +16,12 @@
 //   COMPOSER_FACTORY=0x...  COMPOSER_FACTORY_CODE_HASH=0x...  \
 //   npx tsx packages/bag-sdk/examples/base-phase1-check.ts <signer address>
 //
+// Optional EXTRA_OUTPUTS=0xToken,0xToken adds a "USDC -> token" scenario per address: a candidate for the
+// reviewed set. It is screened as UNREVIEWED (allowed for this check only, and labelled so).
+//
+// Simulation uses assumeApprovals: when the allowance is missing, the swap itself is still eth_call'ed with a
+// VERIFIED allowance-slot state override (OK_WITH_ASSUMED_APPROVALS). The approval is still not on chain.
+//
 // Per scenario: PASS = compiled to a trusted target with sane legs and the simulation gave a determinate answer
 // (OK, NEEDS_APPROVAL or INSUFFICIENT_BALANCE are all determinate: they depend on the signer's funds, not on
 // the integration). FAIL = refused compile, untrusted target/spender, reverted call, missing code.
@@ -74,6 +80,15 @@ function singleAssetBag(asset: Hex, decimals: number): BagDocument {
   return r.bag;
 }
 
+function matrix(extra: string | undefined) {
+  const out: { name: string; input: Hex; output: Hex; amountRaw: bigint; candidate: boolean }[] = BASE_PHASE1_MATRIX.map((m) => ({ ...m, candidate: false }));
+  for (const a of (extra ?? '').split(',').map((x) => x.trim()).filter(Boolean)) {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(a)) throw new Error(`EXTRA_OUTPUTS: ${a} is not an address`);
+    out.push({ name: `USDC -> ${a} (candidate)`, input: USDC, output: a.toLowerCase() as Hex, amountRaw: BigInt(2_000_000), candidate: true });
+  }
+  return out;
+}
+
 const j = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? x.toString() : x));
 
 async function main() {
@@ -116,14 +131,15 @@ async function main() {
 
   let failures = 0;
   let blocked = 0;
-  for (const s of BASE_PHASE1_MATRIX) {
+  const scenarios = matrix(process.env.EXTRA_OUTPUTS);
+  for (const s of scenarios) {
     console.log(`\n== ${s.name}  (amount ${s.amountRaw} raw) ==`);
     try {
       // 2–3. recognition (dynamic, by chain id + address) and screening (reviewed class)
       const [inIns, outIns] = await Promise.all([inspectToken({ chainId, address: s.input, client: any }), inspectToken({ chainId, address: s.output, client: any })]);
       console.log(`INFO  TOKENS  in ${j(inIns)} | out ${j(outIns)}`);
       if (outIns.kind !== 'ERC20' || (inIns.kind !== 'ERC20' && inIns.kind !== 'NATIVE')) throw new Error(`token not recognised: ${inIns.kind}/${outIns.kind}`);
-      const screen = screenPurchaseAssets({ chainId, inputToken: s.input, outputTokens: [s.output], registry });
+      const screen = screenPurchaseAssets({ chainId, inputToken: s.input, outputTokens: [s.output], registry, allowUnreviewed: s.candidate });
       console.log(`${screen.ok ? 'PASS' : 'FAIL'}  SCREEN  ${screen.decisions.map((d) => `${d.role}:${d.assetClass}:${d.decision}`).join(' ')}`);
       if (!screen.ok) throw new Error('screening refused');
 
@@ -145,9 +161,10 @@ async function main() {
       console.log(`${legOk ? 'PASS' : 'FAIL'}  COMPILE  to ${compiled.transaction.to} value ${compiled.transaction.value}; leg ${leg.token} expected ${leg.expectedOutRaw} min ${leg.minOutRaw}; impact ${compiled.quote.priceImpactBps} bps; approvals ${j(compiled.approvals)}; deliveryProof ${compiled.deliveryProof ? 'on' : 'OFF'}`);
 
       // 6. simulation (eth_call from the signer; nothing sent)
-      const sim = await simulateBag(compiled, { client: any });
-      const determinate = ['OK', 'NEEDS_APPROVAL', 'INSUFFICIENT_BALANCE'].includes(sim.status);
-      console.log(`${determinate ? 'PASS' : 'FAIL'}  SIMULATE  ${j(sim)}`);
+      const sim = await simulateBag(compiled, { client: any, assumeApprovals: true });
+      const full = sim.status === 'OK' || sim.status === 'OK_WITH_ASSUMED_APPROVALS';
+      const determinate = full || ['INSUFFICIENT_BALANCE', 'APPROVAL_OVERRIDE_UNAVAILABLE'].includes(sim.status);
+      console.log(`${determinate ? 'PASS' : 'FAIL'}  SIMULATE${full ? ' (swap executed in eth_call)' : ' (swap NOT executed)'}  ${j(sim)}`);
       if (!legOk || !determinate || !compiled.deliveryProof) failures++;
     } catch (e) {
       if (isNetworkBlock(e)) {
@@ -161,7 +178,7 @@ async function main() {
     }
   }
   const verdict = failures > 0 ? 'FAIL' : blocked > 0 ? 'BLOCKED' : 'PASS';
-  console.log(`\nVERDICT ${verdict}  (${BASE_PHASE1_MATRIX.length} scenarios; nothing was signed or sent)`);
+  console.log(`\nVERDICT ${verdict}  (${scenarios.length} scenarios; nothing was signed or sent)`);
   process.exit(verdict === 'PASS' ? 0 : verdict === 'BLOCKED' ? 3 : 1);
 }
 

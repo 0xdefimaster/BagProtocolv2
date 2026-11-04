@@ -282,6 +282,15 @@ These three are separate on purpose. **Recognising a token does not mean it is s
 `BASE_PHASE1_REVIEWED_ASSETS` holds three reviewed Base assets: native USDC, WETH and cbBTC. They are a starting
 test matrix, not the supported list. Extend it with your own reviewed entries.
 
+**Simulating before the wallet has approved:** use `simulateBag(compiled, { client, assumeApprovals: true })`.
+When an allowance is missing, the SDK locates the token's allowance slot and verifies it through `allowance()`
+under a state override. It then eth_calls the purchase with that override.
+- `OK_WITH_ASSUMED_APPROVALS`: the swap would succeed once the approval is sent. The approval itself is still not
+  on chain.
+- `APPROVAL_OVERRIDE_UNAVAILABLE`: the slot could not be verified, so nothing was assumed.
+
+The RPC must support `eth_call` state overrides.
+
 Live, read-only check of the Base matrix (ETH→USDC, USDC→WETH, USDC→cbBTC, WETH→USDC). It runs recognition,
 screening, balance and allowance reads, compile with delivery proof, and simulation; nothing is signed or sent:
 

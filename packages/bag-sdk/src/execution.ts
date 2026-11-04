@@ -2,6 +2,7 @@ import { normalizeAddress } from './chains';
 import { BagSdkError, type BagSdkErrorCode } from './errors';
 import { planPurchase, type PurchasePlan, type PurchaseRequest } from './purchase';
 import type { BagDocument, Hex } from './types';
+import { decodeFunctionResult, encodeAbiParameters, encodeFunctionData, keccak256 } from 'viem';
 
 // -----------------------------------------------------------------------------
 // quoteBag / compileBag / simulateBag. The SDK builds an UNSIGNED transaction
@@ -386,7 +387,8 @@ export interface SimulationClient {
   getCode(args: { address: Hex }): Promise<Hex | undefined>;
   getBalance?(args: { address: Hex }): Promise<bigint>;
   readContract(args: { address: Hex; abi: readonly unknown[]; functionName: string; args?: readonly unknown[] }): Promise<unknown>;
-  call(args: { account: Hex; to: Hex; data: Hex; value?: bigint }): Promise<unknown>;
+  /** `stateOverride` is only used with `assumeApprovals` (viem's PublicClient.call supports it). */
+  call(args: { account?: Hex; to: Hex; data: Hex; value?: bigint; stateOverride?: { address: Hex; stateDiff: { slot: Hex; value: Hex }[] }[] }): Promise<unknown>;
 }
 
 export type SimulationResult =
@@ -394,6 +396,13 @@ export type SimulationResult =
   | { status: 'QUOTE_EXPIRED'; source: 'PROVIDER' | 'LOCAL_MAX_AGE'; expiresAtMs: number; checkedAtMs: number }
   | { status: 'INVALID_TARGET'; address: Hex }
   | { status: 'NEEDS_APPROVAL'; missing: CompiledPurchase['approvals'] }
+  /**
+   * `assumeApprovals` only: the purchase call succeeded in an eth_call where the missing allowances were set by a
+   * state override. The approvals are still NOT on chain; the wallet must send them first.
+   */
+  | { status: 'OK_WITH_ASSUMED_APPROVALS'; assumed: CompiledPurchase['approvals']; overrides: { token: Hex; slot: Hex; layout: 'solidity' | 'vyper' }[] }
+  /** `assumeApprovals` only: the allowance storage of a token could not be located and verified; nothing was assumed. */
+  | { status: 'APPROVAL_OVERRIDE_UNAVAILABLE'; missing: CompiledPurchase['approvals'] }
   | { status: 'INSUFFICIENT_BALANCE'; balanceRaw: bigint; requiredRaw: bigint }
   | { status: 'REVERTED'; reason: string };
 
@@ -401,6 +410,46 @@ export interface SimulateBagOptions {
   client: SimulationClient;
   /** Optional local age limit from quote.requestedAtMs, independent of the provider's deadline. */
   maxQuoteAgeMs?: number;
+  /**
+   * Read-only pre-flight for a wallet that has not approved yet: when allowances are missing, locate each token's
+   * allowance slot (standard Solidity or Vyper mapping layout, base slots 0–20), VERIFY it by reading
+   * `allowance(owner, spender)` under the override, then eth_call the purchase with the overrides. Nothing is
+   * written anywhere. A token whose slot cannot be verified yields APPROVAL_OVERRIDE_UNAVAILABLE, never a guess.
+   */
+  assumeApprovals?: boolean;
+}
+
+const MAX_ALLOWANCE_SLOT = 20;
+const ALLOWANCE_ABI = [{ type: 'function', name: 'allowance', stateMutability: 'view', inputs: [{ type: 'address' }, { type: 'address' }], outputs: [{ type: 'uint256' }] }] as const;
+
+function allowanceSlot(layout: 'solidity' | 'vyper', base: number, owner: Hex, spender: Hex): Hex {
+  const word = (t: 'address' | 'uint256' | 'bytes32', v: unknown) => ({ t, v });
+  const enc = (a: ReturnType<typeof word>, b: ReturnType<typeof word>) =>
+    keccak256(encodeAbiParameters([{ type: a.t }, { type: b.t }], [a.v, b.v] as never));
+  if (layout === 'solidity') {
+    const inner = enc(word('address', owner), word('uint256', BigInt(base)));
+    return enc(word('address', spender), word('bytes32', inner));
+  }
+  const inner = enc(word('uint256', BigInt(base)), word('address', owner));
+  return enc(word('bytes32', inner), word('address', spender));
+}
+
+/** Finds and verifies the storage slot holding allowance(owner, spender) of `token`; null when not found. */
+async function locateAllowanceSlot(client: SimulationClient, token: Hex, owner: Hex, spender: Hex, value: bigint): Promise<{ slot: Hex; layout: 'solidity' | 'vyper' } | null> {
+  const data = encodeFunctionData({ abi: ALLOWANCE_ABI, functionName: 'allowance', args: [owner, spender] });
+  const valueHex = ('0x' + value.toString(16).padStart(64, '0')) as Hex;
+  for (const layout of ['solidity', 'vyper'] as const) {
+    for (let base = 0; base <= MAX_ALLOWANCE_SLOT; base++) {
+      const slot = allowanceSlot(layout, base, owner, spender);
+      try {
+        const r = (await client.call({ to: token, data, stateOverride: [{ address: token, stateDiff: [{ slot, value: valueHex }] }] })) as { data?: Hex };
+        if (r?.data && decodeFunctionResult({ abi: ALLOWANCE_ABI, functionName: 'allowance', data: r.data }) === value) return { slot, layout };
+      } catch {
+        // not this slot, or the RPC refused the override: keep looking; nothing is assumed
+      }
+    }
+  }
+  return null;
 }
 
 const ERC20_READ_ABI = [
@@ -462,7 +511,28 @@ export async function simulateBag(compiled: CompiledPurchase, options: SimulateB
     const allowance = BigInt((await client.readContract({ address: a.token, abi: ERC20_READ_ABI, functionName: 'allowance', args: [signer, a.spender] })) as bigint);
     if (allowance < a.amountRaw) missing.push(a);
   }
-  if (missing.length > 0) return expired() ?? { status: 'NEEDS_APPROVAL', missing };
+  if (missing.length > 0 && !options.assumeApprovals) return expired() ?? { status: 'NEEDS_APPROVAL', missing };
+  if (missing.length > 0) {
+    const overrides: { token: Hex; slot: Hex; layout: 'solidity' | 'vyper' }[] = [];
+    for (const a of missing) {
+      const found = await locateAllowanceSlot(client, a.token, signer, a.spender, a.amountRaw);
+      if (!found) return expired() ?? { status: 'APPROVAL_OVERRIDE_UNAVAILABLE', missing };
+      overrides.push({ token: a.token, ...found });
+    }
+    const beforeAssumed = expired();
+    if (beforeAssumed) return beforeAssumed;
+    const byToken = new Map<Hex, { slot: Hex; value: Hex }[]>();
+    missing.forEach((a, i) => byToken.set(a.token, [...(byToken.get(a.token) ?? []), { slot: overrides[i].slot, value: ('0x' + a.amountRaw.toString(16).padStart(64, '0')) as Hex }]));
+    try {
+      await client.call({
+        account: signer, to: compiled.transaction.to, data: compiled.transaction.data, value: compiled.transaction.value,
+        stateOverride: [...byToken].map(([address, stateDiff]) => ({ address, stateDiff })),
+      });
+      return expired() ?? { status: 'OK_WITH_ASSUMED_APPROVALS', assumed: missing, overrides };
+    } catch (e) {
+      return expired() ?? { status: 'REVERTED', reason: ((e as { shortMessage?: string }).shortMessage ?? (e as Error).message ?? String(e)).split('\n')[0] };
+    }
+  }
 
   const beforeCall = expired();
   if (beforeCall) return beforeCall;

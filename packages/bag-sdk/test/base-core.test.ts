@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { keccak256 } from 'viem';
+import { decodeFunctionData, encodeAbiParameters as enc, encodeFunctionResult, keccak256, keccak256 as k256 } from 'viem';
 import {
   BASE_PHASE1_REVIEWED_ASSETS,
   CHAIN_PROFILES,
@@ -339,5 +339,81 @@ describe('receipt verification on Base (DELIVERY_LOG, no tracing RPC)', () => {
     const c = await compile(USDC, WETH, BigInt(2_000_000));
     const { client } = receiptChain(c, { chainId: 4663 });
     expect(await verifyPurchaseReceipt(c, { client, transactionHash: HASH, minimumReceived: [{ token: WETH, amountRaw: BigInt(1) }], verification: 'DELIVERY_LOG' })).toMatchObject({ status: 'FAILED', issues: [{ code: 'RPC_CHAIN_MISMATCH' }] });
+  });
+});
+
+// ------------- simulation without a sent approval (assumeApprovals) ----------
+
+
+const ALLOWANCE = [{ type: 'function', name: 'allowance', stateMutability: 'view', inputs: [{ type: 'address' }, { type: 'address' }], outputs: [{ type: 'uint256' }] }] as const;
+type Override = { address: Hex; stateDiff: { slot: Hex; value: Hex }[] }[] | undefined;
+
+/** A token whose allowance mapping sits at `base` with the given layout; the purchase needs that allowance. */
+function overrideChain(o: { layout: 'solidity' | 'vyper' | 'none'; base: number; token: Hex; owner: Hex; spender: Hex; need: bigint; revertWith?: string }): SimulationClient & { calls: number } {
+  const slot = (): Hex | null => {
+    if (o.layout === 'none') return null;
+    if (o.layout === 'solidity') {
+      const inner = k256(enc([{ type: 'address' }, { type: 'uint256' }], [o.owner, BigInt(o.base)]));
+      return k256(enc([{ type: 'address' }, { type: 'bytes32' }], [o.spender, inner]));
+    }
+    const inner = k256(enc([{ type: 'uint256' }, { type: 'address' }], [BigInt(o.base), o.owner]));
+    return k256(enc([{ type: 'bytes32' }, { type: 'address' }], [inner, o.spender]));
+  };
+  const allowanceUnder = (ov: Override) => {
+    const s = slot();
+    const hit = ov?.find((x) => x.address.toLowerCase() === o.token.toLowerCase())?.stateDiff.find((d) => d.slot === s);
+    return hit ? BigInt(hit.value) : BigInt(0);
+  };
+  const client = {
+    calls: 0,
+    getChainId: async () => BASE,
+    getCode: async () => '0x60' as Hex,
+    getBalance: async () => BigInt(10) ** BigInt(18),
+    readContract: async ({ functionName }: { functionName: string }) => (functionName === 'balanceOf' ? BigInt(10) ** BigInt(20) : BigInt(0)),
+    call: async (args: { to: Hex; data: Hex; stateOverride?: Override }) => {
+      client.calls++;
+      if (args.to.toLowerCase() === o.token.toLowerCase()) {
+        const { functionName } = decodeFunctionData({ abi: ALLOWANCE, data: args.data });
+        if (functionName !== 'allowance') throw new Error('unexpected');
+        return { data: encodeFunctionResult({ abi: ALLOWANCE, functionName: 'allowance', result: allowanceUnder(args.stateOverride) }) };
+      }
+      if (allowanceUnder(args.stateOverride) < o.need) throw new Error('execution reverted: ERC20: transfer amount exceeds allowance');
+      if (o.revertWith) throw new Error(o.revertWith);
+      return { data: '0x' };
+    },
+  };
+  return client as unknown as SimulationClient & { calls: number };
+}
+
+describe('simulateBag assumeApprovals: the swap itself, without sending an approval', () => {
+  const amount = BigInt(2_000_000);
+
+  it('unchanged without the option: NEEDS_APPROVAL', async () => {
+    const c = await compile(USDC, WETH, amount);
+    expect((await simulateBag(c, { client: overrideChain({ layout: 'solidity', base: 10, token: USDC, owner: SIGNER, spender: PROXY, need: amount }) })).status).toBe('NEEDS_APPROVAL');
+  });
+
+  it.each([['solidity', 10], ['solidity', 3], ['vyper', 4]] as const)('finds and verifies a %s allowance mapping at slot %i, then simulates the purchase', async (layout, base) => {
+    const c = await compile(USDC, WETH, amount);
+    const r = await simulateBag(c, { client: overrideChain({ layout, base, token: USDC, owner: SIGNER, spender: PROXY, need: amount }), assumeApprovals: true });
+    expect(r).toMatchObject({ status: 'OK_WITH_ASSUMED_APPROVALS', assumed: [{ token: USDC, spender: PROXY, amountRaw: amount }], overrides: [{ token: USDC, layout }] });
+  });
+
+  it('a token whose allowance storage cannot be verified is APPROVAL_OVERRIDE_UNAVAILABLE — never a guessed OK', async () => {
+    const c = await compile(USDC, WETH, amount);
+    const client = overrideChain({ layout: 'none', base: 0, token: USDC, owner: SIGNER, spender: PROXY, need: amount });
+    expect(await simulateBag(c, { client, assumeApprovals: true })).toMatchObject({ status: 'APPROVAL_OVERRIDE_UNAVAILABLE' });
+    expect(client.calls).toBe(42); // bounded search: 21 slots × 2 layouts, no purchase call
+  });
+
+  it('a purchase that reverts even with the allowance in place is REVERTED', async () => {
+    const c = await compile(USDC, CBBTC, amount);
+    const r = await simulateBag(c, { client: overrideChain({ layout: 'solidity', base: 9, token: USDC, owner: SIGNER, spender: PROXY, need: amount, revertWith: 'execution reverted: min out' }), assumeApprovals: true });
+    expect(r).toMatchObject({ status: 'REVERTED', reason: expect.stringContaining('min out') });
+  });
+
+  it('native ETH needs no approval: plain OK', async () => {
+    const c = await compile(NATIVE_TOKEN as Hex, USDC, BigInt(10) ** BigInt(15));
+    expect(await simulateBag(c, { client: simChain(), assumeApprovals: true })).toEqual({ status: 'OK' });
   });
 });
