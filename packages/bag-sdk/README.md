@@ -242,6 +242,53 @@ Consequences:
 - `0x0000000000000000000000000000000000000000` is the native asset.
 - `decimals` is hashed. `validateBag` compares it with the token when you pass `tokens`, for example from `readTokenDecimals(definition, clientFor)`. Without `tokens` it warns `DECIMALS_NOT_CHECKED`; it never claims a check it did not do.
 
+### Chain profiles, token recognition and asset screening (0.4.0 candidate)
+
+These three are separate on purpose. **Recognising a token does not mean it is safe or swappable.**
+
+- **`getChainProfile('base' | 8453)`** returns facts, not permissions:
+  - native coin;
+  - wrapped native;
+  - settlement stablecoin;
+  - which receipt modes can work on the chain.
+
+  On Base, `receipts` is `{ deliveryLog: true, singleTransactionBlock: false, indexedReader: null }`: use
+  `DELIVERY_LOG`. Profiles exist for `base` and `robinhood`. Composer deployment pins are **not** in profiles; they
+  stay caller-supplied and reviewed per chain.
+- **`inspectToken({ chainId, address, client })`** (`@bagprotocol/sdk/evm`) recognises any address by chain id and
+  address. It returns one of:
+
+  | Result | Meaning |
+  |---|---|
+  | `NATIVE` | The native-coin sentinel |
+  | `ERC20` | Has code and answers `decimals` (0–36), `totalSupply` and `balanceOf`; also returns `symbol`/`name` when readable |
+  | `NOT_A_CONTRACT` | No code at the address |
+  | `NOT_ERC20` | Code, but the ERC-20 reads failed |
+
+  A client on another chain is `CHAIN_MISMATCH`.
+- **`screenPurchaseAssets({ chainId, inputToken, outputTokens, registry, allowUnreviewed? })`** decides with a
+  registry **you** own (`createAssetCapabilityRegistry([...])`):
+
+  | Class | Decision |
+  |---|---|
+  | `STANDARD_ERC20` | Allowed |
+  | `RESTRICTED_TRANSFER` (e.g. Coinbase B20 tokenized stocks) | Refused |
+  | `PERMISSIONED` (e.g. KYC-gated dShares) | Refused |
+  | Not in the registry | Refused as `UNREVIEWED`, unless you pass `allowUnreviewed: true`; still labelled `UNREVIEWED` |
+
+  Restricted and permissioned classes need an issuer-specific adapter, which does not exist yet. Entries are per
+  chain.
+
+`BASE_PHASE1_REVIEWED_ASSETS` holds three reviewed Base assets: native USDC, WETH and cbBTC. They are a starting
+test matrix, not the supported list. Extend it with your own reviewed entries.
+
+Live, read-only check of the Base matrix (ETH→USDC, USDC→WETH, USDC→cbBTC, WETH→USDC). It runs recognition,
+screening, balance and allowance reads, compile with delivery proof, and simulation; nothing is signed or sent:
+
+```bash
+RPC_URL=… LIFI_API_KEY=… COMPOSER_FACTORY=0x… COMPOSER_FACTORY_CODE_HASH=0x… npx tsx packages/bag-sdk/examples/base-phase1-check.ts <signer address>
+```
+
 ## Strict parsing
 
 `parseBag` rejects each of these instead of guessing:

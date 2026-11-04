@@ -5,6 +5,17 @@ export { BagSdkError, getSdkErrorInfo, SDK_ERROR_MESSAGES, type BagSdkErrorCode,
 // (@bagprotocol/sdk/lifi). The core depends on viem only. Spec: ../README.md.
 
 export { BAG_V1_CHAINS, BAG_V1_CHAIN_SLUGS, chainIdOf, isBagChain, isNativeToken, NATIVE_TOKEN, normalizeAddress, type BagChain } from './chains';
+export { CHAIN_PROFILES, getChainProfile, type ChainProfile, type ChainTokenRef } from './chain-profiles';
+export {
+  BASE_PHASE1_REVIEWED_ASSETS,
+  createAssetCapabilityRegistry,
+  screenPurchaseAssets,
+  type AssetCapabilityEntry,
+  type AssetCapabilityRegistry,
+  type AssetClass,
+  type AssetDecision,
+  type AssetScreening,
+} from './asset-capabilities';
 export {
   BAG_JSON_FORMAT_VERSION,
   BAG_JSON_HASH_DOMAIN,

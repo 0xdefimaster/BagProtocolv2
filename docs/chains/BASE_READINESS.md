@@ -81,6 +81,45 @@ The bytecode comparison masks:
 `contracts/test/ChainReadinessArtifacts.test.ts` checks this against real compiled artifacts and code deployed on
 the in-process EVM, and includes a tampered-byte negative.
 
+## Phase 1: standard EVM assets (test matrix)
+
+Phase 1 is limited to standard EVM assets:
+- native ETH;
+- WETH `0x4200…0006`;
+- native USDC `0x8335…2913`;
+- cbBTC `0xcbB7…33Bf`.
+
+These four are the **starting test matrix, not the supported set.** Any ERC-20 is recognised by chain id + address
+(`inspectToken`). Whether it may be bought is a separate, reviewed decision (`screenPurchaseAssets` with a
+caller-owned registry). Route availability and liquidity are the provider's quote; price sources are separate again.
+
+| Flow | Offline test (`packages/bag-sdk/test/base-core.test.ts`) | Live, read-only (`examples/base-phase1-check.ts`) |
+|---|---|---|
+| Chain detection, profile | Profile facts; Robinhood unchanged; wrong-chain client refused | RPC chain = 8453 |
+| Native ETH / ERC-20 handling | Native as transaction value, no approval; ERC-20 via an exact approval to the proxy | Same, per scenario |
+| Token metadata and contract validation | `ERC20` / `NOT_A_CONTRACT` / `NOT_ERC20`; bad decimals; bytes32 symbol | `inspectToken` on each input and output |
+| Balance and allowance | `INSUFFICIENT_BALANCE`, `NEEDS_APPROVAL` | Signer's balance and allowance to the proxy |
+| LI.FI quote and compile | All 4 scenarios with delivery proof; untrusted target or spender refused; another chain's trust refused | Real Composer compile with the Base pin |
+| Simulation | OK, reverted, target without code, wrong chain | `eth_call` from the signer |
+| Receipt and balance-delta verification | `DELIVERY_LOG` VERIFIED for all 4; below minimum FAILED; reverted FAILED; missing log INDETERMINATE; EIP-7702 send INDETERMINATE; other-chain RPC FAILED | The 2026-11-04 purchase (gate D) was verified live; re-check it with the starter's `npm run verify` |
+
+Run the live check yourself, read only:
+
+```bash
+npx tsx packages/bag-sdk/examples/base-phase1-check.ts <signer>
+```
+
+It needs `RPC_URL`, `LIFI_API_KEY`, `COMPOSER_FACTORY` and `COMPOSER_FACTORY_CODE_HASH`.
+
+### Phase 2 (separate): tokenized stocks / RWA
+
+Coinbase B20 tokens and Dinari dShares are **not** part of Base Core. In the asset registry they are
+`RESTRICTED_TRANSFER` / `PERMISSIONED`, and `screenPurchaseAssets` refuses them even when unreviewed tokens are
+allowed. Enabling them needs an issuer adapter with:
+- transfer-restriction and eligibility checks;
+- a price source such as Chainlink;
+- its own tests and review.
+
 ## Gate B: deployment configuration (no addresses invented)
 
 | Gate | Contract | Script | Inputs | Needed for |
