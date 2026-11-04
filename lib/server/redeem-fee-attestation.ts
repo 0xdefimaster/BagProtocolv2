@@ -2,10 +2,13 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { privateKeyToAccount } from 'viem/accounts';
 import { computeOnChainBagId } from '@/lib/domain/basket-protocol/onchain';
 import { computeB0Fee, decimalToRawCeil, feeBasisFromPositionPnl } from '@/lib/domain/basket-protocol/redeem/performance-fee-b0';
-import { FEE_REDEEM_MAX_PRICE_DEVIATION_BPS, referenceValueRaw, selectRedeemLegQuote, type TierQuote } from '@/lib/domain/basket-protocol/redeem/redeem-quote-quality';
+import { referenceValueRaw, selectRedeemLegQuote, type TierQuote } from '@/lib/domain/basket-protocol/redeem/redeem-quote-quality';
 import { assetIdentityKey } from '@/lib/domain/basket-protocol/asset-identity';
 import { getAssetsByIdentities } from '@/lib/server/asset-repo';
 import { getPriceProvider } from '@/lib/server/price-provider';
+import { salePriceDeviationLimit, salePricePolicyFromEnv, SalePricePolicyConfigError, type SalePricePolicy } from '@/lib/domain/basket-protocol/redeem/sale-price-confidence';
+import type { PriceProvider } from '@/lib/domain/basket-protocol/pricing/provider';
+import type { AssetIdentity } from '@/types/basket-protocol';
 import { computePositionPnl } from '@/lib/domain/basket-protocol/accounting/position-pnl';
 import { ROBINHOOD_CHAIN_ID, ROBINHOOD_REWARD_TOKEN, DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
 import { feeRedemptionPath } from '@/lib/server/fee-redemption-path';
@@ -107,6 +110,46 @@ export class PriceUnavailableForSaleError extends Error {
     super(`No verified price for ${token} right now (${detail}); the sale price cannot be checked. Nothing was signed.`);
     this.name = 'PriceUnavailableForSaleError';
   }
+}
+
+/**
+ * The fee-sale policy from the environment (sale-price-confidence.ts). An invalid value refuses the sale as
+ * "price unavailable" rather than falling back to a wider default.
+ */
+export function feeSalePricePolicy(token: string): SalePricePolicy {
+  try {
+    return salePricePolicyFromEnv();
+  } catch (e) {
+    if (e instanceof SalePricePolicyConfigError) throw new PriceUnavailableForSaleError(token, `sale price policy misconfigured: ${e.message}`);
+    throw e;
+  }
+}
+
+/**
+ * A fee-paying sale leg's reference price and the deviation band it earns (sale-price-confidence.ts). Fails closed:
+ * a source error (including PriceSourceDisagreementError), a missing/low confidence or a stale/invalid timestamp is a
+ * PriceUnavailableForSaleError — the caller then records no plan and signs nothing.
+ */
+export async function referencePriceForFeeSale(
+  priceProvider: PriceProvider,
+  asset: AssetIdentity,
+  token: string,
+  policy: SalePricePolicy,
+  now: Date = new Date()
+): Promise<{ priceUsd: string; maxDeviationBps: number; tier: 'VERIFIED' | 'REDUCED_CONFIDENCE'; breakGlass: boolean }> {
+  let price;
+  try {
+    price = await priceProvider.getPrice(asset);
+  } catch (e) {
+    throw new PriceUnavailableForSaleError(token, (e as Error).message);
+  }
+  const decision = salePriceDeviationLimit(price, policy, now);
+  if (!decision.ok) throw new PriceUnavailableForSaleError(token, `reference price refused: ${decision.reason}`);
+  if (decision.breakGlass) {
+    // Operator override in force (FEE_SALE_REDUCED_CONFIDENCE_BREAK_GLASS=1): never silent.
+    console.warn(`[fee-sale] break-glass reduced-confidence band ${decision.maxDeviationBps} bps used for ${token}`);
+  }
+  return { priceUsd: price.price, maxDeviationBps: decision.maxDeviationBps, tier: decision.tier, breakGlass: decision.breakGlass };
 }
 
 /** The sale's quote expired before the fee was attested; nothing is signed. */
@@ -284,7 +327,7 @@ export async function signFeeAttestation(admin: SupabaseClient, userId: string, 
     }
 
     // Price quality (redeem-quote-quality.ts): quote EVERY fee tier, take the best, and refuse it if it is more
-    // than FEE_REDEEM_MAX_PRICE_DEVIATION_BPS below the leg's value at BAG's verified price. A minimum output only
+    // than the band sale-price-confidence.ts allows below the leg's value at BAG's reference price. A minimum output only
     // protects against the price moving after this quote, not against the quote itself being a bad price (e.g. the
     // only pool being near-empty). No verified price → nothing is signed.
     const tierQuotes: TierQuote[] = [];
@@ -299,17 +342,13 @@ export async function signFeeAttestation(admin: SupabaseClient, userId: string, 
     }
     const decimals = decimalsByKey.get(assetIdentityKey(step.inputAsset));
     if (decimals === undefined) throw new PriceUnavailableForSaleError(inputToken, 'asset not in the registry');
-    let priceUsd: string;
-    try {
-      priceUsd = (await priceProvider.getPrice(step.inputAsset)).price;
-    } catch (e) {
-      throw new PriceUnavailableForSaleError(inputToken, (e as Error).message);
-    }
+    // The band depends on how well the reference is verified (sale-price-confidence.ts); no usable reference → nothing signed.
+    const { priceUsd, maxDeviationBps } = await referencePriceForFeeSale(priceProvider, step.inputAsset, inputToken, feeSalePricePolicy(inputToken));
     const referenceRaw = referenceValueRaw(inputAmount, decimals, priceUsd, ROBINHOOD_REWARD_TOKEN.decimals);
     if (referenceRaw <= BigInt(0)) throw new PriceUnavailableForSaleError(inputToken, 'amount too small to value');
-    const selection = selectRedeemLegQuote(tierQuotes, referenceRaw, FEE_REDEEM_MAX_PRICE_DEVIATION_BPS);
+    const selection = selectRedeemLegQuote(tierQuotes, referenceRaw, maxDeviationBps);
     if (!selection.ok && selection.reason === 'NO_QUOTE') throw new NoLiquidityError(inputToken, ROBINHOOD_REWARD_TOKEN.address);
-    if (!selection.ok) throw new ExecutionPriceTooLowError(inputToken, selection.deviationBps, FEE_REDEEM_MAX_PRICE_DEVIATION_BPS);
+    if (!selection.ok) throw new ExecutionPriceTooLowError(inputToken, selection.deviationBps, maxDeviationBps);
     const resolvedFeeTier = selection.feeTier;
     const expectedOut = selection.quoteRaw;
 

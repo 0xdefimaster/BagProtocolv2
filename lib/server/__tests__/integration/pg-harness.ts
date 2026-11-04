@@ -178,6 +178,12 @@ class ShimQuery {
     this.maxRows = n;
     return this;
   }
+  private rangeRows: [number, number] | null = null;
+  /** `range(from, to)`, inclusive, applied after ordering, like PostgREST; `count: 'exact'` still counts every match. */
+  range(from: number, to: number) {
+    this.rangeRows = [from, to];
+    return this;
+  }
   eq(column: string, value: unknown) {
     this.filters.push([filterColumn(column), value, '=']);
     return this;
@@ -244,7 +250,11 @@ class ShimQuery {
   ): Promise<R1 | R2> {
     return this.run()
       .then(
-        (rows) => ({ data: this.maxRows === null ? rows : rows.slice(0, this.maxRows), error: null, count: this.withCount ? rows.length : null }),
+        (rows) => ({
+          data: this.rangeRows ? rows.slice(this.rangeRows[0], this.rangeRows[1] + 1) : this.maxRows === null ? rows : rows.slice(0, this.maxRows),
+          error: null,
+          count: this.withCount ? rows.length : null,
+        }),
         (err) => ({ data: null, error: toError(err), count: null })
       )
       .then(onfulfilled, onrejected);

@@ -132,6 +132,7 @@ always goes through `getPriceProvider()`.
 | `ROBINHOOD_CHAINLINK_MAX_AGE_SECONDS` | Default 300. Equity feeds may not update while markets are closed. |
 | `ROBINHOOD_PRICE_MAX_DEVIATION_BPS` | Default 200 |
 | `ROBINHOOD_API_MAX_AGE_SECONDS`, `ROBINHOOD_API_MAX_SPREAD_BPS` | Defaults 300 and 500 |
+| `FEE_SALE_REDUCED_CONFIDENCE_MAX_DEVIATION_BPS`, `FEE_SALE_REDUCED_CONFIDENCE_BREAK_GLASS`, `FEE_SALE_PRICE_MAX_AGE_SECONDS` | Fee-paying sales only. Defaults 100 (0..200; 201..499 only with break-glass `1`; never 500+) and 300 s. Only two source-qualified states are accepted: confidence 1 with `|verify:chainlink:<feed>:<n>bps` (500 bps band) and confidence 0.5 with `|verify:chainlink-unavailable` (the stricter band). Anything else, a stale price or disagreeing sources → no attestation. A fee sale therefore needs a `ROBINHOOD_CHAINLINK_FEEDS` entry for each stock token it sells (`scripts/check-fee-sale-feed-coverage.ts`). See `docs/release-notes/settlement-price-confidence.md`. |
 | `ROBINHOOD_PRICE_POOLS`, `ROBINHOOD_TWAP_WINDOW_SECONDS` | TWAP fallback for non-stock assets when LI.FI has no price. Pools configured for Stock Tokens are ignored. |
 
 ## Explicit assumptions and limits

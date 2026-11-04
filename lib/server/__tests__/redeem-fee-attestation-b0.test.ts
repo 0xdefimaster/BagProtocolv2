@@ -58,6 +58,8 @@ vi.mock('@/lib/blockchain/robinhood-uniswap-quoter', () => ({
 }));
 // Each leg sells 1000 units of a 0-decimal token at a verified $0.06 → a verified value of $60.
 let legPrice: string | Error = '0.06';
+// Extra fields on every leg's price (confidence, timestamp) — the default is a fresh, Chainlink-verified price.
+let legPriceFields: Record<string, unknown> = {};
 vi.mock('@/lib/server/asset-repo', () => ({
   getAssetsByIdentities: async (_admin: unknown, ids: { chain: string; address: string }[]) => ids.map((i) => ({ ...i, decimals: 0 })),
 }));
@@ -65,7 +67,7 @@ vi.mock('@/lib/server/price-provider', () => ({
   getPriceProvider: () => ({
     getPrice: async () => {
       if (legPrice instanceof Error) throw legPrice;
-      return { price: legPrice, quoteCurrency: 'USD', timestamp: '', source: 'test' };
+      return { price: legPrice, quoteCurrency: 'USD', timestamp: new Date().toISOString(), source: 'robinhood-api:prices:AMKR:mid×1.000000000000000000|verify:chainlink:0x00000000000000000000000000000000000c1a1e:0bps', confidence: 1, ...legPriceFields };
     },
   }),
 }));
@@ -109,6 +111,7 @@ beforeEach(() => {
   ledgerCalls.mockClear();
   tierQuote = () => BigInt(60_000_000);
   legPrice = '0.06';
+  legPriceFields = {};
 });
 
 describe('signFeeAttestation — B0 floor-based fee', () => {
@@ -206,6 +209,21 @@ describe('signFeeAttestation — B0 floor-based fee', () => {
       await expect(signFeeAttestation(admin, 'investor', intent.id)).rejects.toBeInstanceOf(ExecutionPriceTooLowError);
       tierQuote = () => BigInt(57_000_000); // exactly 5%
       await expect(signFeeAttestation(admin, 'investor', intent.id)).resolves.toMatchObject({ feeBreakdown: { method: 'B0_FLOOR' } });
+    });
+
+    it('Chainlink unavailable (confidence 0.5): the stricter 100 bps band — 3% below refused, 1% below passes', async () => {
+      legPriceFields = { confidence: 0.5, source: 'robinhood-api:prices:AMKR:mid×1.000000000000000000|verify:chainlink-unavailable' };
+      tierQuote = () => BigInt(58_200_000); // 3% below $60
+      await expect(signFeeAttestation(admin, 'investor', intent.id)).rejects.toMatchObject({ name: 'ExecutionPriceTooLowError', maxDeviationBps: 100 });
+      tierQuote = () => BigInt(59_400_000); // exactly 1%
+      await expect(signFeeAttestation(admin, 'investor', intent.id)).resolves.toBeDefined();
+    });
+
+    it('missing confidence or a stale price → nothing signed', async () => {
+      legPriceFields = { confidence: undefined };
+      await expect(signFeeAttestation(admin, 'investor', intent.id)).rejects.toThrow(/CONFIDENCE_MISSING/);
+      legPriceFields = { timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString() };
+      await expect(signFeeAttestation(admin, 'investor', intent.id)).rejects.toThrow(/PRICE_STALE/);
     });
 
     it('no verified price → the sale price cannot be checked → nothing signed', async () => {

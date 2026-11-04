@@ -16,14 +16,14 @@ describe('checkFeeRouterExecutability — the attestation rule: best tier, verif
     const q = quoter({ 3000: BigInt(99_000_000), 500: BigInt(99_420_000) });
     const r = await checkFeeRouterExecutability(input(q));
     expect(r).toMatchObject({ status: 'PASS', executable: true, reason: 'OK', feeTier: 500, tokenAmountRaw: (BigInt(5) * BigInt(10) ** BigInt(17)).toString(), quoteRaw: '99420000', referenceRaw: '100000000', deviationBps: 58, grossMinimumRaw: '98425800' });
-    expect(formatExecutabilityRow(r, 6)).toMatch(/^NVDA\s+PASS\s+0\.05%\s+\$100 sell\s+\$99\.42\s+\$100\.00\s+\$98\.43\s+YES\s+OK\s+0\.58% below verified$/);
+    expect(formatExecutabilityRow(r, 6)).toMatch(/^NVDA\s+PASS\s+0\.05%\s+\$100 sell\s+\$99\.42\s+\$100\.00\s+\$98\.43\s+YES\s+OK\s+0\.58% below reference\s+\[band 5%\]$/);
     expect(q).toHaveBeenCalledWith(expect.objectContaining({ amountIn: BigInt(5) * BigInt(10) ** BigInt(17) }));
   });
 
   it('UNSAFE: the live AAOI pattern — only a near-empty 1% pool quotes; refused, not signed', async () => {
     const r = await checkFeeRouterExecutability(input(quoter({ 10000: BigInt(180_000) }), { sizeUsd: 25 }));
     expect(r).toMatchObject({ status: 'UNSAFE', executable: false, reason: 'PRICE_DEVIATION', feeTier: 10000, deviationBps: 9928 });
-    expect(formatExecutabilityRow(r, 6)).toMatch(/UNSAFE\s+1%\s+\$25 sell\s+\$0\.18\s+\$25\.00\s+\$—\s+NO\s+PRICE_DEVIATION\s+99\.28% below verified$/);
+    expect(formatExecutabilityRow(r, 6)).toMatch(/UNSAFE\s+1%\s+\$25 sell\s+\$0\.18\s+\$25\.00\s+\$—\s+NO\s+PRICE_DEVIATION\s+99\.28% below reference\s+\[band 5%\]$/);
   });
 
   it('FAIL: no quote on any tier; no verified price (nothing is quoted then) · INDETERMINATE: RPC error (no result, not "impossible")', async () => {
@@ -37,8 +37,21 @@ describe('checkFeeRouterExecutability — the attestation rule: best tier, verif
     const r = await checkFeeRouterExecutability(input(broken));
     expect(r).toMatchObject({ status: 'INDETERMINATE', reason: 'RPC_ERROR' });
     const row = formatExecutabilityRow(r, 6);
-    expect(row).toContain('RPC_ERROR  (HTTP request failed.)');
+    expect(row).toContain('RPC_ERROR  [band 5%]  (HTTP request failed.)');
     expect(row).not.toContain('KEY');
+  });
+
+  it('the confidence policy decides the band: a reduced-confidence price uses its stricter band; a refused price is PRICE_POLICY_REFUSED', async () => {
+    const q = quoter({ 500: BigInt(97_000_000) }); // 3% below $100
+    const verified = await checkFeeRouterExecutability(input(q, { maxDeviationBps: 500, priceTier: 'VERIFIED' }));
+    expect(verified).toMatchObject({ status: 'PASS', maxDeviationBps: 500, priceTier: 'VERIFIED' });
+    const reduced = await checkFeeRouterExecutability(input(q, { maxDeviationBps: 100, priceTier: 'REDUCED_CONFIDENCE' }));
+    expect(reduced).toMatchObject({ status: 'UNSAFE', executable: false, reason: 'PRICE_DEVIATION', maxDeviationBps: 100, priceTier: 'REDUCED_CONFIDENCE' });
+    expect(formatExecutabilityRow(reduced, 6)).toContain('[band 1% REDUCED_CONFIDENCE]');
+    const q2 = quoter({ 500: BigInt(99_000_000) });
+    const refused = await checkFeeRouterExecutability(input(q2, { priceUsd: null, priceError: 'reference price refused: CONFIDENCE_MISSING' }));
+    expect(refused).toMatchObject({ status: 'FAIL', executable: false, reason: 'PRICE_POLICY_REFUSED', maxDeviationBps: null });
+    expect(q2).not.toHaveBeenCalled();
   });
 
   it('USDG itself is a no-swap leg', async () => {
