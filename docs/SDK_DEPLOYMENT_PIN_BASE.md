@@ -53,8 +53,8 @@ npx tsx -e "import('viem').then(async ({ createPublicClient, http, keccak256 }) 
 Expected:
 - `chain 8453`;
 - factory keccak `0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5`;
-- VM 1.2 keccak: to be recorded (Robinhood value for comparison:
-  `0x0d0f2d31c4ab65c4b5da60e68efc4d394891881f822943f60ae3c1266519bfb7`).
+- VM 1.2 keccak `0x0d0f2d31c4ab65c4b5da60e68efc4d394891881f822943f60ae3c1266519bfb7` (the same as on Robinhood
+  Chain).
 
 ## What it does not cover
 
@@ -69,7 +69,7 @@ These are accepted as the upstream dependency.
 
 | Field | Value |
 |---|---|
-| VM 1.2 keccak on Base | _pending_ |
+| VM 1.2 keccak on Base | `0x0d0f2d31c4ab65c4b5da60e68efc4d394891881f822943f60ae3c1266519bfb7` (block 53501473, public RPC, 2026-11-04): **identical to Robinhood** |
 | LI.FI confirmation that this is the production Composer factory on Base | _pending_ |
 | Approved by the maintainer | _pending_ |
 
