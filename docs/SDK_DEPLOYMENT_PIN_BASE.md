@@ -21,6 +21,9 @@ const baseComposer: ComposerDeployment = {
   separately below.
 - A separate review is still required. The reviewed object is the code on Base, and LI.FI's deployment policy can
   differ per chain.
+- LI.FI's own config change ([lifinance/contracts#2518](https://github.com/lifinance/contracts/pull/2518), merged
+  2026-10-02) names this factory and VM as Composer v1.2 for Base. The address `0xe174…fB35` that older notes cite
+  is the v1.0 factory, which v1.2 replaces.
 
 ## Evidence (2026-11-04, maintainer's machine, read only)
 
@@ -70,7 +73,7 @@ These are accepted as the upstream dependency.
 | Field | Value |
 |---|---|
 | VM 1.2 keccak on Base | `0x0d0f2d31c4ab65c4b5da60e68efc4d394891881f822943f60ae3c1266519bfb7` (block 53501473, public RPC, 2026-11-04): **identical to Robinhood** |
-| LI.FI confirmation that this is the production Composer factory on Base | _pending_ |
+| LI.FI source that this is the production Composer factory on Base | **Found (2026-11-04):** LI.FI's own repository, [lifinance/contracts#2518](https://github.com/lifinance/contracts/pull/2518), "whitelist the v1.2 Composer diamond proxies on 30 chains", merged into `main` as `ad11353` on 2026-10-02 by a LI.FI maintainer. Its table names ProxyFactory v1.2 `0xACEB3Bb6C75488b5b806B9de4dCF78814465BdaE` and VirtualMachine v1.2 `0xA9f22b951d5A9CBBD0eC8d2741EA44BFDD2D11fd` (v1.0 was factory `0xe174…fB35`, VM `0xb57C…cc6D`), "live at one address set on 31 mainnets", with `base` in the chain list. Both addresses equal this pin. Not checked: the docs.li.fi addresses page (unreachable from the review environment). |
 | Approved by the maintainer | _pending_ |
 
 After approval:
