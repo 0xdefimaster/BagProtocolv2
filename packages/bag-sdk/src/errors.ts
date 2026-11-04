@@ -32,6 +32,7 @@ export const SDK_ERROR_MESSAGES = Object.freeze({
   HTTP_RESPONSE_TOO_LARGE: 'The strategy response exceeds the byte limit.',
   HTTP_INVALID_UTF8: 'The strategy response is not valid UTF-8.',
   HTTP_BODY_READ_ERROR: 'The strategy response body could not be read.',
+  DCA_TERMS_INVALID: 'The DCA terms would be refused by the executor or are outside bag.json v1. Inspect the message.',
   UNKNOWN_ERROR: 'The operation failed. Inspect the failure privately without logging credentials.',
 } as const);
 

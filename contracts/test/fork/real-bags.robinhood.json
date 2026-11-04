@@ -1,0 +1,31 @@
+{
+  "status": "CANDIDATES — not evidence. contracts/test/fork/BagDcaRealBag.fork.test.ts re-verifies every value on a pinned Robinhood fork and fails if any does not hold.",
+  "sources": {
+    "bagFactory": "The address itself is NOT stored here: the deployment keeps FACTORY_ADDRESS_ROBINHOOD as a secret (Netlify scans the repo for its value). The test reads it from FACTORY_ADDRESS_ROBINHOOD (environment or .env.local) and requires keccak256(lowercase address bytes) to equal bagFactoryKeccak256, the hash of the candidate recorded on research branch claude/dca-keeper-evidence (fork-registry results.json, deployment.realContracts.BAG_FACTORY, 11231 bytes). It is also compared with BagExecutionRouter.bagFactory() when that is configured.",
+    "strategyRegistry": "docs/STRATEGY_REGISTRY_DESIGN.md §0 (deploy tx 0x453db80f…518e, block 85332074) and packages/bag-sdk/src/registry.ts",
+    "bags": "bag.json documents: 955df6e0 and a3caff05 from the same research branch (packages/bag-sdk/test/fixtures, commit 8de9070a); 170e5e72 (feetest) is packages/bag-sdk/test/fixtures/feetest.v1.bag.json on main, registered v1 per docs/STRATEGY_REGISTRY_DESIGN.md"
+  },
+  "bagFactoryKeccak256": "0x3a89aa6eb9eb40f772c339d8e9b4f867d5feffca72600da583ec2a09b912492b",
+  "strategyRegistry": "0x907cc27d644c8ea1c24b8320ad09ecf2819209a8",
+  "bags": [
+    {
+      "uuid": "955df6e0-b6ea-44ba-a5eb-1288a80c0a06",
+      "bagId": "0x37f16d57d87fcda8bc3c1863fc5b3d75fb7ad5e5ba89060ff20ce56b27be40eb",
+      "document": "fixtures/robinhood-955df6e0-b6ea-44ba-a5eb-1288a80c0a06.bag.json",
+      "registeredStrategy": null
+    },
+    {
+      "uuid": "a3caff05-d606-486b-959f-30865a4cbfa7",
+      "bagId": "0x72ec1d37c03f9bfb3dc369cf77f19841e7d0a7ca00ca3757605d97fb2f398cae",
+      "document": "fixtures/robinhood-a3caff05-d606-486b-959f-30865a4cbfa7.bag.json",
+      "registeredStrategy": { "version": 2, "definitionHash": "0x62e5dd238e967169064c3ccc5d34ed2c6829b3cbcb3119b76c4d3a88758e9f5a" }
+    },
+    {
+      "uuid": "170e5e72-d5d5-4f16-b180-24b3dc525b37",
+      "bagId": null,
+      "creatorCandidate": "0x49dadd8212128bdf6752351bf70f6a5d8b73fe46",
+      "document": "fixtures/robinhood-170e5e72-d5d5-4f16-b180-24b3dc525b37.bag.json",
+      "registeredStrategy": { "version": 1, "definitionHash": "0x089fc9ba2754f4180658c5f809986e606f8ec63d55430e3ab33da2046210a4fa" }
+    }
+  ]
+}

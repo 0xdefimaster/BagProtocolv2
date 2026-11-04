@@ -5,6 +5,7 @@ import { Pool, PoolClient, types } from 'pg';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { BasketRecipe, DEFAULT_REBALANCE_RULE, RecipeAsset } from '@/types/basket-protocol';
 import { createBag } from '@/lib/server/bag-repo';
+import { endPoolCompletely } from './pg-close';
 
 // -----------------------------------------------------------------------------
 // INTEGRATION-TEST HARNESS — a REAL PostgreSQL, no mocks of the database.
@@ -124,19 +125,17 @@ export async function createTestDatabase(
       }
     },
     async drop() {
-      await service.end();
-      await admin.end();
+      // Every client socket of both pools is closed before the drop (pg-close.ts explains why pool.end() alone is
+      // not enough). `with (force)` then only ends backends whose client has already gone, so no 57P01 reaches a
+      // live client; a leaked client keeps endPoolCompletely pending and fails the hook visibly.
+      await endPoolCompletely(service);
+      await endPoolCompletely(admin);
       const cleanup = new Pool({ connectionString: adminUrl, max: 1 });
-      // Pool.end() can resolve while a client is still closing its socket. Forcing the drop then
-      // terminates that client (57P01), and the dying client's 'error' event surfaces as an
-      // uncaught exception. Wait (bounded) until the database has no backends left first.
-      for (let i = 0; i < 50; i++) {
-        const { rows } = await cleanup.query('select count(*)::int as n from pg_stat_activity where datname = $1', [name]);
-        if (rows[0].n === 0) break;
-        await new Promise((r) => setTimeout(r, 100));
+      try {
+        await cleanup.query(`drop database if exists ${name} with (force)`);
+      } finally {
+        await endPoolCompletely(cleanup);
       }
-      await cleanup.query(`drop database if exists ${name} with (force)`);
-      await cleanup.end();
     },
   };
 }
