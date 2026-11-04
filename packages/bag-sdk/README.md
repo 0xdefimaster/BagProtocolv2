@@ -23,8 +23,8 @@ It needs no BAG frontend, server or database.
 | Capability | Ethereum | Base | Arbitrum | Robinhood Chain |
 |---|---|---|---|---|
 | bag.json parse, validate, normalize, hash | ✅ | ✅ | ✅ | ✅ |
-| StrategyRegistry verification | No registry deployment | No registry deployment | No registry deployment | ✅ |
-| Purchase compile (LI.FI Composer) | Not tested; needs a reviewed deployment pin | Not tested; needs a reviewed deployment pin | Not tested; needs a reviewed deployment pin | ✅ live (pin: `docs/SDK_DEPLOYMENT_PIN_ROBINHOOD.md`) |
+| StrategyRegistry verification | No registry deployment | ✅ registry deployed (2026-11-04, code matched); no strategy registered on Base yet | No registry deployment | ✅ |
+| Purchase compile (LI.FI Composer) | Not tested; needs a reviewed deployment pin | Pin observed, approval pending (`docs/SDK_DEPLOYMENT_PIN_BASE.md`); no live purchase yet | Not tested; needs a reviewed deployment pin | ✅ live (pin: `docs/SDK_DEPLOYMENT_PIN_ROBINHOOD.md`) |
 | Purchase receipt `VERIFIED` | Not qualified | Not qualified | Not qualified | ✅ live, with a tracing RPC on the qualified Nitro build |
 
 The core is chain-agnostic across these EVM chains. Execution and receipt evidence are added chain by chain:
@@ -373,6 +373,7 @@ from the JSON, you only verify what the JSON claims.
 | Chain | Chain id | StrategyRegistry | Deployed at block |
 |---|---|---|---|
 | robinhood | 4663 | `0x907cc27d644c8ea1c24b8320ad09ecf2819209a8` | 85332074 |
+| base | 8453 | `0xcad829dcc30fa88b3d57cc0a6fa32bd56c9a5920` | 53499552 |
 
 No other chain has a registry; there, verification needs an address you trust.
 

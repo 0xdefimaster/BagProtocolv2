@@ -1,9 +1,14 @@
 # Base (8453) readiness plan
 
-Status 2026-11-03: **NOT production-qualified.**
-- No BAG contract is deployed on Base.
-- No Composer pin has been reviewed for Base.
-- No live Base purchase has been verified.
+Status 2026-11-04: **NOT production-qualified.** `sdkPath = READ_ONLY_CHECKS_PASS` (maintainer's run, Alchemy Base RPC).
+- **A PASS:** chain 8453; WETH and native USDC metadata match.
+- **B-Core PASS:** StrategyRegistry deployed by the maintainer at `0xcad829dcc30fa88b3d57cc0a6fa32bd56c9a5920`
+  (block 53499552, tx `0x20a396dc59dc8d981cfab567f0deed3cf2ea87946bf4fc68ae83a5990004e388`); runtime code equals this
+  repository's artifact exactly. No strategy is registered on it yet.
+- **C PASS (pin observed, not yet approved):** the Composer factory on Base has the same address and code as the
+  approved Robinhood pin. LI.FI confirmation and maintainer approval are pending (`docs/SDK_DEPLOYMENT_PIN_BASE.md`).
+- **B-App:** not deployed (not needed for the SDK path).
+- **D, E:** no live Base purchase yet.
 
 The `base` entries in `lib/config/chains.ts`, in `BAG_V1_CHAINS`, and in the deploy scripts' chain lists are
 configuration only. They are not evidence. A chain is production-qualified only when its own deployment,
@@ -39,10 +44,10 @@ Base result is recorded here yet.
 
 | Gate | Holds when | How it is checked | Status |
 |---|---|---|---|
-| **A** Chain and asset identity | The RPC is 8453; WETH `0x4200…0006` is `WETH`/18; native USDC `0x8335…2913` is `USDC`/6; every strategy asset is checked with `readTokenDecimals` | `verify-chain-readiness.ts base` (A checks) | Config IMPLEMENTED; NOT VERIFIED live |
-| **B-Core** StrategyRegistry | Deployed by the owner; `STRATEGY_REGISTRY_ADDRESS_BASE` set; live runtime equals the artifact | `deploy-strategy-registry.ts base`, then `verify-chain-readiness.ts base` (B_CORE checks) | NOT DEPLOYED |
+| **A** Chain and asset identity | The RPC is 8453; WETH `0x4200…0006` is `WETH`/18; native USDC `0x8335…2913` is `USDC`/6; every strategy asset is checked with `readTokenDecimals` | `verify-chain-readiness.ts base` (A checks) | **PASS** (2026-11-04) |
+| **B-Core** StrategyRegistry | Deployed by the owner; `STRATEGY_REGISTRY_ADDRESS_BASE` set; live runtime equals the artifact | `deploy-strategy-registry.ts base`, then `verify-chain-readiness.ts base` (B_CORE checks) | **DEPLOYED, PASS** (2026-11-04): `0xcad829dc…5920`, exact bytecode match |
 | **B-App** BagFactory + StrategyCompositions | Needed **only if the BAG application itself** runs on Base. Deployed; `FACTORY_ADDRESS_BASE` / `STRATEGY_COMPOSITIONS_ADDRESS_BASE` set; runtime equals the artifact with immutables masked; `StrategyCompositions.registry()` is this chain's registry | Deploy scripts take `base`. Then the B_APP checks | NOT DEPLOYED (not needed for the SDK path) |
-| **C** Composer trust | A **Base-specific** pin (factory and runtime code hash) is confirmed with LI.FI and reviewed in a separate `docs/SDK_DEPLOYMENT_PIN_BASE.md`; the live code hash equals the pin; a test signer's predicted proxy is unused, or owned by the signer and the pinned factory | `COMPOSER_FACTORY_BASE` / `COMPOSER_FACTORY_CODE_HASH_BASE` / `COMPOSER_TEST_SIGNER`, then the C checks | NOT REVIEWED |
+| **C** Composer trust | A **Base-specific** pin (factory and runtime code hash) is confirmed with LI.FI and reviewed in a separate `docs/SDK_DEPLOYMENT_PIN_BASE.md`; the live code hash equals the pin; a test signer's predicted proxy is unused, or owned by the signer and the pinned factory | `COMPOSER_FACTORY_BASE` / `COMPOSER_FACTORY_CODE_HASH_BASE` / `COMPOSER_TEST_SIGNER`, then the C checks | Checks **PASS** (2026-11-04); pin approval pending |
 | **D** Execution and receipt proof | A real Base purchase compiled by the SDK with the Base pin is signed by the owner's wallet, and `verifySubmitted` returns `VERIFIED` | Owner step; the script only probes the RPC (`debug_traceCall`) | NOT VERIFIED |
 | **E** Independent consumer | The starter (`examples/sdk-consumer`), installed from the npm package or the tarball outside the repository, prepares and verifies the Base purchase with no BAG app, backend or database | Owner step | NOT VERIFIED |
 

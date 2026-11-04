@@ -30,6 +30,7 @@ const baseComposer: ComposerDeployment = {
 | Factory code on Base (public RPC) | 4474 bytes, keccak `0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5` |
 | Gate C, `COMPOSER_FACTORY_CODE_HASH` | PASS: live hash = pin |
 | Gate C, `COMPOSER_PROXY_PREDICTION`, signer `0xb193DE199EeB9bd1143607a11AD00999Ceb956b8` (P1 test wallet) | PASS: proxy `0xAd834B4De0295622A4042a3CaA62CE5b961578E7` is deployed; `owner()` = signer; `factory()` = pinned factory |
+| Gate B-Core (same run, signer `0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46`) | PASS: StrategyRegistry `0xcad829dcc30fa88b3d57cc0a6fa32bd56c9a5920` (block 53499552) exact match; that signer's Base proxy `0x0a6BAEfc776477C494aB8b0a288881a7B72196F7` not deployed yet (first purchase targets the factory) |
 | Gate D probe | `debug_traceCall` refused by the Alchemy Base RPC. Receipt verification on Base therefore uses SDK 0.4 `DELIVERY_LOG` |
 
 ## What the SDK checks with it

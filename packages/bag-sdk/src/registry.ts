@@ -35,10 +35,12 @@ export interface StrategyRegistryDeployment {
 
 /**
  * Known StrategyRegistry deployments, by v1 chain. A chain without an entry has no registry: verification there
- * needs an address the caller trusts. Robinhood Chain: deployed by BAG at block 85332074.
+ * needs an address the caller trusts. Robinhood Chain: deployed by BAG at block 85332074. Base: deployed by BAG at
+ * block 53499552 (tx 0x20a396dc…e388); its runtime code was checked to equal this repository's artifact exactly.
  */
 export const STRATEGY_REGISTRY_DEPLOYMENTS: Readonly<Partial<Record<BagChain, StrategyRegistryDeployment>>> = Object.freeze({
   robinhood: Object.freeze({ chainId: BAG_V1_CHAINS.robinhood, address: '0x907cc27d644c8ea1c24b8320ad09ecf2819209a8' as Hex, deployedAtBlock: 85332074 }),
+  base: Object.freeze({ chainId: BAG_V1_CHAINS.base, address: '0xcad829dcc30fa88b3d57cc0a6fa32bd56c9a5920' as Hex, deployedAtBlock: 53499552 }),
 });
 
 /** offChainRef of a BAG strategy UUID: the 16 UUID bytes, left-padded to bytes32. */
