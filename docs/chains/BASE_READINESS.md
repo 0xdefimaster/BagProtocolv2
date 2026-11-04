@@ -87,9 +87,15 @@ Phase 1 is limited to standard EVM assets:
 - native ETH;
 - WETH `0x4200…0006`;
 - native USDC `0x8335…2913`;
-- cbBTC `0xcbB7…33Bf`.
+- cbBTC `0xcbB7…33Bf`;
+- cbETH `0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22` (Coinbase; address from https://www.coinbase.com/cbeth);
+- wstETH `0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452` (Lido, bridged `ERC20Bridged` behind an upgradeable proxy;
+  address from https://docs.lido.fi/deployed-contracts/).
 
-These four are the **starting test matrix, not the supported set.** Any ERC-20 is recognised by chain id + address
+cbETH and wstETH were added on 2026-11-04 after the live check below. Both are non-rebasing (value accrues through
+the exchange rate), so the delivered balance delta equals the minted amount.
+
+These are the **starting test matrix, not the supported set.** Any ERC-20 is recognised by chain id + address
 (`inspectToken`). Whether it may be bought is a separate, reviewed decision (`screenPurchaseAssets` with a
 caller-owned registry). Route availability and liquidity are the provider's quote; price sources are separate again.
 
@@ -121,6 +127,27 @@ Nothing was signed or sent.
 - **Simulation:** ETH → USDC returned `OK`, a full `eth_call`. The three ERC-20 scenarios stopped at
   `NEEDS_APPROVAL` (allowance 0). Their swap call itself was therefore **not** simulated: that needs an approval, or
   a state override.
+
+**Second live run, 2026-11-04 (same signer and RPC), with `assumeApprovals`: `VERDICT PASS`, 6 of 6.**
+Nothing was signed or sent. The allowance was still 0, so each ERC-20 swap ran in `eth_call` under a state override
+on the token's allowance slot, located and verified through `allowance()` first (USDC and WETH: standard Solidity
+mapping).
+
+| Scenario | Minimum output | Impact | Simulation |
+|---|---|---|---|
+| ETH → USDC | 1144416 | 55 bps | `OK` |
+| USDC → WETH | 854008173472444 | −26 bps | `OK_WITH_ASSUMED_APPROVALS` |
+| USDC → cbBTC | 2531 | −12 bps | `OK_WITH_ASSUMED_APPROVALS` |
+| WETH → USDC | 229161 | 43 bps | `OK_WITH_ASSUMED_APPROVALS` |
+| USDC → cbETH (candidate) | 748756640744147 | −47 bps | `OK_WITH_ASSUMED_APPROVALS` |
+| USDC → wstETH (candidate) | 686059618609153 | −55 bps | `OK_WITH_ASSUMED_APPROVALS` |
+
+- cbETH was read on Base as `cbETH` / "Coinbase Wrapped Staked ETH" / 18 decimals; wstETH as `wstETH` /
+  "Wrapped liquid staked Ether 2.0" / 18 decimals.
+- In that run both were screened as `UNREVIEWED` (opted in for the check only). They are now in
+  `BASE_PHASE1_REVIEWED_ASSETS`, and the default matrix runs them as reviewed scenarios.
+- `OK_WITH_ASSUMED_APPROVALS` means the swap succeeds once the exact approval is sent. It is not a purchase; no
+  receipt exists for these five ERC-20 scenarios. The one live receipt on Base is gate D.
 
 Run the live check yourself, read only:
 

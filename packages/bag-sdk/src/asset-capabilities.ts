@@ -106,11 +106,15 @@ export function screenPurchaseAssets(input: {
 
 /**
  * Base Phase 1 reviewed set: the starting test matrix, NOT the list of supported tokens. Each was read on Base
- * (chain id, symbol, decimals) on 2026-11-04. Extend with your own reviewed entries:
+ * (chain id, symbol, decimals) on 2026-11-04, and a USDC purchase of each compiled through the pinned Composer and
+ * passed a full swap simulation (eth_call) that day. The address of each comes from the issuer's own published list.
+ * Extend with your own reviewed entries:
  * `createAssetCapabilityRegistry([...BASE_PHASE1_REVIEWED_ASSETS, ...yours])`. Native ETH needs no entry.
  */
 export const BASE_PHASE1_REVIEWED_ASSETS: readonly AssetCapabilityEntry[] = Object.freeze([
   { chainId: BAG_V1_CHAINS.base, address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', assetClass: 'STANDARD_ERC20', issuer: 'Circle', reviewNote: 'native USDC on Base (not bridged USDbC); USDC/6' },
   { chainId: BAG_V1_CHAINS.base, address: '0x4200000000000000000000000000000000000006', assetClass: 'STANDARD_ERC20', reviewNote: 'OP Stack WETH predeploy; WETH/18' },
   { chainId: BAG_V1_CHAINS.base, address: '0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf', assetClass: 'STANDARD_ERC20', issuer: 'Coinbase', reviewNote: 'cbBTC (Coinbase Wrapped BTC); cbBTC/8' },
+  { chainId: BAG_V1_CHAINS.base, address: '0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22', assetClass: 'STANDARD_ERC20', issuer: 'Coinbase', reviewNote: 'cbETH (Coinbase Wrapped Staked ETH); cbETH/18; non-rebasing, value accrues through the exchange rate; address from coinbase.com/cbeth' },
+  { chainId: BAG_V1_CHAINS.base, address: '0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452', assetClass: 'STANDARD_ERC20', issuer: 'Lido', reviewNote: 'wstETH bridged to Base (Lido ERC20Bridged behind an upgradeable proxy, minted and burned by the Lido bridge); wstETH/18; non-rebasing; address from docs.lido.fi/deployed-contracts' },
 ] satisfies AssetCapabilityEntry[]);

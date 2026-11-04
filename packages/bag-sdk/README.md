@@ -279,8 +279,9 @@ These three are separate on purpose. **Recognising a token does not mean it is s
   Restricted and permissioned classes need an issuer-specific adapter, which does not exist yet. Entries are per
   chain.
 
-`BASE_PHASE1_REVIEWED_ASSETS` holds three reviewed Base assets: native USDC, WETH and cbBTC. They are a starting
-test matrix, not the supported list. Extend it with your own reviewed entries.
+`BASE_PHASE1_REVIEWED_ASSETS` holds five reviewed Base assets: native USDC, WETH, cbBTC, cbETH and wstETH. Each
+was read on Base and passed a live compile and full swap simulation on 2026-11-04. They are a starting test matrix,
+not the supported list. Extend it with your own reviewed entries.
 
 **Simulating before the wallet has approved:** use `simulateBag(compiled, { client, assumeApprovals: true })`.
 When an allowance is missing, the SDK locates the token's allowance slot and verifies it through `allowance()`
@@ -291,12 +292,14 @@ under a state override. It then eth_calls the purchase with that override.
 
 The RPC must support `eth_call` state overrides.
 
-Live, read-only check of the Base matrix (ETH→USDC, USDC→WETH, USDC→cbBTC, WETH→USDC). It runs recognition,
+Live, read-only check of the Base matrix (ETH→USDC, USDC→WETH, USDC→cbBTC, WETH→USDC, USDC→cbETH, USDC→wstETH). It runs recognition,
 screening, balance and allowance reads, compile with delivery proof, and simulation; nothing is signed or sent:
 
 ```bash
 RPC_URL=… LIFI_API_KEY=… COMPOSER_FACTORY=0x… COMPOSER_FACTORY_CODE_HASH=0x… npx tsx packages/bag-sdk/examples/base-phase1-check.ts <signer address>
 ```
+
+`EXTRA_OUTPUTS=0xToken,0xToken` adds a `USDC → token` scenario per candidate, screened and labelled as unreviewed.
 
 ## Strict parsing
 
