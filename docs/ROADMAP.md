@@ -2,6 +2,29 @@
 
 > A living roadmap for BAG Protocol. This communicates product and infrastructure direction, not guaranteed delivery dates. Priorities may change as the protocol, market infrastructure, and ecosystem evolve.
 
+## Priorities (from 2026-11)
+
+Work is ordered by this list. A later item does not start at the expense of an earlier one. Each item carries the
+evidence labels from `docs/STATUS.md` (IMPLEMENTED · MERGED · DEPLOYED · LIVE VERIFIED · NOT VERIFIED).
+
+1. **Developer adoption.** An independent developer can use BAG without BAG's frontend, backend, database or
+   founder:
+   - the starter (`examples/sdk-consumer`), working against the published package;
+   - the 0.4.0 release decision;
+   - error and chain documentation;
+   - a live `VERIFIED` purchase reproduced by someone other than the maintainer.
+2. **Verified chain expansion.** Base first, then Arbitrum (`docs/chains/`). A chain counts only when its own
+   deployment, Composer pin, trust checks and receipt verification have passed. A chain present in a type union does
+   not count.
+3. **Open Strategy Network.** Published versions, portable `bag.json` URLs, public execution provenance, discovery
+   (section below).
+4. **Execution intelligence.** Best execution and provider comparison (sections "Best Execution" and "Execution
+   Intelligence").
+5. **Portfolio automation.** Rebalancing, Smart DCA and automation, each behind its own security review and live
+   evidence (sections "Portfolio Management" and "Automation").
+
+How BAG intends to sustain this without new contract fee logic: `docs/BUSINESS_MODEL_NOTE.md`.
+
 ## Today
 
 ### Strategy Standard
@@ -40,7 +63,7 @@
 - [x] Unified Strategy API
 - [x] Read-only BAG MCP
 - [x] Standalone `bag.json` SDK
-- [ ] Public SDK distribution
+- [x] Public SDK distribution (`@bagprotocol/sdk` 0.3.0 on npm, 2026-10-30; 0.4.0 is a candidate, not published)
 
 ---
 

@@ -36,7 +36,7 @@ transactions and verifies receipts on-chain; it never signs for a user.
 ## Stack
 
 Next.js (App Router) · TypeScript · Supabase (PostgreSQL) · viem · LI.FI SDK and
-Composer SDK 0.6 · Solidity (Hardhat) · Vitest · hosted on Netlify.
+Composer SDK 0.11.3 · Solidity (Hardhat) · Vitest · hosted on Netlify.
 
 ## Repository layout
 
