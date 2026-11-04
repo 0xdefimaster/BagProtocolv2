@@ -29,8 +29,14 @@ describe('StrategyRegistry deployment', () => {
     expect(STRATEGY_REGISTRY_DEPLOYMENTS.robinhood!.chainId).toBe(4663);
     expect(STRATEGY_REGISTRY_DEPLOYMENTS.robinhood!.address).toMatch(/^0x[0-9a-f]{40}$/);
     // No registry is claimed where none was deployed.
-    expect(Object.keys(STRATEGY_REGISTRY_DEPLOYMENTS)).toEqual(['robinhood']);
+    expect(Object.keys(STRATEGY_REGISTRY_DEPLOYMENTS)).toEqual(['robinhood', 'base']);
     expect(Object.isFrozen(STRATEGY_REGISTRY_DEPLOYMENTS)).toBe(true);
+  });
+
+  it('Base: full address, chain id 8453, deployment block', () => {
+    expect(STRATEGY_REGISTRY_DEPLOYMENTS.base).toEqual({ chainId: 8453, address: '0xcad829dcc30fa88b3d57cc0a6fa32bd56c9a5920', deployedAtBlock: 53499552 });
+    expect(STRATEGY_REGISTRY_DEPLOYMENTS.base!.chainId).toBe(BAG_V1_CHAINS.base);
+    expect(Object.isFrozen(STRATEGY_REGISTRY_DEPLOYMENTS.base)).toBe(true);
   });
 
   it('feetest v1 (as served) hashes to the committed definitionHash; its registry id is creator-bound', () => {

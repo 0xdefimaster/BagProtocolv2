@@ -23,9 +23,9 @@ It needs no BAG frontend, server or database.
 | Capability | Ethereum | Base | Arbitrum | Robinhood Chain |
 |---|---|---|---|---|
 | bag.json parse, validate, normalize, hash | ✅ | ✅ | ✅ | ✅ |
-| StrategyRegistry verification | No registry deployment | No registry deployment | No registry deployment | ✅ |
-| Purchase compile (LI.FI Composer) | Not tested; needs a reviewed deployment pin | Not tested; needs a reviewed deployment pin | Not tested; needs a reviewed deployment pin | ✅ live (pin: `docs/SDK_DEPLOYMENT_PIN_ROBINHOOD.md`) |
-| Purchase receipt `VERIFIED` | Not qualified | Not qualified | Not qualified | ✅ live, with a tracing RPC on the qualified Nitro build |
+| StrategyRegistry verification | No registry deployment | ✅ registry deployed (2026-11-04, code matched); no strategy registered on Base yet | No registry deployment | ✅ |
+| Purchase compile (LI.FI Composer) | Not tested; needs a reviewed deployment pin | ✅ live 2026-11-04 (0.4.0 candidate); pin approved 2026-11-04 (`docs/SDK_DEPLOYMENT_PIN_BASE.md`) | Not tested; needs a reviewed deployment pin | ✅ live (pin: `docs/SDK_DEPLOYMENT_PIN_ROBINHOOD.md`) |
+| Purchase receipt `VERIFIED` | Not qualified | ✅ live 2026-11-04 with `DELIVERY_LOG` (0.4.0 candidate); no indexed reader qualified | Not qualified | ✅ live, with a tracing RPC on the qualified Nitro build |
 
 The core is chain-agnostic across these EVM chains. Execution and receipt evidence are added chain by chain:
 1. A reviewed Composer deployment pin.
@@ -242,6 +242,65 @@ Consequences:
 - `0x0000000000000000000000000000000000000000` is the native asset.
 - `decimals` is hashed. `validateBag` compares it with the token when you pass `tokens`, for example from `readTokenDecimals(definition, clientFor)`. Without `tokens` it warns `DECIMALS_NOT_CHECKED`; it never claims a check it did not do.
 
+### Chain profiles, token recognition and asset screening (0.4.0 candidate)
+
+These three are separate on purpose. **Recognising a token does not mean it is safe or swappable.**
+
+- **`getChainProfile('base' | 8453)`** returns facts, not permissions:
+  - native coin;
+  - wrapped native;
+  - settlement stablecoin;
+  - which receipt modes can work on the chain.
+
+  On Base, `receipts` is `{ deliveryLog: true, singleTransactionBlock: false, indexedReader: null }`: use
+  `DELIVERY_LOG`. Profiles exist for `base` and `robinhood`. Composer deployment pins are **not** in profiles; they
+  stay caller-supplied and reviewed per chain.
+- **`inspectToken({ chainId, address, client })`** (`@bagprotocol/sdk/evm`) recognises any address by chain id and
+  address. It returns one of:
+
+  | Result | Meaning |
+  |---|---|
+  | `NATIVE` | The native-coin sentinel |
+  | `ERC20` | Has code and answers `decimals` (0–36), `totalSupply` and `balanceOf`; also returns `symbol`/`name` when readable |
+  | `NOT_A_CONTRACT` | No code at the address |
+  | `NOT_ERC20` | Code, but the ERC-20 reads failed |
+
+  A client on another chain is `CHAIN_MISMATCH`.
+- **`screenPurchaseAssets({ chainId, inputToken, outputTokens, registry, allowUnreviewed? })`** decides with a
+  registry **you** own (`createAssetCapabilityRegistry([...])`):
+
+  | Class | Decision |
+  |---|---|
+  | `STANDARD_ERC20` | Allowed |
+  | `RESTRICTED_TRANSFER` (e.g. Coinbase B20 tokenized stocks) | Refused |
+  | `PERMISSIONED` (e.g. KYC-gated dShares) | Refused |
+  | Not in the registry | Refused as `UNREVIEWED`, unless you pass `allowUnreviewed: true`; still labelled `UNREVIEWED` |
+
+  Restricted and permissioned classes need an issuer-specific adapter, which does not exist yet. Entries are per
+  chain.
+
+`BASE_PHASE1_REVIEWED_ASSETS` holds five reviewed Base assets: native USDC, WETH, cbBTC, cbETH and wstETH. Each
+was read on Base and passed a live compile and full swap simulation on 2026-11-04. They are a starting test matrix,
+not the supported list. Extend it with your own reviewed entries.
+
+**Simulating before the wallet has approved:** use `simulateBag(compiled, { client, assumeApprovals: true })`.
+When an allowance is missing, the SDK locates the token's allowance slot and verifies it through `allowance()`
+under a state override. It then eth_calls the purchase with that override.
+- `OK_WITH_ASSUMED_APPROVALS`: the swap would succeed once the approval is sent. The approval itself is still not
+  on chain.
+- `APPROVAL_OVERRIDE_UNAVAILABLE`: the slot could not be verified, so nothing was assumed.
+
+The RPC must support `eth_call` state overrides.
+
+Live, read-only check of the Base matrix (ETH→USDC, USDC→WETH, USDC→cbBTC, WETH→USDC, USDC→cbETH, USDC→wstETH). It runs recognition,
+screening, balance and allowance reads, compile with delivery proof, and simulation; nothing is signed or sent:
+
+```bash
+RPC_URL=… LIFI_API_KEY=… COMPOSER_FACTORY=0x… COMPOSER_FACTORY_CODE_HASH=0x… npx tsx packages/bag-sdk/examples/base-phase1-check.ts <signer address>
+```
+
+`EXTRA_OUTPUTS=0xToken,0xToken` adds a `USDC → token` scenario per candidate, screened and labelled as unreviewed.
+
 ## Strict parsing
 
 `parseBag` rejects each of these instead of guessing:
@@ -373,6 +432,7 @@ from the JSON, you only verify what the JSON claims.
 | Chain | Chain id | StrategyRegistry | Deployed at block |
 |---|---|---|---|
 | robinhood | 4663 | `0x907cc27d644c8ea1c24b8320ad09ecf2819209a8` | 85332074 |
+| base | 8453 | `0xcad829dcc30fa88b3d57cc0a6fa32bd56c9a5920` | 53499552 |
 
 No other chain has a registry; there, verification needs an address you trust.
 

@@ -68,7 +68,7 @@ describe('verifyRegistrationsInBrowser', () => {
     expect((await verifyRegistrationsInBrowser({ ...base, client: chain({ down: true }), fetchFn: served() })).checks[0].state).toBe('UNAVAILABLE');
     expect((await verifyRegistrationsInBrowser({ ...base, client: chain({ chainId: 1 }), fetchFn: served() })).checks[0].state).toBe('UNAVAILABLE');
     expect((await verifyRegistrationsInBrowser({ ...base, client: chain(), fetchFn: served(404, '{}') })).checks[0].state).toBe('UNAVAILABLE');
-    const none = await verifyRegistrationsInBrowser({ ...base, chain: 'base', client: chain(), fetchFn: served() });
+    const none = await verifyRegistrationsInBrowser({ ...base, chain: 'arbitrum', client: chain(), fetchFn: served() }); // a chain with no known registry
     expect(none).toMatchObject({ registry: null, checks: [{ version: 1, state: 'UNAVAILABLE' }] });
   });
 });
