@@ -24,8 +24,8 @@ It needs no BAG frontend, server or database.
 |---|---|---|---|---|
 | bag.json parse, validate, normalize, hash | ✅ | ✅ | ✅ | ✅ |
 | StrategyRegistry verification | No registry deployment | ✅ registry deployed (2026-11-04, code matched); no strategy registered on Base yet | No registry deployment | ✅ |
-| Purchase compile (LI.FI Composer) | Not tested; needs a reviewed deployment pin | Pin observed, approval pending (`docs/SDK_DEPLOYMENT_PIN_BASE.md`); no live purchase yet | Not tested; needs a reviewed deployment pin | ✅ live (pin: `docs/SDK_DEPLOYMENT_PIN_ROBINHOOD.md`) |
-| Purchase receipt `VERIFIED` | Not qualified | Not qualified | Not qualified | ✅ live, with a tracing RPC on the qualified Nitro build |
+| Purchase compile (LI.FI Composer) | Not tested; needs a reviewed deployment pin | ✅ live 2026-11-04 (0.4.0 candidate); pin observed, approval pending (`docs/SDK_DEPLOYMENT_PIN_BASE.md`) | Not tested; needs a reviewed deployment pin | ✅ live (pin: `docs/SDK_DEPLOYMENT_PIN_ROBINHOOD.md`) |
+| Purchase receipt `VERIFIED` | Not qualified | ✅ live 2026-11-04 with `DELIVERY_LOG` (0.4.0 candidate); no indexed reader qualified | Not qualified | ✅ live, with a tracing RPC on the qualified Nitro build |
 
 The core is chain-agnostic across these EVM chains. Execution and receipt evidence are added chain by chain:
 1. A reviewed Composer deployment pin.

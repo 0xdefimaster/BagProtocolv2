@@ -176,8 +176,8 @@ text. Detailed issues (`parsed.issues`, `validation.errors`, plan issues) are se
 |---|---|---|---|---|
 | Parse, validate, normalize, hash | ✅ | ✅ | ✅ | ✅ |
 | StrategyRegistry provenance | — no registry | Registry deployed (SDK 0.4.0 candidate lists it); no strategy registered yet | — no registry | ✅ |
-| Purchase compile (LI.FI Composer) | Not tested; no reviewed pin | Pin observed, approval pending; no live purchase yet | Not tested; no reviewed pin | ✅ live (pin reviewed 2026-10-30) |
-| Receipt `VERIFIED` | Not qualified | Not qualified | Not qualified | ✅ live (tracing RPC on the qualified Nitro build; or `DELIVERY_LOG` with 0.4) |
+| Purchase compile (LI.FI Composer) | Not tested; no reviewed pin | ✅ live 2026-11-04 (0.4.0 tarball); pin approval pending | Not tested; no reviewed pin | ✅ live (pin reviewed 2026-10-30) |
+| Receipt `VERIFIED` | Not qualified | ✅ live 2026-11-04 with `DELIVERY_LOG` (0.4.0) | Not qualified | ✅ live (tracing RPC on the qualified Nitro build; or `DELIVERY_LOG` with 0.4) |
 
 Notes:
 - A BAG v1 strategy is single-chain.

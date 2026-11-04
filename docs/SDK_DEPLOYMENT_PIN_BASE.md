@@ -31,6 +31,7 @@ const baseComposer: ComposerDeployment = {
 | Gate C, `COMPOSER_FACTORY_CODE_HASH` | PASS: live hash = pin |
 | Gate C, `COMPOSER_PROXY_PREDICTION`, signer `0xb193DE199EeB9bd1143607a11AD00999Ceb956b8` (P1 test wallet) | PASS: proxy `0xAd834B4De0295622A4042a3CaA62CE5b961578E7` is deployed; `owner()` = signer; `factory()` = pinned factory |
 | Gate B-Core (same run, signer `0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46`) | PASS: StrategyRegistry `0xcad829dcc30fa88b3d57cc0a6fa32bd56c9a5920` (block 53499552) exact match; that signer's Base proxy `0x0a6BAEfc776477C494aB8b0a288881a7B72196F7` not deployed yet (first purchase targets the factory) |
+| Gate D, live purchase (2026-11-04) | **VERIFIED** with this pin: tx `0x21e2770fb15921791d6f311b4bab441c82ceaa589746ccc5d51a1c28122080ee` (block 53500571); evidence `TRANSACTION_AND_DELIVERY_LOGS`, binding `DIRECT`; 2 USDC → WETH + cbBTC; signer `0x49Dadd…FE46` (plain EOA); proxy `0x0a6B…96F7` created in that tx |
 | Gate D probe | `debug_traceCall` refused by the Alchemy Base RPC. Receipt verification on Base therefore uses SDK 0.4 `DELIVERY_LOG` |
 
 ## What the SDK checks with it

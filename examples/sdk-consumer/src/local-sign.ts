@@ -132,7 +132,7 @@ async function main() {
       if (sim.status === 'NEEDS_APPROVAL') {
         const a = sim.missing[0];
         return { kind: 'APPROVAL', tx: { chainId: compiled.transaction.chainId, from: session.signer, to: a.token, value: '0x0',
-          data: encodeFunctionData({ abi: approveAbi, functionName: 'approve', args: [a.spender, a.amountRaw] }) }, spender: a.spender, amountRaw: a.amountRaw };
+          data: encodeFunctionData({ abi: approveAbi, functionName: 'approve', args: [a.spender, a.amountRaw] }) }, spender: a.spender, amountRaw: a.amountRaw, token: a.token };
       }
       if (sim.status !== 'OK') return { kind: 'NOT_READY', simulation: sim };
       const t = compiled.transaction;
@@ -252,7 +252,7 @@ $('save').onclick=async()=>{try{const minima=legs.map((l,i)=>({token:l.token,amo
 $('buy').onclick=async()=>{$('buy').disabled=true; try{for(let i=0;i<5;i++){await checkWallet(); const n=await api('next');
  if(n.kind==='EXPIRED'){log('Teklifin süresi doldu. Onay varsa korunur. "Teklif al" ile yeni teklif alıp minimumları yeniden onaylayın.'); $('save').disabled=true; return}
  if(n.kind==='NOT_READY'){log('Simülasyon hazır değil: '+JSON.stringify(n.simulation)); return}
- if(n.kind==='APPROVAL'){log('USDG onayı istenecek: '+n.amountRaw+' → '+n.spender); const h=await eth().request({method:'eth_sendTransaction',params:[n.tx]}); log('Onay gönderildi: '+h+' (bekleniyor)');
+ if(n.kind==='APPROVAL'){log('Ödeme tokeni onayı istenecek ('+n.token+'): '+n.amountRaw+' → '+n.spender); const h=await eth().request({method:'eth_sendTransaction',params:[n.tx]}); log('Onay gönderildi: '+h+' (bekleniyor)');
   const r=await api('approvalSent',{hash:h}); log('Onay sonucu: '+r.status); if(r.status!=='success') return; continue}
  if(n.kind==='PURCHASE'){log('Satın alma işlemi istenecek (orijinal derlenmiş işlem).'); const h=await eth().request({method:'eth_sendTransaction',params:[n.tx]});
   await api('purchaseSent',{hash:h}); log('SATIN ALMA GÖNDERİLDİ: '+h+'\\nBu hash dosyaya kaydedildi. Birkaç blok sonra "SDK ile doğrula"ya basın. Tekrar göndermeyin.'); $('verify').disabled=false; return}}

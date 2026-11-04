@@ -8,7 +8,16 @@ Status 2026-11-04: **NOT production-qualified.** `sdkPath = READ_ONLY_CHECKS_PAS
 - **C PASS (pin observed, not yet approved):** the Composer factory on Base has the same address and code as the
   approved Robinhood pin. LI.FI confirmation and maintainer approval are pending (`docs/SDK_DEPLOYMENT_PIN_BASE.md`).
 - **B-App:** not deployed (not needed for the SDK path).
-- **D, E:** no live Base purchase yet.
+- **D LIVE VERIFIED (2026-11-04):** a 2 USDC → WETH + cbBTC purchase compiled by the SDK 0.4.0 candidate with the
+  observed Base pin, signed by the maintainer's wallet `0x49Dadd…FE46` (plain EOA), returned `VERIFIED`:
+  - tx `0x21e2770fb15921791d6f311b4bab441c82ceaa589746ccc5d51a1c28122080ee`, block 53500571;
+  - evidence `TRANSACTION_AND_DELIVERY_LOGS`, binding `DIRECT`;
+  - WETH 428892884120645 raw (min 424603973063790), cbBTC 1270 raw (min 1257).
+
+  The signer's proxy `0x0a6B…96F7` was created in that transaction.
+- **E (partial):** the starter, installed from the SDK tarball in a directory outside the repository with no BAG app,
+  backend or database, prepared and verified that purchase. It was run by the maintainer; no independent third party
+  has done it yet.
 
 The `base` entries in `lib/config/chains.ts`, in `BAG_V1_CHAINS`, and in the deploy scripts' chain lists are
 configuration only. They are not evidence. A chain is production-qualified only when its own deployment,
@@ -48,8 +57,8 @@ Base result is recorded here yet.
 | **B-Core** StrategyRegistry | Deployed by the owner; `STRATEGY_REGISTRY_ADDRESS_BASE` set; live runtime equals the artifact | `deploy-strategy-registry.ts base`, then `verify-chain-readiness.ts base` (B_CORE checks) | **DEPLOYED, PASS** (2026-11-04): `0xcad829dc…5920`, exact bytecode match |
 | **B-App** BagFactory + StrategyCompositions | Needed **only if the BAG application itself** runs on Base. Deployed; `FACTORY_ADDRESS_BASE` / `STRATEGY_COMPOSITIONS_ADDRESS_BASE` set; runtime equals the artifact with immutables masked; `StrategyCompositions.registry()` is this chain's registry | Deploy scripts take `base`. Then the B_APP checks | NOT DEPLOYED (not needed for the SDK path) |
 | **C** Composer trust | A **Base-specific** pin (factory and runtime code hash) is confirmed with LI.FI and reviewed in a separate `docs/SDK_DEPLOYMENT_PIN_BASE.md`; the live code hash equals the pin; a test signer's predicted proxy is unused, or owned by the signer and the pinned factory | `COMPOSER_FACTORY_BASE` / `COMPOSER_FACTORY_CODE_HASH_BASE` / `COMPOSER_TEST_SIGNER`, then the C checks | Checks **PASS** (2026-11-04); pin approval pending |
-| **D** Execution and receipt proof | A real Base purchase compiled by the SDK with the Base pin is signed by the owner's wallet, and `verifySubmitted` returns `VERIFIED` | Owner step; the script only probes the RPC (`debug_traceCall`) | NOT VERIFIED |
-| **E** Independent consumer | The starter (`examples/sdk-consumer`), installed from the npm package or the tarball outside the repository, prepares and verifies the Base purchase with no BAG app, backend or database | Owner step | NOT VERIFIED |
+| **D** Execution and receipt proof | A real Base purchase compiled by the SDK with the Base pin is signed by the owner's wallet, and `verifySubmitted` returns `VERIFIED` | Owner step; the script only probes the RPC (`debug_traceCall`) | **LIVE VERIFIED** 2026-11-04 (`DELIVERY_LOG`, `DIRECT`), tx `0x21e2…80ee` |
+| **E** Independent consumer | The starter (`examples/sdk-consumer`), installed from the npm package or the tarball outside the repository, prepares and verifies the Base purchase with no BAG app, backend or database | Owner step | Starter run by the maintainer: **PASS**; independent third party: NOT YET |
 
 Order: A → C → B-Core → D → E for the **SDK path**. B-App only follows if the BAG application is to run on Base.
 Nothing in D or E starts before A and C are PASS.
