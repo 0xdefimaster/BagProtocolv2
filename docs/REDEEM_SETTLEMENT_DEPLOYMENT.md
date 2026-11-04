@@ -1,6 +1,6 @@
 # RedeemSettlement — deployment runbook
 
-Status: **LIVE on Robinhood Chain (2026-10-06)** — deployed, switched on, first real fee-path sale reconciled (§5a). This page describes how `contracts/RedeemSettlement.sol` is deployed and switched on, and
+Status: **Deployed and configured on Robinhood Chain.** Version 1 went live on 2026-10-06, with one real sale (fee 0) reconciled (§5a). Version 2 (`0x3eCD…F8A3`) replaced it and has been configured since 2026-10-29; **no sale through v2 is recorded here, and a sale with fee > 0 has not been run on any version** (owner runbook: `docs/runbooks/POSITIVE_FEE_SALE.md`). This page describes how `contracts/RedeemSettlement.sol` is deployed and switched on, and
 what has to be true before and after. Script: `scripts/deploy-redeem-settlement.ts`. Checks:
 `lib/blockchain/redeem-settlement-deploy.ts`, tested against a real deployment in
 `contracts/test/RedeemSettlementDeploy.test.ts`.

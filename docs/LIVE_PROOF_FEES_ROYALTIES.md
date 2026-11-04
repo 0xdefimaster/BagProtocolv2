@@ -4,6 +4,11 @@ Phase 1, item 1 of `docs/PLAN.md`. Goal: show, with Robinhood Chain transactions
 (1) a non-creator's profitable sale pays the creator a performance fee, and (2) a deposit into a fork
 credits the root creator a royalty that the creator then withdraws.
 
+Status (2026-11-03): **none of the three tests has been run live.** RedeemSettlement v2 is deployed and configured
+(`docs/REDEEM_SETTLEMENT_DEPLOYMENT.md` §0), but no sale through v2 is recorded. The only recorded live settlement
+(2026-10-06, §5a) went through the now-superseded v1, and its fee was 0. Positive-fee settlement and the fork royalty
+remain unproven until the transactions below exist and verify.
+
 The owner performs the transactions with their own wallets. Nothing here needs or uses a private key in
 the repository. Verification is read-only: `scripts/verify-money-flows.ts`.
 
@@ -13,7 +18,8 @@ the repository. Verification is read-only: `scripts/verify-money-flows.ts`.
   on realized gain above the investor's basis (high-water mark, loss carry), transfers it in USDG
   **directly to the creator's wallet**, the rest to the investor, and emits `Settled`. No vault in
   between.
-- **Fork royalty, on-chain (RedeemSettlement v2, not deployed yet)**: 20% of a fork's performance fee goes to
+- **Fork royalty, on-chain (RedeemSettlement v2: deployed 2026-10-13, configured in Netlify 2026-10-29, see
+  `docs/REDEEM_SETTLEMENT_DEPLOYMENT.md`; a sale with fee > 0 has not been run live yet)**: 20% of a fork's performance fee goes to
   the root creator in the sale transaction (`RoyaltyPaid`). Test 3 below; `docs/FORK_ROYALTY_ONCHAIN.md`.
 - **Fork royalty, legacy** (1.5% of a deposit into a fork, no longer accrued by new purchases): after the purchase, the
   `settle-creator-rewards` scheduled job calls `CreatorRewardsVault.settleReward` from the settler
@@ -51,7 +57,7 @@ the repository. Verification is read-only: `scripts/verify-money-flows.ts`.
    If nothing appears within ~15 minutes, check the settler prerequisites above.
 4. With **C**, open Profile → Creator Rewards → Claim. Copy the transaction hash: **WITHDRAW_TX**.
 
-## Test 3: fork royalty at sale (after RedeemSettlement v2 is deployed)
+## Test 3: fork royalty at sale (RedeemSettlement v2 is deployed and configured; this test has not been run)
 
 1. With **F**, fork Bag **A** into Bag **B**, set a performance fee above 0 on **B**, and deploy it.
 2. With **I**, buy a small amount of **B**, wait until the position is in profit after costs, and sell it.
