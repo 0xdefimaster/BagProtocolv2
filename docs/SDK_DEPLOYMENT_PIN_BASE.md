@@ -1,10 +1,10 @@
 # SDK deployment pin: LI.FI Composer on Base (8453)
 
-Status: **OBSERVED, NOT YET APPROVED.** The values below were read on Base mainnet by the maintainer on 2026-11-04.
-The pin is approved only when every item in "Approval" is filled. Until then, no SDK release and no BAG
-documentation may describe Base purchases as supported.
+Status: **APPROVED by the maintainer on 2026-11-04.** The values below were read on Base mainnet by the maintainer
+on 2026-11-04, and every item in "Approval" is filled. This approves the pin only: Base purchases become supported in
+a release once SDK 0.4.0 is published (a separate owner decision).
 
-## The pin (observed)
+## The pin (approved 2026-11-04)
 
 ```ts
 const baseComposer: ComposerDeployment = {
@@ -74,9 +74,12 @@ These are accepted as the upstream dependency.
 |---|---|
 | VM 1.2 keccak on Base | `0x0d0f2d31c4ab65c4b5da60e68efc4d394891881f822943f60ae3c1266519bfb7` (block 53501473, public RPC, 2026-11-04): **identical to Robinhood** |
 | LI.FI source that this is the production Composer factory on Base | **Found (2026-11-04):** LI.FI's own repository, [lifinance/contracts#2518](https://github.com/lifinance/contracts/pull/2518), "whitelist the v1.2 Composer diamond proxies on 30 chains", merged into `main` as `ad11353` on 2026-10-02 by a LI.FI maintainer. Its table names ProxyFactory v1.2 `0xACEB3Bb6C75488b5b806B9de4dCF78814465BdaE` and VirtualMachine v1.2 `0xA9f22b951d5A9CBBD0eC8d2741EA44BFDD2D11fd` (v1.0 was factory `0xe174…fB35`, VM `0xb57C…cc6D`), "live at one address set on 31 mainnets", with `base` in the chain list. Both addresses equal this pin. Not checked: the docs.li.fi addresses page (unreachable from the review environment). |
-| Approved by the maintainer | _pending_ |
+| Approved by the maintainer | **Approved, 2026-11-04** (repository owner, in the review session), on the evidence above: identical factory and VM code to the approved Robinhood pin, LI.FI's own v1.2 address table, and the verified live purchase (gate D) |
 
-After approval:
-1. Add the pin to `packages/bag-sdk/release-gates.json`.
-2. Update the SDK README chain table ("Purchase compile" on Base: reviewed pin, live test pending).
-3. Run the first Base purchase (`docs/chains/BASE_READINESS.md`, gate D).
+After approval (done 2026-11-04):
+1. The pin is recorded in `packages/bag-sdk/release-gates.json` (`deploymentPinBasis`, `factoryPolicyBasis`).
+2. The SDK README and starter chain tables say "pin approved".
+3. The first Base purchase was already verified live before approval (gate D above).
+
+Re-check the factory runtime hash on Base at release time, as for Robinhood. If LI.FI ships a new VM or factory,
+this approval does not carry over.
