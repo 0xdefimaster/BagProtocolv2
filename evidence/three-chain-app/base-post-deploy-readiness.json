@@ -1,0 +1,101 @@
+{
+  "createdAt": "2026-11-08T15:19:36.160Z",
+  "chain": "base",
+  "checks": [
+    {
+      "gate": "A",
+      "name": "RPC_CHAIN_ID",
+      "status": "PASS",
+      "detail": "RPC 8453, expected 8453"
+    },
+    {
+      "gate": "A",
+      "name": "WRAPPED_NATIVE",
+      "status": "PASS",
+      "detail": "0x4200000000000000000000000000000000000006: symbol WETH, decimals 18 (expected WETH/18)"
+    },
+    {
+      "gate": "A",
+      "name": "SETTLEMENT_STABLECOIN",
+      "status": "PASS",
+      "detail": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913: symbol USDC, decimals 6 (expected USDC/6)"
+    },
+    {
+      "gate": "B_CORE",
+      "name": "STRATEGYREGISTRY_DEPLOYED",
+      "status": "PASS",
+      "detail": "0xcAD829DCC30fa88B3d57CC0a6Fa32Bd56c9a5920: 4830 bytes, keccak 0x40aa4d92bd07a225802ff76c42c17cb62e80160b1c902144492b9289cf692c9b"
+    },
+    {
+      "gate": "B_CORE",
+      "name": "STRATEGYREGISTRY_BYTECODE",
+      "status": "PASS",
+      "detail": "exact match (0 immutable slot(s) and metadata masked)"
+    },
+    {
+      "gate": "B_APP",
+      "name": "BAGFACTORY_DEPLOYED",
+      "status": "PASS",
+      "detail": "0x9F66fA3F7a70281eB4F598EfE763B3f83379df4a: 11231 bytes, keccak 0xab9c9cdb2d05b30c157a5d3fd04b69d305a4039f8009ce1ed38e0a0e913612e5"
+    },
+    {
+      "gate": "B_APP",
+      "name": "BAGFACTORY_BYTECODE",
+      "status": "PASS",
+      "detail": "match (3 immutable slot(s) and metadata masked)"
+    },
+    {
+      "gate": "B_APP",
+      "name": "STRATEGYCOMPOSITIONS_DEPLOYED",
+      "status": "PASS",
+      "detail": "0x7D4A75a7F196eA90Cf96021ADAC83a0DE93A4Fc8: 6048 bytes, keccak 0x5ce5308f9ad1210951f9f60a8b38672d20a89bdbceabee9541cde04a1752160d"
+    },
+    {
+      "gate": "B_APP",
+      "name": "STRATEGYCOMPOSITIONS_BYTECODE",
+      "status": "PASS",
+      "detail": "match (2 immutable slot(s) and metadata masked)"
+    },
+    {
+      "gate": "B_APP",
+      "name": "STRATEGYCOMPOSITIONS_REGISTRY",
+      "status": "PASS",
+      "detail": "registry() = 0xcAD829DCC30fa88B3d57CC0a6Fa32Bd56c9a5920, configured 0xcAD829DCC30fa88B3d57CC0a6Fa32Bd56c9a5920"
+    },
+    {
+      "gate": "C",
+      "name": "COMPOSER_FACTORY_CODE_HASH",
+      "status": "PASS",
+      "detail": "live 0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5, pin 0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5"
+    },
+    {
+      "gate": "C",
+      "name": "COMPOSER_PROXY_PREDICTION",
+      "status": "PASS",
+      "detail": "0x0a6BAEfc776477C494aB8b0a288881a7B72196F7: owner 0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46, factory 0xACEB3Bb6C75488b5b806B9de4dCF78814465BdaE"
+    },
+    {
+      "gate": "D",
+      "name": "RPC_DEBUG_TRACE_CALL",
+      "status": "UNSUPPORTED",
+      "detail": "debug_traceCall refused: balance-trace receipt modes unavailable on this RPC; DELIVERY_LOG (SDK 0.4) does not need it"
+    }
+  ],
+  "summary": {
+    "gates": {
+      "A": "PASS",
+      "B_CORE": "PASS",
+      "B_APP": "PASS",
+      "C": "PASS",
+      "D": "INCOMPLETE"
+    },
+    "sdkPath": "READ_ONLY_CHECKS_PASS",
+    "appPath": "READ_ONLY_CHECKS_PASS"
+  },
+  "appConfiguration": {
+    "deployable": [
+      "base",
+      "robinhood"
+    ]
+  }
+}

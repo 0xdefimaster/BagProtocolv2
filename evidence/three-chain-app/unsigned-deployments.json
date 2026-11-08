@@ -1,12 +1,12 @@
 {
   "schema": "bag-app-rollout-review/v1",
-  "createdAt": "2026-11-08T14:54:26.784Z",
+  "createdAt": "2026-11-08T15:11:46.544Z",
   "unsignedOnly": true,
   "deployer": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
   "reference": {
     "chainId": 4663,
     "factory": "0x7ce5a81df434755f38cb5f67ad49a8bb3c8e6f72",
-    "block": "109309335",
+    "block": "109319210",
     "parameters": {
       "owner": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
       "treasury": "0x5186f0cCAB569dE1655922213074D97914378cd8",
@@ -74,7 +74,7 @@
       "chainId": 42161,
       "startingNonce": 0,
       "senderCode": "0x",
-      "gasPriceWei": "20000000",
+      "gasPriceWei": "20022000",
       "registry": {
         "address": "0xcAD829DCC30fa88B3d57CC0a6Fa32Bd56c9a5920",
         "status": "PREDICTED_NOT_DEPLOYED"
@@ -85,7 +85,7 @@
           "constructorArgs": [],
           "predictedAddress": "0xcAD829DCC30fa88B3d57CC0a6Fa32Bd56c9a5920",
           "initCodeHash": "0xe4cbd75b95a5b6cfadc0cde3e4c0e75b9ad263c1f2e5d18cfdaaaa67ded3656e",
-          "gasEstimate": "1106510",
+          "gasEstimate": "1106084",
           "transaction": {
             "from": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
             "chainId": 42161,
@@ -104,7 +104,7 @@
           ],
           "predictedAddress": "0x663A10b45a7617B37C47068484FC49D915EA322F",
           "initCodeHash": "0xca8b45ac72d20253b2b4337c09e82dd76681e2541460b86e5b69bd1e36c7935f",
-          "gasEstimate": "2575349",
+          "gasEstimate": "2574384",
           "transaction": {
             "from": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
             "chainId": 42161,
@@ -120,7 +120,7 @@
           ],
           "predictedAddress": "0x8B033b1cF7F3876B11Acc0e9298713E730B698AE",
           "initCodeHash": "0xa495f90703c3dcf7c28a300b5603796a2309de1b8f5480433b931f2fac17473a",
-          "gasEstimate": "1377205",
+          "gasEstimate": "1376645",
           "transaction": {
             "from": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
             "chainId": 42161,

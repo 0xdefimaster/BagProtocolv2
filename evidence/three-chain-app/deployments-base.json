@@ -1,0 +1,86 @@
+{
+  "schema": "bag-app-rollout-execution/v1",
+  "chain": "base",
+  "chainId": 8453,
+  "deployer": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
+  "sourceCommit": "6fd983a",
+  "sourceReference": {
+    "address": "0x7ce5a81df434755f38cb5f67ad49a8bb3c8e6f72",
+    "block": "109321059",
+    "parameters": {
+      "owner": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
+      "treasury": "0x5186f0cCAB569dE1655922213074D97914378cd8",
+      "creationFee": "150000000000000",
+      "creationFeeCap": "10000000000000000"
+    }
+  },
+  "existingRegistry": "0xcad829dcc30fa88b3d57cc0a6fa32bd56c9a5920",
+  "transactions": [
+    {
+      "contract": "BagFactory",
+      "address": "0x9F66fA3F7a70281eB4F598EfE763B3f83379df4a",
+      "nonce": 8,
+      "initCodeHash": "0xca8b45ac72d20253b2b4337c09e82dd76681e2541460b86e5b69bd1e36c7935f",
+      "hash": "0x7291dd815cd4f2077428dcd86efb880a573dccc04efa9b9a081a0d9b47ac509b",
+      "status": "VERIFIED",
+      "signedAt": "2026-11-08T15:15:01.245Z",
+      "gasLimit": "3083110",
+      "gasEstimate": "2569258",
+      "maxFeePerGas": "7000000",
+      "maxPriorityFeePerGas": "1000000",
+      "l1FeeEstimate": "27278747548",
+      "estimatedFeeCeiling": "21636327495096",
+      "receipt": {
+        "status": "success",
+        "contractAddress": "0x9f66fa3f7a70281eb4f598efe763b3f83379df4a",
+        "blockNumber": "54802636",
+        "gasUsed": "2547870",
+        "effectiveGasPrice": "6000000",
+        "l1Fee": "27270428435"
+      },
+      "verification": {
+        "runtime": "EXACT_MATCH_WITH_CONSTRUCTOR_IMMUTABLES",
+        "runtimeCodeHash": "0xab9c9cdb2d05b30c157a5d3fd04b69d305a4039f8009ce1ed38e0a0e913612e5",
+        "settings": {
+          "owner": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
+          "treasury": "0x5186f0cCAB569dE1655922213074D97914378cd8",
+          "creationFee": "150000000000000",
+          "creationFeeCap": "10000000000000000"
+        },
+        "checkedAt": "2026-11-08T15:15:03.764Z"
+      }
+    },
+    {
+      "contract": "StrategyCompositions",
+      "address": "0x7D4A75a7F196eA90Cf96021ADAC83a0DE93A4Fc8",
+      "nonce": 9,
+      "initCodeHash": "0xa495f90703c3dcf7c28a300b5603796a2309de1b8f5480433b931f2fac17473a",
+      "hash": "0xf9ff41673f788e772a015a8a4fa9dfd12ec50ebf76c743477c51925ea89af0a9",
+      "status": "VERIFIED",
+      "signedAt": "2026-11-08T15:15:04.105Z",
+      "gasLimit": "1648407",
+      "gasEstimate": "1373672",
+      "maxFeePerGas": "7000000",
+      "maxPriorityFeePerGas": "1000000",
+      "l1FeeEstimate": "16002190454",
+      "estimatedFeeCeiling": "11570853380908",
+      "receipt": {
+        "status": "success",
+        "contractAddress": "0x7d4a75a7f196ea90cf96021adac83a0de93a4fc8",
+        "blockNumber": "54802650",
+        "gasUsed": "1361698",
+        "effectiveGasPrice": "6000000",
+        "l1Fee": "14785421732"
+      },
+      "verification": {
+        "runtime": "EXACT_MATCH_WITH_CONSTRUCTOR_IMMUTABLES",
+        "runtimeCodeHash": "0x5ce5308f9ad1210951f9f60a8b38672d20a89bdbceabee9541cde04a1752160d",
+        "settings": {
+          "registry": "0xcAD829DCC30fa88B3d57CC0a6Fa32Bd56c9a5920"
+        },
+        "checkedAt": "2026-11-08T15:15:06.505Z"
+      }
+    }
+  ],
+  "completedAt": "2026-11-08T15:15:06.507Z"
+}

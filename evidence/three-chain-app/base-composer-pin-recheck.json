@@ -1,0 +1,22 @@
+{
+  "chainId": 8453,
+  "block": "54803415",
+  "checkedAt": "2026-11-08T15:17:37.970Z",
+  "approvalSource": "docs/SDK_DEPLOYMENT_PIN_BASE.md (maintainer 2026-11-04)",
+  "checks": [
+    {
+      "name": "factory",
+      "address": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+      "codeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5",
+      "bytes": 4474,
+      "status": "MATCH"
+    },
+    {
+      "name": "vm",
+      "address": "0xA9f22b951d5A9CBBD0eC8d2741EA44BFDD2D11fd",
+      "codeHash": "0x0d0f2d31c4ab65c4b5da60e68efc4d394891881f822943f60ae3c1266519bfb7",
+      "bytes": 12920,
+      "status": "MATCH"
+    }
+  ]
+}

@@ -21,15 +21,30 @@ Read-only checks of the maintainer's local environment and configured Supabase:
 | Chain ID | 4663 | 8453 | 42161 |
 | Verified asset rows in Supabase | 198 | 32 | 36 |
 | Settlement asset | USDG | native USDC | native USDC |
-| BagFactory configured locally | Yes | Placeholder | Placeholder |
-| StrategyRegistry configured locally | No | No | No |
-| StrategyCompositions configured locally | No | No | No |
+| BagFactory configured locally | Yes | Deployed and configured, 2026-11-08 | Placeholder |
+| StrategyRegistry configured locally | No | Existing deployment verified and configured | No |
+| StrategyCompositions configured locally | No | Deployed and configured, 2026-11-08 | No |
 
-Base's already deployed StrategyRegistry `0xcad829dcc30fa88b3d57cc0a6fa32bd56c9a5920` was separately read and compared: **exact runtime match** with the compiled artifact. Its absence from the local environment does not mean it needs deploying again. Robinhood's production hosting configuration was not inspected or changed.
+Base's already deployed StrategyRegistry `0xcad829dcc30fa88b3d57cc0a6fa32bd56c9a5920` was separately read and compared: **exact runtime match** with the compiled artifact. It was reused and added to the local environment; no duplicate registry was deployed. Production hosting configuration was not changed.
 
-Base/Arbitrum RPC chain IDs and WETH/USDC metadata passed. Local contract/pin environment settings remain incomplete. The historical Base live SDK purchase and approved pin are recorded in `../SDK_DEPLOYMENT_PIN_BASE.md`; that evidence does not prove the app creation flow or Arbitrum execution. Arbitrum's candidate pin remains observed, not release-approved (`../SDK_DEPLOYMENT_PIN_ARBITRUM.md`).
+Base/Arbitrum RPC chain IDs and WETH/USDC metadata passed. Base's local contract and approved Composer pin settings are now configured. Arbitrum settings remain incomplete. The historical Base live SDK purchase and approved pin are recorded in `../SDK_DEPLOYMENT_PIN_BASE.md`; that evidence does not prove the app creation flow or Arbitrum execution. Arbitrum's candidate pin remains observed, not release-approved (`../SDK_DEPLOYMENT_PIN_ARBITRUM.md`).
 
-## Prepared rollout, not broadcast
+## Rollout: Base deployed, Arbitrum deferred
+
+The maintainer approved the five-transaction rollout. Base completed on 2026-11-08. Arbitrum had no native gas balance; the maintainer then explicitly requested **Base only for now**. No Arbitrum transaction was signed or broadcast.
+
+| Base contract | Address | Public transaction |
+|---|---|---|
+| BagFactory | `0x9F66fA3F7a70281eB4F598EfE763B3f83379df4a` | [0x7291…509b](https://basescan.org/tx/0x7291dd815cd4f2077428dcd86efb880a573dccc04efa9b9a081a0d9b47ac509b), block 54802636 |
+| StrategyCompositions | `0x7D4A75a7F196eA90Cf96021ADAC83a0DE93A4Fc8` | [0xf9ff…f0a9](https://basescan.org/tx/0xf9ff41673f788e772a015a8a4fa9dfd12ec50ebf76c743477c51925ea89af0a9), block 54802650 |
+
+Both receipts succeeded. Runtime bytecode matches the compiled artifacts exactly after substituting the approved constructor immutables (metadata was **not** masked in this deployment check). Factory owner, treasury, creation fee, fee cap and zero pending owner were read back. Compositions' immutable registry matches the reused Base registry. Receipt execution gas plus L1 fees totaled **0.000023499463850167 ETH**. This is deployment gas, not the BAG creation fee.
+
+The three Base contract variables and the previously approved Composer pin were added to the maintainer's Desktop `.env.local`, preserving all unrelated settings. The pre-change file is backed up as `.env.pre-base-rollout-20261108.local` (gitignored). `evidence/three-chain-app/settings-base.env` contains public settings only. Base Composer factory and VM code hashes were rechecked against the 2026-11-04 approval. The application configuration handler reports `deployable: ["base", "robinhood"]`.
+
+`scripts/execute-app-rollout.mjs` defaults to a read-only check. The explicit `--send` path validates the approved arguments and every byte of deployment data, enforces nonce/gas/balance checks, records each transaction hash before broadcast, and verifies the result. Re-running Base after completion confirmed **zero remaining deployments**, without signing or broadcasting again. Public receipts and verification records are in `evidence/three-chain-app/deployments-base.json`.
+
+### Original unsigned preparation
 
 `scripts/prepare-app-rollout.mjs` prepares unsigned transactions. It reads the current Robinhood factory's owner, treasury, fee and immutable cap; checks each destination chain; verifies the reused Base registry; records current nonces and predicted deployment addresses; estimates gas. It has no wallet client, private-key loading, signing or broadcast path.
 
@@ -48,7 +63,7 @@ The reviewed inputs and unsigned calldata are in `evidence/three-chain-app/`. Pr
 
 The five creation calls obtained RPC gas estimates. Gas-price snapshots imply approximately 0.00002366 ETH for Base and 0.00010118 ETH for Arbitrum in execution charges, **excluding additional L1 data fees**. These are neither signed transactions nor final fee quotes. Re-estimate at signing time. Ordinary direct creation transactions are required; a wallet batch or different sender invalidates the predicted address sequence. An EIP-7702 delegation designator does not itself disqualify a sender (see the [transaction origination rule](https://eips.ethereum.org/EIPS/eip-7702#transaction-origination)); the script does not modify any delegation.
 
-After approval/signing: verify each receipt, runtime code, owner/treasury/fee values and compositions' immutable registry binding; only then configure `FACTORY_ADDRESS_*`, `STRATEGY_REGISTRY_ADDRESS_*`, `STRATEGY_COMPOSITIONS_ADDRESS_*` and reviewed SDK Composer pins. **Never configure the predicted addresses as deployed contracts.** Rebuild/restart the application and test one complete create/register, purchase, partial sell and full sell per new chain with the user's wallet; verify receipts and ledger attribution. Production hosting changes and public wallet transactions are still pending.
+The Base deployment and local configuration steps above are complete. The Arbitrum entries in the unsigned manifest remain predictions, **not deployments**; regenerate/review their nonce and fee snapshot when that rollout resumes. **Never configure predicted addresses as deployed contracts.** A complete public application create/register, purchase, partial sell and full sell remains pending per new chain, including receipt and ledger attribution. Production hosting deployment and SDK publication are separate pending steps.
 
 ## Validation and limits
 
