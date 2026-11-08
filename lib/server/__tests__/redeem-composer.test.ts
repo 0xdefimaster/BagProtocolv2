@@ -57,6 +57,18 @@ const request = (steps: ExecutionStep[], fetchImpl: typeof fetch) => ({
 });
 
 describe('buildRedeemComposer', () => {
+  it.each([['base', 8453], ['arbitrum', 42161]] as const)('binds a %s BAG sale to its own chain and refuses a mixed-chain KEEP leg', async (chain, chainId) => {
+    const step = swap(MSFT, '1000', 'A');
+    step.route = { ...step.route, sourceChain: chain, destinationChain: chain, inputAsset: { chain, address: MSFT }, outputAsset: { chain, address: USDG } };
+    const fetchImpl = composeFetch({ outputs: { 'sweep_0.amountOut': wireOut('10000', '9900', USDG, chainId) },
+      transactionRequest: { to: SPENDER, chainId, data: '0xdeadbeef', value: '0' }, approvals: [] });
+    const req = { ...request([step], fetchImpl), outputAsset: { chain, address: USDG } };
+    expect((await buildRedeemComposer(req))?.composerTransaction.chainId).toBe(chainId);
+    vi.mocked(fetchImpl).mockClear();
+    expect(await buildRedeemComposer({ ...req, steps: [step, keep] })).toBeNull();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('sells every SWAP leg in one transaction; KEEP legs stay as they are', async () => {
     const fetchImpl = composeFetch();
     const built = await buildRedeemComposer(request([swap(MSFT, '1000', 'MSFT'), keep, swap(NVDA, '2000', 'NVDA')], fetchImpl));

@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import type { PublicClient } from 'viem';
+import { BAG_CHAINS, isBagChain, type BagChain } from '@/lib/config/chains';
+import type { HoldingsClients } from '@/lib/server/position-valuation';
 import { readBalancesAtBlock } from '@/lib/server/wallet-balances';
 import { verifyRedeemExecution } from '@/lib/server/redeem-execution';
 import { settleUnsettledPurchasesForUser } from '@/lib/server/purchase-execution';
@@ -11,7 +12,7 @@ import { recordNavSnapshot } from '@/lib/server/bag-nav-snapshots';
 // Accounting V2 / A2 — wallet reconciliation (docs/ACCOUNTING_V2_DESIGN.md §5).
 //
 // Reads, from the chain, what a user's wallet holds of every asset BAG tracks
-// for them, at ONE block, and hands each balance to apply_wallet_observation
+// for them, at ONE block PER CHAIN, and hands each balance to apply_wallet_observation
 // (migration 0049), which records drift, books confirmed outflows as ledger
 // events, and resolves drift that went away.
 //
@@ -36,8 +37,6 @@ export interface WalletReconcileResult {
   assets: { chain: string; address: string; status: ObservationStatus; observedRaw: string | null; shortfallRaw?: string }[];
 }
 
-/** Only Robinhood Chain is reconciled today (the chain BAG executes on). */
-const RECONCILED_CHAIN = 'robinhood';
 
 export { readBalancesAtBlock };
 
@@ -53,56 +52,76 @@ async function settlePendingFor(admin: SupabaseClient, userId: string, walletAdd
 
 export async function reconcileWallet(
   admin: SupabaseClient,
-  client: PublicClient,
+  clients: HoldingsClients,
   user: { userId: string; walletAddress: string; assets: TrackedAsset[] }
 ): Promise<WalletReconcileResult> {
-  const assets = user.assets.filter((a) => a.chain === RECONCILED_CHAIN && /^0x[0-9a-fA-F]{40}$/.test(a.address));
+  const assets = user.assets.filter((a) => isBagChain(a.chain) && /^0x[0-9a-fA-F]{40}$/.test(a.address));
   if (assets.length === 0) return { userId: user.userId, blockNumber: null, assets: [] };
 
   await settlePendingFor(admin, user.userId, user.walletAddress);
 
-  const blockNumber = await client.getBlockNumber();
-  const balances = await readBalancesAtBlock(client, user.walletAddress, assets, blockNumber);
-
+  const chains = [...new Set(assets.map((a) => a.chain as BagChain))];
+  const blocks = new Map<BagChain, bigint>();
   const out: WalletReconcileResult['assets'] = [];
-  for (let i = 0; i < assets.length; i++) {
-    const a = assets[i];
-    const observed = balances[i];
-    if (observed === null) {
-      out.push({ chain: a.chain, address: a.address, status: 'UNREADABLE', observedRaw: null });
+  for (const chain of chains) {
+    const group = assets.filter((a) => a.chain === chain);
+    let blockNumber: bigint;
+    let balances: (bigint | null)[];
+    try {
+      const client = typeof clients === 'function' ? clients(chain) : clients;
+      if (await client.getChainId() !== BAG_CHAINS[chain].chainId) throw new Error('RPC chain mismatch');
+      blockNumber = await client.getBlockNumber();
+      balances = await readBalancesAtBlock(client, user.walletAddress, group, blockNumber);
+      blocks.set(chain, blockNumber);
+    } catch {
+      out.push(...group.map((a) => ({ chain, address: a.address, status: 'UNREADABLE' as const, observedRaw: null })));
       continue;
     }
-    const { data, error } = await admin.rpc('apply_wallet_observation', {
-      p_user_id: user.userId,
-      p_chain: a.chain,
-      p_address: a.address,
-      p_block_number: Number(blockNumber),
-      p_observed_raw: observed.toString(),
-    });
-    if (error) throw new Error(`apply_wallet_observation failed: ${error.message}`);
-    const r = (data ?? {}) as { status?: ObservationStatus; shortfallRaw?: string };
-    out.push({ chain: a.chain, address: a.address, status: r.status ?? 'OK', observedRaw: observed.toString(), ...(r.shortfallRaw ? { shortfallRaw: r.shortfallRaw } : {}) });
+    for (let i = 0; i < group.length; i++) {
+      const a = group[i];
+      const observed = balances[i];
+      if (observed === null || observed === undefined) {
+        out.push({ chain, address: a.address, status: 'UNREADABLE', observedRaw: null });
+        continue;
+      }
+      const { data, error } = await admin.rpc('apply_wallet_observation', {
+        p_user_id: user.userId,
+        p_chain: chain,
+        p_address: a.address,
+        p_block_number: Number(blockNumber),
+        p_observed_raw: observed.toString(),
+      });
+      if (error) throw new Error(`apply_wallet_observation failed: ${error.message}`);
+      const r = (data ?? {}) as { status?: ObservationStatus; shortfallRaw?: string };
+      out.push({ chain, address: a.address, status: r.status ?? 'OK', observedRaw: observed.toString(), ...(r.shortfallRaw ? { shortfallRaw: r.shortfallRaw } : {}) });
+    }
   }
 
-  const { error: markError } = await admin.rpc('mark_wallet_reconciled', { p_user_id: user.userId, p_block_number: Number(blockNumber) });
-  if (markError) throw new Error(`mark_wallet_reconciled failed: ${markError.message}`);
+  // This legacy checkpoint means ALL tracked assets were read. Never mark a
+  // partial read as fresh. Its block column is used only by the Robinhood-only
+  // log-scan optimization; other wallets use full, chain-specific balance reads.
+  if (out.every((a) => a.status !== 'UNREADABLE') && assets.length === user.assets.length) {
+    const legacyBlock = chains.length === 1 && chains[0] === 'robinhood' ? Number(blocks.get('robinhood')) : null;
+    const { error } = await admin.rpc('mark_wallet_reconciled', { p_user_id: user.userId, p_block_number: legacyBlock });
+    if (error) throw new Error(`mark_wallet_reconciled failed: ${error.message}`);
+  }
 
   // A confirmed outflow lowered what the Bags hold: price them again now, so a listing's TVL (the latest snapshot)
   // shows it right away instead of after the next hourly pass.
-  const outflows = out.filter((a) => a.status === 'CONFIRMED_OUTFLOW').map((a) => a.address);
+  const outflows = out.filter((a) => a.status === 'CONFIRMED_OUTFLOW').map((a) => `${a.chain}:${a.address.toLowerCase()}`);
   if (outflows.length > 0) await refreshNavForOutflows(admin, user.userId, outflows);
 
-  return { userId: user.userId, blockNumber: blockNumber.toString(), assets: out };
+  return { userId: user.userId, blockNumber: chains.length === 1 ? blocks.get(chains[0])?.toString() ?? null : null, assets: out };
 }
 
 /** Records a fresh NAV snapshot for every Bag in which this user held one of `addresses`. Never fails the reconciliation. */
 async function refreshNavForOutflows(admin: SupabaseClient, userId: string, addresses: string[]): Promise<void> {
   try {
-    const { data, error } = await admin.from('bag_investor_holdings').select('bag_id, address').eq('user_id', userId);
+    const { data, error } = await admin.from('bag_investor_holdings').select('bag_id, chain, address').eq('user_id', userId);
     if (error) return;
     const left = new Set(addresses.map((a) => a.toLowerCase()));
-    const rows = (data ?? []) as { bag_id: string; address: string }[];
-    const bagIds = [...new Set(rows.filter((r) => left.has(r.address.toLowerCase())).map((r) => r.bag_id))];
+    const rows = (data ?? []) as { bag_id: string; chain: string; address: string }[];
+    const bagIds = [...new Set(rows.filter((r) => left.has(`${r.chain}:${r.address.toLowerCase()}`)).map((r) => r.bag_id))];
     for (const bagId of bagIds) await recordNavSnapshot(admin, bagId, { minIntervalMs: 0 }).catch(() => undefined);
   } catch {
     // The hourly snapshot pass still catches up.
@@ -112,14 +131,14 @@ async function refreshNavForOutflows(admin: SupabaseClient, userId: string, addr
 export const WALLET_RECONCILE_BATCH = 20;
 
 /** The scheduled safety pass: the least recently checked users first. */
-export async function reconcileDueWallets(admin: SupabaseClient, client: PublicClient, limit = WALLET_RECONCILE_BATCH) {
+export async function reconcileDueWallets(admin: SupabaseClient, clients: HoldingsClients, limit = WALLET_RECONCILE_BATCH) {
   const { data, error } = await admin.rpc('wallet_reconciliation_due', { p_limit: limit });
   if (error) throw new Error(error.message);
   const users = (data ?? []) as { user_id: string; wallet_address: string; assets: TrackedAsset[] }[];
   const summary = { checked: 0, drift: 0, confirmedOutflows: 0, unreadable: 0, failed: 0 };
   for (const u of users) {
     try {
-      const r = await reconcileWallet(admin, client, { userId: u.user_id, walletAddress: u.wallet_address, assets: u.assets });
+      const r = await reconcileWallet(admin, clients, { userId: u.user_id, walletAddress: u.wallet_address, assets: u.assets });
       summary.checked++;
       summary.drift += r.assets.filter((a) => a.status === 'DRIFT').length;
       summary.confirmedOutflows += r.assets.filter((a) => a.status === 'CONFIRMED_OUTFLOW').length;
@@ -164,7 +183,7 @@ export type ConnectReconcileOutcome =
  */
 export async function reconcileWalletOnConnect(
   admin: SupabaseClient,
-  client: PublicClient,
+  clients: HoldingsClients,
   session: { userId: string; walletAddress: string },
   now: number = Date.now(),
   minIntervalMs: number = RECONCILE_ON_CONNECT_MIN_INTERVAL_MS
@@ -180,6 +199,6 @@ export async function reconcileWalletOnConnect(
 
   const assets = await trackedAssetsForUser(admin, session.userId);
   if (assets.length === 0) return { status: 'nothing-tracked' };
-  const result = await reconcileWallet(admin, client, { userId: session.userId, walletAddress: session.walletAddress, assets });
+  const result = await reconcileWallet(admin, clients, { userId: session.userId, walletAddress: session.walletAddress, assets });
   return { status: 'checked', blockNumber: result.blockNumber };
 }

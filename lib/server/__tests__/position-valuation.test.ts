@@ -13,15 +13,45 @@ function admin(rows: { bag_id: string; chain?: string; address: string; decimals
   const data = rows.map((r) => ({ chain: 'robinhood', decimals: 18, ...r }));
   return { from: () => ({ select: () => ({ eq: async () => ({ data, error: null }) }) }) } as never;
 }
-function client(balances: Record<string, bigint | 'fail'>) {
+function client(balances: Record<string, bigint | 'fail'>, chainId = 4663, block = 77) {
   return {
-    getBlockNumber: async () => BigInt(77),
+    getChainId: async () => chainId,
+    getBlockNumber: async () => BigInt(block),
     multicall: async ({ contracts }: { contracts: { address: string }[] }) =>
       contracts.map((c) => (balances[c.address] === 'fail' ? { status: 'failure' } : { status: 'success', result: balances[c.address] })),
   } as never;
 }
 
 describe('observeUserHoldings / sellableHoldingsForBag', () => {
+  it('keeps identical token addresses and block heights isolated across all three networks', async () => {
+    const rows = ['robinhood', 'base', 'arbitrum'].map(chain => ({ bag_id: chain, chain, address: A, quantity_raw: '100' }));
+    const clients = { robinhood: client({ [A]: BigInt(10) }, 4663, 77), base: client({ [A]: BigInt(20) }, 8453, 88), arbitrum: client({ [A]: BigInt(30) }, 42161, 99) };
+    const o = await observeUserHoldings(admin(rows), (chain) => clients[chain as keyof typeof clients], user);
+    expect(o.blockNumber).toBeNull();
+    expect(o.blockNumbers).toEqual({ robinhood: '77', base: '88', arbitrum: '99' });
+    for (const [chain, amount] of [['robinhood', '10'], ['base', '20'], ['arbitrum', '30']]) {
+      expect(sellableHoldingsForBag(o, chain)).toEqual([expect.objectContaining({ chain, sellableRaw: amount })]);
+      expect(o.trackedAll.get(`${chain}:${A}`)).toBe(BigInt(100));
+    }
+    const prices = { getPrice: async () => ({ price: '1' }) } as never;
+    const values = await valueUserPositions(admin(rows), chain => clients[chain as keyof typeof clients], prices, user);
+    expect(values.get('base')?.blockNumber).toBe('88');
+    expect(values.get('arbitrum')?.blockNumber).toBe('99');
+  });
+
+  it('an unavailable or incorrectly configured RPC cannot produce a zero balance or block other chains', async () => {
+    const rows = ['robinhood', 'base', 'arbitrum'].map(chain => ({ bag_id: chain, chain, address: A, quantity_raw: '100' }));
+    const o = await observeUserHoldings(admin(rows), chain => {
+      if (chain === 'robinhood') throw new Error('offline');
+      // An Arbitrum URL accidentally serving Base must not be trusted.
+      return client({ [A]: BigInt(20) }, 8453, 88);
+    }, user);
+    expect(sellableHoldingsForBag(o, 'robinhood')).toBeNull();
+    expect(sellableHoldingsForBag(o, 'arbitrum')).toBeNull();
+    expect(sellableHoldingsForBag(o, 'base')?.[0].sellableRaw).toBe('20');
+    expect(o.blockNumbers).toEqual({ base: '88' });
+  });
+
   it('a short wallet: each strategy may sell all it tracks that the wallet holds (D3.1), at one block', async () => {
     // 80 held, 60 + 40 tracked: either strategy can sell its own tracked amount in full (the tokens are
     // fungible); whatever then remains short stays with the other strategy for the reconciliation to book.

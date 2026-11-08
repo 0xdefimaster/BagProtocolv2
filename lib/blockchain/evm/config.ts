@@ -120,7 +120,7 @@ export function getEvmChainConfig(chain: ChainId): EvmChainConfig {
   }
   // A placeholder like the .env.example's "0xdeployed-bagfactory-address-..."
   // must never be treated as a configured factory.
-  if (!FACTORY_ADDRESS_RE.test(factoryAddress)) {
+  if (!FACTORY_ADDRESS_RE.test(factoryAddress) || /^0x0{40}$/i.test(factoryAddress)) {
     throw new Error(`FACTORY_ADDRESS_${key} is not a valid 0x-prefixed 20-byte address.`);
   }
   return {

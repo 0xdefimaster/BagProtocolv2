@@ -185,7 +185,7 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
 
   const [position, observed] = await Promise.all([
     getInvestorPosition(admin, session.userId, bagId),
-    observeUserHoldings(admin, getChainPublicClient('robinhood'), session),
+    observeUserHoldings(admin, getChainPublicClient, session),
   ]);
   if (!observed.rows.some((r) => r.bagId === bagId)) {
     return { ok: false, error: { kind: 'NO_POSITION' } };
@@ -904,7 +904,8 @@ async function verifyComposerRedeemSteps(
     // Native ETH has no Transfer log: measured from the wallet's balance around the block, bounded by the guaranteed
     // minimum and the quoted amount (native-received.ts). Unmeasurable: not verified, nothing booked.
     const sum = (vals: (string | null | undefined)[]) => vals.reduce((a, v) => a + (v && /^\d+$/.test(v) ? BigInt(v) : BigInt(0)), BigInt(0));
-    const native = await measureNativeReceived(getChainPublicClient('robinhood'), {
+    if (!isBagChain(intent.outputAsset.chain)) return markSwaps({ status: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
+    const native = await measureNativeReceived(getChainPublicClient(intent.outputAsset.chain), {
       txHash: txHash as `0x${string}`,
       wallet: intent.walletAddress as `0x${string}`,
       expectedRaw: sum(swaps.map((s) => s.outputAmountRaw)),
@@ -925,6 +926,8 @@ async function verifyComposerRedeemSteps(
     // Every one of these must hold: the transaction succeeded; the event came from the deployed RedeemSettlement
     // (the plan's address, which must still be the configured one); exactly one event for THIS redemption id; and
     // it settled what was attested — this wallet, this creator, this context.
+    // Settlement and royalty contracts are currently qualified only on Robinhood.
+    if (intent.outputAsset.chain !== 'robinhood') return markSwaps({ status: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
     const deployed = DEPLOYED_CONTRACTS.redeemSettlement;
     if (!deployed || deployed.toLowerCase() !== plan.settlement.toLowerCase()) return markSwaps({ status: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
     const settled = await readSettlementResult(txHash as `0x${string}`, plan.settlement, computeOnChainBagId(intent.id));
@@ -1019,7 +1022,10 @@ async function applyRedeemAccountingIdempotently(admin: SupabaseClient, intent: 
 
   // An outflow that already took these tokens off the position is given back first (0057), so the sale below is booked
   // in full, proceeds included, and its tokens leave the books once.
-  await classifyOutflowsForSale(admin, getChainPublicClient('robinhood'), intent, soldLegsForClassification(intent));
+  if (!isBagChain(intent.outputAsset.chain)) throw new Error('Unsupported sale chain');
+  const soldLegs = soldLegsForClassification(intent);
+  if (soldLegs.some(leg => leg.chain !== intent.outputAsset.chain)) throw new Error('Sale chains do not match');
+  await classifyOutflowsForSale(admin, getChainPublicClient(intent.outputAsset.chain), intent, soldLegs);
 
   // The sale ran on-chain and verified; only what the ledger still tracks for this strategy is debited (an earlier
   // sale booked late can have shrunk it since the quote). Unreadable ledger: debit as quoted, and the accounting

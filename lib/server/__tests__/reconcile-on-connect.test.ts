@@ -34,7 +34,7 @@ function fakeAdmin(opts: { lastCheckedAt: string | null; holdings: { quantity_ra
   return { from, rpc } as never;
 }
 
-const client = { getBlockNumber: vi.fn(async () => BigInt(123)) } as never;
+const client = { getChainId: async () => 4663, getBlockNumber: vi.fn(async () => BigInt(123)) } as never;
 const session = { userId: 'u1', walletAddress: '0x' + 'b'.repeat(40) };
 
 beforeEach(() => {

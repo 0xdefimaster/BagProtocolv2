@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BAG_CHAINS } from '@/lib/config/chains';
 import type { RedeemIntent, RedeemIntentStepRecord } from '@/types/redeem-intent';
 
 // One-transaction (Composer) redemptions: one receipt covers every leg, so the legs complete or fail together,
@@ -59,7 +60,8 @@ vi.mock('@/lib/server/price-provider', () => ({ getPriceProvider: () => ({}) }))
 vi.mock('@/lib/server/bag-nav-snapshots', () => ({ recordNavSnapshot: async () => undefined }));
 const measureNativeMock = vi.fn();
 vi.mock('@/lib/blockchain/native-received', () => ({ measureNativeReceived: (...a: unknown[]) => measureNativeMock(...a) }));
-vi.mock('@/lib/blockchain/rpc/clients', () => ({ getChainPublicClient: () => ({}) }));
+const chainClient = vi.fn((chain: string) => ({ chainName: chain }));
+vi.mock('@/lib/blockchain/rpc/clients', () => ({ getChainPublicClient: (chain: string) => chainClient(chain) }));
 
 const { verifyRedeemExecution, recheckUnmatchedComposerSales } = await import('../redeem-execution');
 
@@ -138,7 +140,8 @@ beforeEach(() => {
 const accountingCall = () => rpc.mock.calls.find(([name]) => name === 'apply_redeem_execution') as unknown as [string, Record<string, unknown>] | undefined;
 
 describe('verifyRedeemExecution — one-transaction (Composer) redemption', () => {
-  it('checks the ONE transaction against exactly what was built, completes every leg, debits each leg input once', async () => {
+  it.each(['robinhood', 'base', 'arbitrum'] as const)('%s: verifies one sale receipt and accounts each sold leg on its chain', async chain => {
+    row = { ...row, outputAsset: { ...row.outputAsset, chain }, composerTransaction: { ...TX, chainId: BAG_CHAINS[chain].chainId }, steps: row.steps.map(s => ({ ...s, sourceChain: chain, destinationChain: chain, inputAsset: { ...s.inputAsset, chain }, outputAsset: { ...s.outputAsset, chain } })) };
     trackComposerMock.mockResolvedValue({
       kind: 'DONE',
       receivedAmountsByAddress: { [USDG]: '9900000' },
@@ -147,7 +150,7 @@ describe('verifyRedeemExecution — one-transaction (Composer) redemption', () =
     const outcome = await verify();
     expect(outcome.ok && outcome.value.status).toBe('COMPLETED');
     expect(trackComposerMock).toHaveBeenCalledTimes(1);
-    expect(trackComposerMock.mock.calls[0][0]).toMatchObject({ txHash: HASH, recipient: WALLET, expectedTransaction: TX });
+    expect(trackComposerMock.mock.calls[0][0]).toMatchObject({ txHash: HASH, recipient: WALLET, expectedTransaction: { ...TX, chainId: BAG_CHAINS[chain].chainId } });
     expect(trackStepStatusMock).not.toHaveBeenCalled();
     expect(row.steps.map((s) => [s.status, s.txHash, s.outputAmountRaw])).toEqual([
       ['COMPLETED', HASH, '5940000'],
@@ -155,21 +158,24 @@ describe('verifyRedeemExecution — one-transaction (Composer) redemption', () =
     ]);
     // A3: each sold leg carries what it actually returned (here: the received total split across legs).
     expect(accountingCall()?.[1].p_holdings_sold).toEqual([
-      { chain: 'robinhood', address: MSFT, quantity_raw: '1000', proceeds_quote: '5.94' },
-      { chain: 'robinhood', address: NVDA, quantity_raw: '2000', proceeds_quote: '3.96' },
+      { chain, address: MSFT, quantity_raw: '1000', proceeds_quote: '5.94' },
+      { chain, address: NVDA, quantity_raw: '2000', proceeds_quote: '3.96' },
     ]);
+    expect(chainClient).toHaveBeenCalledWith(chain);
     expect(markRedeemAccountingAppliedMock).toHaveBeenCalledTimes(1);
   });
 
-  it('a sale into native ETH: no Transfer log, the measured amount is split across legs and booked in USD', async () => {
+  it.each(['robinhood', 'base', 'arbitrum'] as const)('%s: measures native ETH sale proceeds on the same network', async chain => {
     const ETH = '0x0000000000000000000000000000000000000000';
     row = {
       ...intent(),
-      outputAsset: { chain: 'robinhood', address: ETH },
+      composerTransaction: { ...TX, chainId: BAG_CHAINS[chain].chainId },
+      outputAsset: { chain, address: ETH },
       outputDecimals: 18,
       steps: intent().steps.map((s, i) => ({
         ...s,
-        outputAsset: { chain: 'robinhood', address: ETH },
+        sourceChain: chain, destinationChain: chain, inputAsset: { ...s.inputAsset, chain },
+        outputAsset: { chain, address: ETH },
         outputDecimals: 18,
         outputAmountRaw: i === 0 ? '3000000000000000' : '2000000000000000',
         providerEnforcedMinOutputRaw: i === 0 ? '2970000000000000' : '1980000000000000',
@@ -182,12 +188,13 @@ describe('verifyRedeemExecution — one-transaction (Composer) redemption', () =
     const outcome = await verify();
 
     expect(outcome.ok && outcome.value.status).toBe('COMPLETED');
+    expect(measureNativeMock.mock.calls[0][0]).toEqual({ chainName: chain });
     expect(measureNativeMock.mock.calls[0][1]).toMatchObject({ txHash: HASH, wallet: WALLET, expectedRaw: BigInt('5000000000000000'), minimumRaw: BigInt('4950000000000000') });
     expect(row.steps.map((s) => s.outputAmountRaw)).toEqual(['2970000000000000', '1980000000000000']);
     // 0.00297 ETH × $2500 = $7.425, 0.00198 ETH × $2500 = $4.95
     expect(accountingCall()?.[1].p_holdings_sold).toEqual([
-      { chain: 'robinhood', address: MSFT, quantity_raw: '1000', proceeds_quote: '7.425000000000000000' },
-      { chain: 'robinhood', address: NVDA, quantity_raw: '2000', proceeds_quote: '4.950000000000000000' },
+      { chain, address: MSFT, quantity_raw: '1000', proceeds_quote: '7.425000000000000000' },
+      { chain, address: NVDA, quantity_raw: '2000', proceeds_quote: '4.950000000000000000' },
     ]);
   });
 

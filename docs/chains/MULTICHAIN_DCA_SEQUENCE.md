@@ -1,6 +1,6 @@
 # Base + Arbitrum SDK, then DCA
 
-Working baseline: `feat/base-sdk-path` at `b57eb51042f3f57a458a6706efb514d5f833a1d3`. The work in `codex/sdk-base-arbitrum` extends that checkout; it is not an npm release or a public deployment.
+Initial baseline: `feat/base-sdk-path` at `b57eb51042f3f57a458a6706efb514d5f833a1d3`. The SDK changes were subsequently integrated with `main` at `4774ac9` in `codex/three-chain-bag-flows`. This is not an npm release or a public deployment. The current priority is the ordinary three-chain app flow (create, buy, sell), documented in `THREE_CHAIN_APP.md`; DCA follows it.
 
 ## Product scope
 
@@ -35,7 +35,7 @@ The typed-adapter branch depends on `BagFactory.bagOf` and BAG composition/versi
 
 ## Current evidence limits
 
-- Base: existing 2026-11-04 maintainer purchase verified using delivery logs, as recorded in `docs/SDK_DEPLOYMENT_PIN_BASE.md`; pin approval still pending.
+- Base: existing 2026-11-04 maintainer purchase verified using delivery logs, as recorded in `docs/SDK_DEPLOYMENT_PIN_BASE.md`; pin approved by the maintainer on 2026-11-04. The app's additional contracts/configuration remain separate requirements.
 - Arbitrum: token metadata and candidate factory/VM observed at block 522387172. Fresh Composer quotes compiled; a 0.5 USDC → WETH eth_call passed with a verified approval override. The full default matrix is INCOMPLETE due to balances. No signed live purchase or BAG registry deployment claimed by this change.
 - Both chains: shared synthetic SDK tests are implementation checks, not real-wallet transactions.
 - `DELIVERY_LOG` measures output delivery, not funding-source debit. DCA must separately prove exact authorized spend and bind the inner call/recipient; do not reuse the direct-call result as full forwarded-DCA verification.

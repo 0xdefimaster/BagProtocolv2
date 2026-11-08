@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 
 // -----------------------------------------------------------------------------
 // Production-hardening P0-1/P0-2 — regression tests for the Create Bag
@@ -86,6 +86,26 @@ afterEach(() => {
 });
 
 describe('Create Bag — single-chain network model', () => {
+  it('does not advertise a default deployable network while configuration cannot be loaded', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/deploy/chains') throw new Error('unavailable');
+      return { ok: true, json: async () => ({ assets: [] }) };
+    }));
+    render(<CreatePage />);
+    await goToAssetsStep();
+    expect(screen.getByRole('radio', { name: /robinhood/i })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /base/i })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /arbitrum/i })).toBeDisabled();
+  });
+
+  it('an empty deployment configuration cannot leave the selected network enabled', async () => {
+    deployable = [];
+    render(<CreatePage />);
+    await goToAssetsStep();
+    for (const radio of within(screen.getByRole('radiogroup', { name: 'Deploy network' })).getAllByRole('radio')) expect(radio).toBeDisabled();
+    expect(screen.getByTestId('create-deploy')).toBeDisabled();
+  });
+
   it('1. NetworkSelector is a true single-select — choosing a network deselects whatever was chosen before', async () => {
     render(<CreatePage />);
 
