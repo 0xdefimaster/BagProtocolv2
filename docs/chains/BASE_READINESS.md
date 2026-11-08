@@ -5,8 +5,9 @@ Status 2026-11-04: **NOT production-qualified.** `sdkPath = READ_ONLY_CHECKS_PAS
 - **B-Core PASS:** StrategyRegistry deployed by the maintainer at `0xcad829dcc30fa88b3d57cc0a6fa32bd56c9a5920`
   (block 53499552, tx `0x20a396dc59dc8d981cfab567f0deed3cf2ea87946bf4fc68ae83a5990004e388`); runtime code equals this
   repository's artifact exactly. No strategy is registered on it yet.
-- **C PASS (pin observed, not yet approved):** the Composer factory on Base has the same address and code as the
-  approved Robinhood pin. LI.FI confirmation and maintainer approval are pending (`docs/SDK_DEPLOYMENT_PIN_BASE.md`).
+- **C PASS, pin APPROVED (2026-11-04):** the Composer factory on Base has the same address and code as the
+  approved Robinhood pin. LI.FI's own v1.2 address table names it for Base, and the maintainer approved the pin
+  (`docs/SDK_DEPLOYMENT_PIN_BASE.md`).
 - **B-App:** not deployed (not needed for the SDK path).
 - **D LIVE VERIFIED (2026-11-04):** a 2 USDC → WETH + cbBTC purchase compiled by the SDK 0.4.0 candidate with the
   observed Base pin, signed by the maintainer's wallet `0x49Dadd…FE46` (plain EOA), returned `VERIFIED`:
@@ -56,7 +57,7 @@ Base result is recorded here yet.
 | **A** Chain and asset identity | The RPC is 8453; WETH `0x4200…0006` is `WETH`/18; native USDC `0x8335…2913` is `USDC`/6; every strategy asset is checked with `readTokenDecimals` | `verify-chain-readiness.ts base` (A checks) | **PASS** (2026-11-04) |
 | **B-Core** StrategyRegistry | Deployed by the owner; `STRATEGY_REGISTRY_ADDRESS_BASE` set; live runtime equals the artifact | `deploy-strategy-registry.ts base`, then `verify-chain-readiness.ts base` (B_CORE checks) | **DEPLOYED, PASS** (2026-11-04): `0xcad829dc…5920`, exact bytecode match |
 | **B-App** BagFactory + StrategyCompositions | Needed **only if the BAG application itself** runs on Base. Deployed; `FACTORY_ADDRESS_BASE` / `STRATEGY_COMPOSITIONS_ADDRESS_BASE` set; runtime equals the artifact with immutables masked; `StrategyCompositions.registry()` is this chain's registry | Deploy scripts take `base`. Then the B_APP checks | NOT DEPLOYED (not needed for the SDK path) |
-| **C** Composer trust | A **Base-specific** pin (factory and runtime code hash) is confirmed with LI.FI and reviewed in a separate `docs/SDK_DEPLOYMENT_PIN_BASE.md`; the live code hash equals the pin; a test signer's predicted proxy is unused, or owned by the signer and the pinned factory | `COMPOSER_FACTORY_BASE` / `COMPOSER_FACTORY_CODE_HASH_BASE` / `COMPOSER_TEST_SIGNER`, then the C checks | Checks **PASS** (2026-11-04); pin approval pending |
+| **C** Composer trust | A **Base-specific** pin (factory and runtime code hash) is confirmed with LI.FI and reviewed in a separate `docs/SDK_DEPLOYMENT_PIN_BASE.md`; the live code hash equals the pin; a test signer's predicted proxy is unused, or owned by the signer and the pinned factory | `COMPOSER_FACTORY_BASE` / `COMPOSER_FACTORY_CODE_HASH_BASE` / `COMPOSER_TEST_SIGNER`, then the C checks | Checks **PASS** (2026-11-04); pin **approved** 2026-11-04 |
 | **D** Execution and receipt proof | A real Base purchase compiled by the SDK with the Base pin is signed by the owner's wallet, and `verifySubmitted` returns `VERIFIED` | Owner step; the script only probes the RPC (`debug_traceCall`) | **LIVE VERIFIED** 2026-11-04 (`DELIVERY_LOG`, `DIRECT`), tx `0x21e2…80ee` |
 | **E** Independent consumer | The starter (`examples/sdk-consumer`), installed from the npm package or the tarball outside the repository, prepares and verifies the Base purchase with no BAG app, backend or database | Owner step | Starter run by the maintainer: **PASS**; independent third party: NOT YET |
 
@@ -87,9 +88,15 @@ Phase 1 is limited to standard EVM assets:
 - native ETH;
 - WETH `0x4200…0006`;
 - native USDC `0x8335…2913`;
-- cbBTC `0xcbB7…33Bf`.
+- cbBTC `0xcbB7…33Bf`;
+- cbETH `0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22` (Coinbase; address from https://www.coinbase.com/cbeth);
+- wstETH `0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452` (Lido, bridged `ERC20Bridged` behind an upgradeable proxy;
+  address from https://docs.lido.fi/deployed-contracts/).
 
-These four are the **starting test matrix, not the supported set.** Any ERC-20 is recognised by chain id + address
+cbETH and wstETH were added on 2026-11-04 after the live check below. Both are non-rebasing (value accrues through
+the exchange rate), so the delivered balance delta equals the minted amount.
+
+These are the **starting test matrix, not the supported set.** Any ERC-20 is recognised by chain id + address
 (`inspectToken`). Whether it may be bought is a separate, reviewed decision (`screenPurchaseAssets` with a
 caller-owned registry). Route availability and liquidity are the provider's quote; price sources are separate again.
 
@@ -121,6 +128,27 @@ Nothing was signed or sent.
 - **Simulation:** ETH → USDC returned `OK`, a full `eth_call`. The three ERC-20 scenarios stopped at
   `NEEDS_APPROVAL` (allowance 0). Their swap call itself was therefore **not** simulated: that needs an approval, or
   a state override.
+
+**Second live run, 2026-11-04 (same signer and RPC), with `assumeApprovals`: `VERDICT PASS`, 6 of 6.**
+Nothing was signed or sent. The allowance was still 0, so each ERC-20 swap ran in `eth_call` under a state override
+on the token's allowance slot, located and verified through `allowance()` first (USDC and WETH: standard Solidity
+mapping).
+
+| Scenario | Minimum output | Impact | Simulation |
+|---|---|---|---|
+| ETH → USDC | 1144416 | 55 bps | `OK` |
+| USDC → WETH | 854008173472444 | −26 bps | `OK_WITH_ASSUMED_APPROVALS` |
+| USDC → cbBTC | 2531 | −12 bps | `OK_WITH_ASSUMED_APPROVALS` |
+| WETH → USDC | 229161 | 43 bps | `OK_WITH_ASSUMED_APPROVALS` |
+| USDC → cbETH (candidate) | 748756640744147 | −47 bps | `OK_WITH_ASSUMED_APPROVALS` |
+| USDC → wstETH (candidate) | 686059618609153 | −55 bps | `OK_WITH_ASSUMED_APPROVALS` |
+
+- cbETH was read on Base as `cbETH` / "Coinbase Wrapped Staked ETH" / 18 decimals; wstETH as `wstETH` /
+  "Wrapped liquid staked Ether 2.0" / 18 decimals.
+- In that run both were screened as `UNREVIEWED` (opted in for the check only). They are now in
+  `BASE_PHASE1_REVIEWED_ASSETS`, and the default matrix runs them as reviewed scenarios.
+- `OK_WITH_ASSUMED_APPROVALS` means the swap succeeds once the exact approval is sent. It is not a purchase; no
+  receipt exists for these five ERC-20 scenarios. The one live receipt on Base is gate D.
 
 Run the live check yourself, read only:
 

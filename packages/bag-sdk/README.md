@@ -24,7 +24,7 @@ It needs no BAG frontend, server or database.
 |---|---|---|---|---|
 | bag.json parse, validate, normalize, hash | ✅ | ✅ | ✅ | ✅ |
 | StrategyRegistry verification | No registry deployment | ✅ registry deployed (2026-11-04, code matched); no strategy registered on Base yet | No registry deployment | ✅ |
-| Purchase compile (LI.FI Composer) | Not tested; needs a reviewed deployment pin | ✅ live 2026-11-04 (0.4.0 candidate); pin observed, approval pending (`docs/SDK_DEPLOYMENT_PIN_BASE.md`) | Fresh quotes compiled 2026-11-08; 0.5 USDC → WETH eth_call passed with assumed approval. Pin approval and signed live purchase pending (`docs/SDK_DEPLOYMENT_PIN_ARBITRUM.md`) | ✅ live (pin: `docs/SDK_DEPLOYMENT_PIN_ROBINHOOD.md`) |
+| Purchase compile (LI.FI Composer) | Not tested; needs a reviewed deployment pin | ✅ live 2026-11-04 (0.4.0 candidate); pin approved 2026-11-04 (`docs/SDK_DEPLOYMENT_PIN_BASE.md`) | Fresh quotes compiled 2026-11-08; 0.5 USDC → WETH eth_call passed with assumed approval. Pin approval and signed live purchase pending (`docs/SDK_DEPLOYMENT_PIN_ARBITRUM.md`) | ✅ live (pin: `docs/SDK_DEPLOYMENT_PIN_ROBINHOOD.md`) |
 | Purchase receipt `VERIFIED` | Not qualified | ✅ live 2026-11-04 with `DELIVERY_LOG` (0.4.0 candidate); no indexed reader qualified | Not qualified | ✅ live, with a tracing RPC on the qualified Nitro build |
 
 The core is chain-agnostic across these EVM chains. Execution and receipt evidence are added chain by chain:
@@ -282,8 +282,9 @@ These three are separate on purpose. **Recognising a token does not mean it is s
   Restricted and permissioned classes need an issuer-specific adapter, which does not exist yet. Entries are per
   chain.
 
-`BASE_PHASE1_REVIEWED_ASSETS` holds three reviewed Base assets: native USDC, WETH and cbBTC. They are a starting
-test matrix, not the supported list. Extend it with your own reviewed entries.
+`BASE_PHASE1_REVIEWED_ASSETS` holds five reviewed Base assets: native USDC, WETH, cbBTC, cbETH and wstETH. Each
+was read on Base and passed a live compile and full swap simulation on 2026-11-04. They are a starting test matrix,
+not the supported list. Extend it with your own reviewed entries.
 
 **Simulating before the wallet has approved:** use `simulateBag(compiled, { client, assumeApprovals: true })`.
 When an allowance is missing, the SDK locates the token's allowance slot and verifies it through `allowance()`
@@ -294,12 +295,14 @@ under a state override. It then eth_calls the purchase with that override.
 
 The RPC must support `eth_call` state overrides.
 
-Live, read-only check of the Base matrix (ETH→USDC, USDC→WETH, USDC→cbBTC, WETH→USDC). It runs recognition,
+Live, read-only check of the Base matrix (ETH→USDC, USDC→WETH, USDC→cbBTC, WETH→USDC, USDC→cbETH, USDC→wstETH). It runs recognition,
 screening, balance and allowance reads, compile with delivery proof, and simulation; nothing is signed or sent:
 
 ```bash
 RPC_URL=… LIFI_API_KEY=… COMPOSER_FACTORY=0x… COMPOSER_FACTORY_CODE_HASH=0x… npx tsx packages/bag-sdk/examples/base-phase1-check.ts <signer address>
 ```
+
+`EXTRA_OUTPUTS=0xToken,0xToken` adds a `USDC → token` scenario per candidate, screened and labelled as unreviewed.
 
 ## Strict parsing
 

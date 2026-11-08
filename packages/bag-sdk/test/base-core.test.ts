@@ -193,6 +193,23 @@ describe('screenPurchaseAssets: reviewed classes, not hardcoded tokens', () => {
     expect(screenPurchaseAssets({ chainId: BASE, inputToken: input, outputTokens: [output], registry }).ok).toBe(true);
   });
 
+  it('cbETH and wstETH (reviewed 2026-11-04) pass without opting in to unreviewed tokens', () => {
+    const CBETH = '0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22';
+    const WSTETH = '0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452';
+    const r = screenPurchaseAssets({ chainId: BASE, inputToken: USDC, outputTokens: [CBETH.toUpperCase().replace('0X', '0x'), WSTETH], registry });
+    expect(r).toMatchObject({ ok: true, decisions: [{}, { decision: 'ALLOW', assetClass: 'STANDARD_ERC20' }, { decision: 'ALLOW', assetClass: 'STANDARD_ERC20' }] });
+    expect(registry.lookup(BASE, CBETH)?.issuer).toBe('Coinbase');
+    expect(registry.lookup(BASE, WSTETH)?.issuer).toBe('Lido');
+    // Same addresses on another chain are not reviewed there.
+    expect(screenPurchaseAssets({ chainId: 4663, inputToken: USDC, outputTokens: [CBETH], registry }).ok).toBe(false);
+  });
+
+  it('the Base reviewed set is five distinct Base tokens, all STANDARD_ERC20', () => {
+    expect(BASE_PHASE1_REVIEWED_ASSETS).toHaveLength(5);
+    expect(new Set(BASE_PHASE1_REVIEWED_ASSETS.map((e) => e.address)).size).toBe(5);
+    expect(BASE_PHASE1_REVIEWED_ASSETS.every((e) => e.chainId === BASE && e.assetClass === 'STANDARD_ERC20' && e.address === e.address.toLowerCase())).toBe(true);
+  });
+
   it('an unreviewed ERC-20 is refused unless the caller opts in, and is still labelled UNREVIEWED', () => {
     expect(screenPurchaseAssets({ chainId: BASE, inputToken: USDC, outputTokens: [OTHER], registry })).toMatchObject({ ok: false, decisions: [{ decision: 'ALLOW' }, { decision: 'REFUSE', assetClass: 'UNREVIEWED' }] });
     expect(screenPurchaseAssets({ chainId: BASE, inputToken: USDC, outputTokens: [OTHER], registry, allowUnreviewed: true })).toMatchObject({ ok: true, decisions: [{}, { decision: 'ALLOW', assetClass: 'UNREVIEWED' }] });

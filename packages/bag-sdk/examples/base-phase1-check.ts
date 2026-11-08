@@ -2,7 +2,7 @@
 // Base (8453) / Arbitrum One (42161) Phase 1 — LIVE, READ-ONLY checks.
 // This file keeps the original Base CLI; evm-phase1-check.ts selects either chain.
 //
-//   ETH → USDC · USDC → WETH · USDC → cbBTC · WETH → USDC
+//   ETH → USDC · USDC → WETH · USDC → cbBTC · WETH → USDC · USDC → cbETH · USDC → wstETH
 //
 // For each: chain detection and profile, token recognition (inspectToken),
 // asset screening (the chain's PHASE1_REVIEWED_ASSETS), the signer's balance and
@@ -10,8 +10,8 @@
 // quote + compile WITH delivery proof, and simulateBag (eth_call).
 //
 // NOTHING IS SIGNED OR SENT. The signer is only the address the purchase is
-// built for: no key is read. The four assets are the starting test matrix, not
-// the list of supported tokens.
+// built for: no key is read. The reviewed assets are the starting test matrix,
+// not the list of supported tokens.
 //
 //   RPC_URL=<Base RPC>  LIFI_API_KEY=...  \
 //   COMPOSER_FACTORY=0x...  COMPOSER_FACTORY_CODE_HASH=0x...  \
@@ -53,6 +53,8 @@ const profile = getChainProfile('base')!;
 const USDC = profile.settlementStablecoin!.address as Hex;
 const WETH = profile.wrappedNative!.address as Hex;
 const CBBTC = '0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf' as Hex;
+const CBETH = '0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22' as Hex;
+const WSTETH = '0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452' as Hex;
 
 export type Phase1Chain = 'base' | 'arbitrum';
 const arbitrum = getChainProfile('arbitrum')!;
@@ -76,6 +78,8 @@ export const BASE_PHASE1_MATRIX = [
   { name: 'USDC -> WETH', input: USDC, output: WETH, amountRaw: BigInt(2_000_000) }, // 2 USDC
   { name: 'USDC -> cbBTC', input: USDC, output: CBBTC, amountRaw: BigInt(2_000_000) },
   { name: 'WETH -> USDC', input: WETH, output: USDC, amountRaw: BigInt(10) ** BigInt(14) }, // 0.0001 WETH
+  { name: 'USDC -> cbETH', input: USDC, output: CBETH, amountRaw: BigInt(2_000_000) },
+  { name: 'USDC -> wstETH', input: USDC, output: WSTETH, amountRaw: BigInt(2_000_000) },
 ] as const;
 
 const ERC20_ABI = [
