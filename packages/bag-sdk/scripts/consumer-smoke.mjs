@@ -33,7 +33,7 @@ try {
     join(dir, 'consumer.mjs'),
     `import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { parseBag, validateBag, hashBag, compileBag, verifyPurchaseReceipt, NATIVE_TOKEN, registryStrategyId, STRATEGY_REGISTRY_DEPLOYMENTS } from '@bagprotocol/sdk';
+import { parseBag, validateBag, hashBag, compileBag, verifyPurchaseReceipt, NATIVE_TOKEN, registryStrategyId, STRATEGY_REGISTRY_DEPLOYMENTS, getChainProfile, ARBITRUM_PHASE1_REVIEWED_ASSETS } from '@bagprotocol/sdk';
 import { lifiComposer, resolveLifiComposerAccount } from '@bagprotocol/sdk/lifi';
 import { fetchBag } from '@bagprotocol/sdk/http';
 import { readTokenDecimals, withReceiptEvidence } from '@bagprotocol/sdk/evm';
@@ -42,6 +42,10 @@ const parsed = parseBag(readFileSync('./feetest.bag.json', 'utf8'));
 assert.ok(parsed.ok, JSON.stringify(parsed.issues));
 assert.equal(validateBag(parsed.bag).valid, true);
 assert.equal(hashBag(parsed.bag), parsed.bag.definitionHash);
+assert.equal(getChainProfile('base').chainId, 8453);
+assert.equal(getChainProfile(42161).chain, 'arbitrum');
+assert.equal(getChainProfile('arbitrum').receipts.indexedReader, null);
+assert.equal(ARBITRUM_PHASE1_REVIEWED_ASSETS.length, 2);
 assert.equal(registryStrategyId('0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46', parsed.bag.ref.strategyId), '0x2518fc2191cd250b9dea7fec6c4e8a6c31e897881255cd5ef0af4dbe085f0326');
 assert.deepEqual(STRATEGY_REGISTRY_DEPLOYMENTS.robinhood, { chainId: 4663, address: '0x907cc27d644c8ea1c24b8320ad09ecf2819209a8', deployedAtBlock: 85332074 });
 

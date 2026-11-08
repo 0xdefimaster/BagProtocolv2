@@ -7,6 +7,7 @@ export { BagSdkError, getSdkErrorInfo, SDK_ERROR_MESSAGES, type BagSdkErrorCode,
 export { BAG_V1_CHAINS, BAG_V1_CHAIN_SLUGS, chainIdOf, isBagChain, isNativeToken, NATIVE_TOKEN, normalizeAddress, type BagChain } from './chains';
 export { CHAIN_PROFILES, getChainProfile, type ChainProfile, type ChainTokenRef } from './chain-profiles';
 export {
+  ARBITRUM_PHASE1_REVIEWED_ASSETS,
   BASE_PHASE1_REVIEWED_ASSETS,
   createAssetCapabilityRegistry,
   screenPurchaseAssets,

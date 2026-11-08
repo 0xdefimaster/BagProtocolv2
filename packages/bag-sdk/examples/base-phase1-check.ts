@@ -1,10 +1,11 @@
 // -----------------------------------------------------------------------------
-// Base (8453) Phase 1 — LIVE, READ-ONLY check of the standard-EVM-asset matrix:
+// Base (8453) / Arbitrum One (42161) Phase 1 — LIVE, READ-ONLY checks.
+// This file keeps the original Base CLI; evm-phase1-check.ts selects either chain.
 //
 //   ETH → USDC · USDC → WETH · USDC → cbBTC · WETH → USDC
 //
 // For each: chain detection and profile, token recognition (inspectToken),
-// asset screening (BASE_PHASE1_REVIEWED_ASSETS), the signer's balance and
+// asset screening (the chain's PHASE1_REVIEWED_ASSETS), the signer's balance and
 // allowance, the Composer account from the reviewed pin, a LI.FI Composer
 // quote + compile WITH delivery proof, and simulateBag (eth_call).
 //
@@ -22,14 +23,15 @@
 // Simulation uses assumeApprovals: when the allowance is missing, the swap itself is still eth_call'ed with a
 // VERIFIED allowance-slot state override (OK_WITH_ASSUMED_APPROVALS). The approval is still not on chain.
 //
-// Per scenario: PASS = compiled to a trusted target with sane legs and the simulation gave a determinate answer
-// (OK, NEEDS_APPROVAL or INSUFFICIENT_BALANCE are all determinate: they depend on the signer's funds, not on
-// the integration). FAIL = refused compile, untrusted target/spender, reverted call, missing code.
-// Exit: 0 all PASS · 1 any FAIL · 2 usage · 3 BLOCKED (credentials missing or network unreachable).
+// Per scenario: PASS = trusted compile plus successful eth_call (possibly with verified approval overrides).
+// INCOMPLETE = insufficient funds, missing approval or unavailable approval override: swap execution unproven.
+// FAIL = refused compile, untrusted target/spender, reverted call, missing code.
+// Exit: 0 all PASS · 1 any FAIL · 2 usage · 3 BLOCKED (credentials/network) · 4 INCOMPLETE.
 // -----------------------------------------------------------------------------
 import { pathToFileURL } from 'node:url';
 import { createPublicClient, http } from 'viem';
 import {
+  ARBITRUM_PHASE1_REVIEWED_ASSETS,
   BASE_PHASE1_REVIEWED_ASSETS,
   NATIVE_TOKEN,
   compileBag,
@@ -52,6 +54,23 @@ const USDC = profile.settlementStablecoin!.address as Hex;
 const WETH = profile.wrappedNative!.address as Hex;
 const CBBTC = '0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf' as Hex;
 
+export type Phase1Chain = 'base' | 'arbitrum';
+const arbitrum = getChainProfile('arbitrum')!;
+const ARB_USDC = arbitrum.settlementStablecoin!.address as Hex;
+const ARB_WETH = arbitrum.wrappedNative!.address as Hex;
+export const ARBITRUM_PHASE1_MATRIX = [
+  { name: 'ETH -> USDC', input: NATIVE_TOKEN as Hex, output: ARB_USDC, amountRaw: BigInt(5) * BigInt(10) ** BigInt(14) },
+  { name: 'USDC -> WETH', input: ARB_USDC, output: ARB_WETH, amountRaw: BigInt(2_000_000) },
+  { name: 'WETH -> USDC', input: ARB_WETH, output: ARB_USDC, amountRaw: BigInt(10) ** BigInt(14) },
+] as const;
+
+/** A compile or a preflight answer alone never proves that the swap can execute. */
+export function simulationOutcome(status: string): 'PASS' | 'INCOMPLETE' | 'FAIL' {
+  if (status === 'OK' || status === 'OK_WITH_ASSUMED_APPROVALS') return 'PASS';
+  if (['INSUFFICIENT_BALANCE', 'NEEDS_APPROVAL', 'APPROVAL_OVERRIDE_UNAVAILABLE'].includes(status)) return 'INCOMPLETE';
+  return 'FAIL';
+}
+
 export const BASE_PHASE1_MATRIX = [
   { name: 'ETH -> USDC', input: NATIVE_TOKEN as Hex, output: USDC, amountRaw: BigInt(5) * BigInt(10) ** BigInt(14) }, // 0.0005 ETH
   { name: 'USDC -> WETH', input: USDC, output: WETH, amountRaw: BigInt(2_000_000) }, // 2 USDC
@@ -64,12 +83,12 @@ const ERC20_ABI = [
   { type: 'function', name: 'allowance', stateMutability: 'view', inputs: [{ type: 'address' }, { type: 'address' }], outputs: [{ type: 'uint256' }] },
 ] as const;
 
-function singleAssetBag(asset: Hex, decimals: number): BagDocument {
+function singleAssetBag(chain: Phase1Chain, asset: Hex, decimals: number): BagDocument {
   const r = parseBag({
     bagJson: 1,
     definition: {
-      kind: 'STATIC_BASKET', chain: 'base', mutability: 'MUTABLE',
-      assets: [{ chain: 'base', address: asset, decimals, weightBps: 10000 }],
+      kind: 'STATIC_BASKET', chain, mutability: 'MUTABLE',
+      assets: [{ chain, address: asset, decimals, weightBps: 10000 }],
       rules: {
         weightBounds: { minBps: 100, maxBps: 10000 }, maxAssets: 10, minInvestment: { amount: '0', measuredAs: 'PAYMENT_TOKEN_AMOUNT' },
         swapSlippageBps: 100, rebalance: { frequency: 'MANUAL', driftThresholdBps: 500 }, performanceFeeBps: 0, noRouteAssetPolicy: 'BLOCK',
@@ -80,21 +99,24 @@ function singleAssetBag(asset: Hex, decimals: number): BagDocument {
   return r.bag;
 }
 
-function matrix(extra: string | undefined) {
-  const out: { name: string; input: Hex; output: Hex; amountRaw: bigint; candidate: boolean }[] = BASE_PHASE1_MATRIX.map((m) => ({ ...m, candidate: false }));
+function matrix(chain: Phase1Chain, extra: string | undefined) {
+  const usdc = getChainProfile(chain)!.settlementStablecoin!.address as Hex;
+  const initial = chain === 'base' ? BASE_PHASE1_MATRIX : ARBITRUM_PHASE1_MATRIX;
+  const out: { name: string; input: Hex; output: Hex; amountRaw: bigint; candidate: boolean }[] = initial.map((m) => ({ ...m, candidate: false }));
   for (const a of (extra ?? '').split(',').map((x) => x.trim()).filter(Boolean)) {
     if (!/^0x[0-9a-fA-F]{40}$/.test(a)) throw new Error(`EXTRA_OUTPUTS: ${a} is not an address`);
-    out.push({ name: `USDC -> ${a} (candidate)`, input: USDC, output: a.toLowerCase() as Hex, amountRaw: BigInt(2_000_000), candidate: true });
+    out.push({ name: `USDC -> ${a} (candidate)`, input: usdc, output: a.toLowerCase() as Hex, amountRaw: BigInt(2_000_000), candidate: true });
   }
   return out;
 }
 
 const j = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === 'bigint' ? x.toString() : x));
 
-async function main() {
-  const signer = process.argv[2] as Hex | undefined;
+export async function runPhase1Check(chain: Phase1Chain, signerArg: string | undefined) {
+  const profile = getChainProfile(chain)!;
+  const signer = signerArg as Hex | undefined;
   if (!signer || !/^0x[0-9a-fA-F]{40}$/.test(signer)) {
-    console.error('Usage: RPC_URL=… LIFI_API_KEY=… COMPOSER_FACTORY=0x… COMPOSER_FACTORY_CODE_HASH=0x… npx tsx packages/bag-sdk/examples/base-phase1-check.ts <signer address>');
+    console.error('Usage: RPC_URL=… LIFI_API_KEY=… COMPOSER_FACTORY=0x… COMPOSER_FACTORY_CODE_HASH=0x… npx tsx packages/bag-sdk/examples/evm-phase1-check.ts <base|arbitrum> <signer address>');
     process.exit(2);
   }
   const env = { rpc: process.env.RPC_URL, key: process.env.LIFI_API_KEY, factory: process.env.COMPOSER_FACTORY, hash: process.env.COMPOSER_FACTORY_CODE_HASH };
@@ -117,7 +139,7 @@ async function main() {
   console.log(`${chainId === profile.chainId ? 'PASS' : 'FAIL'}  CHAIN  RPC ${chainId}, profile ${profile.chain} ${profile.chainId}; receipts: ${j(profile.receipts)}`);
   if (chainId !== profile.chainId) process.exit(1);
 
-  const registry = createAssetCapabilityRegistry(BASE_PHASE1_REVIEWED_ASSETS);
+  const registry = createAssetCapabilityRegistry(chain === 'base' ? BASE_PHASE1_REVIEWED_ASSETS : ARBITRUM_PHASE1_REVIEWED_ASSETS);
   const deployment = { chainId, factory: env.factory as Hex, factoryCodeHash: env.hash as Hex };
   let account;
   try {
@@ -131,7 +153,9 @@ async function main() {
 
   let failures = 0;
   let blocked = 0;
-  const scenarios = matrix(process.env.EXTRA_OUTPUTS);
+  let incomplete = 0;
+  let simulationsPassed = 0;
+  const scenarios = matrix(chain, process.env.EXTRA_OUTPUTS);
   for (const s of scenarios) {
     console.log(`\n== ${s.name}  (amount ${s.amountRaw} raw) ==`);
     try {
@@ -152,8 +176,8 @@ async function main() {
 
       // 5. quote + compile (trust policy derived from the reviewed pin)
       const compiled = await compileBag(
-        singleAssetBag(s.output, outIns.decimals),
-        { inputToken: s.input, amountRaw: s.amountRaw, signer, inputTokenDecimals: inIns.decimals, tokens: [{ chain: 'base', address: s.output, decimals: outIns.decimals }] },
+        singleAssetBag(chain, s.output, outIns.decimals),
+        { inputToken: s.input, amountRaw: s.amountRaw, signer, inputTokenDecimals: inIns.decimals, tokens: [{ chain, address: s.output, decimals: outIns.decimals }] },
         { provider, trust: account.trust }
       );
       const leg = compiled.quote.legs[0];
@@ -162,10 +186,11 @@ async function main() {
 
       // 6. simulation (eth_call from the signer; nothing sent)
       const sim = await simulateBag(compiled, { client: any, assumeApprovals: true });
-      const full = sim.status === 'OK' || sim.status === 'OK_WITH_ASSUMED_APPROVALS';
-      const determinate = full || ['INSUFFICIENT_BALANCE', 'APPROVAL_OVERRIDE_UNAVAILABLE'].includes(sim.status);
-      console.log(`${determinate ? 'PASS' : 'FAIL'}  SIMULATE${full ? ' (swap executed in eth_call)' : ' (swap NOT executed)'}  ${j(sim)}`);
-      if (!legOk || !determinate || !compiled.deliveryProof) failures++;
+      const outcome = simulationOutcome(sim.status);
+      console.log(`${outcome}  SIMULATE${outcome === 'PASS' ? ' (swap executed in eth_call)' : ' (swap NOT verified by eth_call)'}  ${j(sim)}`);
+      if (outcome === 'PASS') simulationsPassed++;
+      if (outcome === 'INCOMPLETE') incomplete++;
+      if (!legOk || outcome === 'FAIL' || !compiled.deliveryProof) failures++;
     } catch (e) {
       if (isNetworkBlock(e)) {
         blocked++;
@@ -177,13 +202,14 @@ async function main() {
       }
     }
   }
-  const verdict = failures > 0 ? 'FAIL' : blocked > 0 ? 'BLOCKED' : 'PASS';
+  const verdict = failures > 0 ? 'FAIL' : blocked > 0 ? 'BLOCKED' : incomplete > 0 ? 'INCOMPLETE' : 'PASS';
+  console.log(j({ chain, chainId, verdict, scenarios: scenarios.length, simulationsPassed, incomplete, blocked, failures, evidence: 'LIVE_READ_ONLY', signedOrSubmitted: false }));
   console.log(`\nVERDICT ${verdict}  (${scenarios.length} scenarios; nothing was signed or sent)`);
-  process.exit(verdict === 'PASS' ? 0 : verdict === 'BLOCKED' ? 3 : 1);
+  process.exit(verdict === 'PASS' ? 0 : verdict === 'BLOCKED' ? 3 : verdict === 'INCOMPLETE' ? 4 : 1);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
-  main().catch((e) => {
+  runPhase1Check('base', process.argv[2]).catch((e) => {
     console.error(getSdkErrorInfo(e).code);
     process.exit(1);
   });

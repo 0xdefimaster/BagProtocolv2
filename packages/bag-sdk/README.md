@@ -16,7 +16,7 @@ It needs no BAG frontend, server or database.
   - `@bagprotocol/sdk/lifi`: `lifiComposer({ apiKey, baseUrl })`, a routing provider for quote/compile (optional peer `@lifi/composer-sdk` `>=0.11.0 <0.12.0`, tested with 0.11.3: `COMPOSER_SDK_COMPAT`).
   - Other sources (a local file, IPFS, wallet storage, a registry `uri`) end in the same `parseBag(text)`.
 - Network access only through what you pass in (a `fetch`, a viem client).
-- This README describes **0.3.0** (release record: [SDK release preparation](../../docs/SDK_RELEASE_PREPARATION.md)). The package is MIT-licensed; `bag.json` v1 semantics are frozen.
+- This checkout describes the **0.4.0 unreleased candidate** (release record: [SDK release preparation](../../docs/SDK_RELEASE_PREPARATION.md)). Its new APIs are not a claim about the currently published npm package. The package is MIT-licensed; `bag.json` v1 semantics are frozen.
 
 ## Chain support
 
@@ -24,17 +24,20 @@ It needs no BAG frontend, server or database.
 |---|---|---|---|---|
 | bag.json parse, validate, normalize, hash | ✅ | ✅ | ✅ | ✅ |
 | StrategyRegistry verification | No registry deployment | ✅ registry deployed (2026-11-04, code matched); no strategy registered on Base yet | No registry deployment | ✅ |
-| Purchase compile (LI.FI Composer) | Not tested; needs a reviewed deployment pin | ✅ live 2026-11-04 (0.4.0 candidate); pin observed, approval pending (`docs/SDK_DEPLOYMENT_PIN_BASE.md`) | Not tested; needs a reviewed deployment pin | ✅ live (pin: `docs/SDK_DEPLOYMENT_PIN_ROBINHOOD.md`) |
+| Purchase compile (LI.FI Composer) | Not tested; needs a reviewed deployment pin | ✅ live 2026-11-04 (0.4.0 candidate); pin observed, approval pending (`docs/SDK_DEPLOYMENT_PIN_BASE.md`) | Fresh quotes compiled 2026-11-08; 0.5 USDC → WETH eth_call passed with assumed approval. Pin approval and signed live purchase pending (`docs/SDK_DEPLOYMENT_PIN_ARBITRUM.md`) | ✅ live (pin: `docs/SDK_DEPLOYMENT_PIN_ROBINHOOD.md`) |
 | Purchase receipt `VERIFIED` | Not qualified | ✅ live 2026-11-04 with `DELIVERY_LOG` (0.4.0 candidate); no indexed reader qualified | Not qualified | ✅ live, with a tracing RPC on the qualified Nitro build |
 
 The core is chain-agnostic across these EVM chains. Execution and receipt evidence are added chain by chain:
 1. A reviewed Composer deployment pin.
-2. A qualified balance reader for that chain's node software.
-3. A StrategyRegistry deployment.
-4. A live `VERIFIED` purchase.
+2. A qualified receipt evidence path: a chain-specific balance reader, or `DELIVERY_LOG` with trusted compiled delivery proof and transaction binding. Delivery logs do not measure input-token spend.
+3. A live `VERIFIED` purchase with that evidence path.
+4. For registered strategies, a StrategyRegistry deployment and verified commitment.
 
-Until a chain has all four, results there are refused or `INDETERMINATE`, never silently accepted. Non-EVM chains
-(Solana) are not supported.
+These are qualification requirements, not a global runtime switch: a caller-supplied trust policy can compile an unsigned purchase before chain qualification. A profile or a synthetic test does not qualify live execution. Receipt verification refuses missing evidence; requested registry verification must pass. Non-EVM chains (Solana) are not supported.
+
+`getChainProfile('base' | 'arbitrum' | 'robinhood')` returns chain facts, not a default trusted deployment. Base and Arbitrum use native USDC as the initial settlement asset; Robinhood uses USDG. Asset classification is chain-and-address-specific. `ARBITRUM_PHASE1_REVIEWED_ASSETS` starts with native USDC and WETH, not bridged USDC.e and not Robinhood stock tokens.
+
+The shared read-only runner is `examples/evm-phase1-check.ts <base|arbitrum> <signer>`. It needs explicit `RPC_URL`, `LIFI_API_KEY`, `COMPOSER_FACTORY` and `COMPOSER_FACTORY_CODE_HASH`. It never signs or sends transactions. Insufficient balance or an unverified approval returns **INCOMPLETE** (exit 4), not a successful simulation. The old Base-only CLI remains available. DCA deployment is a separate step; see [the multichain DCA sequence](../../docs/chains/MULTICHAIN_DCA_SEQUENCE.md).
 
 ## JSON Schema
 

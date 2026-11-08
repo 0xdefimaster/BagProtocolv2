@@ -126,9 +126,9 @@ describe('Base chain profile', () => {
 
   it('leaves Robinhood as it was (its Nitro reader) and has no profile for unreviewed chains', () => {
     expect(getChainProfile('robinhood')?.receipts.indexedReader).toBe('ROBINHOOD_NITRO_TRANSACTION_INDEX');
-    expect(getChainProfile('arbitrum')).toBeNull();
+    expect(getChainProfile('arbitrum')?.receipts.indexedReader).toBeNull();
     expect(getChainProfile(1)).toBeNull();
-    expect(Object.keys(CHAIN_PROFILES).sort()).toEqual(['base', 'robinhood']);
+    expect(Object.keys(CHAIN_PROFILES).sort()).toEqual(['arbitrum', 'base', 'robinhood']);
   });
 });
 

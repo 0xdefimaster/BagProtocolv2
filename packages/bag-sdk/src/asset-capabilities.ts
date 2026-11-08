@@ -114,3 +114,14 @@ export const BASE_PHASE1_REVIEWED_ASSETS: readonly AssetCapabilityEntry[] = Obje
   { chainId: BAG_V1_CHAINS.base, address: '0x4200000000000000000000000000000000000006', assetClass: 'STANDARD_ERC20', reviewNote: 'OP Stack WETH predeploy; WETH/18' },
   { chainId: BAG_V1_CHAINS.base, address: '0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf', assetClass: 'STANDARD_ERC20', issuer: 'Coinbase', reviewNote: 'cbBTC (Coinbase Wrapped BTC); cbBTC/8' },
 ] satisfies AssetCapabilityEntry[]);
+
+/**
+ * Arbitrum One Phase 1 matrix: native USDC and WETH. This classification permits the standard ERC-20 purchase
+ * path, not unrestricted issuer behaviour (USDC is upgradeable/pausable/blocklistable), liquidity or a price
+ * guarantee. Native ETH needs no entry. No other chain's asset review is inherited.
+ * Sources and on-chain identity checks: docs/chains/ARBITRUM_DIFFERENCES.md.
+ */
+export const ARBITRUM_PHASE1_REVIEWED_ASSETS: readonly AssetCapabilityEntry[] = Object.freeze([
+  Object.freeze({ chainId: BAG_V1_CHAINS.arbitrum, address: '0xaf88d065e77c8cc2239327c5edb3a432268e5831', assetClass: 'STANDARD_ERC20', issuer: 'Circle', reviewNote: 'Circle native USDC, not bridged USDC.e; USDC/6. Issuer pause/blocklist/upgrade risk remains; simulate every purchase.' }),
+  Object.freeze({ chainId: BAG_V1_CHAINS.arbitrum, address: '0x82af49447d8a07e3bd95bd0d56f35241523fbab1', assetClass: 'STANDARD_ERC20', reviewNote: 'Arbitrum One canonical WETH; WETH/18. Check current execution and liquidity separately.' }),
+] satisfies AssetCapabilityEntry[]);

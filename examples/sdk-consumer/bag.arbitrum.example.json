@@ -1,0 +1,21 @@
+{
+  "bagJson": 1,
+  "definition": {
+    "kind": "STATIC_BASKET",
+    "chain": "arbitrum",
+    "mutability": "MUTABLE",
+    "assets": [
+      { "chain": "arbitrum", "address": "0x82af49447d8a07e3bd95bd0d56f35241523fbab1", "decimals": 18, "weightBps": 5000 },
+      { "chain": "arbitrum", "address": "0xaf88d065e77c8cc2239327c5edb3a432268e5831", "decimals": 6, "weightBps": 5000 }
+    ],
+    "rules": {
+      "weightBounds": { "minBps": 100, "maxBps": 7000 },
+      "maxAssets": 10,
+      "minInvestment": { "amount": "0", "measuredAs": "PAYMENT_TOKEN_AMOUNT" },
+      "swapSlippageBps": 100,
+      "rebalance": { "frequency": "MANUAL", "driftThresholdBps": 500 },
+      "performanceFeeBps": 0,
+      "noRouteAssetPolicy": "BLOCK"
+    }
+  }
+}

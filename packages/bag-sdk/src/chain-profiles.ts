@@ -52,6 +52,17 @@ const freezeProfile = (p: ChainProfile): Readonly<ChainProfile> =>
 
 /** Profiles of the chains with reviewed facts. A v1 chain without one is still valid bag.json; it just has no profile. */
 export const CHAIN_PROFILES: Readonly<Partial<Record<BagChain, Readonly<ChainProfile>>>> = Object.freeze({
+  arbitrum: freezeProfile({
+    chain: 'arbitrum',
+    chainId: BAG_V1_CHAINS.arbitrum,
+    nativeCurrency: { symbol: 'ETH', decimals: 18 },
+    // Arbitrum One WETH and Circle native USDC, not bridged USDC.e.
+    // Token identity was read at block 522387172; see docs/chains/ARBITRUM_DIFFERENCES.md.
+    wrappedNative: { address: '0x82af49447d8a07e3bd95bd0d56f35241523fbab1', symbol: 'WETH', decimals: 18 },
+    settlementStablecoin: { address: '0xaf88d065e77c8cc2239327c5edb3a432268e5831', symbol: 'USDC', decimals: 6 },
+    // Robinhood's qualified Nitro reader is chain-specific and must not be reused here.
+    receipts: { deliveryLog: true, singleTransactionBlock: false, indexedReader: null },
+  }),
   base: freezeProfile({
     chain: 'base',
     chainId: BAG_V1_CHAINS.base,
