@@ -1,0 +1,50 @@
+{
+  "recordedAt": "2026-11-08T15:40:35.148Z",
+  "role": "MAINTAINER_VALIDATION",
+  "node": "v24.22.0",
+  "package": {
+    "name": "@bagprotocol/sdk",
+    "version": "0.4.0",
+    "published": false,
+    "tarball": "bagprotocol-sdk-0.4.0.tgz",
+    "sha256": "208b26d3e64c90d86d8513e882d799a74d26caa041be9fedf92ebd666c20dbf5"
+  },
+  "isolatedInstall": {
+    "outsideRepository": true,
+    "install": "PASS",
+    "ignoreScripts": true,
+    "resolvedPackage": "C:\\Users\\ilife\\Documents\\Codex\\2026-10-21\\bag\\outputs\\base-pilot-2026-11-08\\consumer\\node_modules\\@bagprotocol\\sdk",
+    "strictTypecheck": "PASS"
+  },
+  "offlineDemo": {
+    "status": "OFFLINE_DEMO_OK",
+    "evidence": "SYNTHETIC_ONLY",
+    "receiptVerification": "VERIFIED"
+  },
+  "baseStrategy": {
+    "status": "VALID",
+    "chain": "base",
+    "assets": 2,
+    "definitionHash": "0x2167fbe2a04f138b724621a7865f6f0d8bd91f7a8bd00bf27c5e97134143b65f",
+    "hashMatchesValidation": true
+  },
+  "appChecks": {
+    "typecheck": "PASS",
+    "focusedTests": {
+      "passed": 16,
+      "total": 16,
+      "files": [
+        "app/dashboard/create/__tests__/page.test.tsx",
+        "lib/blockchain/__tests__/composer-three-chains.test.ts"
+      ]
+    },
+    "productionBuild": "PASS"
+  },
+  "publicAppLifecycle": "NOT_RUN",
+  "independentDeveloper": "NOT_RUN",
+  "signedOrSubmitted": false,
+  "pilotArchive": {
+    "name": "BAG-Base-SDK-Pilot-2026-11-08.zip",
+    "sha256": "2b3b5a326be0b08778dcff4c043dbe7b767888ad2019fe050c2e4c9d78cf6ae3"
+  }
+}

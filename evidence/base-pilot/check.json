@@ -1,0 +1,33 @@
+{
+  "recordedAt": "2026-11-08T15:39:27.102Z",
+  "role": "MAINTAINER_READ_ONLY",
+  "signer": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
+  "userWalletSelected": false,
+  "command": "check",
+  "exitCode": 4,
+  "result": {
+    "status": "NEEDS_FUNDING",
+    "chainId": 8453,
+    "definitionHash": "0x2167fbe2a04f138b724621a7865f6f0d8bd91f7a8bd00bf27c5e97134143b65f",
+    "tokenDecimalsChecked": true,
+    "deploymentPinChecked": true,
+    "signer": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
+    "input": {
+      "token": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "decimals": 6,
+      "amountRaw": "2000000",
+      "amount": "2",
+      "balanceRaw": "0",
+      "balance": "0"
+    },
+    "nativeBalanceETH": "0.000046182959091078",
+    "gasSufficiency": "NOT_ESTIMATED",
+    "apiKeyConfigured": true,
+    "deliveryProofEnabled": true,
+    "receiptEvidenceMode": "DELIVERY_LOG",
+    "accountVerified": true,
+    "provenance": "NOT_CHECKED",
+    "applicationAccounting": "NOT_BAG_ACCOUNTED",
+    "signedOrSubmitted": false
+  }
+}

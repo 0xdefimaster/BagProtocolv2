@@ -2,5 +2,7 @@ node_modules/
 dist/
 .env*
 !.env.example
-*.intent.json
+!.env.base.example
 live-purchases/
+*.intent.json
+*.intent-hash.txt

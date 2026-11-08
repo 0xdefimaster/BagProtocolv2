@@ -10,9 +10,11 @@
     "quickstart": "node quickstart.mjs",
     "build": "tsc -p tsconfig.json",
     "demo": "node dist/offline.js",
-    "prepare": "node dist/cli.js prepare",
-    "verify": "node dist/cli.js verify",
-    "sign": "node dist/local-sign.js"
+    "check": "node --env-file-if-exists=.env dist/check.js",
+    "quote": "node --env-file-if-exists=.env dist/cli.js quote",
+    "prepare": "node --env-file-if-exists=.env dist/cli.js prepare",
+    "verify": "node --env-file-if-exists=.env dist/cli.js verify",
+    "sign": "node --env-file-if-exists=.env dist/local-sign.js"
   },
   "dependencies": {
     "@bagprotocol/sdk": "0.4.0",

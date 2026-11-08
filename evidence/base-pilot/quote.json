@@ -1,0 +1,41 @@
+{
+  "recordedAt": "2026-11-08T15:39:33.951Z",
+  "role": "MAINTAINER_READ_ONLY",
+  "signer": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
+  "userWalletSelected": false,
+  "command": "quote",
+  "exitCode": 4,
+  "result": {
+    "status": "UNSIGNED_QUOTE",
+    "chainId": 8453,
+    "definitionHash": "0x2167fbe2a04f138b724621a7865f6f0d8bd91f7a8bd00bf27c5e97134143b65f",
+    "simulation": "INSUFFICIENT_BALANCE",
+    "registryVerification": "NOT_REQUESTED",
+    "amountRaw": "2000000",
+    "priceImpactBps": -26,
+    "approvals": [
+      {
+        "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+        "spender": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+        "amountRaw": "2000000"
+      }
+    ],
+    "legs": [
+      {
+        "token": "0x4200000000000000000000000000000000000006",
+        "expectedOutRaw": "446945169353055",
+        "minOutRaw": "442486786914022"
+      },
+      {
+        "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+        "expectedOutRaw": "1312",
+        "minOutRaw": "1298"
+      }
+    ],
+    "requestedAtMs": 1794152372383,
+    "validUntilMs": null,
+    "warningCount": 0,
+    "deliveryProof": true,
+    "signedOrSubmitted": false
+  }
+}

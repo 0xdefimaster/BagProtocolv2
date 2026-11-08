@@ -13,17 +13,27 @@ const json = (value: unknown) => JSON.stringify(value, (_key, item: unknown) => 
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   const client = createPublicClient({ transport: http(required('RPC_URL'), { retryCount: 0, timeout: 30_000 }) });
-  if (command === 'prepare') {
+  if (command === 'prepare' || command === 'quote') {
     const [file, inputToken, amountRaw, signer, minimaFile, output] = args;
-    if (!file || !inputToken || !amountRaw || !signer || !minimaFile || !output) throw new BagSdkError('INVALID_ARGUMENT');
+    if (!file || !inputToken || !amountRaw || !signer || (command === 'prepare' && (!minimaFile || !output))) throw new BagSdkError('INVALID_ARGUMENT');
     const registryAddress = process.env.STRATEGY_REGISTRY;
     const expectedCreator = process.env.EXPECTED_CREATOR;
     if (Boolean(registryAddress) !== Boolean(expectedCreator)) throw new BagSdkError('INVALID_ARGUMENT');
     const result = await preparePurchase({ bagText: await readFile(file, 'utf8'), inputToken: inputToken as Hex, amountRaw: BigInt(amountRaw), signer: signer as Hex,
-      client: client as unknown as PlanningClient, apiKey: required('LIFI_API_KEY'), composerUrl: process.env.COMPOSER_URL ?? 'https://composer.li.quest',
+      client: client as unknown as PlanningClient, apiKey: required('LIFI_API_KEY'), composerUrl: process.env.COMPOSER_URL || 'https://composer.li.quest',
       deployment: { chainId: await client.getChainId(), factory: required('COMPOSER_FACTORY') as Hex, factoryCodeHash: required('COMPOSER_FACTORY_CODE_HASH') as Hex },
       registry: registryAddress && expectedCreator ? { address: registryAddress as Hex, expectedCreator: expectedCreator as Hex } : undefined,
       deliveryProof: process.env.DELIVERY_PROOF === '1' });
+    if (command === 'quote') {
+      console.log(json({ status: 'UNSIGNED_QUOTE', chainId: result.compiled.transaction.chainId, definitionHash: result.definitionHash,
+        simulation: result.simulation.status, registryVerification: result.provenance ? 'VERIFIED' : 'NOT_REQUESTED',
+        amountRaw, priceImpactBps: result.compiled.quote.priceImpactBps, approvals: result.compiled.approvals,
+        legs: result.compiled.quote.legs.map(l => ({ token: l.token, expectedOutRaw: l.expectedOutRaw, minOutRaw: l.minOutRaw })),
+        requestedAtMs: result.compiled.quote.requestedAtMs, validUntilMs: result.compiled.quote.validUntilMs,
+        warningCount: result.compiled.quote.warnings.length, deliveryProof: Boolean(result.compiled.deliveryProof), signedOrSubmitted: false }));
+      if (!['OK', 'NEEDS_APPROVAL'].includes(result.simulation.status)) process.exitCode = 4;
+      return;
+    }
     if (result.simulation.status !== 'OK' && result.simulation.status !== 'NEEDS_APPROVAL') throw new BagSdkError('INVALID_ARGUMENT', 'Simulation is not ready.');
     const minima = JSON.parse(await readFile(minimaFile, 'utf8')) as { token: Hex; amountRaw: string }[];
     const snapshot = createIntent(result.compiled, minima.map(item => ({ token: item.token, amountRaw: BigInt(item.amountRaw) })));
@@ -48,6 +58,6 @@ async function main() {
     if (result.status !== 'VERIFIED') process.exitCode = 1;
     return;
   }
-  throw new BagSdkError('INVALID_ARGUMENT', 'Use prepare or verify; see README.');
+  throw new BagSdkError('INVALID_ARGUMENT', 'Use quote, prepare or verify; see README.');
 }
 main().catch(error => { console.error(json(getSdkErrorInfo(error))); process.exitCode = 1; });

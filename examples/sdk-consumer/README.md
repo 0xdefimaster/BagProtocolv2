@@ -8,6 +8,8 @@ A small Node / TypeScript (NodeNext) project that uses `@bagprotocol/sdk` the wa
 
 Copy this folder anywhere and it works on its own.
 
+For a focused first integration, start with [the Base pilot](./BASE_PILOT.md): offline validation, read-only checks, live unsigned quote, then an optional wallet purchase. It uses the packed 0.4.0 candidate and explicitly excludes SDK selling and BAG application accounting.
+
 ## Release status (read first)
 
 | Package | Status | What this starter uses it for |
@@ -211,7 +213,7 @@ following the quickstart above verbatim, with output identical to the expected J
 | Quickstart against the published 0.3.0 (npm) and the 0.4.0 tarball; same frozen hash | That 0.4.0 installs from npm (not published) |
 | Offline demo: snapshot integrity, minima, receipts (synthetic), HTTP deadlines | Any live compile, purchase or receipt from **this run**. The live Robinhood purchases (2026-10-30, 2026-11-02) were made by the maintainer, not by these smokes |
 | Strict NodeNext types (`strict`, `skipLibCheck: false`) against the packed tarball, on Node 24 | Browser bundlers; Node < 24 |
-| No network in the demo; npm registry only in the published smoke | Base, Arbitrum and Ethereum execution (no pin, no registry, no receipt qualification) |
+| No network in the demo; npm registry only in the published smoke | New live execution from the smoke itself; see the separate per-chain evidence above |
 | — | Use by an independent external developer (none yet) |
 
 ## Prepare a live unsigned intent

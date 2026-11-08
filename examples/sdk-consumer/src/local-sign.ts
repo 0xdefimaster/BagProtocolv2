@@ -76,7 +76,7 @@ async function main() {
   const chainId = await client.getChainId();
   const deployment = { chainId, factory: required('COMPOSER_FACTORY') as Hex, factoryCodeHash: required('COMPOSER_FACTORY_CODE_HASH') as Hex };
   const apiKey = required('LIFI_API_KEY');
-  const composerUrl = process.env.COMPOSER_URL ?? 'https://composer.li.quest';
+  const composerUrl = process.env.COMPOSER_URL || 'https://composer.li.quest';
   const bagText = await readFile(bagFile, 'utf8');
   const outDir = join(process.cwd(), 'live-purchases');
   await mkdir(outDir, { recursive: true });
