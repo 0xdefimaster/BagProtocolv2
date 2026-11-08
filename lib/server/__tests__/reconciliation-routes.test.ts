@@ -10,6 +10,7 @@ vi.mock('@/lib/supabase/server', () => ({
   isSupabaseConfigured: () => true,
   supabaseAdmin: () => ({ from: () => ({ select: () => ({ in: (_c: string, v: string[]) => usersIn(v) }) }) }),
 }));
+vi.mock('@/lib/blockchain/rpc/clients', () => ({ getChainPublicClient: () => ({}) }));
 vi.mock('@/lib/blockchain/robinhood-public-client', () => ({ getRobinhoodPublicClient: () => ({}) }));
 vi.mock('@/lib/server/wallet-reconciliation', () => ({
   reconcileWallet: (...a: unknown[]) => reconcileWallet(...a),
@@ -36,6 +37,7 @@ beforeEach(() => {
   trackedAssets.mockResolvedValue([{ chain: 'robinhood', address: '0x' + 'a'.repeat(40), decimals: 18 }]);
   reconcileWallet.mockResolvedValue({});
   reconcileDue.mockResolvedValue({ checked: 1 });
+  transferScan.mockResolvedValue({ verified: 1 });
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -66,6 +68,13 @@ describe('POST /api/webhooks/alchemy/address-activity', () => {
 });
 
 describe('POST /api/cron/reconcile-wallets', () => {
+  it('still runs the multi-chain full check when the Robinhood scan is unavailable', async () => {
+    transferScan.mockRejectedValueOnce(new Error('RPC unavailable'));
+    const r = await cron(new Request('http://x', { method: 'POST', headers: { authorization: 'Bearer a-long-enough-cron-secret-value-123456' } }) as never);
+    expect(r.status).toBe(200);
+    expect(reconcileDue).toHaveBeenCalled();
+    expect(await r.json()).toMatchObject({ scan: { status: 'UNAVAILABLE' }, roundRobin: { checked: 1 } });
+  });
   it('requires the cron secret', async () => {
     expect((await cron(new Request('http://x', { method: 'POST' }) as never)).status).toBe(401);
     const ok = await cron(new Request('http://x', { method: 'POST', headers: { authorization: 'Bearer a-long-enough-cron-secret-value-123456' } }) as never);

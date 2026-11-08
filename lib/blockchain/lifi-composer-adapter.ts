@@ -105,6 +105,14 @@ export class ComposerIneligibleError extends Error {
   }
 }
 
+/** Never relabel a provider transaction as the chain requested by the app. */
+function assertTransactionChain(result: ComposeCompileResult, expectedChainId: number): void {
+  const actual = result.transactionRequest?.chainId;
+  if (actual !== undefined && actual !== expectedChainId) {
+    throw new ComposerIneligibleError(`Composer transaction chain ${actual} does not match requested chain ${expectedChainId}`);
+  }
+}
+
 /**
  * True only when a Composer flow can plausibly express this purchase as one
  * same-chain transaction: the chain is one this module has actually been
@@ -376,6 +384,7 @@ export async function buildComposerPurchase(request: ComposerPurchaseRequest): P
     request.legs.map((l) => l.symbol)
   );
 
+  assertTransactionChain(result, chainId);
   const tx = result.transactionRequest!;
 
   // Only ever approve the purchase's own input token, never more than the
@@ -543,6 +552,7 @@ async function buildComposerSweepOnce(request: ComposerSweepRequest): Promise<Co
     request.inputs.map((i) => i.symbol)
   );
 
+  assertTransactionChain(result, chainId);
   const tx = result.transactionRequest!;
 
   // Only ERC-20s are sold: the transaction must not also take native ETH.
@@ -707,6 +717,7 @@ export async function buildComposerRebalance(request: ComposerRebalanceRequest):
     request.sells.map((x) => x.symbol)
   );
 
+  assertTransactionChain(result, chainId);
   const tx = result.transactionRequest!;
   if (BigInt(tx.value ?? '0') !== BigInt(0)) {
     throw new Error('Composer returned a rebalance transaction that also spends native ETH.');
@@ -857,6 +868,7 @@ export async function buildComposerSettlementRedeem(request: ComposerSettlementR
     request.inputs.map((x) => x.symbol)
   );
 
+  assertTransactionChain(result, chainId);
   const tx = result.transactionRequest!;
   if (BigInt(tx.value ?? '0') !== BigInt(0)) {
     throw new Error('Composer returned a settlement transaction that also spends native ETH.');

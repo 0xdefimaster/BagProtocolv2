@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
-import { getRobinhoodPublicClient } from '@/lib/blockchain/robinhood-public-client';
+import { getChainPublicClient } from '@/lib/blockchain/rpc/clients';
 import { addressesInActivity, verifyAlchemySignature } from '@/lib/server/alchemy-webhook';
 import { reconcileWallet, trackedAssetsForUser } from '@/lib/server/wallet-reconciliation';
 
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   const { data, error } = await admin.from('users').select('id, wallet_address').in('wallet_address', addresses);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const client = getRobinhoodPublicClient();
+  const client = getChainPublicClient;
   let reconciled = 0;
   for (const u of ((data ?? []) as { id: string; wallet_address: string }[]).slice(0, MAX_WALLETS_PER_CALL)) {
     try {

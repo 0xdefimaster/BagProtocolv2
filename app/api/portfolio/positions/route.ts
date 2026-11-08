@@ -58,7 +58,7 @@ export async function GET() {
     // A purchase whose window was closed before confirmation is still CONFIRMING: verify it now
     // (on-chain, idempotent, this user's own intents only) so the position below includes it.
     await settleUnsettledPurchasesForUser(admin, auth.session);
-    const values = await valueUserPositions(admin, getChainPublicClient('robinhood'), priceProvider, auth.session);
+    const values = await valueUserPositions(admin, getChainPublicClient, priceProvider, auth.session);
 
     const views = await Promise.all(
       [...values.values()].map(async (v): Promise<PortfolioPositionView | null> => {

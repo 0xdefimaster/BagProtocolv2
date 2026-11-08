@@ -1,0 +1,20 @@
+{
+  "schema": "bag-three-chain-deployment-review/v1",
+  "checkedAt": "2026-11-08T14:50:45.435Z",
+  "source": "existing Robinhood BagFactory",
+  "publicTransactionsSent": 0,
+  "chainId": 4663,
+  "factory": "0x7ce5a81df434755f38cb5f67ad49a8bb3c8e6f72",
+  "parameters": {
+    "owner": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
+    "treasury": "0x5186f0cCAB569dE1655922213074D97914378cd8",
+    "creationFee": "150000000000000",
+    "creationFeeCap": "10000000000000000"
+  },
+  "baseRegistry": {
+    "address": "0xcad829dcc30fa88b3d57cc0a6fa32bd56c9a5920",
+    "chainId": 8453,
+    "codeHash": "0x40aa4d92bd07a225802ff76c42c17cb62e80160b1c902144492b9289cf692c9b",
+    "artifactExactMatch": true
+  }
+}

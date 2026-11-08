@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
 import { requireCronSecret } from '@/lib/server/require-cron-secret';
 import { getRobinhoodPublicClient } from '@/lib/blockchain/robinhood-public-client';
+import { getChainPublicClient } from '@/lib/blockchain/rpc/clients';
 import { reconcileDueWallets } from '@/lib/server/wallet-reconciliation';
 import { scanTrackedWalletTransfers } from '@/lib/server/wallet-transfer-scan';
 
@@ -26,8 +27,8 @@ async function handle(req: NextRequest) {
     const client = getRobinhoodPublicClient();
     // Every holder through Transfer logs first; then a few wallets in full, least recently checked first
     // (wallets the scan does not cover, and a safety net for anything a log scan cannot see).
-    const scan = await scanTrackedWalletTransfers(admin, client);
-    const roundRobin = await reconcileDueWallets(admin, client, ROUND_ROBIN_BATCH);
+    const scan = await scanTrackedWalletTransfers(admin, client).catch(() => ({ status: 'UNAVAILABLE' as const }));
+    const roundRobin = await reconcileDueWallets(admin, getChainPublicClient, ROUND_ROBIN_BATCH);
     return NextResponse.json({ scan, roundRobin });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });

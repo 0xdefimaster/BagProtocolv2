@@ -5,6 +5,7 @@ import { PositionAssetInput, PositionValue, effectiveQuantityRaw, valuePosition 
 import { RedeemHoldingInput } from '@/lib/domain/basket-protocol/redeem/allocation';
 import { readBalancesAtBlock } from '@/lib/server/wallet-balances';
 import { ChainId } from '@/types/basket-protocol';
+import { BAG_CHAINS, isBagChain, type BagChain } from '@/lib/config/chains';
 
 // -----------------------------------------------------------------------------
 // Accounting V2 / A4 — the I/O side of holdings-based position value
@@ -12,13 +13,13 @@ import { ChainId } from '@/types/basket-protocol';
 //
 // Reads, for one user: every tracked holding across all of their strategies
 // (the attribution denominator), the wallet's balance of each of those assets
-// at ONE block, and — for display only — a verified price per asset. Balances
+// at ONE block PER CHAIN, and — for display only — a verified price per asset. Balances
 // that cannot be read are null (fail-closed: never a guessed zero, never a
 // guessed "still there"); the sell path refuses to quote until they can be read.
 // -----------------------------------------------------------------------------
 
-/** Balances are read on the chain BAG executes on; anything else is reported unreadable. */
-const OBSERVED_CHAIN = 'robinhood';
+/** A single client observes only its actual chain; a resolver supports mixed-chain portfolios. */
+export type HoldingsClients = PublicClient | ((chain: BagChain) => PublicClient);
 
 interface HoldingRow {
   bagId: string;
@@ -29,7 +30,9 @@ interface HoldingRow {
 }
 
 export interface ObservedHoldings {
+  /** Legacy single-chain summary. Null for a multi-chain observation. */
   blockNumber: string | null;
+  blockNumbers: Partial<Record<BagChain, string>>;
   /** Every non-zero tracked holding of the user, all strategies. */
   rows: HoldingRow[];
   /** asset key → tracked across all strategies. */
@@ -48,7 +51,7 @@ async function listUserHoldings(admin: SupabaseClient, userId: string): Promise<
     .map((r) => ({ bagId: r.bag_id, chain: r.chain, address: r.address, decimals: r.decimals, quantityRaw: r.quantity_raw }));
 }
 
-export async function observeUserHoldings(admin: SupabaseClient, client: PublicClient, user: { userId: string; walletAddress: string }): Promise<ObservedHoldings> {
+export async function observeUserHoldings(admin: SupabaseClient, clients: HoldingsClients, user: { userId: string; walletAddress: string }): Promise<ObservedHoldings> {
   const rows = await listUserHoldings(admin, user.userId);
   const trackedAll = new Map<string, bigint>();
   const assets = new Map<string, { chain: string; address: string; decimals: number }>();
@@ -59,19 +62,25 @@ export async function observeUserHoldings(admin: SupabaseClient, client: PublicC
   }
 
   const observed = new Map<string, bigint | null>([...assets.keys()].map((k) => [k, null]));
-  const readable = [...assets.entries()].filter(([, a]) => a.chain === OBSERVED_CHAIN && /^0x[0-9a-fA-F]{40}$/.test(a.address));
-  let blockNumber: string | null = null;
-  if (readable.length > 0) {
+  const chains = [...new Set(rows.map(r => r.chain))].filter(isBagChain);
+  const blockNumbers: Partial<Record<BagChain, string>> = {};
+  await Promise.all(chains.map(async chain => {
+    const readable = [...assets.entries()].filter(([, a]) => a.chain === chain && /^0x[0-9a-fA-F]{40}$/.test(a.address));
+    if (readable.length === 0) return;
     try {
+      const client = typeof clients === 'function' ? clients(chain) : clients;
+      // Never read a same-address token on the wrong network, even if the resolver/RPC was misconfigured.
+      if (await client.getChainId() !== BAG_CHAINS[chain].chainId) return;
       const block = await client.getBlockNumber();
       const balances = await readBalancesAtBlock(client, user.walletAddress, readable.map(([, a]) => a), block);
       readable.forEach(([k], i) => observed.set(k, balances[i]));
-      blockNumber = block.toString();
+      blockNumbers[chain] = block.toString();
     } catch {
-      // No block, no balances: every asset stays unreadable.
+      // An outage on one chain leaves only that chain unreadable.
     }
-  }
-  return { blockNumber, rows, trackedAll, observed };
+  }));
+  const blockNumber = chains.length === 1 ? blockNumbers[chains[0]] ?? null : null;
+  return { blockNumber, blockNumbers, rows, trackedAll, observed };
 }
 
 /** What a redemption of `bagId` may sell, per asset; null when any held asset's balance could not be read. */
@@ -118,7 +127,7 @@ export interface StrategyPositionValue extends PositionValue {
 /** Holdings-based value of each of the user's strategies (bag id → value). */
 export async function valueUserPositions(
   admin: SupabaseClient,
-  client: PublicClient,
+  client: HoldingsClients,
   priceProvider: PriceProvider,
   user: { userId: string; walletAddress: string },
   symbolFor: (chain: string, address: string) => string | undefined = () => undefined
@@ -142,5 +151,10 @@ export async function valueUserPositions(
     });
     byBag.set(r.bagId, list);
   }
-  return new Map([...byBag.entries()].map(([bagId, inputs]) => [bagId, { bagId, blockNumber: observed.blockNumber, ...valuePosition(inputs) }]));
+  return new Map([...byBag.entries()].map(([bagId, inputs]) => {
+    const chains = [...new Set(inputs.map(input => input.chain))];
+    const chain = chains[0];
+    const blockNumber = chains.length === 1 && isBagChain(chain) ? observed.blockNumbers[chain] ?? null : null;
+    return [bagId, { bagId, blockNumber, ...valuePosition(inputs) }];
+  }));
 }

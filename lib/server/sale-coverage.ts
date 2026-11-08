@@ -1,9 +1,8 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import type { PublicClient } from 'viem';
 import { RedeemIntent } from '@/types/redeem-intent';
 import { RedeemHoldingInput } from '@/lib/domain/basket-protocol/redeem/allocation';
 import { getInvestorPosition } from '@/lib/server/bag-investor-position-repo';
-import { observeUserHoldings, sellableHoldingsForBag } from '@/lib/server/position-valuation';
+import { observeUserHoldings, sellableHoldingsForBag, type HoldingsClients } from '@/lib/server/position-valuation';
 import { getChainPublicClient } from '@/lib/blockchain/rpc/clients';
 
 // -----------------------------------------------------------------------------
@@ -37,7 +36,7 @@ export async function checkSaleCoverage(
   admin: SupabaseClient,
   user: { userId: string; walletAddress: string },
   intent: Pick<RedeemIntent, 'bagId' | 'steps' | 'sharesRaw'>,
-  client: PublicClient = getChainPublicClient('robinhood')
+  client: HoldingsClients = getChainPublicClient
 ): Promise<SaleCoverage> {
   const [position, observed] = await Promise.all([getInvestorPosition(admin, user.userId, intent.bagId), observeUserHoldings(admin, client, user)]);
   const sellable = sellableHoldingsForBag(observed, intent.bagId);

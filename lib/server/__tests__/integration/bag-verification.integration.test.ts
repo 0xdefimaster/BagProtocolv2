@@ -27,7 +27,7 @@ async function bagWithHolder() {
   return { bagId: r.bag.id, u };
 }
 
-const stubChain = (latest: bigint) => ({ getBlockNumber: async () => latest, getLogs: async () => [] }) as never;
+const stubChain = (latest: bigint) => ({ getChainId: async () => 4663, getBlockNumber: async () => latest, getLogs: async () => [] }) as never;
 
 describe('Bag verification (real PostgreSQL)', () => {
   it('a never-checked holder: unverified; after the scan covers the wallet: verified at the scan; an open drift: pending', async () => {

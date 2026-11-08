@@ -3,7 +3,7 @@ import { RedeemIntent, RedeemIntentStepRecord } from '@/types/redeem-intent';
 import { buildComposerSweep, composerPortAmounts, sweepNodeId } from '@/lib/blockchain/lifi-composer-adapter';
 import type { Outputs } from '@lifi/compose-spec';
 import { DEFAULT_COMPOSER_SLIPPAGE_BPS } from '@/lib/blockchain/lifi-purchase-quote';
-import { ROBINHOOD_CHAIN_ID } from '@/lib/config/robinhood-chain';
+import { BAG_CHAINS, isBagChain } from '@/lib/config/chains';
 import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 
 // -----------------------------------------------------------------------------
@@ -49,9 +49,11 @@ export async function buildRedeemComposer(request: RedeemComposerRequest): Promi
   const swaps = request.steps.filter((s) => s.action === 'SWAP');
   if (swaps.length === 0) return null;
   const chain = swaps[0].route.sourceChain;
+  if (!isBagChain(chain) || request.outputAsset.chain !== chain) return null;
+  const chainId = BAG_CHAINS[chain].chainId;
   // Same-chain sales into the one output token only.
   const isOutput = (a: AssetIdentity) => a.chain === request.outputAsset.chain && a.address.toLowerCase() === request.outputAsset.address.toLowerCase();
-  if (swaps.some((s) => s.route.sourceChain !== chain || s.route.destinationChain !== chain || !isOutput(s.route.outputAsset))) return null;
+  if (request.steps.some((s) => s.route.sourceChain !== chain || s.route.destinationChain !== chain || s.route.inputAsset.chain !== chain || !isOutput(s.route.outputAsset))) return null;
 
   let compiled;
   try {
@@ -74,6 +76,7 @@ export async function buildRedeemComposer(request: RedeemComposerRequest): Promi
   }
 
   const resources = compiled.outputs;
+  if (compiled.transactionRequest.chainId !== undefined && compiled.transactionRequest.chainId !== chainId) return null;
   const steps: RedeemIntentStepRecord[] = request.steps.map((step, stepIndex) => {
     const base = {
       stepIndex,
@@ -113,7 +116,7 @@ export async function buildRedeemComposer(request: RedeemComposerRequest): Promi
       to: compiled.transactionRequest.to,
       data: compiled.transactionRequest.data,
       value: compiled.transactionRequest.value,
-      chainId: compiled.transactionRequest.chainId ?? ROBINHOOD_CHAIN_ID,
+      chainId,
       approvals: compiled.approvals,
     },
   };
