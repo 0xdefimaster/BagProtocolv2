@@ -3,6 +3,7 @@ import { keccak256 } from 'viem';
 import { buildComposerPurchase } from '../lifi-composer-adapter';
 import {
   crossCheckComposerPurchase,
+  crossCheckWithDeadline,
   recordingFetch,
   replayFetch,
   reviewedComposerDeployment,
@@ -210,6 +211,62 @@ describe('crossCheckComposerPurchase', () => {
     const input = await legacyCompile();
     const tampered = { ...input, legacy: { ...input.legacy, transactionRequest: { ...input.legacy.transactionRequest, data: '0xdeadbeefcaff' } } };
     expect(await crossCheckComposerPurchase(tampered, { env: ENV, client: chainClient() })).toEqual({ verdict: 'MISMATCH', reasons: ['TX_DATA'] });
+  });
+
+  it('every compared field is load-bearing: a legacy result differing in value, approvals, proxy or a leg output is a MISMATCH', async () => {
+    const input = await legacyCompile();
+    const deps = { env: ENV, client: chainClient() };
+    const L = input.legacy;
+    const cases: [string, typeof L][] = [
+      ['TX_TO', { ...L, transactionRequest: { ...L.transactionRequest, to: FACTORY.replace('f0f0', 'f0f1') } }],
+      ['TX_VALUE', { ...L, transactionRequest: { ...L.transactionRequest, value: '1' } }],
+      ['TX_CHAIN', { ...L, transactionRequest: { ...L.transactionRequest, chainId: 1 } }],
+      ['APPROVALS', { ...L, approvals: [{ ...L.approvals[0], amountRaw: '9999999' }] }],
+      ['APPROVALS', { ...L, approvals: [] }],
+      ['USER_PROXY', { ...L, userProxy: EVIL }],
+      ['LEG_0_MIN_OUT', { ...L, outputs: { ...L.outputs, 'swap_0.amountOut': { ...L.outputs['swap_0.amountOut'], amount: { ...L.outputs['swap_0.amountOut'].amount, minimum: { basis: 'op', value: BigInt(3961) } } } } as typeof L.outputs }],
+      ['LEG_1_EXPECTED_OUT', { ...L, outputs: { ...L.outputs, 'swap_1.amountOut': { ...L.outputs['swap_1.amountOut'], amount: { ...L.outputs['swap_1.amountOut'].amount, estimate: { basis: 'simulated', value: BigInt(6001) } } } } as typeof L.outputs }],
+    ];
+    for (const [reason, legacy] of cases) {
+      expect(await crossCheckComposerPurchase({ ...input, legacy }, deps)).toEqual({ verdict: 'MISMATCH', reasons: [reason] });
+    }
+  });
+
+  it('a mismatched quote the legacy adapter accepts but the SDK refuses: an output delivered to someone other than the signer', async () => {
+    const api = vi.fn(async () => {
+      const b = composeBody();
+      (b.data.outputs['swap_1.amountOut'] as { owner: string }).owner = EVIL;
+      return composeResponse(b);
+    }) as unknown as typeof fetch;
+    const rec = recordingFetch(api);
+    const legacy = await buildComposerPurchase({
+      chain: 'base', inputTokenAddress: USDC, inputAmountRaw: '10000000', legs: LEGS.map((l, i) => ({ address: l.token, weightBps: l.legBps, symbol: `T${i}` })),
+      signerAddress: SIGNER, slippageBps: 100, apiKey: 'test-key', fetchImpl: rec.fetch,
+    });
+    const input = { ...(await legacyCompile()), legacy, exchanges: rec.exchanges };
+    expect(await crossCheckComposerPurchase(input, { env: ENV, client: chainClient() })).toEqual({ verdict: 'REFUSED', code: 'OUTPUT_INVALID' });
+  });
+
+  it('a malformed compile body the SDK cannot parse is never a MATCH', async () => {
+    const input = await legacyCompile();
+    const broken = input.exchanges.map((x) => ({ ...x, responseText: '{"data":' }));
+    expect((await crossCheckComposerPurchase({ ...input, exchanges: broken }, { env: ENV, client: chainClient() })).verdict).not.toBe('MATCH');
+  });
+
+  it('a malformed pin (bad hash, zero factory) is never trusted', async () => {
+    const input = await legacyCompile();
+    expect(await crossCheckComposerPurchase(input, { env: { ...ENV, COMPOSER_FACTORY_CODE_HASH_BASE: 'not-a-hash' }, client: chainClient() })).toEqual({ verdict: 'UNAVAILABLE', reason: 'NO_REVIEWED_DEPLOYMENT' });
+    expect(await crossCheckComposerPurchase(input, { env: { ...ENV, COMPOSER_FACTORY_BASE: `0x${'0'.repeat(40)}` }, client: chainClient() })).toEqual({ verdict: 'REFUSED', code: 'ACCOUNT_DEPLOYMENT_INVALID' });
+  });
+
+  it('a deployed proxy owned by someone else is refused', async () => {
+    const client = { ...chainClient({ proxyDeployed: true }), readContract: async ({ functionName }: { functionName: string }) => (functionName === 'predictProxyAddress' ? PROXY : functionName === 'owner' ? EVIL : FACTORY) };
+    expect(await crossCheckComposerPurchase(await legacyCompile({ to: PROXY }), { env: ENV, client })).toEqual({ verdict: 'REFUSED', code: 'ACCOUNT_PROXY_MISMATCH' });
+  });
+
+  it('an RPC that hangs ends in UNAVAILABLE/TIMEOUT, never a wait without bound', async () => {
+    const client = { ...chainClient(), getChainId: () => new Promise<number>(() => {}) };
+    expect(await crossCheckWithDeadline(await legacyCompile(), { env: ENV, client }, 50)).toEqual({ verdict: 'UNAVAILABLE', reason: 'TIMEOUT' });
   });
 
   it('no reviewed deployment for the chain: UNAVAILABLE (never a trust policy derived from the response)', async () => {

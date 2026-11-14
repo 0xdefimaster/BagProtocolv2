@@ -97,9 +97,11 @@ Flag `off`. Nothing persisted changes shape.
 - **Comparison:** transaction to/data/value/chain, user proxy, approvals, and each leg's expected and enforced minimum
   output. Verdicts `MATCH` / `MISMATCH` (reason codes) / `REFUSED` (SDK error code) / `UNAVAILABLE`
   (`NO_REVIEWED_DEPLOYMENT`, `NOT_RECORDED`, `ERROR`). Log line `[sdk-compile-<mode>] chain=… legs=… verdict=…`.
-- **on:** proceeds only on `MATCH` (byte-identical result to `off`); otherwise an ERC-20 purchase fails with an
-  `UNAVAILABLE` notice (`kind: 'sdk_compile_check'`), a native-ETH purchase keeps its per-asset path, as for any
-  Composer refusal. **shadow:** legacy result always.
+- **on:** proceeds only on `MATCH` (byte-identical result to `off`); otherwise the purchase fails with an
+  `UNAVAILABLE` notice (`kind: 'sdk_compile_check'`), **native-ETH included**: the per-asset fallback a native
+  purchase keeps after a Composer refusal would sign LI.FI-supplied targets no reviewed pin covers, so an unconfirmed
+  (possibly hostile) compile must not reach it. The cross-check has a 10 s deadline (`UNAVAILABLE: TIMEOUT`).
+  **shadow:** legacy result always.
 - **Unchanged:** the signed program (no delivery proof), allocation, accounting, verification, strategy identity,
   standalone vs BAG-accounted boundary.
 - **Tests:** `packages/bag-sdk/test/compile-planned.test.ts` (caller order kept, malicious target/spender/approval

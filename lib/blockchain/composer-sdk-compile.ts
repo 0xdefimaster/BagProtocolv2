@@ -19,7 +19,8 @@ import { composerLegEnforcedMinOutputRaw, composerLegSimulatedOutputRaw, type Co
 // each leg's simulated and enforced minimum output. Anything but MATCH is reported with stable reason codes.
 //
 // BAG_SDK_COMPOSER_COMPILE: off (default; nothing here runs) | shadow (cross-check and log, the legacy result is
-// used either way) | on (the purchase proceeds only on MATCH). Delivery proof (M3b) is NOT enabled: the signed
+// used either way) | on (the purchase proceeds only on MATCH; anything else fails the purchase, native-ETH included:
+// the per-asset fallback would sign LI.FI-supplied targets the reviewed pin never covered). Delivery proof (M3b) is NOT enabled: the signed
 // program is unchanged.
 // -----------------------------------------------------------------------------
 
@@ -166,7 +167,26 @@ export type SdkCompileCheck =
   | { verdict: 'MATCH' }
   | { verdict: 'MISMATCH'; reasons: string[] }
   | { verdict: 'REFUSED'; code: string }
-  | { verdict: 'UNAVAILABLE'; reason: 'NO_REVIEWED_DEPLOYMENT' | 'NOT_RECORDED' | 'ERROR' };
+  | { verdict: 'UNAVAILABLE'; reason: 'NO_REVIEWED_DEPLOYMENT' | 'NOT_RECORDED' | 'ERROR' | 'TIMEOUT' };
+
+/** Upper bound on one cross-check (the account resolution's chain reads; the replay itself is local). */
+export const SDK_COMPILE_CHECK_TIMEOUT_MS = 10_000;
+
+/**
+ * `crossCheckComposerPurchase` that never throws and never waits longer than `timeoutMs`: an RPC that hangs makes the
+ * verdict UNAVAILABLE/TIMEOUT (shadow: the purchase goes on with the legacy result; on: it fails closed).
+ */
+export async function crossCheckWithDeadline(input: SdkCompileCheckInput, deps: SdkCompileCheckDeps, timeoutMs = SDK_COMPILE_CHECK_TIMEOUT_MS): Promise<SdkCompileCheck> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<SdkCompileCheck>((resolve) => {
+    timer = setTimeout(() => resolve({ verdict: 'UNAVAILABLE', reason: 'TIMEOUT' }), timeoutMs);
+  });
+  try {
+    return await Promise.race([crossCheckComposerPurchase(input, deps).catch((): SdkCompileCheck => ({ verdict: 'UNAVAILABLE', reason: 'ERROR' })), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** The SDK's v1 price-impact limit, used for the SDK's own check when the app sent none (Composer then applies its default). */
 const SDK_DEFAULT_MAX_PRICE_IMPACT_BPS = V1_EXECUTION_POLICY.maxPriceImpactBps;

@@ -7,7 +7,7 @@ import { getLiFiTokenData } from './lifi-token-data';
 import { mapLiFiError } from './lifi-execution-adapter';
 import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 import { PartitionError, planPartitionLegs } from '@/packages/bag-sdk/src';
-import { crossCheckComposerPurchase, logSdkCompileCheck, recordingFetch, sdkComposerCompileMode, type SdkComposerCompileMode } from './composer-sdk-compile';
+import { crossCheckWithDeadline, type SdkCompileCheck, logSdkCompileCheck, recordingFetch, sdkComposerCompileMode, type SdkComposerCompileMode } from './composer-sdk-compile';
 import type { ComposerAccountClient } from '@/packages/bag-sdk/src/adapters/lifi';
 import { getChainPublicClient } from './rpc/clients';
 import type { BagChain } from '@/lib/config/chains';
@@ -225,11 +225,11 @@ export interface ComposerAttemptOptions {
    * M3a SDK cross-check (composer-sdk-compile.ts). Production reads the mode from BAG_SDK_COMPOSER_COMPILE (default
    * off) and the chain client from the RPC config; tests inject them.
    */
-  sdkCompile?: { mode?: SdkComposerCompileMode; client?: ComposerAccountClient; env?: Record<string, string | undefined> };
+  sdkCompile?: { mode?: SdkComposerCompileMode; client?: ComposerAccountClient; env?: Record<string, string | undefined>; timeoutMs?: number };
 }
 
 /** The buyer-facing notice when the SDK cross-check (BAG_SDK_COMPOSER_COMPILE=on) does not confirm the compile. */
-function sdkCompileRefusal(check: Exclude<Awaited<ReturnType<typeof crossCheckComposerPurchase>>, { verdict: 'MATCH' }>): ComposerFallbackNotice {
+function sdkCompileRefusal(check: Exclude<SdkCompileCheck, { verdict: 'MATCH' }>): ComposerFallbackNotice {
   const detail = check.verdict === 'MISMATCH' ? check.reasons.join(', ') : check.verdict === 'REFUSED' ? check.code : check.reason;
   return {
     reason: 'UNAVAILABLE',
@@ -336,9 +336,7 @@ async function tryBuildComposerSteps(
 
   if (recorder) {
     const nativeInput = isNativeAssetIdentity(inputAsset);
-    let check: Awaited<ReturnType<typeof crossCheckComposerPurchase>>;
-    try {
-      check = await crossCheckComposerPurchase(
+    const check = await crossCheckWithDeadline(
         {
           chain: chain as ChainId,
           chainId: toLiFiChainId(chain as ChainId),
@@ -353,19 +351,15 @@ async function tryBuildComposerSteps(
           legacy: composerResult,
           exchanges: recorder.exchanges,
         },
-        { env: options.sdkCompile?.env, client: options.sdkCompile?.client ?? (getChainPublicClient(chain as BagChain) as unknown as ComposerAccountClient) }
+        { env: options.sdkCompile?.env, client: options.sdkCompile?.client ?? (getChainPublicClient(chain as BagChain) as unknown as ComposerAccountClient) },
+        options.sdkCompile?.timeoutMs
       );
-    } catch {
-      check = { verdict: 'UNAVAILABLE', reason: 'ERROR' };
-    }
     logSdkCompileCheck(sdkMode, chain as ChainId, legs.length, check);
     // `on`: only a transaction the SDK compiled identically, inside the reviewed allowlist, goes to the wallet.
-    // Fail closed exactly like a Composer refusal: an ERC-20 purchase fails with the reason, a native-ETH purchase
-    // keeps its per-asset path (see the catch above). `shadow`: observation only, the legacy result is used.
-    if (sdkMode === 'on' && check.verdict !== 'MATCH') {
-      if (nativeInput) return null;
-      return { composerFallback: sdkCompileRefusal(check) };
-    }
+    // Anything else fails the purchase with the reason, native-ETH included: unlike a Composer refusal (which keeps
+    // a native purchase's per-asset path, see the catch above), an unconfirmed compile may be a hostile response, and
+    // the per-asset path would sign LI.FI-supplied targets no reviewed pin covers. `shadow`: observation only.
+    if (sdkMode === 'on' && check.verdict !== 'MATCH') return { composerFallback: sdkCompileRefusal(check) };
   }
 
   const stepRecords: PurchaseIntentStepRecord[] = steps.map((step, stepIndex) => {

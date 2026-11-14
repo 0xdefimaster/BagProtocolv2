@@ -146,6 +146,41 @@ describe('BAG_SDK_COMPOSER_COMPILE', () => {
     expect(warn).toHaveBeenCalledWith('[sdk-compile-shadow] chain=base legs=2 verdict=REFUSED detail=ACCOUNT_PROXY_MISMATCH');
   });
 
+  describe('native-ETH input', () => {
+    const NATIVE = '0x0000000000000000000000000000000000000000';
+    const nativeSteps = STEPS.map((s) => ({ ...s, route: { ...s.route, inputAsset: { chain: 'base', address: NATIVE } } }) as ExecutionStep);
+    const nativeBody = (to = FACTORY) => {
+      const b = body(to);
+      return { data: { ...b.data, approvals: [], transactionRequest: { ...b.data.transactionRequest, value: '10000000' } } };
+    };
+    const runNative = (mode: 'off' | 'on') =>
+      buildPurchaseIntentSteps(nativeSteps, SIGNER, 18, { apiKey: 'test-key', slippageBps: 100, resolveOutputDecimals: () => 18, sdkCompile: { mode, client, env: ENV } });
+
+    it('on with MATCH: identical to off (value carries the ETH, no approvals)', async () => {
+      api.mockImplementation(async () => composeResponse(nativeBody()));
+      const off = await runNative('off');
+      const on = await runNative('on');
+      expect(off.composerTransaction).toMatchObject({ to: FACTORY, value: '10000000', approvals: [] });
+      expect(on).toEqual(off);
+    });
+
+    it('on with a hostile target fails closed: no Composer transaction and NO per-asset fallback', async () => {
+      api.mockImplementation(async () => composeResponse(nativeBody(EVIL)));
+      const r = await runNative('on');
+      expect(r.composerTransaction ?? null).toBeNull();
+      expect(r.composerFallback).toMatchObject({ reason: 'UNAVAILABLE', kind: 'sdk_compile_check' });
+      expect(r.steps.every((s) => s.lifiStep === null)).toBe(true); // nothing quoted per asset
+      expect(api).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('on: a hanging chain read fails closed within the deadline', async () => {
+    const hanging = { ...client, getChainId: vi.fn(() => new Promise<number>(() => {})) };
+    const r = await buildPurchaseIntentSteps(STEPS, SIGNER, 6, { apiKey: 'test-key', slippageBps: 100, resolveOutputDecimals: () => 18, sdkCompile: { mode: 'on', client: hanging, env: ENV, timeoutMs: 50 } });
+    expect(r.composerTransaction ?? null).toBeNull();
+    expect(r.composerFallback?.message).toMatch(/UNAVAILABLE: TIMEOUT/);
+  });
+
   it('a malformed Composer response is refused by the legacy path in every mode, before any cross-check', async () => {
     api.mockImplementation(async () => composeResponse({ data: { outputs: {}, userProxy: PROXY } }));
     for (const mode of ['off', 'shadow', 'on'] as const) {
