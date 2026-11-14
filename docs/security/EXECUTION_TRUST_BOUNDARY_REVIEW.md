@@ -29,24 +29,91 @@ ranking, `BagExecutionRouter`. Internal review, not an audit.
   behavior, and this gap, are unchanged; both characterization tests still pass there. Shadow first:
   `docs/runbooks/WALLET_BATCH_BINDING_SHADOW.md`.
 
-## F-01 (MEDIUM): a wallet "batch" sent to any contract that carries the built calldata
+## F-01 (HIGH in the default mode until this fix): calldata of the built call sent to a contract that never runs it
 
-- **Where:** `isWalletRoutedBatch` (`lib/blockchain/composer-status.ts`) accepts a transaction whose calldata starts
-  with the `redeemDelegations` selector **regardless of its target**, if the built call's bytes appear inside it.
-- **Scenario:** the wallet owner sends such calldata to a contract of their own that never runs the Composer call
-  and just transfers output tokens to the wallet; the purchase is booked at its full deposit although the deposit
-  never left. Same impact class as T-1 (ledger integrity, owner-crafted).
-- **History:** a fix exists on `origin/fix/f01-forged-batch` (`7a62dd0`, 2026-10-19: pin DelegationManager per chain,
-  require the input to leave the wallet) and was **never merged**; `main` is exposed.
-- **Status:** the exact binding refuses it (`UNSUPPORTED_ENVELOPE`, tested in app, SDK and parity suites); default
-  `off` still accepts it. Either enforce M2 or merge the F-01 commit on its own.
+- **Root cause:** the default binding (`isWalletRoutedBatch`, `lib/blockchain/composer-status.ts`) accepted any
+  transaction from the wallet whose calldata starts with the `redeemDelegations` selector and contains the built
+  call's bytes, **whatever its target**. Containment of bytes was treated as proof of execution.
+- **Exploit (owner-crafted, reproduced in tests before the fix):** the wallet sends that calldata to a contract of its
+  own; the contract never runs the Composer call and transfers output tokens (which the owner funded) to the wallet.
+  `trackComposerTransaction` returned `DONE` with those outputs; `verifyExecution` booked a purchase at the full
+  deposit although the deposit never left (`lib/blockchain/__tests__/f01-forged-envelope.test.ts`,
+  `composer-tx-search.test.ts` "F-01", `purchase-execution.test.ts` "F-01", all red on the unfixed code).
+- **Impact:** ledger integrity, and a third-party economic effect: a fabricated cost basis can be timed against price
+  moves (deliver tokens bought cheaper after the quote), creating a booked loss and loss carry that reduce the
+  performance fees the Bag's creator is owed on later gains. No fund theft; requires the wallet owner.
+  Sales: a forged sale must still move every sold token out (the flow requires it) and a fee sale needs the
+  attested `Settled` event, so the sale path is narrower; the same pin applies.
+- **Fix (default mode, no flag, 2026-11-14):**
+  1. `redeemDelegations` envelopes bind only when sent to the chain's pinned DelegationManager
+     (`trustedDelegationManagers`, from the SDK's `TRUSTED_SMART_ACCOUNTS`; none on Ethereum). Applied in
+     `trackComposerTransaction` and in `findComposerTransactionFromWallet`.
+  2. A Composer purchase paid with an ERC-20 must show the whole swapped deposit leaving the wallet in the same
+     transaction (`composerDepositLeftWallet`, `lib/server/purchase-execution.ts`); otherwise nothing is booked.
+  Not taken from the historical `7a62dd0` patch: its switch of the output floor to the provider's swap-boundary minimum,
+  which contradicts the later rule that `providerEnforcedMinOutputRaw` never changes verification (tested).
+- **Compatibility:** MetaMask v1.3.0 accounts can only use the pinned DelegationManager (their implementation's
+  `executeFromExecutor` accepts no other caller), self-call batches and direct calls are unchanged, and a real
+  Composer purchase always pulls its ERC-20 deposit from the wallet. Already-booked intents are not re-verified.
+  Historical BAG transactions could not be replayed in this session (database access not authorized): see D below.
+- **Residual in the default mode** (closed only by `BAG_WALLET_BATCH_BINDING=enforce`): a self-call envelope run by
+  a wallet's own unpinned EIP-7702 code (it can interpret calldata its own way), a native-ETH deposit (no Transfer
+  log to check), and T-1 sibling calls (pinned by "KNOWN GAP in the default mode" in the parity matrix).
+
+## T-2 (MEDIUM, open): the app signs the Composer target and approval spender the API returns
+
+- **Where:** `buildComposerPurchase` and the sale / rebalance builders (`lib/blockchain/lifi-composer-adapter.ts`)
+  check an approval's address format and that its amount does not exceed the input, but compare neither
+  `transactionRequest.to` nor the approval spender with a reviewed per-transaction allowlist. The Composer factory
+  code hash is checked only as a chain-readiness gate (`lib/blockchain/chain-readiness.ts`).
+- **Impact:** a wrong or compromised Composer API response would be presented for signature: an approval of up to
+  the purchase input to an arbitrary spender, or a call to an arbitrary target. Bounded by the approval cap and by
+  what the wallet shows; depends on trust in LI.FI's API.
+- **Already solved in the SDK:** `compileBag` enforces caller-owned `allowedTransactionTargets` and
+  `allowedApprovalSpenders`, and the README requires deriving the account from a reviewed deployment
+  (`resolveLifiComposerAccount`), never from `transactionRequest.to` / `userProxy`.
+- **Plan:** M3a (`docs/architecture/M3_PURCHASE_SLICE_PLAN.md`) moves the app's compile onto that check, behind a
+  flag and a byte-identity shadow. Not changed in this session (it changes what the app is willing to present).
 
 ## D-1 (resolved behind the flag)
 
 A batch carrying the exact call: legacy app = DONE (containment); SDK `OFF` = INDETERMINATE
 (`UNSUPPORTED_TRANSACTION_ENVELOPE`) without a call trace. With the shared exact binding on both sides the verdicts
 agree: a pinned MetaMask envelope binds (`WALLET_BATCH_EXACT`) with identical amounts, and the T-1 and F-01 shapes
-are refused or left unverified by both (`sdk-app-purchase-verification-parity.test.ts`, "enforce / EXACT").
+are refused or left unverified by both (`sdk-app-purchase-verification-parity.test.ts`, "enforce / EXACT" and the
+decision parity matrix).
+
+## Shared decision model
+
+`@bagprotocol/sdk` `VerificationDecision` = `ACCEPTED` | `REJECTED` | `INSUFFICIENT_EVIDENCE`
+(`purchaseReceiptDecision`, `walletExecutionDecision`; the app's `composerOutcomeDecision`). The app's `PENDING` and a
+missing RPC endpoint, and the SDK's `INDETERMINATE`, are `INSUFFICIENT_EVIDENCE`; `FAILED` is `REJECTED`; anything
+unknown is never `ACCEPTED`. The parity matrix runs 13 scenarios through both verifiers (enforce / EXACT) and requires
+equal decisions; the only intended difference is F-01 (app `REJECTED`, SDK without a trace `INSUFFICIENT_EVIDENCE`:
+neither accepts).
+
+## M2 independent review (second pass, 2026-11-14)
+
+| # | Assumption | Classification | Evidence / note |
+|---|---|---|---|
+| 1 | EIP-7702 delegate identification (designator `0xef0100‖delegate` at the previous block) | Independently verified (format, on-chain reads) | `checkWalletExecutionState`; real Base batches show the designator of the pinned implementation |
+| 2 | DelegationManager identity | Independently verified | pinned address; the implementation's immutable `delegationManager()` read on three chains |
+| 3 | ERC-7579 canonical decoding | Independently verified against the verified source; test-covered (mutation-checked) | real MetaMask Base batches decode canonically |
+| 4 | `redeemDelegations` self-authorized vs delegated contexts | Verified through a trusted dependency (Sourcify-verified DelegationManager source); test-covered; **self-authorized path not yet observed on chain** | only relayer (delegated) DelegationManager transactions were observed; shadow must confirm MetaMask's self-path encoding |
+| 5 | Execution modes: only default; try refused | Independently verified against source; test-covered | try mode swallows failures in `executeFromExecutor` / `execute` |
+| 6 | Approval ordering and amounts | Test-covered; ordering deliberately free (an approve cannot move tokens; a misordered batch reverts) | amounts must be the built (token, spender) and ≤ the built amount |
+| 7 | Duplicate built calls and siblings refused | Test-covered (app, SDK, parity, real-data regression), mutation-checked | default mode: siblings still accepted (known gap) |
+| 8 | Transaction/receipt binding | SDK: canonical block anchoring and confirmations; app: receipt and transaction by hash from one RPC | app trusts its RPC for inclusion (unchanged legacy behavior) |
+| 9 | Historical block state and nonce rule | Verified through a trusted dependency (EIP-7702 consensus rule: valid authorizations increment the nonce) | unreadable state is INSUFFICIENT_EVIDENCE (app: PENDING), never a pass |
+| 10 | RPC trust and failure behavior | Unverified beyond fail-closed tests: a lying RPC can fake receipts and state alike | same trust as every receipt-based check |
+| 11 | SDK ↔ app consistency | Test-covered: decision parity matrix (13 scenarios) | one intended non-accepting difference (F-01) |
+| 12 | Composer-internal transfers contaminating accounting | **Unverified.** With siblings excluded, remaining contamination sources are the built program itself and refunds back to the wallet (gross sums would overstate a purchase's spend or a sale's sold amount; rebalances already use net flows) | the replay tool measures `depositRefunded` / `soldTokenRefunded`; `DELIVERY_LOG` (M3) removes the dependency |
+
+**Fixed in this pass (enforce/EXACT only, default unaffected):** a DIRECT transaction now also requires the wallet's
+code to be a plain EOA or the pinned delegate, unchanged in the block. A direct call runs wallet code whenever it
+sends ETH back (native sales, refunds): an unpinned delegate's `receive()` could add transfers there (T-1 by callback).
+Shadow logs no longer carry the full transaction hash (10-character `txRef` plus the internal `intentId`) and log each
+transaction and verdict once per process (bounded set).
 
 ## M2 trust assumptions that remain
 
@@ -59,9 +126,8 @@ are refused or left unverified by both (`sdk-app-purchase-verification-parity.te
    a lying RPC could fake them (the same RPC already supplies the receipt). Unreadable state never passes.
 3. **Nonce accounting.** A code change needs a valid EIP-7702 authorization, which always increments the authority's
    nonce; the check relies on that consensus rule.
-4. **No callbacks into the wallet.** Within the built call, a token that calls back into the wallet (ERC-777-style
-   hooks) would run pinned wallet code, which only executes calls it is asked to; BAG's assets are plain ERC-20s.
-   A DIRECT transaction from a wallet with another delegate is not pinned (its code does not run unless called back).
+4. **Callbacks into the wallet.** Only plain EOAs and the pinned delegate (empty `receive()`) are accepted, for envelopes
+   and direct calls alike; BAG's assets are plain ERC-20s without receiver hooks.
 5. **Transfer-sum accounting itself.** With siblings excluded, the app still credits Transfer logs to the wallet
    inside the built call; correctness of those amounts rests on the Composer program BAG built and on the token
    contracts. `DELIVERY_LOG` (M3) moves that measurement inside the program.

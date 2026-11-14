@@ -41,6 +41,8 @@ plan below differs in two places, both stricter: the wallet's pre-block code mus
 
 ## M3: app compiles with delivery proof through the SDK (RED for the live step)
 
+**Refined 2026-11-14 from the source:** `docs/architecture/M3_PURCHASE_SLICE_PLAN.md` splits this into M3a (compile through the SDK adapter and trust checks, no signed-transaction change; also closes T-2) and M3b (delivery proof, changes what users sign).
+
 - Scope: the app's legacy purchase path calls `compileBag` with the `lifiComposer` adapter and `deliveryProof`,
   stores the SDK `CompiledPurchase`, and verifies with `DELIVERY_LOG` (falling back to the M2 binding).
 - Dependencies: M2; Composer pins per chain; resolution of nothing else.
