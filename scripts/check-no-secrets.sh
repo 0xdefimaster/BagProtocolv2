@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Fails when a real secret could be committed: any tracked .env file other
-# than .env.example, or a 32-byte hex private key literal anywhere in the
-# tracked tree. Tests generate throwaway keys at runtime instead.
+# than a template (.env.example, or a named one such as .env.base.example),
+# or a 32-byte hex private key literal anywhere in the tracked tree, templates
+# included. Tests generate throwaway keys at runtime instead.
 set -euo pipefail
 
 status=0
 
-env_files=$(git ls-files | grep -E '(^|/)\.env($|\.)' | grep -vE '(^|/)\.env\.example$' || true)
+env_files=$(git ls-files | grep -E '(^|/)\.env($|\.)' | grep -vE '(^|/)\.env(\.[A-Za-z0-9_-]+)?\.example$' || true)
 if [ -n "$env_files" ]; then
   echo "Tracked .env files (remove them and rotate every value inside):"
   echo "$env_files"
