@@ -144,6 +144,37 @@ describe('Create Bag — single-chain network model', () => {
     expect(screen.getByTestId('create-deploy').textContent).toMatch(/pick at least one asset/i);
   });
 
+  it('hides the old asset list while the new network request is pending, including when that request fails', async () => {
+    let finishBase!: (response: Response) => void;
+    const baseResponse = new Promise<Response>(resolve => { finishBase = resolve; });
+    const fetchMock = stubFetchForRegistry();
+    vi.stubGlobal('fetch', vi.fn((url: string) => url === '/api/assets?chain=base' ? baseResponse : fetchMock(url)));
+    render(<CreatePage />);
+    await goToAssetsStep();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'WETH Wrapped Ether' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('radio', { name: /base/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole('radio', { name: /base/i }));
+    expect(screen.queryByRole('button', { name: 'WETH Wrapped Ether' })).not.toBeInTheDocument();
+    expect(screen.getByText('Loading verified assets…')).toBeInTheDocument();
+    expect(screen.getByTestId('create-deploy')).toBeDisabled();
+    finishBase({ ok: false } as Response);
+    await waitFor(() => expect(screen.getByText(/no verified assets are currently available/i)).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'WETH Wrapped Ether' })).not.toBeInTheDocument();
+  });
+
+  it('does not offer assets returned with a different chain than the selected network', async () => {
+    const fetchMock = stubFetchForRegistry();
+    vi.stubGlobal('fetch', vi.fn((url: string) => url === '/api/assets?chain=base'
+      ? Promise.resolve({ ok: true, json: async () => ({ assets: registryAssetsFixture().robinhood }) } as Response)
+      : fetchMock(url)));
+    render(<CreatePage />);
+    await goToAssetsStep();
+    await waitFor(() => expect(screen.getByRole('radio', { name: /base/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole('radio', { name: /base/i }));
+    await waitFor(() => expect(screen.getByText(/no verified assets are currently available/i)).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'WETH Wrapped Ether' })).not.toBeInTheDocument();
+  });
+
   it('4. the summary shows exactly one Network row/value, never a plural "Networks" list', async () => {
     const { container } = render(<CreatePage />);
     await goToAssetsStep();

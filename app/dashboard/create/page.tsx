@@ -205,7 +205,9 @@ export default function CreatePage() {
     };
   }, [selectedNetworkId]);
 
-  const assetPool = registryAssets;
+  // Do not expose the previous network's list while its replacement is loading,
+  // or accept an incorrectly scoped API response as selectable assets.
+  const assetPool = registryAssets.filter(asset => asset.chain === selectedNetworkId);
 
   // Switching the network invalidates every asset selection made against
   // the PREVIOUS chain's registry — a composition chosen against Ethereum's
@@ -216,6 +218,8 @@ export default function CreatePage() {
   // rather than discarding their work with no explanation.
   const handleNetworkChange = (networkId: string) => {
     if (networkId === selectedNetworkId) return;
+    setRegistryAssets([]);
+    setRegistryAssetsLoading(true);
     setSelectedNetworkId(networkId);
     if (!isNativePaymentChain(networkId) && launchPayment === 'native') {
       setLaunchPayment('settlement');
