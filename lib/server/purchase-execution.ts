@@ -30,7 +30,7 @@ import { computePurchasePreview, PurchasePreviewResult } from '@/lib/server/purc
 import { calculateDepositAllocation, InvalidRecipeWeightsError } from '@/lib/domain/basket-protocol/deposit/allocation';
 import { buildExecutionPlan } from '@/lib/domain/basket-protocol/deposit/execution-plan';
 import { validateRecipeAssetsAgainstRegistry } from '@/lib/domain/basket-protocol/validation/registry-validation';
-import { assetIdentitiesEqual, recipeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
+import { assetIdentitiesEqual, isNativeAssetIdentity, recipeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 import { applyUnroutablePolicy, rawToDecimalString, scaleAmountRaw } from '@/lib/domain/basket-protocol/deposit/unroutable';
 import { isValidDecimalString, toProtocolPrice } from '@/lib/domain/basket-protocol/pricing/price-precision';
 import { checkAssetRoute } from '@/lib/server/asset-route-check';
@@ -1388,6 +1388,31 @@ export async function settleUnsettledPurchasesForUser(admin: SupabaseClient, ses
   return { checked: intents.length, settled };
 }
 
+/**
+ * F-01, execution evidence for the default binding: a Composer purchase pays with an ERC-20 the program pulls from
+ * the wallet, so the receipt must show the whole swapped deposit leaving the wallet. Outputs that arrived without it
+ * mean the built call did not run as built (its calldata is not proof that it executed): nothing is booked. Gross
+ * outflow is compared, so a refund back to the wallet in the same transaction never causes a refusal. A native-ETH
+ * deposit moves no Transfer log and is not checked here. Never relaxes an outcome, only fails one.
+ */
+export function composerDepositLeftWallet(
+  intent: Pick<PurchaseIntent, 'inputAsset' | 'steps'>,
+  outcome: Awaited<ReturnType<typeof trackComposerTransaction>>
+): Awaited<ReturnType<typeof trackComposerTransaction>> {
+  if (outcome.kind !== 'DONE' || isNativeAssetIdentity(intent.inputAsset)) return outcome;
+  const input = intent.inputAsset.address.toLowerCase();
+  const required = intent.steps
+    .filter((s) => s.action === 'SWAP' && s.inputAsset.address.toLowerCase() === input)
+    .reduce((sum, s) => sum + BigInt(s.inputAmountRaw), BigInt(0));
+  const sent = BigInt(outcome.sentAmountsByAddress?.[input] ?? '0');
+  if (required > BigInt(0) && sent >= required) return outcome;
+  return {
+    kind: 'FAILED',
+    failureCode: 'VERIFICATION_FAILED',
+    message: `The transaction moved ${sent} of the ${required} deposit the purchase swaps out of the wallet; the built call did not run as built.`,
+  };
+}
+
 export async function verifyExecution(
   admin: SupabaseClient,
   session: SessionPayload,
@@ -1429,12 +1454,15 @@ export async function verifyExecution(
   if (intent.composerTransaction) {
     const anySubmittedStep = intent.steps.find((s) => s.action === 'SWAP' && s.txHash);
     if (anySubmittedStep?.txHash) {
-      composerOutcome = await trackComposerTransaction({
-        txHash: anySubmittedStep.txHash,
-        chain: anySubmittedStep.sourceChain,
-        recipient: intent.walletAddress,
-        expectedTransaction: intent.composerTransaction,
-      });
+      composerOutcome = composerDepositLeftWallet(
+        intent,
+        await trackComposerTransaction({
+          txHash: anySubmittedStep.txHash,
+          chain: anySubmittedStep.sourceChain,
+          recipient: intent.walletAddress,
+          expectedTransaction: intent.composerTransaction,
+        })
+      );
     }
   }
 

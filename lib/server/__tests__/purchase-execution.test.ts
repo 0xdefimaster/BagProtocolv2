@@ -2177,10 +2177,13 @@ describe('verifyExecution — providerEnforcedMinOutputRaw never changes the ver
     });
   }
 
-  async function verify(intent: PurchaseIntent, received: Record<string, string>) {
+  /** A real Composer purchase pulls the whole swapped deposit (2 legs × 60 USDC here) out of the wallet. */
+  const DEPOSIT_SENT = { [USDC.address.toLowerCase()]: '120000000' };
+
+  async function verify(intent: PurchaseIntent, received: Record<string, string>, sent: Record<string, string> = DEPOSIT_SENT) {
     vi.clearAllMocks();
     getPurchaseIntentForUserMock.mockResolvedValue({ ok: true, intent });
-    trackComposerTransactionMock.mockResolvedValue({ kind: 'DONE', receivedAmountsByAddress: received });
+    trackComposerTransactionMock.mockResolvedValue({ kind: 'DONE', receivedAmountsByAddress: received, sentAmountsByAddress: sent });
     statefulIntentRow(intent);
     const rpcMock = rpcGrantingClaims();
     const outcome = await verifyExecution({ rpc: rpcMock } as never, session(), 'intent_1');
@@ -2206,6 +2209,37 @@ describe('verifyExecution — providerEnforcedMinOutputRaw never changes the ver
     expect(withBelow).toEqual(without);
     expect(without.steps.map((st) => st.status)).toEqual(['COMPLETED', 'COMPLETED']);
     expect(without.holdings).toHaveLength(2);
+  });
+
+  // F-01 at the flow level: outputs that arrived while the deposit never left the wallet mean the built call did not
+  // run (e.g. calldata handed to a contract that just transferred outputs in). Nothing may be booked.
+  it('F-01: outputs without the deposit leaving the wallet are not a purchase; nothing is booked', async () => {
+    const forged = await verify(composerIntent(null), received, {});
+    expect(forged.status).toBe('FAILED');
+    expect(forged.steps.map((st) => [st.status, st.failureCode])).toEqual([['FAILED', 'VERIFICATION_FAILED'], ['FAILED', 'VERIFICATION_FAILED']]);
+    expect(forged.holdings).toBeUndefined();
+
+    const partial = await verify(composerIntent(null), received, { [USDC.address.toLowerCase()]: '119999999' });
+    expect(partial.status).toBe('FAILED');
+    expect(partial.holdings).toBeUndefined();
+  });
+
+  it('F-01: a deposit that left in full is the purchase (legitimate outcomes keep working)', async () => {
+    const paid = await verify(composerIntent(null), received);
+    expect(paid.status).toBe('COMPLETED');
+    expect(paid.holdings).toHaveLength(2);
+  });
+
+  it('F-01 compatibility: a refund of part of the deposit back to the wallet in the same transaction is not a refusal', async () => {
+    const withRefund = await verify(composerIntent(null), { ...received, [USDC.address.toLowerCase()]: '1500' });
+    expect(withRefund.status).toBe('COMPLETED');
+    expect(withRefund.holdings).toHaveLength(2);
+  });
+
+  it('F-01 compatibility: a native-ETH deposit (no Transfer log) is not subject to the deposit check', async () => {
+    const native = composerIntent(null);
+    native.inputAsset = { chain: native.inputAsset.chain, address: '0x0000000000000000000000000000000000000000' };
+    expect((await verify(native, received, {})).status).toBe('COMPLETED');
   });
 });
 

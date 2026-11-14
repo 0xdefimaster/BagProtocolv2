@@ -103,7 +103,7 @@ export async function findComposerTransactionFromWallet(input: FindComposerTrans
       const direct = same(tx.to, input.expected.to) && same(tx.input, input.expected.data) && tx.value === BigInt(input.expected.value || '0');
       // A wallet batch (EIP-5792 / EIP-7702): the wallet calls itself, or a DelegationManager (MetaMask smart account),
       // and the exact Composer call is one of the batched calls.
-      const walletBatch = isWalletRoutedBatch(tx, input.wallet, input.expected);
+      const walletBatch = isWalletRoutedBatch(tx, input.wallet, input.expected, input.chain);
       if (same(tx.from, input.wallet) && (direct || walletBatch)) {
         return { kind: 'FOUND', txHash: hash };
       }
