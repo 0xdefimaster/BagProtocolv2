@@ -30,7 +30,8 @@ Robinhood-only, so **Base sales carry no performance fee** until a separate chan
 
 - Typecheck: pass. Base-flow test files touched by the two commits plus purchase-execution and Composer quote tests:
   13 files, 231/231 pass (Windows), including the A4 guard that fails on `main` on Windows.
-- Full-suite and build results: see the final report of 2026-11-14 for this branch.
+- Full run 2026-11-14 (Windows): typecheck 0, lint 0, unit 279 files / 2673 tests all pass, Hardhat 195/195, SDK
+  typecheck and build pass, Next.js production build pass, secret scan clean.
 
 ## 4. Independent end-to-end verification still required (each step signs; owner approval needed)
 
