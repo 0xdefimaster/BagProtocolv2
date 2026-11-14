@@ -1,0 +1,275 @@
+{
+ "recordedAt": "2026-11-14T14:55:44.317Z",
+ "role": "MAINTAINER_READ_ONLY_UNSIGNED",
+ "signer": "0xa972438f68ce4371705504e57467111dbe8a2d19",
+ "pins": [
+  {
+   "chain": "robinhood",
+   "chainId": 4663,
+   "block": "114238425",
+   "factory": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+   "pinnedCodeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5",
+   "liveCodeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5",
+   "factoryMatchesPin": true,
+   "factoryEmbedsVm": true,
+   "vmCodeHash": "0x0d0f2d31c4ab65c4b5da60e68efc4d394891881f822943f60ae3c1266519bfb7"
+  },
+  {
+   "chain": "base",
+   "chainId": 8453,
+   "block": "57388861",
+   "factory": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+   "pinnedCodeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5",
+   "liveCodeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5",
+   "factoryMatchesPin": true,
+   "factoryEmbedsVm": true,
+   "vmCodeHash": "0x0d0f2d31c4ab65c4b5da60e68efc4d394891881f822943f60ae3c1266519bfb7"
+  }
+ ],
+ "cases": [
+  {
+   "case": "robinhood-usdg-2-legs",
+   "chain": "robinhood",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x322f0929c4625ed5bad873c95208d54e1c003b2d",
+     "legBps": 5000
+    },
+    {
+     "token": "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec",
+     "legBps": 5000
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0xb689d4be02bfe1986229922555abd5edbd868563be12523eaff0cb9a83ed301b",
+    "dataBytes": 8356,
+    "value": "0",
+    "userProxy": "0xba9ce85491d8fa67ffc402f859b6217c6fb21f9a",
+    "approvals": [
+     {
+      "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "spender": "0xba9ce85491d8fa67ffc402f859b6217c6fb21f9a",
+      "amountRaw": "2000000"
+     }
+    ],
+    "priceImpactBps": 42
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 3125,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "robinhood-native-eth-2-legs",
+   "chain": "robinhood",
+   "inputKind": "native",
+   "legs": [
+    {
+     "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+     "legBps": 5000
+    },
+    {
+     "token": "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec",
+     "legBps": 5000
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0xdca67af8d3476128f7c5491955ed7126e094c17b68a8713420b39b77178015a3",
+    "dataBytes": 7940,
+    "value": "500000000000000",
+    "userProxy": "0xba9ce85491d8fa67ffc402f859b6217c6fb21f9a",
+    "approvals": [],
+    "priceImpactBps": 71
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 2391,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "base-usdc-2-legs",
+   "chain": "base",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x4200000000000000000000000000000000000006",
+     "legBps": 5000
+    },
+    {
+     "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+     "legBps": 5000
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0x3c3a9e997cc4677a26b945bc1de14784925f902dd61be629ef201b554bec6600",
+    "dataBytes": 8196,
+    "value": "0",
+    "userProxy": "0xba9ce85491d8fa67ffc402f859b6217c6fb21f9a",
+    "approvals": [
+     {
+      "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "spender": "0xba9ce85491d8fa67ffc402f859b6217c6fb21f9a",
+      "amountRaw": "2000000"
+     }
+    ],
+    "priceImpactBps": -71
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 3441,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "base-usdc-3-legs",
+   "chain": "base",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22",
+     "legBps": 3334
+    },
+    {
+     "token": "0x4200000000000000000000000000000000000006",
+     "legBps": 3333
+    },
+    {
+     "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+     "legBps": 3333
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0xc8557a4152f8be3697cab5be535443d6955f312791345fdcc3b9a68354b5c50a",
+    "dataBytes": 12132,
+    "value": "0",
+    "userProxy": "0xba9ce85491d8fa67ffc402f859b6217c6fb21f9a",
+    "approvals": [
+     {
+      "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "spender": "0xba9ce85491d8fa67ffc402f859b6217c6fb21f9a",
+      "amountRaw": "3000000"
+     }
+    ],
+    "priceImpactBps": -24
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 2258,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "base-native-eth-2-legs",
+   "chain": "base",
+   "inputKind": "native",
+   "legs": [
+    {
+     "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+     "legBps": 5000
+    },
+    {
+     "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+     "legBps": 5000
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0x414cd5ab4d9d991502ca7b646d149194f18396326710d86dd44a6b120e3c5f6b",
+    "dataBytes": 7812,
+    "value": "500000000000000",
+    "userProxy": "0xba9ce85491d8fa67ffc402f859b6217c6fb21f9a",
+    "approvals": [],
+    "priceImpactBps": 89
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 2229,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  }
+ ],
+ "failureBehaviour": {
+  "deadRpc": {
+   "verdict": "REFUSED",
+   "code": "RPC_READ_FAILED"
+  },
+  "deadRpcMs": 4,
+  "hangingRpc": {
+   "verdict": "UNAVAILABLE",
+   "reason": "TIMEOUT"
+  },
+  "hangingRpcMs": 3021
+ }
+}

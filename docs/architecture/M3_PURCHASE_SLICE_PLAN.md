@@ -114,6 +114,9 @@ Flag `off`. Nothing persisted changes shape.
 - **Before shadow in production (approval):** set the per-chain pins (Robinhood, Base, Arbitrum) in the deployment
   environment from the reviewed `docs/SDK_DEPLOYMENT_PIN_*.md`; then `BAG_SDK_COMPOSER_COMPILE=shadow` on staging;
   acceptance per §3.3. Not done.
+- **Live read-only qualification (2026-11-14):** 10/10 real Composer compiles MATCH on Robinhood and Base (ERC-20 and
+  native ETH; deployed proxy and first use), one Composer call each, pins equal to the live factory runtime, negative
+  controls refused, dead and hanging RPC handled. Staging steps: `docs/runbooks/M3A_SDK_COMPILE_SHADOW.md`.
 
 ## 4. M3b — delivery proof (changes what users sign; approval and live runs required)
 
