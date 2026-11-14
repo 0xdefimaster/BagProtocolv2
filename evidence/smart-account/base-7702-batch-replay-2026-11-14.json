@@ -1,0 +1,55 @@
+{
+  "schema": "bag-wallet-binding-real-replay/v1",
+  "createdAt": "2026-11-14T06:03:58.893Z",
+  "readOnly": true,
+  "source": "Base mainnet (8453), the 6 self-call execute(bytes32,bytes) transactions found in 120 consecutive blocks ending at 57228455, read via https://mainnet.base.org",
+  "method": "expectation derived from each batch: its approve executions as allowed approvals, its single other execution as the built call; then bindWalletEnvelope + checkWalletExecutionState with the pinned MetaMask delegate",
+  "results": [
+    {
+      "hash": "0xf53f789cad07084ac4f48c76cb0655273bd07b1e21048bb854fdcf9b9c54234c",
+      "delegate": "0xd6cedde84be40893d153be9d467cd6ad37875b28",
+      "shape": "0 executions (0 approve, 0 other), mode 0x0101",
+      "note": "not approve(s)+one call; skipped as a BAG-like shape"
+    },
+    {
+      "hash": "0xcdfbd2c28d0de9e8718c1f3a6a0aff9768a666e90a676a75db3f8d611017b70c",
+      "delegate": "0x000000005c84f8fd50b21cac312528a64437030e",
+      "shape": "2 executions (1 approve, 1 other), mode 0x0100",
+      "receipt": "success",
+      "envelope": "SELF_EXECUTE_MODE",
+      "state": "DELEGATE_NOT_TRUSTED: The wallet delegates to 0x000000005c84f8fd50b21cac312528a64437030e, which is not pinned."
+    },
+    {
+      "hash": "0x27c0fba852f8a3d49723c530cdbd463a2ee15681e63efe43d5c6c73e506fe1e5",
+      "delegate": "0x000000005c84f8fd50b21cac312528a64437030e",
+      "shape": "2 executions (1 approve, 1 other), mode 0x0100",
+      "receipt": "success",
+      "envelope": "SELF_EXECUTE_MODE",
+      "state": "DELEGATE_NOT_TRUSTED: The wallet delegates to 0x000000005c84f8fd50b21cac312528a64437030e, which is not pinned."
+    },
+    {
+      "hash": "0x6519a8da488c5fa27c649ff3696f07973d0a9e05ec8e8933c626adc704ece152",
+      "delegate": "0x63c0c19a282a1b52b07dd5a65b58948a07dae32b",
+      "shape": "2 executions (1 approve, 1 other), mode 0x0100",
+      "receipt": "success",
+      "envelope": "SELF_EXECUTE_MODE",
+      "state": "OK MetaMask Delegation Framework v1.3.0 EIP7702StatelessDeleGator"
+    },
+    {
+      "hash": "0x6b9cf708c32ca58647e50f293499620dc252a3321a3b2a76ed4912e94fb6c9a6",
+      "delegate": "0x63c0c19a282a1b52b07dd5a65b58948a07dae32b",
+      "shape": "2 executions (1 approve, 1 other), mode 0x0100",
+      "receipt": "success",
+      "envelope": "SELF_EXECUTE_MODE",
+      "state": "OK MetaMask Delegation Framework v1.3.0 EIP7702StatelessDeleGator"
+    },
+    {
+      "hash": "0x9d3af1aa45ac321399a0a939042c72b73deed0d92444bf571708853d4f886fe8",
+      "delegate": "0x63c0c19a282a1b52b07dd5a65b58948a07dae32b",
+      "shape": "2 executions (1 approve, 1 other), mode 0x0100",
+      "receipt": "success",
+      "envelope": "SELF_EXECUTE_MODE",
+      "state": "OK MetaMask Delegation Framework v1.3.0 EIP7702StatelessDeleGator"
+    }
+  ]
+}

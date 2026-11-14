@@ -1,0 +1,88 @@
+{
+  "schema": "bag-smart-account-pins/v2",
+  "createdAt": "2026-11-14T05:38:59.049Z",
+  "readOnly": true,
+  "contracts": {
+    "delegationManager": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3",
+    "delegator": "0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B"
+  },
+  "reference": "base (Sourcify exact match for both contracts)",
+  "method": "mask the chain id word and getDomainHash() on both sides, then require identical runtime code",
+  "chains": [
+    {
+      "chain": "base",
+      "chainId": 8453,
+      "blockNumber": "57221794",
+      "delegationManager": {
+        "address": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3",
+        "bytes": 11503,
+        "codeHash": "0x7c4661fe830df0bb9354f85a6a478882e436b7a234a0cf1f8206ce6753925670",
+        "domainHash": "0x8d2d5589afbd2ea476a0a77bdd1af10f0e7813283ad1771e85826f47e7c0a53f",
+        "maskedWords": 2,
+        "identicalToReferenceAfterMasking": true
+      },
+      "delegator": {
+        "address": "0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B",
+        "bytes": 11185,
+        "codeHash": "0x6af675ac126c441bec5d5013da3331a52e7465fc0d5a662a8708a9f33ce497ba",
+        "domainHash": "0x2af0681e98e887c2222dad175a714088a21eb5974cf20ab3df4b0aa0feec04de",
+        "maskedWords": 2,
+        "identicalToReferenceAfterMasking": true
+      },
+      "implDelegationManager": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3",
+      "implBindsPinnedDelegationManager": true,
+      "implEntryPoint": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+      "trustable": true
+    },
+    {
+      "chain": "robinhood",
+      "chainId": 4663,
+      "blockNumber": "113938617",
+      "delegationManager": {
+        "address": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3",
+        "bytes": 11503,
+        "codeHash": "0xe45747f90ecec2ba96ae9f4a15c36289653efdfef7690bcfb90a1945bb0fe207",
+        "domainHash": "0x35b06b9559fe55f3628422179acb89584939d41060aac87c9f350f10fcf6abbf",
+        "maskedWords": 2,
+        "identicalToReferenceAfterMasking": true
+      },
+      "delegator": {
+        "address": "0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B",
+        "bytes": 11185,
+        "codeHash": "0xa06befcb6f1d7b6c566a607d9d5d932f9b267f3470e55940225c6ee9c4c5e6b0",
+        "domainHash": "0xfab2281ad1703af768d105ab041bcf0ef9ee1054ce1bfc81e8b951766773cd7d",
+        "maskedWords": 2,
+        "identicalToReferenceAfterMasking": true
+      },
+      "implDelegationManager": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3",
+      "implBindsPinnedDelegationManager": true,
+      "implEntryPoint": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+      "trustable": true
+    },
+    {
+      "chain": "arbitrum",
+      "chainId": 42161,
+      "blockNumber": "524074093",
+      "delegationManager": {
+        "address": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3",
+        "bytes": 11503,
+        "codeHash": "0xf97be22889657b7488c1e41994a763cee2d347200de980b01a19ce0cc743edc1",
+        "domainHash": "0x061c2558f398a45c3c424fb31da6e1d4a5290b7ff8f6698d834e7fa1b4a8a8b2",
+        "maskedWords": 2,
+        "identicalToReferenceAfterMasking": true
+      },
+      "delegator": {
+        "address": "0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B",
+        "bytes": 11185,
+        "codeHash": "0xa6603bc6f9f203be551ce8fcfe13b7802e3b6574828780b4c4fe05d1768d17de",
+        "domainHash": "0x3034c9690566c29c16e71e338971aa9774cf6ed8bf5f700a93ca66a9ffe00cfa",
+        "maskedWords": 2,
+        "identicalToReferenceAfterMasking": true
+      },
+      "implDelegationManager": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3",
+      "implBindsPinnedDelegationManager": true,
+      "implEntryPoint": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+      "trustable": true
+    }
+  ]
+}
