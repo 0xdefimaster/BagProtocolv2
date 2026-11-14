@@ -1,0 +1,328 @@
+{
+  "schema": "bag-authority-snapshot/v1",
+  "createdAt": "2026-11-14T02:53:42.550Z",
+  "readOnly": true,
+  "chains": [
+    {
+      "chain": "robinhood",
+      "chainId": 4663,
+      "blockNumber": "113847725",
+      "rpcSource": "public rpc.mainnet.chain.robinhood.com",
+      "contracts": [
+        {
+          "name": "BagFactory",
+          "documentedStatus": "LIVE (configured)",
+          "address": "0x7Ce5A81Df434755F38Cb5f67Ad49a8bb3c8e6f72",
+          "addressSource": "FACTORY_ADDRESS_ROBINHOOD; evidence/three-chain-app/deployment-inputs.json",
+          "hasCode": true,
+          "codeHash": "0x48e56712deee2744d90301b4a6eb3dd3760525aec15a7c18b3200defac8d1541",
+          "codeBytes": 11231,
+          "roles": {
+            "owner": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
+            "pendingOwner": "0x0000000000000000000000000000000000000000",
+            "treasury": "0x5186f0cCAB569dE1655922213074D97914378cd8",
+            "creationFee": "150000000000000",
+            "creationFeeCap": "10000000000000000"
+          }
+        },
+        {
+          "name": "StrategyRegistry",
+          "documentedStatus": "LIVE (configured)",
+          "address": "0x907cc27d644C8ea1c24B8320ad09eCF2819209A8",
+          "addressSource": "docs/STRATEGY_REGISTRY_DESIGN.md",
+          "hasCode": true,
+          "codeHash": "0x0f559b7b92ab3fa101bc64974b219a770edf5ce1dabafef0e831d17b1f1ebcfd",
+          "codeBytes": 4830,
+          "roles": {}
+        },
+        {
+          "name": "RedeemSettlement v2",
+          "documentedStatus": "LIVE (configured)",
+          "address": "0x3eCD734eb53370c2795DB6Ca3CB2B1de0BEdF8A3",
+          "addressSource": "docs/REDEEM_SETTLEMENT_DEPLOYMENT.md §0",
+          "hasCode": true,
+          "codeHash": "0x5728550a0064658ddf9a03f3ec670996ea758c6cd01f11e12b7f6236e36f50e2",
+          "codeBytes": 10194,
+          "roles": {
+            "owner": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
+            "attestor": "0xFf60Ab336c3Be45Cfae3B31238dd22DEA176dff2",
+            "usdg": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+            "FORK_ROYALTY_SHARE_BPS": "2000",
+            "MAX_FEE_RATE_BPS": "3000"
+          }
+        },
+        {
+          "name": "RedeemSettlement v1",
+          "documentedStatus": "SUPERSEDED",
+          "address": "0x934a3f266e68DfbFF8eD4F02AA393a36048170a0",
+          "addressSource": "docs/REDEEM_SETTLEMENT_DEPLOYMENT.md §0",
+          "hasCode": true,
+          "codeHash": "0x50f58682fc1b5f6313d1a61e4222ddead56f826146999e6ee4511f7ce47c26c5",
+          "codeBytes": 9498,
+          "roles": {
+            "owner": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
+            "attestor": "0xFf60Ab336c3Be45Cfae3B31238dd22DEA176dff2",
+            "usdg": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+            "FORK_ROYALTY_SHARE_BPS": "CALL_FAILED (ContractFunctionExecutionError)",
+            "MAX_FEE_RATE_BPS": "3000"
+          }
+        },
+        {
+          "name": "RedeemSettlement (7702 attestor)",
+          "documentedStatus": "SUPERSEDED, never configured",
+          "address": "0x1B365C5325Eb511935F60B7aeA184a3fABedF6f6",
+          "addressSource": "docs/REDEEM_SETTLEMENT_DEPLOYMENT.md §0",
+          "hasCode": true,
+          "codeHash": "0xf71cc8d910898408fcfb6272bb8aef7ae1b17efe28c099301496fdc84b846002",
+          "codeBytes": 9498,
+          "roles": {
+            "owner": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
+            "attestor": "0xa1BAf6072301DB78e48BBAeB82a85b9753ACBE5F",
+            "usdg": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+            "FORK_ROYALTY_SHARE_BPS": "CALL_FAILED (ContractFunctionExecutionError)",
+            "MAX_FEE_RATE_BPS": "3000"
+          }
+        },
+        {
+          "name": "RedeemSettlement (probe owner)",
+          "documentedStatus": "ABANDONED, unmanageable",
+          "address": "0x0FB961dd2844091361C6bFcCd92D8f0457DC984d",
+          "addressSource": "docs/REDEEM_SETTLEMENT_DEPLOYMENT.md §0",
+          "hasCode": true,
+          "codeHash": "0x98dc1cf5ca0e9ca8ab2a3b3b0e77d3a85551a6e3b13f604f273e1d14276bc959",
+          "codeBytes": 9498,
+          "roles": {
+            "owner": "0x7bEB437538BC71A95dad6624Aa04bF3594525e3C",
+            "attestor": "0xa1BAf6072301DB78e48BBAeB82a85b9753ACBE5F",
+            "usdg": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+            "FORK_ROYALTY_SHARE_BPS": "CALL_FAILED (ContractFunctionExecutionError)",
+            "MAX_FEE_RATE_BPS": "3000"
+          }
+        },
+        {
+          "name": "LI.FI Composer factory (external)",
+          "documentedStatus": "PINNED",
+          "address": "0xACEB3Bb6C75488b5b806B9de4dCF78814465BdaE",
+          "addressSource": "docs/SDK_DEPLOYMENT_PIN_ROBINHOOD.md",
+          "hasCode": true,
+          "codeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5",
+          "codeBytes": 4474,
+          "roles": {},
+          "expectedCodeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5",
+          "codeHashMatches": true
+        }
+      ],
+      "accounts": [
+        {
+          "address": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
+          "referencedBy": [
+            "deployer / factory owner / settlement owner (docs)",
+            "BagFactory.owner",
+            "RedeemSettlement v2.owner",
+            "RedeemSettlement v1.owner",
+            "RedeemSettlement (7702 attestor).owner"
+          ],
+          "kind": "EOA_EIP7702_DELEGATED",
+          "delegate": "0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B",
+          "nonce": 181
+        },
+        {
+          "address": "0x5186f0cCAB569dE1655922213074D97914378cd8",
+          "referencedBy": [
+            "protocol treasury (docs)",
+            "BagFactory.treasury"
+          ],
+          "kind": "EOA",
+          "nonce": 18
+        },
+        {
+          "address": "0xFf60Ab336c3Be45Cfae3B31238dd22DEA176dff2",
+          "referencedBy": [
+            "RedeemSettlement attestor (docs)",
+            "RedeemSettlement v2.attestor",
+            "RedeemSettlement v1.attestor"
+          ],
+          "kind": "EOA",
+          "nonce": 2
+        },
+        {
+          "address": "0xa1BAf6072301DB78e48BBAeB82a85b9753ACBE5F",
+          "referencedBy": [
+            "RedeemSettlement (7702 attestor).attestor",
+            "RedeemSettlement (probe owner).attestor"
+          ],
+          "kind": "EOA",
+          "nonce": 13
+        },
+        {
+          "address": "0x7bEB437538BC71A95dad6624Aa04bF3594525e3C",
+          "referencedBy": [
+            "RedeemSettlement (probe owner).owner"
+          ],
+          "kind": "CONTRACT",
+          "codeHash": "0x0157dbb30851ed842b36e5e5ee73abc09e38c1eb721f7768a7373d305b8b8ac1"
+        }
+      ]
+    },
+    {
+      "chain": "base",
+      "chainId": 8453,
+      "blockNumber": "57172316",
+      "rpcSource": "public mainnet.base.org",
+      "contracts": [
+        {
+          "name": "BagFactory",
+          "documentedStatus": "DEPLOYED (2026-11-08)",
+          "address": "0x9F66fA3F7a70281eB4F598EfE763B3f83379df4a",
+          "addressSource": "evidence/three-chain-app/deployments-base.json",
+          "hasCode": true,
+          "codeHash": "0xab9c9cdb2d05b30c157a5d3fd04b69d305a4039f8009ce1ed38e0a0e913612e5",
+          "codeBytes": 11231,
+          "roles": {
+            "owner": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
+            "pendingOwner": "0x0000000000000000000000000000000000000000",
+            "treasury": "0x5186f0cCAB569dE1655922213074D97914378cd8",
+            "creationFee": "150000000000000",
+            "creationFeeCap": "10000000000000000"
+          },
+          "expectedCodeHash": "0xab9c9cdb2d05b30c157a5d3fd04b69d305a4039f8009ce1ed38e0a0e913612e5",
+          "codeHashMatches": true
+        },
+        {
+          "name": "StrategyRegistry",
+          "documentedStatus": "DEPLOYED",
+          "address": "0xcAD829DCC30fa88B3d57CC0a6Fa32Bd56c9a5920",
+          "addressSource": "docs/STATUS.md; evidence/three-chain-app/base-post-deploy-readiness.json",
+          "hasCode": true,
+          "codeHash": "0x40aa4d92bd07a225802ff76c42c17cb62e80160b1c902144492b9289cf692c9b",
+          "codeBytes": 4830,
+          "roles": {},
+          "expectedCodeHash": "0x40aa4d92bd07a225802ff76c42c17cb62e80160b1c902144492b9289cf692c9b",
+          "codeHashMatches": true
+        },
+        {
+          "name": "StrategyCompositions",
+          "documentedStatus": "DEPLOYED (2026-11-08)",
+          "address": "0x7D4A75a7F196eA90Cf96021ADAC83a0DE93A4Fc8",
+          "addressSource": "evidence/three-chain-app/deployments-base.json",
+          "hasCode": true,
+          "codeHash": "0x5ce5308f9ad1210951f9f60a8b38672d20a89bdbceabee9541cde04a1752160d",
+          "codeBytes": 6048,
+          "roles": {
+            "registry": "0xcAD829DCC30fa88B3d57CC0a6Fa32Bd56c9a5920"
+          },
+          "expectedCodeHash": "0x5ce5308f9ad1210951f9f60a8b38672d20a89bdbceabee9541cde04a1752160d",
+          "codeHashMatches": true
+        },
+        {
+          "name": "LI.FI Composer factory (external)",
+          "documentedStatus": "PINNED",
+          "address": "0xACEB3Bb6C75488b5b806B9de4dCF78814465BdaE",
+          "addressSource": "docs/SDK_DEPLOYMENT_PIN_BASE.md",
+          "hasCode": true,
+          "codeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5",
+          "codeBytes": 4474,
+          "roles": {},
+          "expectedCodeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5",
+          "codeHashMatches": true
+        }
+      ],
+      "accounts": [
+        {
+          "address": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
+          "referencedBy": [
+            "deployer / factory owner / settlement owner (docs)",
+            "BagFactory.owner"
+          ],
+          "kind": "EOA_EIP7702_DELEGATED",
+          "delegate": "0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B",
+          "nonce": 10
+        },
+        {
+          "address": "0x5186f0cCAB569dE1655922213074D97914378cd8",
+          "referencedBy": [
+            "protocol treasury (docs)",
+            "BagFactory.treasury"
+          ],
+          "kind": "EOA",
+          "nonce": 0
+        },
+        {
+          "address": "0xFf60Ab336c3Be45Cfae3B31238dd22DEA176dff2",
+          "referencedBy": [
+            "RedeemSettlement attestor (docs)"
+          ],
+          "kind": "EOA",
+          "nonce": 0
+        }
+      ]
+    },
+    {
+      "chain": "arbitrum",
+      "chainId": 42161,
+      "blockNumber": "524040939",
+      "rpcSource": "public arb1.arbitrum.io",
+      "contracts": [
+        {
+          "name": "StrategyRegistry (predicted)",
+          "documentedStatus": "NOT DEPLOYED (prediction)",
+          "address": "0xcAD829DCC30fa88B3d57CC0a6Fa32Bd56c9a5920",
+          "addressSource": "evidence/three-chain-app/unsigned-deployments.json (nonce 0)",
+          "hasCode": false,
+          "codeHash": null,
+          "codeBytes": 0,
+          "roles": {},
+          "predictionStillFree": true
+        },
+        {
+          "name": "BagFactory (predicted)",
+          "documentedStatus": "NOT DEPLOYED (prediction)",
+          "address": "0x663A10b45a7617B37C47068484FC49D915EA322F",
+          "addressSource": "evidence/three-chain-app/unsigned-deployments.json (nonce 1)",
+          "hasCode": false,
+          "codeHash": null,
+          "codeBytes": 0,
+          "roles": {},
+          "predictionStillFree": true
+        },
+        {
+          "name": "StrategyCompositions (predicted)",
+          "documentedStatus": "NOT DEPLOYED (prediction)",
+          "address": "0x8B033b1cF7F3876B11Acc0e9298713E730B698AE",
+          "addressSource": "evidence/three-chain-app/unsigned-deployments.json (nonce 2)",
+          "hasCode": false,
+          "codeHash": null,
+          "codeBytes": 0,
+          "roles": {},
+          "predictionStillFree": true
+        }
+      ],
+      "accounts": [
+        {
+          "address": "0x49Dadd8212128bDf6752351bf70f6A5D8b73FE46",
+          "referencedBy": [
+            "deployer / factory owner / settlement owner (docs)"
+          ],
+          "kind": "EOA",
+          "nonce": 0
+        },
+        {
+          "address": "0x5186f0cCAB569dE1655922213074D97914378cd8",
+          "referencedBy": [
+            "protocol treasury (docs)"
+          ],
+          "kind": "EOA",
+          "nonce": 0
+        },
+        {
+          "address": "0xFf60Ab336c3Be45Cfae3B31238dd22DEA176dff2",
+          "referencedBy": [
+            "RedeemSettlement attestor (docs)"
+          ],
+          "kind": "EOA",
+          "nonce": 0
+        }
+      ]
+    }
+  ]
+}
