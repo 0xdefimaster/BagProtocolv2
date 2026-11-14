@@ -1,0 +1,1931 @@
+{
+ "recordedAt": "2026-11-14T15:47:29.871Z",
+ "role": "MAINTAINER_READ_ONLY_UNSIGNED",
+ "signer": "0x49dadd8212128bdf6752351bf70f6a5d8b73fe46",
+ "pins": [
+  {
+   "chain": "robinhood",
+   "chainId": 4663,
+   "block": "114268450",
+   "factory": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+   "pinnedCodeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5",
+   "liveCodeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5",
+   "factoryMatchesPin": true,
+   "factoryEmbedsVm": true,
+   "vmCodeHash": "0x0d0f2d31c4ab65c4b5da60e68efc4d394891881f822943f60ae3c1266519bfb7"
+  },
+  {
+   "chain": "base",
+   "chainId": 8453,
+   "block": "57404386",
+   "factory": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+   "pinnedCodeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5",
+   "liveCodeHash": "0xb3a1317ea3653441b2b6f0e9ed25f4a2537e3780c1786e3a532337109d67cac5",
+   "factoryMatchesPin": true,
+   "factoryEmbedsVm": true,
+   "vmCodeHash": "0x0d0f2d31c4ab65c4b5da60e68efc4d394891881f822943f60ae3c1266519bfb7"
+  }
+ ],
+ "cases": [
+  {
+   "case": "sample-01-robinhood-eth-3l",
+   "chain": "robinhood",
+   "inputKind": "native",
+   "legs": [
+    {
+     "token": "0x322f0929c4625ed5bad873c95208d54e1c003b2d",
+     "legBps": 3334
+    },
+    {
+     "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+     "legBps": 3333
+    },
+    {
+     "token": "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec",
+     "legBps": 3333
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0x7fa4c04e038eabece055f4a8344ae7509c0db7bfa41b4654a3a760254f582afd",
+    "dataBytes": 11364,
+    "value": "8900522487238050",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [],
+    "priceImpactBps": -52,
+    "legOutputs": [
+     {
+      "expected": "14120013088583865",
+      "min": "13983462428675582",
+      "minBelowExpectedBps": 96.7
+     },
+     {
+      "expected": "15298236102893689",
+      "min": "15149462781237319",
+      "minBelowExpectedBps": 97.24
+     },
+     {
+      "expected": "33949304648504752",
+      "min": "33641945859178126",
+      "minBelowExpectedBps": 90.53
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 3479,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-02-base-stable-4l-fresh",
+   "chain": "base",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22",
+     "legBps": 2500
+    },
+    {
+     "token": "0x4200000000000000000000000000000000000006",
+     "legBps": 2500
+    },
+    {
+     "token": "0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452",
+     "legBps": 2500
+    },
+    {
+     "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+     "legBps": 2500
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0x7f28b239c2923a7419392309738db959aa7ab22446e7708e6ebc31f80e182ace",
+    "dataBytes": 14212,
+    "value": "0",
+    "userProxy": "0xe5ae02cbf1cdceac833fffacd963740f4cd10005",
+    "approvals": [
+     {
+      "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "spender": "0xe5ae02cbf1cdceac833fffacd963740f4cd10005",
+      "amountRaw": "37481020"
+     }
+    ],
+    "priceImpactBps": -13,
+    "legOutputs": [
+     {
+      "expected": "4433047005802106",
+      "min": "4389503783600987",
+      "minBelowExpectedBps": 98.22
+     },
+     {
+      "expected": "5071694131162130",
+      "min": "5020977189850509",
+      "minBelowExpectedBps": 99.99
+     },
+     {
+      "expected": "4061627301000000",
+      "min": "4021738135723638",
+      "minBelowExpectedBps": 98.2
+     },
+     {
+      "expected": "14200",
+      "min": "14058",
+      "minBelowExpectedBps": 100
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 3469,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-03-robinhood-eth-1l-fresh",
+   "chain": "robinhood",
+   "inputKind": "native",
+   "legs": [
+    {
+     "token": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+     "legBps": 10000
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0x95a035e0f7cfa83efd72685f3f03d6422d0c23f84afa1577ece695994282c57b",
+    "dataBytes": 4772,
+    "value": "1938606337388046",
+    "userProxy": "0x9030bd732e7e9b1ecbcf40f59676a09194d724ee",
+    "approvals": [],
+    "priceImpactBps": -67,
+    "legOutputs": [
+     {
+      "expected": "140303735263639552",
+      "min": "138900697911003156",
+      "minBelowExpectedBps": 100
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4500,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-04-base-stable-1l-fresh",
+   "chain": "base",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22",
+     "legBps": 10000
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0xb88038c663e70eb9d1e3f9496a3530d9bd398180a266a2af559a857405e72f4d",
+    "dataBytes": 4708,
+    "value": "0",
+    "userProxy": "0x26a6160ef50540bc2360f1d967feeb28ee4506fb",
+    "approvals": [
+     {
+      "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "spender": "0x26a6160ef50540bc2360f1d967feeb28ee4506fb",
+      "amountRaw": "26779788"
+     }
+    ],
+    "priceImpactBps": -9,
+    "legOutputs": [
+     {
+      "expected": "12663957226026566",
+      "min": "12541392137041869",
+      "minBelowExpectedBps": 96.78
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4264,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-05-robinhood-stable-2l",
+   "chain": "robinhood",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+     "legBps": 5000
+    },
+    {
+     "token": "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec",
+     "legBps": 5000
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0xea5a8d8900cf9ddd9f1fbc6735b3afd4edec6825d6751f23c67733506443bda1",
+    "dataBytes": 8356,
+    "value": "0",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [
+     {
+      "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "spender": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+      "amountRaw": "2554654"
+     }
+    ],
+    "priceImpactBps": 4,
+    "legOutputs": [
+     {
+      "expected": "859331508686125",
+      "min": "850738193599263",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "7928363301471673",
+      "min": "7855895500871718",
+      "minBelowExpectedBps": 91.4
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4342,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-06-base-stable-2l",
+   "chain": "base",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x4200000000000000000000000000000000000006",
+     "legBps": 5000
+    },
+    {
+     "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+     "legBps": 5000
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0x68366313766bdef84dbad679366fb96d2cff2679a1b301361e972b4595c82bf9",
+    "dataBytes": 8196,
+    "value": "0",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [
+     {
+      "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "spender": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+      "amountRaw": "6524548"
+     }
+    ],
+    "priceImpactBps": -3,
+    "legOutputs": [
+     {
+      "expected": "1765106079867472",
+      "min": "1747455019068797",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "4939",
+      "min": "4889",
+      "minBelowExpectedBps": 101.23
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4101,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-07-robinhood-stable-4l-fresh",
+   "chain": "robinhood",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x322f0929c4625ed5bad873c95208d54e1c003b2d",
+     "legBps": 2500
+    },
+    {
+     "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+     "legBps": 2500
+    },
+    {
+     "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+     "legBps": 2500
+    },
+    {
+     "token": "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec",
+     "legBps": 2500
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0xaeca9a886fad2c1ccfc14fe75fe49b3aeb6be3444401009ad106c06cdc847b1f",
+    "dataBytes": 14564,
+    "value": "0",
+    "userProxy": "0xd9c1c75bfe1d20244dca77e335e14890c0433985",
+    "approvals": [
+     {
+      "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "spender": "0xd9c1c75bfe1d20244dca77e335e14890c0433985",
+      "amountRaw": "14115144"
+     }
+    ],
+    "priceImpactBps": -6,
+    "legOutputs": [
+     {
+      "expected": "9113837859951694",
+      "min": "9022699481352177",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "2385972291138032",
+      "min": "2362112568226651",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "9875647123928593",
+      "min": "9776890652689308",
+      "minBelowExpectedBps": 99.99
+     },
+     {
+      "expected": "21915983027806056",
+      "min": "21696823197527995",
+      "minBelowExpectedBps": 100
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 3912,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-08-base-stable-2l",
+   "chain": "base",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x4200000000000000000000000000000000000006",
+     "legBps": 5000
+    },
+    {
+     "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+     "legBps": 5000
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0x5f47102a3c832fa33a40bc54ec900fa5fa0a6d6dced4fd2ff23034272f04d206",
+    "dataBytes": 7780,
+    "value": "0",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [
+     {
+      "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "spender": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+      "amountRaw": "14296514"
+     }
+    ],
+    "priceImpactBps": -11,
+    "legOutputs": [
+     {
+      "expected": "3871646997807104",
+      "min": "3832975841824386",
+      "minBelowExpectedBps": 99.88
+     },
+     {
+      "expected": "10829",
+      "min": "10720",
+      "minBelowExpectedBps": 100.65
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4465,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-09-robinhood-eth-1l-fresh",
+   "chain": "robinhood",
+   "inputKind": "native",
+   "legs": [
+    {
+     "token": "0x322f0929c4625ed5bad873c95208d54e1c003b2d",
+     "legBps": 10000
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0x81a6cbba7ff9b499089db678808cd94ba25226f821c3bcb743a463fbf3c45e06",
+    "dataBytes": 4772,
+    "value": "8979328595171683",
+    "userProxy": "0xe94cd0e589e64de9319ef2b51c30c9aaa236f778",
+    "approvals": [],
+    "priceImpactBps": -104,
+    "legOutputs": [
+     {
+      "expected": "42705642637598336",
+      "min": "42289874472170484",
+      "minBelowExpectedBps": 97.35
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4473,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-10-base-stable-2l",
+   "chain": "base",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22",
+     "legBps": 5000
+    },
+    {
+     "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+     "legBps": 5000
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0x3692a88ec096ed3892bda08233aff5ce94601675702de94e9316d7567884c66a",
+    "dataBytes": 8708,
+    "value": "0",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [
+     {
+      "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "spender": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+      "amountRaw": "38367154"
+     }
+    ],
+    "priceImpactBps": -5,
+    "legOutputs": [
+     {
+      "expected": "9078405177164066",
+      "min": "8990402537450261",
+      "minBelowExpectedBps": 96.93
+     },
+     {
+      "expected": "29041",
+      "min": "28823",
+      "minBelowExpectedBps": 75.06
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4330,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-11-robinhood-stable-1l",
+   "chain": "robinhood",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec",
+     "legBps": 10000
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0x5236318d3b62c58ceb62ed34354a98ccd9fcc513be0c904188b5702ba55cacd0",
+    "dataBytes": 5060,
+    "value": "0",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [
+     {
+      "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "spender": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+      "amountRaw": "6109246"
+     }
+    ],
+    "priceImpactBps": 47,
+    "legOutputs": [
+     {
+      "expected": "37944221250783192",
+      "min": "37564779038275360",
+      "minBelowExpectedBps": 100
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4015,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-12-base-stable-3l",
+   "chain": "base",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22",
+     "legBps": 3334
+    },
+    {
+     "token": "0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452",
+     "legBps": 3333
+    },
+    {
+     "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+     "legBps": 3333
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0x970b95a7328220ee39166f70e4cd231a7423016dc50e8c315a5c461d1be6860d",
+    "dataBytes": 12772,
+    "value": "0",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [
+     {
+      "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "spender": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+      "amountRaw": "30053124"
+     }
+    ],
+    "priceImpactBps": -14,
+    "legOutputs": [
+     {
+      "expected": "4743580740400564",
+      "min": "4696144932996561",
+      "minBelowExpectedBps": 99.99
+     },
+     {
+      "expected": "4344784204000000",
+      "min": "4301397945677055",
+      "minBelowExpectedBps": 99.85
+     },
+     {
+      "expected": "15169",
+      "min": "15056",
+      "minBelowExpectedBps": 74.49
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4089,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-13-robinhood-stable-2l",
+   "chain": "robinhood",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+     "legBps": 5000
+    },
+    {
+     "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+     "legBps": 5000
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0xe4b3b86debe88a6e463bdaaf84aaead5236d9ad997ab169ace3f9dd5918ae0b5",
+    "dataBytes": 7780,
+    "value": "0",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [
+     {
+      "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "spender": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+      "amountRaw": "37842886"
+     }
+    ],
+    "priceImpactBps": -17,
+    "legOutputs": [
+     {
+      "expected": "12781795927752682",
+      "min": "12653977968475155",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "52976624827624752",
+      "min": "52448038700275560",
+      "minBelowExpectedBps": 99.77
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 3832,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-14-base-stable-4l-fresh",
+   "chain": "base",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22",
+     "legBps": 2500
+    },
+    {
+     "token": "0x4200000000000000000000000000000000000006",
+     "legBps": 2500
+    },
+    {
+     "token": "0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452",
+     "legBps": 2500
+    },
+    {
+     "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+     "legBps": 2500
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0xb2feea83c20cb54424d8f569853640c8281e6fc3c7cb1d6be5671c63ef239142",
+    "dataBytes": 14276,
+    "value": "0",
+    "userProxy": "0x84c0380356bfc8427dce5c1510552a14aa97f2fa",
+    "approvals": [
+     {
+      "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "spender": "0x84c0380356bfc8427dce5c1510552a14aa97f2fa",
+      "amountRaw": "40594408"
+     }
+    ],
+    "priceImpactBps": -15,
+    "legOutputs": [
+     {
+      "expected": "4802379397695223",
+      "min": "4756542597974941",
+      "minBelowExpectedBps": 95.44
+     },
+     {
+      "expected": "5493892001295807",
+      "min": "5441533895537015",
+      "minBelowExpectedBps": 95.3
+     },
+     {
+      "expected": "4400909435013821",
+      "min": "4356900340663682",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "15383",
+      "min": "15236",
+      "minBelowExpectedBps": 95.56
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 3716,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-15-robinhood-eth-3l-fresh",
+   "chain": "robinhood",
+   "inputKind": "native",
+   "legs": [
+    {
+     "token": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+     "legBps": 3334
+    },
+    {
+     "token": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+     "legBps": 3333
+    },
+    {
+     "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+     "legBps": 3333
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0x7b1e2b81ca6d7895b99ac2fc1c7ece5c8118a15b620ee9e858aa5e313094cea5",
+    "dataBytes": 11396,
+    "value": "4287675909511743",
+    "userProxy": "0xf414ce99a7827d06f12b6a2d0629a591fcbdc0fe",
+    "approvals": [],
+    "priceImpactBps": -16,
+    "legOutputs": [
+     {
+      "expected": "103357320464513773",
+      "min": "102327749224396756",
+      "minBelowExpectedBps": 99.61
+     },
+     {
+      "expected": "21645082797830112",
+      "min": "21428631969851810",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "7357389475821675",
+      "min": "7283815581063458",
+      "minBelowExpectedBps": 100
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4132,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-16-base-eth-3l",
+   "chain": "base",
+   "inputKind": "native",
+   "legs": [
+    {
+     "token": "0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22",
+     "legBps": 3334
+    },
+    {
+     "token": "0x4200000000000000000000000000000000000006",
+     "legBps": 3333
+    },
+    {
+     "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+     "legBps": 3333
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0x475e12af534eccd219be6107f827d4377f7bf9bfb99c43ab65a8b04fe29a5de3",
+    "dataBytes": 10468,
+    "value": "9477034407318570",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [],
+    "priceImpactBps": 28,
+    "legOutputs": [
+     {
+      "expected": "2754900755005574",
+      "min": "2727351747455518",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "3150798829039381",
+      "min": "3150798829039381",
+      "minBelowExpectedBps": 0
+     },
+     {
+      "expected": "8824",
+      "min": "8736",
+      "minBelowExpectedBps": 99.72
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4215,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-17-robinhood-stable-4l",
+   "chain": "robinhood",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+     "legBps": 2500
+    },
+    {
+     "token": "0x322f0929c4625ed5bad873c95208d54e1c003b2d",
+     "legBps": 2500
+    },
+    {
+     "token": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+     "legBps": 2500
+    },
+    {
+     "token": "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec",
+     "legBps": 2500
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0x34316f2f528d23643835f440eab32bc703f419e08969af25d7737ae0065ca58c",
+    "dataBytes": 14404,
+    "value": "0",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [
+     {
+      "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "spender": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+      "amountRaw": "16268808"
+     }
+    ],
+    "priceImpactBps": 26,
+    "legOutputs": [
+     {
+      "expected": "159784756310642784",
+      "min": "158186908747536356",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "10504390342653527",
+      "min": "10399346439226992",
+      "minBelowExpectedBps": 99.99
+     },
+     {
+      "expected": "33438738827795688",
+      "min": "33104351439517731",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "25261178020515585",
+      "min": "25008580347531854",
+      "minBelowExpectedBps": 99.99
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4453,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-18-base-stable-4l-fresh",
+   "chain": "base",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22",
+     "legBps": 2500
+    },
+    {
+     "token": "0x4200000000000000000000000000000000000006",
+     "legBps": 2500
+    },
+    {
+     "token": "0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452",
+     "legBps": 2500
+    },
+    {
+     "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+     "legBps": 2500
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0x4443784d8ff3de02a570c3a49c9995fb31396380691fb0cba2d30928a30b9aa2",
+    "dataBytes": 14308,
+    "value": "0",
+    "userProxy": "0x87d04f3c0016cd06c5d67623f326a4a4f1c49e6e",
+    "approvals": [
+     {
+      "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "spender": "0x87d04f3c0016cd06c5d67623f326a4a4f1c49e6e",
+      "amountRaw": "15638468"
+     }
+    ],
+    "priceImpactBps": -20,
+    "legOutputs": [
+     {
+      "expected": "1851226152200632",
+      "min": "1832713890678625",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "2117883176952842",
+      "min": "2096716061539587",
+      "minBelowExpectedBps": 99.94
+     },
+     {
+      "expected": "1695919837673327",
+      "min": "1678979403341916",
+      "minBelowExpectedBps": 99.88
+     },
+     {
+      "expected": "5928",
+      "min": "5868",
+      "minBelowExpectedBps": 101.21
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 3973,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-19-robinhood-eth-4l",
+   "chain": "robinhood",
+   "inputKind": "native",
+   "legs": [
+    {
+     "token": "0x322f0929c4625ed5bad873c95208d54e1c003b2d",
+     "legBps": 2500
+    },
+    {
+     "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+     "legBps": 2500
+    },
+    {
+     "token": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+     "legBps": 2500
+    },
+    {
+     "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+     "legBps": 2500
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0x9dd4c04061fb26115dac0a8cdd4d34a64b3fc957e8f4b564d518071e5bd040f4",
+    "dataBytes": 13956,
+    "value": "4307022434682584",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [],
+    "priceImpactBps": -48,
+    "legOutputs": [
+     {
+      "expected": "5116129973502483",
+      "min": "5067240883992202",
+      "minBelowExpectedBps": 95.55
+     },
+     {
+      "expected": "1334586206580256",
+      "min": "1321240344514453",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "16294910363004378",
+      "min": "16131961259374334",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "5541843806403048",
+      "min": "5488076251448960",
+      "minBelowExpectedBps": 97.02
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4012,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-20-base-stable-3l-fresh",
+   "chain": "base",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x4200000000000000000000000000000000000006",
+     "legBps": 3334
+    },
+    {
+     "token": "0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452",
+     "legBps": 3333
+    },
+    {
+     "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+     "legBps": 3333
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0xa7086c263edd8f2c5c3dd70cd4a144173ea6f245bb1efed78e68e88bb7e6a409",
+    "dataBytes": 12100,
+    "value": "0",
+    "userProxy": "0x75e230b1c209461c20c889e4d099e75de62e53dc",
+    "approvals": [
+     {
+      "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "spender": "0x75e230b1c209461c20c889e4d099e75de62e53dc",
+      "amountRaw": "7619340"
+     }
+    ],
+    "priceImpactBps": -29,
+    "legOutputs": [
+     {
+      "expected": "1377385583064791",
+      "min": "1364087548023126",
+      "minBelowExpectedBps": 96.54
+     },
+     {
+      "expected": "1102629450786291",
+      "min": "1091988033270687",
+      "minBelowExpectedBps": 96.5
+     },
+     {
+      "expected": "3854",
+      "min": "3815",
+      "minBelowExpectedBps": 101.19
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 5157,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-21-robinhood-stable-1l-fresh",
+   "chain": "robinhood",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+     "legBps": 10000
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0xdaeff9d2218c13a980b8f10b647ea2719fd19ce327f506f0a711529a49729687",
+    "dataBytes": 4836,
+    "value": "0",
+    "userProxy": "0xc42d18ee5899eb768ce35fe4ed7f5c009d627d38",
+    "approvals": [
+     {
+      "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "spender": "0xc42d18ee5899eb768ce35fe4ed7f5c009d627d38",
+      "amountRaw": "46737025"
+     }
+    ],
+    "priceImpactBps": -87,
+    "legOutputs": [
+     {
+      "expected": "31573212022936913",
+      "min": "31258214728066317",
+      "minBelowExpectedBps": 99.76
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4293,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-22-base-stable-4l-fresh",
+   "chain": "base",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22",
+     "legBps": 2500
+    },
+    {
+     "token": "0x4200000000000000000000000000000000000006",
+     "legBps": 2500
+    },
+    {
+     "token": "0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452",
+     "legBps": 2500
+    },
+    {
+     "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+     "legBps": 2500
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0xd62f6acc0f3aa7ea0e6c58cf233bb2d037b3d1cb439a1fb61181b21d62bad278",
+    "dataBytes": 14308,
+    "value": "0",
+    "userProxy": "0x6ff8c7f2095862382e522e5f57660283007ece43",
+    "approvals": [
+     {
+      "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "spender": "0x6ff8c7f2095862382e522e5f57660283007ece43",
+      "amountRaw": "9904236"
+     }
+    ],
+    "priceImpactBps": -35,
+    "legOutputs": [
+     {
+      "expected": "1174087778359410",
+      "min": "1162711460719845",
+      "minBelowExpectedBps": 96.89
+     },
+     {
+      "expected": "1343211432271887",
+      "min": "1330199616782170",
+      "minBelowExpectedBps": 96.87
+     },
+     {
+      "expected": "1075595927521295",
+      "min": "1065178940484510",
+      "minBelowExpectedBps": 96.84
+     },
+     {
+      "expected": "3760",
+      "min": "3722",
+      "minBelowExpectedBps": 101.06
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 5173,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-23-robinhood-eth-3l",
+   "chain": "robinhood",
+   "inputKind": "native",
+   "legs": [
+    {
+     "token": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+     "legBps": 3334
+    },
+    {
+     "token": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+     "legBps": 3333
+    },
+    {
+     "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+     "legBps": 3333
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0x47679f2842a9efff6129c47132b62ff172bfdde36705e2aaed04b97b01eddfb8",
+    "dataBytes": 11524,
+    "value": "2952966223726980",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [],
+    "priceImpactBps": 3,
+    "legOutputs": [
+     {
+      "expected": "70999119484386080",
+      "min": "70289128289542219",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "14880920338216234",
+      "min": "14733288696790812",
+      "minBelowExpectedBps": 99.2
+     },
+     {
+      "expected": "5060092709415317",
+      "min": "5012073169727645",
+      "minBelowExpectedBps": 94.89
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4694,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-24-base-stable-1l",
+   "chain": "base",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x4200000000000000000000000000000000000006",
+     "legBps": 10000
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0x63f480aaa77e5e64f2b9b71212a93ecc31f9866c25b0f41ac3b9271e0fdab562",
+    "dataBytes": 4836,
+    "value": "0",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [
+     {
+      "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "spender": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+      "amountRaw": "6136113"
+     }
+    ],
+    "priceImpactBps": -41,
+    "legOutputs": [
+     {
+      "expected": "3330107355198920",
+      "min": "3298092467800414",
+      "minBelowExpectedBps": 96.13
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4230,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-25-robinhood-stable-4l",
+   "chain": "robinhood",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x322f0929c4625ed5bad873c95208d54e1c003b2d",
+     "legBps": 2500
+    },
+    {
+     "token": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+     "legBps": 2500
+    },
+    {
+     "token": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+     "legBps": 2500
+    },
+    {
+     "token": "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec",
+     "legBps": 2500
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0x1c84e03d1fe6f283e45fb92de8b820d7ae51a158a7eb8c8e1e3ef189ae82e407",
+    "dataBytes": 14372,
+    "value": "0",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [
+     {
+      "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "spender": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+      "amountRaw": "30528176"
+     }
+    ],
+    "priceImpactBps": 22,
+    "legOutputs": [
+     {
+      "expected": "19711123358552864",
+      "min": "19514012124967335",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "62745564419480136",
+      "min": "62118108775285334",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "21358961890839210",
+      "min": "21145372271930819",
+      "minBelowExpectedBps": 99.99
+     },
+     {
+      "expected": "47473491652142384",
+      "min": "46998756735620960",
+      "minBelowExpectedBps": 100
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4703,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-26-base-eth-2l-fresh",
+   "chain": "base",
+   "inputKind": "native",
+   "legs": [
+    {
+     "token": "0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22",
+     "legBps": 5000
+    },
+    {
+     "token": "0x4200000000000000000000000000000000000006",
+     "legBps": 5000
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0x9d62b83340979b8724ae1657b3abfa7581164845104f4345e108bc1f449ef2ea",
+    "dataBytes": 7076,
+    "value": "2619568725069984",
+    "userProxy": "0xdc0363964f1b58c938bc6eabc5db7a2b42a447b8",
+    "approvals": [],
+    "priceImpactBps": 25,
+    "legOutputs": [
+     {
+      "expected": "1142004696924783",
+      "min": "1130584649955535",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "1306509901628655",
+      "min": "1306509901628655",
+      "minBelowExpectedBps": 0
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4280,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-27-robinhood-stable-2l",
+   "chain": "robinhood",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x1b0e319c6a659f002271b69db8a7df2f911c153e",
+     "legBps": 5000
+    },
+    {
+     "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+     "legBps": 5000
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0x004fd573539fb0cc71f013fd26a096b660c2b87b736ef8494e664ae67924c1b9",
+    "dataBytes": 7684,
+    "value": "0",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [
+     {
+      "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "spender": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+      "amountRaw": "41961324"
+     }
+    ],
+    "priceImpactBps": -42,
+    "legOutputs": [
+     {
+      "expected": "824224005440006528",
+      "min": "815981765385606462",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "14179808767996740",
+      "min": "14038571331007509",
+      "minBelowExpectedBps": 99.6
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4039,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-28-base-stable-2l",
+   "chain": "base",
+   "inputKind": "erc20",
+   "legs": [
+    {
+     "token": "0x4200000000000000000000000000000000000006",
+     "legBps": 5000
+    },
+    {
+     "token": "0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452",
+     "legBps": 5000
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0xae369bb9413613b2c97852cc24c877edeeb9c7bfd3dad1ad8123b01ac2df76bd",
+    "dataBytes": 8740,
+    "value": "0",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [
+     {
+      "token": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "spender": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+      "amountRaw": "42851780"
+     }
+    ],
+    "priceImpactBps": -35,
+    "legOutputs": [
+     {
+      "expected": "11628909030684580",
+      "min": "11512619940377734",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "9296303766000000",
+      "min": "9228255868260000",
+      "minBelowExpectedBps": 73.19
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 4745,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-29-robinhood-eth-1l-fresh",
+   "chain": "robinhood",
+   "inputKind": "native",
+   "legs": [
+    {
+     "token": "0x47f93d52cbec7c6d2cfc080e154002370a60daea",
+     "legBps": 10000
+    }
+   ],
+   "legacy": {
+    "to": "0xaceb3bb6c75488b5b806b9de4dcf78814465bdae",
+    "dataKeccak": "0x40220c4e3f7c4037206692f2413cd35ed3ab373d1733f6a30e63699f8f10dbbc",
+    "dataBytes": 5124,
+    "value": "8113978799828328",
+    "userProxy": "0x1210dbef3c42f378e3cba4dee604a2a79debf2f2",
+    "approvals": [],
+    "priceImpactBps": -134,
+    "legOutputs": [
+     {
+      "expected": "10071098725299766",
+      "min": "9970387738046768",
+      "minBelowExpectedBps": 100
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 3731,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  },
+  {
+   "case": "sample-30-base-eth-3l",
+   "chain": "base",
+   "inputKind": "native",
+   "legs": [
+    {
+     "token": "0x4200000000000000000000000000000000000006",
+     "legBps": 3334
+    },
+    {
+     "token": "0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452",
+     "legBps": 3333
+    },
+    {
+     "token": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+     "legBps": 3333
+    }
+   ],
+   "legacy": {
+    "to": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "dataKeccak": "0xd58d0e842f27b57157a0ed8829070a63916f2184b3422223a08acb0839b61084",
+    "dataBytes": 10180,
+    "value": "4345902566588484",
+    "userProxy": "0x0a6baefc776477c494ab8b0a288881a7b72196f7",
+    "approvals": [],
+    "priceImpactBps": 24,
+    "legOutputs": [
+     {
+      "expected": "1445301605911349",
+      "min": "1445301605911349",
+      "minBelowExpectedBps": 0
+     },
+     {
+      "expected": "1156965012277215",
+      "min": "1145395362154442",
+      "minBelowExpectedBps": 100
+     },
+     {
+      "expected": "4049",
+      "min": "4009",
+      "minBelowExpectedBps": 98.78
+     }
+    ]
+   },
+   "verdict": {
+    "verdict": "MATCH"
+   },
+   "composerCallsTotal": 1,
+   "composerCallsByCrossCheck": 0,
+   "elapsedMs": 3897,
+   "negativeControls": {
+    "wrongPin": {
+     "verdict": "REFUSED",
+     "code": "ACCOUNT_DEPLOYMENT_MISMATCH"
+    },
+    "tamperedCalldata": {
+     "verdict": "MISMATCH",
+     "reasons": [
+      "TX_DATA"
+     ]
+    }
+   }
+  }
+ ],
+ "failureBehaviour": {
+  "deadRpc": {
+   "verdict": "REFUSED",
+   "code": "RPC_READ_FAILED"
+  },
+  "deadRpcMs": 8,
+  "hangingRpc": {
+   "verdict": "UNAVAILABLE",
+   "reason": "TIMEOUT"
+  },
+  "hangingRpcMs": 3008
+ },
+ "kind": "UNSIGNED_COMPOSER_QUOTES_NOT_TRANSACTIONS",
+ "tally": {
+  "MATCH": 30
+ }
+}

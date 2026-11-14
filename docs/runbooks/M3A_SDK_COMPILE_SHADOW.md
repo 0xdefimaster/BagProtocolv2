@@ -28,6 +28,26 @@ Not covered by this run: Arbitrum (pin not release-approved; do not set its pin 
 Composer pin), real buyers' wallets and amounts, a purchase where the buyer accepted a price-impact limit (unit-tested
 only), sustained RPC load.
 
+### 1b. Wider unsigned sample (2026-11-14)
+
+`--sample N --seed 20261114`: generated **unsigned quotes, not transactions** (Robinhood and Base alternating;
+stablecoin or native-ETH input; 1 to 4 legs; $1 to $50 or 0.0003 to 0.01 ETH; half with a fresh signer). Three runs
+(50 + 50 + 30 = **130 quotes**, `evidence/m3a-shadow/m3a-shadow-sample*`):
+
+| Outcome | Count |
+|---|---|
+| MATCH | 124 |
+| REFUSED `SLIPPAGE_EXCEEDED` (SDK) | 5 |
+| Composer simulation refusal before any check (legacy refuses too) | 1 |
+| MISMATCH, UNAVAILABLE, extra Composer call | 0 |
+
+The refusals are intermittent (the same 30 configurations gave 30/30 MATCH in run 3). The one with leg detail: a
+cbBTC leg with a simulated estimate of 3768 raw units and an on-chain minimum of 3729, while the SDK requires
+`floor(3768 × 0.99) = 3730`: one raw unit, i.e. rounding or a quote-versus-simulation difference, not a looser floor.
+**Gate for `on` (not for shadow):** at about 4 % such purchases would fail under `on`. Decide before `on`: keep it
+(the buyer retries), or let the SDK check tolerate one raw unit below the floor; collect the shortfall per refusal in
+shadow first.
+
 ## 2. Staging configuration (owner applies; not applied by this work)
 
 ```
