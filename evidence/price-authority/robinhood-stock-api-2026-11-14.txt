@@ -1,0 +1,72 @@
+# Live read-only run of scripts/verify-robinhood-stock-api.ts AAPL CRWD
+# 2026-11-14, maintainer machine, ALCHEMY_API_KEY and LIFI_API_KEY blanked, Robinhood public RPC; no Chainlink feeds or TWAP pools configured
+# exit code 0; output unedited below
+/rhj/assets: 203 assets
+  multiplier CRM: current=1.001148322800714293 pending=""
+  multiplier FIX: current=1.000601989076793485 pending=""
+  multiplier V: current=1.001280316388505401 pending=""
+  multiplier DELL: current=1.001019944360538286 pending=""
+  multiplier CRWD: current=4.000000000000000000 pending=""
+  multiplier AVGO: current=1.001257318662278132 pending=""
+  multiplier SPY: current=1.001717991187472003 pending=""
+  multiplier CCL: current=1.025055519837832948 pending=""
+  multiplier PR: current=1.004477942292229526 pending=""
+  multiplier QQQ: current=1.000700791241405425 pending=""
+  multiplier GE: current=1.001049053505552371 pending=""
+  multiplier SKHY: current=1.000060353549285624 pending=""
+  multiplier TSM: current=1.002728577037771211 pending=""
+  multiplier MSFT: current=1.000412952576205964 pending=""
+  multiplier META: current=1.000541459879451635 pending=""
+  multiplier GLW: current=1.001601972014509993 pending=""
+  multiplier UPS: current=1.002208724969205741 pending=""
+  multiplier LHX: current=1.004922488323561562 pending=""
+  multiplier INTU: current=1.003226934400018698 pending=""
+  multiplier VST: current=1.001114738710796417 pending=""
+  multiplier CSCO: current=1.002674650028132112 pending=""
+  multiplier GOOGL: current=1.000193924414112587 pending=""
+  multiplier LMT: current=1.000021050802889793 pending=""
+  multiplier SGOV: current=1.009470411670283410 pending=""
+  multiplier LRCX: current=1.000732562938505984 pending=""
+  multiplier UNH: current=1.004241501039702113 pending=""
+  multiplier SIMO: current=1.002144055355468904 pending=""
+  multiplier WDC: current=1.000217565250523909 pending=""
+  multiplier MU: current=1.000183456682946507 pending=""
+  multiplier VTI: current=1.001751012345030813 pending=""
+  multiplier TER: current=1.000647857966979018 pending=""
+  multiplier VRT: current=1.000162788892052072 pending=""
+  multiplier XLK: current=1.000804404520428861 pending=""
+  multiplier NVDA: current=1.000775159164630595 pending=""
+  multiplier F: current=1.008519908965636470 pending=""
+  multiplier XOM: current=1.001039563764661900 pending=""
+  multiplier SHY: current=1.004203015647541769 pending=""
+  multiplier AMAT: current=1.000044656302636618 pending=""
+  multiplier MRVL: current=1.000151336736428647 pending=""
+  multiplier LLY: current=1.000839971034982527 pending=""
+  multiplier QCOM: current=1.001228122794792830 pending=""
+  multiplier JNJ: current=1.000021490286701962 pending=""
+  multiplier KSS: current=1.004610068732316661 pending=""
+  multiplier CTSH: current=1.003596975962291769 pending=""
+  multiplier ORCL: current=1.004762916906792672 pending=""
+  multiplier IBM: current=1.004738628111767088 pending=""
+  multiplier AAPL: current=1.001090616965388660 pending=""
+  multiplier MPWR: current=1.001003337041156841 pending=""
+  multiplier SCHD: current=1.005538606893683992 pending=""
+  multiplier HPE: current=1.001716957939304938 pending=""
+  multiplier COST: current=1.001622089988220043 pending=""
+  multiplier HWM: current=1.000473517252257273 pending=""
+  multiplier SPMO: current=1.002024883742416310 pending=""
+  multiplier AMKR: current=1.000866850964062008 pending=""
+  multiplier SOXX: current=3.001352514631277880 pending=""
+  multiplier ASML: current=1.000877991671177134 pending=""
+  multiplier PFE: current=1.010110827092460624 pending=""
+/rhj/corporate-actions: 43 actions (latest: CEG CORPORATE_ACTION_TYPE_CASH_DIVIDEND 2026-12-04, AAPL CORPORATE_ACTION_TYPE_CASH_DIVIDEND 2026-11-16, MSFT CORPORATE_ACTION_TYPE_CASH_DIVIDEND 2026-12-10)
+
+== AAPL
+raw /prices: 200 {"quotes":[{"tokenSymbol":"AAPL","deployments":[{"contractAddress":"0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9","chainId":4663,"networkName":"Robinhood Chain","transporterEnabled":false,"replicatorEnabled":false}],"bid":"354.45","ask":"355.35","currency":"USD","dailyTradingVolume":"40027107","isTradingHalt":false,"generatedAt":"2026-11-14T05:00:40.489646510Z","dailyHigh":"360.83","dailyLow":"354.87","mintBurnTokenVolume":"234.24739583","mintBurnUsdVolume":"83134.400780067","tokenBid":"354.836569183382010537","tokenAsk":"355.737550738650860331"}]}
+token 0xaf3d76f1834a1d425780943c99ea8a608f8a93f9 ×1.001090616965388660: bid 354.836569183382010537 ask 355.737550738650860331 (raw 354.450000000000000000 / 355.350000000000000000) spread 25bps halt=false at 2026-11-14T05:00:40.489Z
+OK    price layer: 355.287059961016435434 USD source=robinhood-api:prices:AAPL:mid×1.001090616965388660 confidence=-
+
+== CRWD
+raw /prices: 200 {"quotes":[{"tokenSymbol":"CRWD","deployments":[{"contractAddress":"0xea72Ecca2d0f6bFA1394DBBCff85b52CD4233931","chainId":4663,"networkName":"Robinhood Chain","transporterEnabled":false,"replicatorEnabled":false}],"bid":"230.15","ask":"233","currency":"USD","dailyTradingVolume":"6574942","isTradingHalt":false,"generatedAt":"2026-11-14T05:00:41.446133543Z","dailyHigh":"238","dailyLow":"219.3545","mintBurnTokenVolume":"6.30754","mintBurnUsdVolume":"1460.6685755","tokenBid":"920.600000000000000000","tokenAsk":"932.000000000000000000"}]}
+token 0xea72ecca2d0f6bfa1394dbbcff85b52cd4233931 ×4.000000000000000000: bid 920.600000000000000000 ask 932.000000000000000000 (raw 230.150000000000000000 / 233.000000000000000000) spread 123bps halt=false at 2026-11-14T05:00:41.446Z
+OK    price layer: 926.300000000000000000 USD source=robinhood-api:prices:CRWD:mid×4.000000000000000000 confidence=-

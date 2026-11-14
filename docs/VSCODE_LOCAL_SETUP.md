@@ -172,4 +172,9 @@ npm run test:contracts
 npm run build
 ```
 
+**Windows notu:** Terminal klasörü küçük sürücü harfiyle açıldıysa (`c:\...`; VS Code ve Git Bash bunu yapabilir),
+Vitest her test dosyasında "failed to find the runner" hatası verir. Artık bunun yerine tek bir açık mesajla durur.
+Çözüm: büyük harfli yola geç (PowerShell: `Set-Location 'C:\...'`, Git Bash: `cd "C:/..."`) ve tekrar çalıştır.
+Ayrıntı: [`quality/REPRODUCIBLE_BUILD_AND_TEST_REPORT.md`](quality/REPRODUCIBLE_BUILD_AND_TEST_REPORT.md).
+
 Hâlâ eksik/canlı doğrulanmamış olanların güncel listesi: [`STATUS.md`](STATUS.md).

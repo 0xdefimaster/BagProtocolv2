@@ -4,6 +4,11 @@ One place that says which parts of this repository describe the system as it
 is today. Last updated 2026-11-03 (status matrix below; older sections keep their own dates). When a document and this page disagree,
 this page and the code win.
 
+**2026-11-14 additions** (branch `audit/sdk-first-hardening`, not yet on `main`): per-chain release reference
+`docs/release/CHAIN_CAPABILITY_AND_EVIDENCE_MATRIX.md`; on-chain owners, attestors and code hashes
+`docs/security/PRIVILEGED_AUTHORITY_MATRIX.md` (snapshot `evidence/authority/authority-snapshot-2026-11-14.json`);
+the rows for Base, price authority and Arbitrum below are updated from evidence on that branch.
+
 Labels:
 
 - **CURRENT** — describes the code on `main` as it is.
@@ -29,14 +34,14 @@ evidence and are never counted as each other. **No contract in this repository h
 | `BagFactory` / `Bag` (Robinhood) | DEPLOYED · LIVE VERIFIED (user-signed `createBag`) · NOT AUDITED | §0; the address lives in `FACTORY_ADDRESS_ROBINHOOD` (no deployment record on `main`) |
 | `StrategyRegistry` (Robinhood) | DEPLOYED (`0x907c…09a8`) · LIVE VERIFIED registration · NOT AUDITED | `docs/STRATEGY_REGISTRY_DESIGN.md` §0 |
 | `RedeemSettlement` v2 (Robinhood, `0x3eCD…F8A3`) | DEPLOYED and configured · **no live settlement through v2 is recorded in this repository** · **fee > 0 NOT VERIFIED** (on any version) · fork royalty NOT VERIFIED · NOT AUDITED. The one recorded live settlement (2026-10-06, fee 0) went through **v1** `0x934a…70a0`, now superseded | `docs/REDEEM_SETTLEMENT_DEPLOYMENT.md` §0, §5a |
-| Price authority guards (Robinhood prices, Chainlink cross-check) | MERGED · guard checks **NOT VERIFIED** against live data | `docs/ROBINHOOD_PRICE_AUTHORITY.md` |
+| Price authority guards (Robinhood prices, Chainlink cross-check) | MERGED · Robinhood API path **LIVE VERIFIED read-only** 2026-11-14 (AAPL, CRWD ×4 multiplier, registry 203 assets) · Chainlink cross-check and TWAP guards **NOT VERIFIED** (no feeds/pools configured) | `docs/ROBINHOOD_PRICE_AUTHORITY.md`, `docs/release/PRICE_AUTHORITY_QUALIFICATION.md`, `evidence/price-authority/` |
 | `BagExecutionRouter` (BAG Router) | MERGED · **NOT DEPLOYED**, disabled (§3) | plan-signer trust model unresolved |
 | Settlement router G1 (types, hashing, vectors) | MERGED · router itself NOT IMPLEMENTED | #141 |
 | `StrategyCompositions` | MERGED · NOT DEPLOYED (migration 0060 not run) | `docs/STRATEGY_COMPOSITIONS_DESIGN.md` |
 | DCA v1 (executor, adapter, SDK `/dca`, keeper) | IMPLEMENTED on **Draft PR #145, NOT MERGED** · NOT DEPLOYED · NOT AUDITED · live mode disabled · local tests + CI green; Robinhood-fork evidence predates the current executor bytecode (re-run is an owner step) | `docs/dca/` on that branch |
 | Fee-sale reference-price confidence (only two source-qualified states accepted: Chainlink-verified → 500 bps, Chainlink-unavailable → stricter band; everything else, stale or disagreeing prices refused) | IMPLEMENTED on **Draft PR #147, NOT MERGED** · NOT DEPLOYED · feed coverage of fee-bearing Bags not yet measured (owner runs `check-fee-sale-feed-coverage.ts`) | `docs/release-notes/settlement-price-confidence.md` on that branch |
-| Base (8453) | StrategyRegistry **DEPLOYED** `0xcad829dcc30fa88b3d57cc0a6fa32bd56c9a5920` (block 53499552, exact bytecode match) · Composer pin **approved** 2026-11-04 · **first SDK purchase LIVE VERIFIED** 2026-11-04 (0.4.0 candidate, `DELIVERY_LOG`, tx `0x21e2…80ee`) · BAG app not on Base (B-App not deployed) · **NOT production-qualified** until 0.4.0 is released | `docs/chains/BASE_READINESS.md`, `docs/SDK_DEPLOYMENT_PIN_BASE.md` |
-| Arbitrum, Ethereum | Format support only · **NOT qualified**: no BAG contracts, deployment pin or live verification | `docs/chains/ARBITRUM_DIFFERENCES.md` |
+| Base (8453) | StrategyRegistry **DEPLOYED** `0xcad829dcc30fa88b3d57cc0a6fa32bd56c9a5920` (block 53499552, exact bytecode match) · Composer pin **approved** 2026-11-04 · **first SDK purchase LIVE VERIFIED** 2026-11-04 (0.4.0 candidate, `DELIVERY_LOG`, tx `0x21e2…80ee`) · B-App contracts **DEPLOYED 2026-11-08** (on `codex/three-chain-bag-flows`, not on `main`): `BagFactory` `0x9F66…df4a` (block 54802636) and `StrategyCompositions` `0x7D4A…4Fc8` (block 54802650), runtime hashes re-checked 2026-11-14 · app lifecycle on Base (create → buy → sell) **NOT run** · production hosting not configured for Base · **NOT production-qualified** | `docs/chains/BASE_READINESS.md`, `docs/SDK_DEPLOYMENT_PIN_BASE.md`, `docs/chains/THREE_CHAIN_APP.md`, `evidence/three-chain-app/` |
+| Arbitrum, Ethereum | Format support only · **NOT qualified**: no BAG contracts or live verification. Arbitrum: SDK profile and an **observed, not approved** Composer pin on `codex/three-chain-bag-flows`; predicted deployment addresses valid only while the deployer's Arbitrum nonce is 0 | `docs/chains/ARBITRUM_DIFFERENCES.md`, `docs/SDK_DEPLOYMENT_PIN_ARBITRUM.md` |
 
 ## 0. Latest live checks (Robinhood Chain, 2026-10-17)
 
@@ -162,3 +167,8 @@ prove behavior against a local chain, never against Robinhood Chain.
 | `docs/archive/V10_HARDENING_REPORT.md`, `docs/archive/V11_HARDENING_REPORT.md` | HISTORICAL | Hardening sprint reports |
 | `docs/archive/FINAL_PRODUCTION_AUDIT.md` | HISTORICAL | Partly superseded by V11 (noted inside) |
 | `durum-raporu-v2.md` | HISTORICAL | Creator rewards / redemption status (Turkish) |
+| `docs/release/CHAIN_CAPABILITY_AND_EVIDENCE_MATRIX.md` | CURRENT (2026-11-14) | Per-chain evidence levels; the reference for release decisions |
+| `docs/security/*` (authority matrix, credential plan, multisig and incident runbooks, settlement audit, execution trust review) | CURRENT (2026-11-14) | Internal reviews and plans; nothing in them was executed; not an audit |
+| `docs/architecture/*` (Git recovery, SDK ↔ app map, capability matrix, target architecture, ADR SDK-1, migration plan) | CURRENT (2026-11-14) | ADR SDK-1 is PROPOSED |
+| `docs/quality/*` (reproducible build and test report, repository hygiene) | CURRENT (2026-11-14) | Local results; not chain evidence |
+| `docs/release/{POSITIVE_FEE_LIVE_PROOF_PLAN,FORK_ROYALTY_PROOF_PLAN,PRICE_AUTHORITY_QUALIFICATION}.md` | CURRENT (2026-11-14) | Gates on top of the existing runbooks; not run |
