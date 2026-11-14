@@ -23,6 +23,7 @@ const CHAINS = {
   base: { id: 8453, env: 'BASE_RPC_URL', rpc: 'https://mainnet.base.org' },
   robinhood: { id: 4663, env: 'ROBINHOOD_RPC_URL', rpc: 'https://rpc.mainnet.chain.robinhood.com' },
   arbitrum: { id: 42161, env: 'ARBITRUM_RPC_URL', rpc: 'https://arb1.arbitrum.io/rpc' },
+  ethereum: { id: 1, env: 'ETHEREUM_RPC_URL', rpc: 'https://ethereum-rpc.publicnode.com' },
 };
 const abi = parseAbi([
   'function delegationManager() view returns (address)',

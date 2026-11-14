@@ -50,13 +50,14 @@ export const METAMASK_EIP7702_STATELESS_DELEGATOR: TrustedSmartAccount = Object.
 
 /**
  * Per chain id: the smart accounts whose envelopes are accepted. A chain is listed only after its copies of both
- * contracts were read on-chain and matched the verified build (2026-11-14: Robinhood, Base, Arbitrum One).
+ * contracts were read on-chain and matched the verified build (2026-11-14: Robinhood, Base, Arbitrum One, Ethereum).
  * Any other chain accepts DIRECT transactions only.
  */
 export const TRUSTED_SMART_ACCOUNTS: Readonly<Record<number, readonly TrustedSmartAccount[]>> = Object.freeze({
   [BAG_V1_CHAINS.robinhood]: Object.freeze([METAMASK_EIP7702_STATELESS_DELEGATOR]),
   [BAG_V1_CHAINS.base]: Object.freeze([METAMASK_EIP7702_STATELESS_DELEGATOR]),
   [BAG_V1_CHAINS.arbitrum]: Object.freeze([METAMASK_EIP7702_STATELESS_DELEGATOR]),
+  [BAG_V1_CHAINS.ethereum]: Object.freeze([METAMASK_EIP7702_STATELESS_DELEGATOR]),
 });
 
 export interface WalletCallExpectation {

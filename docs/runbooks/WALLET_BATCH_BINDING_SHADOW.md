@@ -19,7 +19,7 @@ Keep production as it is until all of the following are done and reviewed:
 
 - [ ] The F-01 fix and the M2 code are merged (PR review and CI green).
 - [ ] Pins re-verified: `node scripts/audit/verify-smart-account-pins.mjs` shows `trustable: true` for every chain
-      the app uses (2026-11-14: Robinhood, Base, Arbitrum).
+      the app uses (2026-11-14: Robinhood, Base, Arbitrum, Ethereum).
 - [ ] Historical replay (below) run and reviewed.
 
 ### Historical replay (read-only; BLOCKED in the 2026-11-14 session: database access was not authorized)

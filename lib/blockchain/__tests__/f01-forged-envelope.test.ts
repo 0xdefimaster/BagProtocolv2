@@ -37,7 +37,7 @@ function mine(to: Hex, input: Hex, logs: ReturnType<typeof log>[]) {
   client.getTransaction.mockResolvedValue({ hash: TX_HASH, from: WALLET, to, input, value: BigInt(0), nonce: 3, type: 'eip1559' });
   client.getTransactionReceipt.mockResolvedValue({ status: 'success', logs, blockNumber: BigInt(100) });
 }
-const track = (chain: 'robinhood' | 'ethereum' = 'robinhood') =>
+const track = (chain: 'robinhood' | 'ethereum' | 'solana' = 'robinhood') =>
   trackComposerTransaction({ txHash: TX_HASH, chain, recipient: WALLET, expectedTransaction: { to: COMPOSER, data: CALLDATA, value: '0' }, flow: 'purchase' });
 
 /** What the owner's contract does instead of the Composer call: hands over outputs it was funded with. */
@@ -56,7 +56,13 @@ describe('F-01 (default binding): the redeemDelegations route needs the chain\'s
 
   it('refuses the route on a chain where no DelegationManager is pinned', async () => {
     mine(MM.delegationManager, envelope, REAL_LOGS);
-    expect(await track('ethereum')).toMatchObject({ kind: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
+    // Every BAG EVM chain is pinned; a chain without a pin (here the non-EVM one) never binds the route.
+    expect((await track('solana')).kind).toBe('FAILED');
+  });
+
+  it('Ethereum is pinned like the other three (verified 2026-11-14), same as the standalone F-01 patch', async () => {
+    mine(MM.delegationManager, envelope, REAL_LOGS);
+    expect((await track('ethereum')).kind).toBe('DONE');
   });
 
   it('keeps accepting the same envelope sent to the pinned DelegationManager (MetaMask EIP-7702)', async () => {

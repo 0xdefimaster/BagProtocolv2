@@ -133,7 +133,7 @@ describe('bindWalletEnvelope: adversarial envelopes are refused with a reason', 
     ['executeBatch(Call[]) (not an entry point of the pinned account)', tx(WALLET, encodeFunctionData({ abi: EXECUTE_BATCH, functionName: 'executeBatch', args: [[{ target: ROUTER, value: BigInt(0), data: CALLDATA }]] })), 'UNSUPPORTED_ENVELOPE'],
     ['mismatched redeemDelegations array lengths', tx(MM.delegationManager, redeem([EMPTY, EMPTY], [MODE_BATCH], [batch([COMPILED])])), 'NON_CANONICAL_ENVELOPE'],
     ['a direct call with other calldata', tx(ROUTER, '0x12345678'), 'TRANSACTION_MISMATCH'],
-    ['a smart-account envelope on a chain with no pinned account', tx(MM.delegationManager, viaManager([COMPILED])), 'UNSUPPORTED_ENVELOPE', { ...expectation, chainId: 1 }],
+    ['a smart-account envelope on a chain with no pinned account', tx(MM.delegationManager, viaManager([COMPILED])), 'UNSUPPORTED_ENVELOPE', { ...expectation, chainId: 10 }],
   ];
   for (const [label, transaction, code, exp] of refused) {
     it(`refuses ${label}: ${code}`, () => {
