@@ -1,5 +1,8 @@
 import { defineConfig } from 'vitest/config';
 import path from 'path';
+import { assertWindowsDriveLetterCase } from './vitest.config';
+
+assertWindowsDriveLetterCase();
 
 // INTEGRATION tests: a real PostgreSQL (TEST_DATABASE_URL, see
 // docs/USER_SIGNED_DEPLOYMENT.md) and, for the local-EVM suite, an in-process

@@ -18,6 +18,24 @@ import path from 'path';
 /** Folders holding unit tests. contracts/test/** is Hardhat's (npm run test:contracts), not Vitest's. */
 export const TEST_ROOTS = ['packages', 'lib', 'hooks', 'app', 'components'] as const;
 
+/**
+ * Windows only. Started from a working directory whose drive letter is lowercase (`c:\...`, which
+ * VS Code terminals and Git Bash can pass on), Vitest 5 loads its runner under two module paths and
+ * every test file fails with "Vitest failed to find the runner" before a single test runs: hundreds
+ * of failures that read like regressions. Normalizing inside this config does not help (the CLI is
+ * already loaded), so fail once, clearly. Remove when Vitest handles drive-letter case itself.
+ */
+export function assertWindowsDriveLetterCase(cwd: string = process.cwd(), platform: string = process.platform): void {
+  if (platform === 'win32' && /^[a-z]:/.test(cwd)) {
+    throw new Error(
+      `Vitest cannot run from "${cwd}": with a lowercase drive letter every test file fails with ` +
+        `"failed to find the runner" before any test runs. Change to "${cwd.charAt(0).toUpperCase()}${cwd.slice(1)}" ` +
+        '(PowerShell: Set-Location with the uppercase path; Git Bash: cd "C:/...") and run again.',
+    );
+  }
+}
+assertWindowsDriveLetterCase();
+
 export default defineConfig({
   resolve: {
     alias: {
