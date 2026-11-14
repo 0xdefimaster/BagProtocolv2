@@ -7,6 +7,10 @@ import { getLiFiTokenData } from './lifi-token-data';
 import { mapLiFiError } from './lifi-execution-adapter';
 import { isNativeAssetIdentity } from '@/lib/domain/basket-protocol/asset-identity';
 import { PartitionError, planPartitionLegs } from '@/packages/bag-sdk/src';
+import { crossCheckComposerPurchase, logSdkCompileCheck, recordingFetch, sdkComposerCompileMode, type SdkComposerCompileMode } from './composer-sdk-compile';
+import type { ComposerAccountClient } from '@/packages/bag-sdk/src/adapters/lifi';
+import { getChainPublicClient } from './rpc/clients';
+import type { BagChain } from '@/lib/config/chains';
 import { buildComposerPurchase, composeErrorOf, composerLegEnforcedMinOutputRaw, composerLegSimulatedOutputRaw, ComposerIneligibleError, ComposerPurchaseLeg, isComposerEligible } from './lifi-composer-adapter';
 
 // -----------------------------------------------------------------------------
@@ -217,6 +221,25 @@ export interface ComposerAttemptOptions {
   resolveOutputDecimals: (asset: ExecutionStep['route']['outputAsset']) => number | null;
   /** Passed to Composer as its price-impact limit; set only after the buyer accepted a reported impact. */
   maxPriceImpactBps?: number;
+  /**
+   * M3a SDK cross-check (composer-sdk-compile.ts). Production reads the mode from BAG_SDK_COMPOSER_COMPILE (default
+   * off) and the chain client from the RPC config; tests inject them.
+   */
+  sdkCompile?: { mode?: SdkComposerCompileMode; client?: ComposerAccountClient; env?: Record<string, string | undefined> };
+}
+
+/** The buyer-facing notice when the SDK cross-check (BAG_SDK_COMPOSER_COMPILE=on) does not confirm the compile. */
+function sdkCompileRefusal(check: Exclude<Awaited<ReturnType<typeof crossCheckComposerPurchase>>, { verdict: 'MATCH' }>): ComposerFallbackNotice {
+  const detail = check.verdict === 'MISMATCH' ? check.reasons.join(', ') : check.verdict === 'REFUSED' ? check.code : check.reason;
+  return {
+    reason: 'UNAVAILABLE',
+    message: `One-transaction routing is temporarily unavailable: the transaction could not be confirmed against the reviewed Composer deployment. Nothing was sent. (${check.verdict}: ${detail})`,
+    priceImpactBps: null,
+    maxPriceImpactBps: null,
+    inputUsd: null,
+    outputUsd: null,
+    kind: 'sdk_compile_check',
+  };
 }
 
 /**
@@ -274,6 +297,11 @@ async function tryBuildComposerSteps(
 
   if (!isComposerEligible(chain as ChainId, legs)) return null;
 
+  // M3a: with the SDK cross-check on (shadow/on), the legacy compile's HTTP exchange is recorded so the SDK can
+  // compile the same plan against the same response, without a second Composer call.
+  const sdkMode = options.sdkCompile?.mode ?? sdkComposerCompileMode(options.sdkCompile?.env);
+  const recorder = sdkMode === 'off' ? null : recordingFetch();
+
   let composerResult;
   try {
     // The deadline is on the request itself (COMPOSER_COMPILE_TIMEOUT_MS in
@@ -288,6 +316,7 @@ async function tryBuildComposerSteps(
       slippageBps: options.slippageBps,
       apiKey: options.apiKey,
       ...(options.maxPriceImpactBps !== undefined ? { maxPriceImpactBps: options.maxPriceImpactBps } : {}),
+      ...(recorder ? { fetchImpl: recorder.fetch } : {}),
     });
   } catch (err) {
     if (err instanceof ComposerIneligibleError) return null;
@@ -303,6 +332,40 @@ async function tryBuildComposerSteps(
     // A real Composer refusal (price impact, network, simulation revert,
     // timeout). Returned as-is so the buyer sees why; no per-asset fallback.
     return { composerFallback: notice };
+  }
+
+  if (recorder) {
+    const nativeInput = isNativeAssetIdentity(inputAsset);
+    let check: Awaited<ReturnType<typeof crossCheckComposerPurchase>>;
+    try {
+      check = await crossCheckComposerPurchase(
+        {
+          chain: chain as ChainId,
+          chainId: toLiFiChainId(chain as ChainId),
+          inputKind: nativeInput ? 'native' : 'erc20',
+          inputToken: inputAsset.address,
+          signer: walletAddress,
+          swapAmountRaw: totalInputRaw,
+          legs: partitioned.legs.map((l) => ({ token: l.token, legBps: l.legBps, targetInputRaw: l.amountRaw })),
+          slippageBps: options.slippageBps,
+          ...(options.maxPriceImpactBps !== undefined ? { maxPriceImpactBps: options.maxPriceImpactBps } : {}),
+          apiKey: options.apiKey,
+          legacy: composerResult,
+          exchanges: recorder.exchanges,
+        },
+        { env: options.sdkCompile?.env, client: options.sdkCompile?.client ?? (getChainPublicClient(chain as BagChain) as unknown as ComposerAccountClient) }
+      );
+    } catch {
+      check = { verdict: 'UNAVAILABLE', reason: 'ERROR' };
+    }
+    logSdkCompileCheck(sdkMode, chain as ChainId, legs.length, check);
+    // `on`: only a transaction the SDK compiled identically, inside the reviewed allowlist, goes to the wallet.
+    // Fail closed exactly like a Composer refusal: an ERC-20 purchase fails with the reason, a native-ETH purchase
+    // keeps its per-asset path (see the catch above). `shadow`: observation only, the legacy result is used.
+    if (sdkMode === 'on' && check.verdict !== 'MATCH') {
+      if (nativeInput) return null;
+      return { composerFallback: sdkCompileRefusal(check) };
+    }
   }
 
   const stepRecords: PurchaseIntentStepRecord[] = steps.map((step, stepIndex) => {

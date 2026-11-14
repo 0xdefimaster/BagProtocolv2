@@ -1,6 +1,8 @@
 # M3: the first purchase slice BAG App shares with the SDK
 
-Status 2026-11-14: **PLAN, not started.** Prerequisite M2 work is local and unmerged (F-01 fix in the default binding;
+Status 2026-11-14: **M3a IMPLEMENTED locally** on branch `feat/m3a-sdk-compile` (stacked on
+`audit/m2-security-closure`), **not merged, not enabled** (`BAG_SDK_COMPOSER_COMPILE` default off); see §3.5. M3b not
+started. Earlier status line, kept: Prerequisite M2 work is local and unmerged (F-01 fix in the default binding;
 exact binding behind `BAG_WALLET_BATCH_BINDING`, default off). Historical replay is blocked on database access, and
 no BAG user's smart-account transaction has been observed under the exact binding yet. M3a below changes no signed
 transaction and may start after the F-01 fix merges; M3b changes what users sign and waits for M2's shadow evidence.
@@ -74,6 +76,42 @@ the highest-value, lowest-risk step: same program, same bytes, one more refusal 
 ### 3.4 Rollback
 
 Flag `off`. Nothing persisted changes shape.
+
+### 3.5 As implemented (2026-11-14)
+
+- **SDK:** `compilePlannedPurchase(planned, { provider, trust })` (`packages/bag-sdk/src/execution.ts`, exported). It
+  was necessary: `compileBag` always plans with `planPurchase`, whose allocation differs from the app's (KNOWN
+  DIFFERENCE) and whose legs it orders itself. The caller's plan is validated (lowercase distinct leg tokens, whole-bp
+  shares summing to 10000, positive amounts, slippage and impact bounds, definition hash or null) before any provider
+  call; the response goes through the same `checked(...)` as `compileBag`. `compileBag` now calls the same
+  internal `compileChecked`. `checked(...)` also refuses a structurally malformed result (null, missing arrays) as
+  `PROVIDER_RESPONSE_INVALID` instead of a TypeError. `definitionHash: null` maps to the zero hash: the app's
+  strategy identity stays the intent's own.
+- **App:** `lib/blockchain/composer-sdk-compile.ts`, wired into `tryBuildComposerSteps`. The legacy compile runs
+  through a recording fetch; the SDK's `lifiComposer` gets a replay fetch that answers only a request equal to the
+  recorded one (same URL and method; same JSON body except the flow's display id, and `run.maxPriceImpactBps` when the
+  app sent none). A probe of both adapters showed exactly these differences. No second Composer call.
+- **Trust:** `resolveLifiComposerAccount` with the reviewed pin from `COMPOSER_FACTORY_<CHAIN>` /
+  `COMPOSER_FACTORY_CODE_HASH_<CHAIN>` and the chain's RPC client; the trust policy is the resolved account's
+  (target: factory before first use, proxy after; spender: proxy). Nothing comes from the API response.
+- **Comparison:** transaction to/data/value/chain, user proxy, approvals, and each leg's expected and enforced minimum
+  output. Verdicts `MATCH` / `MISMATCH` (reason codes) / `REFUSED` (SDK error code) / `UNAVAILABLE`
+  (`NO_REVIEWED_DEPLOYMENT`, `NOT_RECORDED`, `ERROR`). Log line `[sdk-compile-<mode>] chain=… legs=… verdict=…`.
+- **on:** proceeds only on `MATCH` (byte-identical result to `off`); otherwise an ERC-20 purchase fails with an
+  `UNAVAILABLE` notice (`kind: 'sdk_compile_check'`), a native-ETH purchase keeps its per-asset path, as for any
+  Composer refusal. **shadow:** legacy result always.
+- **Unchanged:** the signed program (no delivery proof), allocation, accounting, verification, strategy identity,
+  standalone vs BAG-accounted boundary.
+- **Tests:** `packages/bag-sdk/test/compile-planned.test.ts` (caller order kept, malicious target/spender/approval
+  token/amount, wrong or reordered legs, low minimums, chain/value, price impact, malformed responses, invalid plans
+  never reach the provider, empty or wrong-chain trust); `lib/blockchain/__tests__/composer-sdk-compile.test.ts`
+  (real legacy + real SDK adapters over a fake API: MATCH first use and deployed proxy, accepted impact limit, target /
+  spender / user proxy outside the resolved account, missing or low minimum, factory runtime ≠ pin, request mismatch,
+  tampered legacy bytes, no pin, RPC failure); `composer-sdk-compile-modes.test.ts` (off / shadow / on through
+  `buildPurchaseIntentSteps`).
+- **Before shadow in production (approval):** set the per-chain pins (Robinhood, Base, Arbitrum) in the deployment
+  environment from the reviewed `docs/SDK_DEPLOYMENT_PIN_*.md`; then `BAG_SDK_COMPOSER_COMPILE=shadow` on staging;
+  acceptance per §3.3. Not done.
 
 ## 4. M3b — delivery proof (changes what users sign; approval and live runs required)
 
