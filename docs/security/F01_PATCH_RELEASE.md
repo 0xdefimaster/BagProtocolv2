@@ -44,8 +44,11 @@ chain) would have been refused; the entry is a separate commit so a reviewer can
   rule.
 - Historical transactions: nothing is rewritten. Already booked intents stay booked. A pending intent re-verified
   after deploy uses the new rules; a legitimate one passes (same DelegationManager, deposit left the wallet).
-- Not verified against historical BAG transactions (database replay not authorized yet): see the replay procedure in
-  the audit branch runbook before or right after deploying.
+- Historical compatibility checked on 2026-11-14 after maintainer authorization: a read-only snapshot of
+  37 Composer purchase intents and 19 redemption intents yielded 41 transaction-bearing cases. The old and
+  patched default rules both accepted 40 and refused 1; **accepted-before/refused-after = 0**. The snapshot's
+  completed intents were all represented (25 purchases and 15 redemptions). No data was changed. Only counts
+  are shared; exports, wallet hashes, calldata and per-transaction reports remain outside the repository.
 - Not verified live: no BAG user's MetaMask EIP-7702 `redeemDelegations` purchase has been observed on chain (only
   relayer DelegationManager transactions and wallet self-call batches were); the self-authorized encoding is
   test-covered from the verified source.
@@ -56,6 +59,11 @@ chain) would have been refused; the entry is a separate commit so a reviewer can
 `lib/blockchain/__tests__/f01-forged-envelope.test.ts` (new), F-01 cases in `composer-tx-search.test.ts` and
 `purchase-execution.test.ts` (attack refused; legitimate, refund and native outcomes still complete). On the unpatched
 code five of them fail (the attack is accepted).
+
+Release validation on `17df102`: 122 focused tests passed locally; PR #153's GitHub CI completed successfully
+(secret scan, lint, typecheck, SDK consumer/release checks, unit tests, Next.js build and real-Postgres integration).
+The historical replay also compared the later, separately gated exact binder: 22 accept / 19 refuse. Those stricter
+results are **not** part of this patch and do not authorize enabling exact enforcement; investigate them separately.
 
 ## Plan (each step needs the maintainer's approval)
 
