@@ -5,7 +5,7 @@
  *   npx tsx --env-file=.env.local scripts/audit/wallet-binding-replay.ts cases.json --out report.json [--quiet]
  *
  * cases.json: [{ "label": "…", "flow": "purchase" | "redeem" | "rebalance", "chain": "robinhood", "txHash": "0x…",
- *   "wallet": "0x…", "expected": { "to": "0x…", "data": "0x…", "value": "0" },
+ *   "wallet": "0x…" (or "walletSha256": sha256 hex of the lowercase address), "expected": { "to": "0x…", "data": "0x…", "value": "0" },
  *   "approvals": [{ "token": "0x…", "spender": "0x…", "amountRaw": "…" }],
  *   "deposit": { "token": "0x…", "amountRaw": "…" } | null,          // purchase: ERC-20 deposit that must leave
  *   "sold": [{ "token": "0x…", "amountRaw": "…" }],                    // redeem / rebalance: what must leave
@@ -24,6 +24,7 @@
  * Never signs or sends. RPC: <CHAIN>_RPC_URL from the environment if set (never printed), else the public endpoint.
  * The report contains wallet-linked data (hashes, labels): keep it outside the repository.
  */
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createPublicClient, decodeEventLog, http, parseAbiItem, type Hex } from 'viem';
 import {
@@ -44,7 +45,9 @@ interface ReplayCase {
   flow?: 'purchase' | 'redeem' | 'rebalance';
   chain: string;
   txHash: Hex;
-  wallet: Hex;
+  /** The intent's wallet, or (pseudonymous export) only its sha256 in walletSha256. */
+  wallet?: Hex;
+  walletSha256?: string;
   expected: { to: Hex; data: Hex; value: string };
   approvals?: { token: Hex; spender: Hex; amountRaw: string }[];
   deposit?: { token: Hex; amountRaw: string } | null;
@@ -77,6 +80,14 @@ async function replay(c: ReplayCase) {
   const client = createPublicClient({ transport: http(rpc, { timeout: 25_000, retryCount: 2 }) });
   const [tx, receipt] = await Promise.all([client.getTransaction({ hash: c.txHash }), client.getTransactionReceipt({ hash: c.txHash })]);
   const mined = { from: tx.from, to: tx.to ?? null, input: tx.input, value: tx.value };
+  // Pseudonymous export (docs/runbooks/F01_HISTORICAL_REPLAY_EXPORT.md): the intent's wallet arrives only as
+  // sha256(lowercase address). The sender binds as that wallet only when its hash matches; otherwise a wallet no
+  // transaction can come from is used, so every binding refuses, exactly as for a foreign sender.
+  if (!c.wallet && c.walletSha256) {
+    const fromHash = createHash('sha256').update(tx.from.toLowerCase()).digest('hex');
+    c = { ...c, wallet: (fromHash === c.walletSha256.toLowerCase().replace(/^0x/, '') ? tx.from : '0x000000000000000000000000000000000000dEaD') as Hex };
+  }
+  if (!c.wallet) return { label: c.label, flow: c.flow, verdict: 'ERROR', code: 'NO_WALLET' };
 
   // Transfer-log evidence, summed per token for the wallet, as the app's verifier does.
   const received: Record<string, bigint> = {};
@@ -155,7 +166,12 @@ async function main() {
   const report = { schema: 'bag-wallet-binding-replay/v2', createdAt: new Date().toISOString(), readOnly: true, results };
   if (out) writeFileSync(out, JSON.stringify(report, (_, v) => (typeof v === 'bigint' ? v.toString() : v), 2) + '\n');
   if (!args.includes('--quiet')) console.log(JSON.stringify(report, (_, v) => (typeof v === 'bigint' ? v.toString() : v), 2));
-  else console.log(`replayed ${results.length} cases${out ? ' (report written)' : ''}`);
+  else {
+    // Counts only (no hashes, labels or wallets): safe to share.
+    const count = (k: string) => results.reduce<Record<string, number>>((m, r) => { const v = String((r as Record<string, unknown>)[k] ?? 'n/a'); m[v] = (m[v] ?? 0) + 1; return m; }, {});
+    const flips = results.filter((r) => (r as Record<string, unknown>).legacyBefore === 'ACCEPT' && (r as Record<string, unknown>).legacyAfter === 'REFUSE').length;
+    console.log(JSON.stringify({ replayed: results.length, written: !!out, legacyBefore: count('legacyBefore'), legacyAfter: count('legacyAfter'), exact: count('exact'), walletCode: count('walletCode'), acceptedBeforeRefusedAfterF01: flips }));
+  }
 }
 
 main().catch((e) => {
