@@ -1,7 +1,8 @@
 # Base in BAG App: smallest integration into `main`
 
-Branch `integration/base-app`, two commits on `main` `4774ac9`. Status 2026-11-14: **local only, not merged, Base not
-live in BAG App.** Base contracts are already deployed (`docs/chains/THREE_CHAIN_APP.md`); nothing here redeploys them.
+Branch `integration/base-app`, initially based on `main` `4774ac9`. Release work on 2026-11-14:
+**PR #154, with the merged F-01 security fix (#153) included; Base not yet production-qualified in BAG App.**
+Base contracts are already deployed (`docs/chains/THREE_CHAIN_APP.md`); nothing here redeploys them.
 
 ## 1. What `main` already has
 
@@ -37,6 +38,12 @@ Robinhood-only, so **Base sales carry no performance fee** until a separate chan
   control placed a fake credential in both the URL and response: the RPC was called, exit status was 1,
   and neither credential nor URL appeared in stdout/stderr. This prevents authenticated provider URLs from
   leaking through an uncaught error; no network settings or on-chain state changed.
+- Combined Base/F-01 head `302244e` passed GitHub CI, including real-Postgres integration and the production
+  application build. Its Netlify preview built successfully, then failed the secret scan because
+  `FACTORY_ADDRESS_ROBINHOOD` had been marked secret in hosting configuration and its public contract address
+  appears in deployment evidence. `netlify.toml` now omits that specific public-address value along with the
+  existing public `APP_ORIGIN`; secret scanning remains enabled for credentials and private keys. No path-wide
+  or global scan exception was added. The corrected head must pass both CI and the Netlify preview before merge.
 
 ## 4. Independent end-to-end verification still required (each step signs; owner approval needed)
 
