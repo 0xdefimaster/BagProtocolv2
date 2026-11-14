@@ -50,7 +50,7 @@ beforeEach(() => {
       rebalanceRule: { frequency: 'MANUAL', driftThresholdBps: 500, maxSlippageBps: 100 },
     },
   });
-  m.observe.mockResolvedValue({ blockNumber: '85400000' });
+  m.observe.mockResolvedValue({ blockNumber: '85400000', blockNumbers: { robinhood: '85400000' } });
   m.sellable.mockReturnValue([holding(TSLA, 60), holding(NVDA, 40)]);
   m.getPrice.mockImplementation(async (asset: { chain: string; address: string }) => ({ asset, price: '1', quoteCurrency: 'USD', timestamp: new Date().toISOString(), source: 'test' }));
 });

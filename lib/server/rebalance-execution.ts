@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { PublicClient } from 'viem';
+import type { HoldingsClients } from '@/lib/server/position-valuation';
 import type { PriceProvider } from '@/lib/domain/basket-protocol/pricing';
 import type { ComposerFallbackNotice } from '@/types/purchase-intent';
 import { planRebalance, type RebalancePlanBuy, type RebalancePlanSell } from '@/lib/server/rebalance-quote';
@@ -138,7 +138,7 @@ export type CreateRebalanceOutcome =
 
 export async function createRebalanceIntent(
   admin: SupabaseClient,
-  client: PublicClient,
+  client: HoldingsClients,
   priceProvider: PriceProvider,
   session: { userId: string; walletAddress: string },
   bagId: string,

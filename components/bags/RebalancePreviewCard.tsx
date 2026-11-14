@@ -18,6 +18,7 @@ import { describeWalletError } from '@/lib/blockchain/wallet-error';
 // -----------------------------------------------------------------------------
 
 interface Response {
+  executionSupported: boolean;
   symbols: Record<string, string>;
   preview: PositionRebalancePreview;
 }
@@ -117,6 +118,7 @@ export function RebalancePreviewCard({
   const [acceptedImpact, setAcceptedImpact] = useState<number | null>(null);
 
   const getQuote = async (accept: number | null = acceptedImpact) => {
+    if (!data?.executionSupported) return;
     setQuoting(true);
     setQuoteError(null);
     try {
@@ -144,6 +146,7 @@ export function RebalancePreviewCard({
 
   /** Plan → wallet signs the one transaction → BAG verifies it on-chain and books it. */
   const runRebalance = async (accept: number | null = acceptedImpact) => {
+    if (!data?.executionSupported) return;
     const walletAddress = authUser?.walletAddress;
     if (!walletAddress) {
       setRunError('Sign in with your wallet first.');
@@ -207,7 +210,7 @@ export function RebalancePreviewCard({
   const autoRanRef = useRef<number | null>(null);
   useEffect(() => {
     if (autoRunVersion === undefined || autoRanRef.current === autoRunVersion) return;
-    if (!data || data.preview.status !== 'OK' || data.preview.targetVersion < autoRunVersion) return;
+    if (!data?.executionSupported || data.preview.status !== 'OK' || data.preview.targetVersion < autoRunVersion) return;
     if (!data.preview.requiresRebalance || rebalanceSize(data.preview).tooSmall || phase !== 'idle') return;
     autoRanRef.current = autoRunVersion;
     void runRebalance();
@@ -279,7 +282,11 @@ export function RebalancePreviewCard({
           ))}
         </tbody>
       </table>
-      {preview.requiresRebalance && size.tooSmall ? (
+      {preview.requiresRebalance && !data.executionSupported ? (
+        <p className="text-sm text-white/60">
+          Your allocation is shown above. Rebalancing is not available on this network yet.
+        </p>
+      ) : preview.requiresRebalance && size.tooSmall ? (
         <p className="text-sm text-white/60" data-testid="rebalance-too-small">
           What your wallet holds for this strategy is worth {formatRawAmountUsd(size.sellUsd.toString(), 18)} to move,
           under ${MIN_REBALANCE_USD}: too little to rebalance. Buy into the Bag to hold strategy v{preview.targetVersion}.

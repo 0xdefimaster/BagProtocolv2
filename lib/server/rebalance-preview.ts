@@ -1,8 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { PublicClient } from 'viem';
+import { isBagChain } from '@/lib/config/chains';
 import { getBagById, getCurrentBagVersion } from '@/lib/server/bag-repo';
 import { listAssets } from '@/lib/server/asset-repo';
-import { assetKey, observeUserHoldings, sellableHoldingsForBag } from '@/lib/server/position-valuation';
+import { assetKey, observeUserHoldings, sellableHoldingsForBag, type HoldingsClients } from '@/lib/server/position-valuation';
 import { assetIdentityKey } from '@/lib/domain/basket-protocol/asset-identity';
 import { previewPositionRebalance, type PositionRebalancePreview } from '@/lib/domain/basket-protocol/rebalance/position-rebalance';
 import type { PriceProvider } from '@/lib/domain/basket-protocol/pricing';
@@ -31,7 +31,7 @@ export type LoadedRebalancePreview =
 
 export async function loadRebalancePreview(
   admin: SupabaseClient,
-  client: PublicClient,
+  client: HoldingsClients,
   priceProvider: PriceProvider,
   session: { userId: string; walletAddress: string },
   bagId: string
@@ -67,5 +67,6 @@ export async function loadRebalancePreview(
   });
   const chainAssets = await listAssets(admin, { chain: bag.chain });
   const symbols = Object.fromEntries(chainAssets.map((a) => [assetKey(a.chain, a.address), a.symbol]));
-  return { ok: true, bag, recipe, holdings, blockNumber: observed.blockNumber, symbols, preview };
+  const blockNumber = isBagChain(bag.chain) ? observed.blockNumbers[bag.chain] ?? null : null;
+  return { ok: true, bag, recipe, holdings, blockNumber, symbols, preview };
 }
