@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { PublicClient } from 'viem';
+import type { HoldingsClients } from '@/lib/server/position-valuation';
 import { ROBINHOOD_REWARD_TOKEN } from '@/lib/config/robinhood-chain';
 import { buildComposerRebalance, composerPortAmounts, rebalanceBuyNodeId, rebalanceSellNodeId, type RebalanceShape } from '@/lib/blockchain/lifi-composer-adapter';
 import { DEFAULT_COMPOSER_SLIPPAGE_BPS, composerFallbackFrom } from '@/lib/blockchain/lifi-purchase-quote';
@@ -125,7 +125,7 @@ export async function quoteRebalance(...args: Parameters<typeof planRebalance>):
 /** The quote plus the compiled transaction and the legs an intent records. Only rebalance-execution.ts hands the transaction to a wallet. */
 export async function planRebalance(
   admin: SupabaseClient,
-  client: PublicClient,
+  client: HoldingsClients,
   priceProvider: PriceProvider,
   session: { userId: string; walletAddress: string },
   bagId: string,

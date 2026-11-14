@@ -43,7 +43,7 @@ const drifted = {
 describe('RebalancePreviewCard', () => {
   it('a drift worth under $1 to move (dust): says so and offers no quote or rebalance', async () => {
     const dust = { ...drifted, orders: drifted.orders.map((o) => ({ ...o, value: '0.004' })) };
-    serve({ symbols, preview: dust });
+    serve({ executionSupported: true, symbols, preview: dust });
     render(<RebalancePreviewCard bagId="b1" />);
     await waitFor(() => expect(screen.getByTestId('rebalance-too-small')).toBeTruthy());
     expect(screen.getByTestId('rebalance-too-small').textContent).toMatch(/worth \$0\.00 to move, under \$1: too little to rebalance/);
@@ -52,7 +52,7 @@ describe('RebalancePreviewCard', () => {
   });
 
   it('shows the drift against the current version and what a rebalance would trade', async () => {
-    serve({ symbols, preview: drifted });
+    serve({ executionSupported: true, symbols, preview: drifted });
     render(<RebalancePreviewCard bagId="b1" />);
     await waitFor(() => expect(screen.getByText(/strategy v2/)).toBeTruthy());
     expect(screen.getByText('+10.0%')).toBeTruthy();
@@ -68,7 +68,7 @@ describe('RebalancePreviewCard', () => {
       priceImpactBps: 30,
     };
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) =>
-      new Response(JSON.stringify(init?.method === 'POST' && url.endsWith('/rebalance-quote') ? quote : { symbols, preview: drifted }), { status: 200 })
+      new Response(JSON.stringify(init?.method === 'POST' && url.endsWith('/rebalance-quote') ? quote : { executionSupported: true, symbols, preview: drifted }), { status: 200 })
     );
     global.fetch = fetchMock as unknown as typeof fetch;
     render(<RebalancePreviewCard bagId="b1" />);
@@ -81,7 +81,7 @@ describe('RebalancePreviewCard', () => {
 
   it('shows the reason when no quote is available', async () => {
     global.fetch = vi.fn(async (url: string, init?: RequestInit) =>
-      init?.method === 'POST' ? new Response(JSON.stringify({ error: 'The price impact of this rebalance is above the limit.' }), { status: 422 }) : new Response(JSON.stringify({ symbols, preview: drifted }), { status: 200 })
+      init?.method === 'POST' ? new Response(JSON.stringify({ error: 'The price impact of this rebalance is above the limit.' }), { status: 422 }) : new Response(JSON.stringify({ executionSupported: true, symbols, preview: drifted }), { status: 200 })
     ) as unknown as typeof fetch;
     render(<RebalancePreviewCard bagId="b1" />);
     fireEvent.click(await screen.findByText('Get a live rebalance quote'));
@@ -101,7 +101,7 @@ describe('RebalancePreviewCard', () => {
         return new Response(JSON.stringify({ intent }), { status: 200 });
       }
       if (url.endsWith('/verify')) return new Response(JSON.stringify({ intent: { ...intent, status: 'SUCCEEDED', composerTransaction: null } }), { status: 200 });
-      return new Response(JSON.stringify({ symbols, preview: drifted }), { status: 200 });
+      return new Response(JSON.stringify({ executionSupported: true, symbols, preview: drifted }), { status: 200 });
     }) as unknown as typeof fetch;
     sweepMock.mockResolvedValue('0x' + 'ab'.repeat(32));
     render(<RebalancePreviewCard bagId="b1" />);
@@ -119,7 +119,7 @@ describe('RebalancePreviewCard', () => {
     global.fetch = vi.fn(async (url: string) =>
       url.endsWith('/rebalance-intent')
         ? new Response(JSON.stringify({ error: 'The price impact of this rebalance (18.00%) is above the 10% maximum.', acceptablePriceImpactBps: null }), { status: 422 })
-        : new Response(JSON.stringify({ symbols, preview: drifted }), { status: 200 })
+        : new Response(JSON.stringify({ executionSupported: true, symbols, preview: drifted }), { status: 200 })
     ) as unknown as typeof fetch;
     render(<RebalancePreviewCard bagId="b1" />);
     fireEvent.click(await screen.findByText('Rebalance now'));
@@ -128,13 +128,13 @@ describe('RebalancePreviewCard', () => {
   });
 
   it('says so when the position is within tolerance', async () => {
-    serve({ symbols, preview: { ...drifted, maxAbsDriftBps: 200, requiresRebalance: false, orders: [] } });
+    serve({ executionSupported: true, symbols, preview: { ...drifted, maxAbsDriftBps: 200, requiresRebalance: false, orders: [] } });
     render(<RebalancePreviewCard bagId="b1" />);
     await waitFor(() => expect(screen.getByText(/Within this strategy.s 5.0% drift threshold/)).toBeTruthy());
   });
 
   it('renders nothing without a position or a session', async () => {
-    serve({ symbols, preview: { status: 'NO_POSITION' } });
+    serve({ executionSupported: true, symbols, preview: { status: 'NO_POSITION' } });
     const { container } = render(<RebalancePreviewCard bagId="b1" />);
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     expect(container.textContent).toBe('');
@@ -156,7 +156,7 @@ describe('RebalancePreviewCard', () => {
         const status = init?.body ? 'SUBMITTED' : 'SUCCEEDED';
         return new Response(JSON.stringify({ intent: { ...intent, status, composerTransaction: null } }), { status: 200 });
       }
-      return new Response(JSON.stringify({ symbols, preview: drifted }), { status: 200 });
+      return new Response(JSON.stringify({ executionSupported: true, symbols, preview: drifted }), { status: 200 });
     });
     global.fetch = fetchMock as unknown as typeof fetch;
     sweepMock.mockImplementation(async (_w: string, _plan: unknown, _p: unknown, opts: { onSubmitted: (h: string) => Promise<unknown> }) => {
@@ -181,7 +181,7 @@ describe('RebalancePreviewCard', () => {
     const fetchMock = vi.fn(async (url: string) =>
       url.endsWith('/rebalance-intent')
         ? new Response(JSON.stringify({ error: 'A sale of this position is in progress; rebalance once it has settled.' }), { status: 409 })
-        : new Response(JSON.stringify({ symbols, preview: drifted }), { status: 200 })
+        : new Response(JSON.stringify({ executionSupported: true, symbols, preview: drifted }), { status: 200 })
     );
     global.fetch = fetchMock as unknown as typeof fetch;
     render(<RebalancePreviewCard bagId="b1" />);

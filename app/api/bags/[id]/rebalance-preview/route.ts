@@ -30,8 +30,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const limit = await checkRateLimit(admin, `rebalance-preview:${auth.session.userId}`, RATE_LIMIT);
   if (!limit.allowed) return NextResponse.json(rateLimitedResponseBody(limit.retryAfterSeconds), { status: 429 });
 
-  const loaded = await loadRebalancePreview(admin, getChainPublicClient('robinhood'), priceProvider, auth.session, id);
+  const loaded = await loadRebalancePreview(admin, getChainPublicClient, priceProvider, auth.session, id);
   if (!loaded.ok) return NextResponse.json({ error: loaded.error }, { status: loaded.status });
   const { bag, blockNumber, symbols, preview } = loaded;
-  return NextResponse.json({ bag: { id: bag.id, name: bag.name, symbol: bag.symbol }, blockNumber, symbols, preview });
+  return NextResponse.json({ bag: { id: bag.id, name: bag.name, symbol: bag.symbol }, blockNumber, symbols, preview, executionSupported: bag.chain === 'robinhood' });
 }

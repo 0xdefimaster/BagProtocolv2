@@ -58,6 +58,13 @@ describe('weightsFromValues', () => {
 });
 
 describe('quoteRebalance', () => {
+  it.each(['base', 'arbitrum'])('keeps %s execution unavailable even when its allocation is readable', async (chain) => {
+    load.mockResolvedValue(loaded([], { bag: { id: 'b', chain } }));
+    const f = composer({});
+    expect(await run(f)).toMatchObject({ ok: false, status: 422, error: 'Rebalancing runs on Robinhood Chain only for now.' });
+    expect(f).not.toHaveBeenCalled();
+  });
+
   it('one sell, one buy: sells exactly the planned amount and reports the buy’s expected and minimum output, never the transaction', async () => {
     load.mockResolvedValue(loaded([order(TSLA, 'SELL', '10', (BigInt(10) * E18).toString()), order(NVDA, 'BUY', '10', (BigInt(10) * E18).toString())]));
     const f = composer({ 'rb_buy_0.amountOut': { amountOut: '9900000000000000000', amountOutMin: '9801000000000000000' } });

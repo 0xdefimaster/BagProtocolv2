@@ -30,10 +30,10 @@ const preview = (targetVersion: number, requiresRebalance = true) => ({
 });
 
 /** Preview answers with `p`; a rebalance plan is refused (so the run stops right after asking for it). */
-function serve(p: unknown) {
+function serve(p: unknown, executionSupported = true) {
   const intents: string[] = [];
   global.fetch = vi.fn(async (url: string) => {
-    if (url.endsWith('/rebalance-preview')) return new Response(JSON.stringify({ symbols: {}, preview: p }), { status: 200 });
+    if (url.endsWith('/rebalance-preview')) return new Response(JSON.stringify({ executionSupported, symbols: {}, preview: p }), { status: 200 });
     if (url.endsWith('/rebalance-intent')) {
       intents.push(url);
       return new Response(JSON.stringify({ error: 'stop here' }), { status: 400 });
@@ -46,6 +46,16 @@ function serve(p: unknown) {
 afterEach(cleanup);
 
 describe('RebalancePreviewCard after the creator saved a new version', () => {
+  it('shows allocation but offers no quote or automatic execution on an unsupported network', async () => {
+    const intents = serve(preview(5), false);
+    render(<RebalancePreviewCard bagId="b1" autoRunVersion={5} />);
+    expect(await screen.findByText(/Rebalancing is not available on this network yet/)).toBeTruthy();
+    expect(screen.getByText('+10.0%')).toBeTruthy();
+    expect(screen.queryByText('Rebalance now')).toBeNull();
+    expect(screen.queryByText('Get a live rebalance quote')).toBeNull();
+    expect(intents).toHaveLength(0);
+  });
+
   it('starts the rebalance by itself once the preview targets that version', async () => {
     const intents = serve(preview(5));
     render(<RebalancePreviewCard bagId="b1" autoRunVersion={5} />);

@@ -32,7 +32,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (accepted === 'BAD') return NextResponse.json({ error: 'acceptedPriceImpactBps must be a number of basis points.' }, { status: 400 });
 
   try {
-    const result = await quoteRebalance(admin, getChainPublicClient('robinhood'), priceProvider, auth.session, id, { apiKey: process.env.LIFI_API_KEY, acceptedPriceImpactBps: accepted });
+    const result = await quoteRebalance(admin, getChainPublicClient, priceProvider, auth.session, id, { apiKey: process.env.LIFI_API_KEY, acceptedPriceImpactBps: accepted });
     if (!result.ok) {
       return NextResponse.json(failureBody(result), { status: result.status });
     }
