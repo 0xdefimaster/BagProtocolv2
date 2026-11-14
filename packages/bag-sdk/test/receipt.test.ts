@@ -328,6 +328,7 @@ describe('purchase balance evidence and smart-account calls', () => {
   });
 
   // KNOWN GAP T-1 (docs/security/EXECUTION_TRUST_BOUNDARY_REVIEW.md), recorded so a fix changes it deliberately.
+  // It holds with smartAccountBinding 'OFF' (the default); 'EXACT' refuses it (wallet-envelope.test.ts).
   // The trace must prove exactly one successful compiled call, but other calls in the same batch are not excluded,
   // and a transaction-scoped balance delta includes their transfers. DELIVERY_LOG measures inside the Composer
   // program instead, so it is the evidence to use for batched wallets when the delta is booked anywhere.

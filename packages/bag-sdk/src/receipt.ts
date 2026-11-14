@@ -2,6 +2,17 @@ import { BagSdkError } from './errors';
 import { keccak256 } from 'viem';
 import { DELIVERY_PROOF_SIGNATURE, type CompiledPurchase } from './execution';
 import type { Hex } from './types';
+import {
+  bindWalletEnvelope,
+  checkWalletExecutions,
+  checkWalletExecutionState,
+  walletExecutionsFromTrace,
+  type WalletCallExpectation,
+  type WalletEnvelopeBinding,
+  type WalletEnvelopeIssueCode,
+  type WalletEnvelopeKind,
+  type WalletStateReader,
+} from './wallet-envelope';
 
 /** Mined transaction fields used to bind a receipt to the compiled direct call. */
 export interface PurchaseReceiptTransaction {
@@ -13,6 +24,10 @@ export interface PurchaseReceiptTransaction {
   chainId?: number;
   blockHash: Hex | null;
   blockNumber: bigint | null;
+  /** Needed only by smartAccountBinding 'EXACT' (a viem transaction carries them). */
+  nonce?: number;
+  type?: string;
+  authorizationList?: readonly unknown[] | null;
 }
 
 export interface PurchaseReceiptLog {
@@ -65,6 +80,9 @@ export interface PurchaseReceiptClient {
   getBlockNumber(args: { cacheTime: number }): Promise<bigint>;
   tracePurchaseCall?(context: PurchaseEvidenceContext): Promise<PurchaseCallEvidence>;
   getPurchaseBalanceChanges?(context: PurchaseEvidenceContext & { tokens: readonly string[] }): Promise<PurchaseBalanceEvidence>;
+  /** Historical reads used only by smartAccountBinding 'EXACT' (a viem public client provides both). */
+  getCode?(args: { address: Hex; blockNumber: bigint }): Promise<Hex | undefined>;
+  getTransactionCount?(args: { address: Hex; blockNumber: bigint }): Promise<number>;
 }
 
 export type PurchaseReceiptIssueCode =
@@ -75,7 +93,8 @@ export type PurchaseReceiptIssueCode =
   | 'INVALID_CALL_TRACE' | 'COMPILED_CALL_NOT_EXECUTED' | 'AMBIGUOUS_CALL_TRACE'
   | 'BALANCE_EVIDENCE_UNAVAILABLE' | 'INVALID_BALANCE_EVIDENCE' | 'INPUT_SPEND_EXCEEDS_PLAN'
   | 'INPUT_BALANCE_BELOW_PLAN' | 'KEPT_INPUT_MISSING'
-  | 'DELIVERY_PROOF_UNAVAILABLE' | 'INVALID_DELIVERY_LOG';
+  | 'DELIVERY_PROOF_UNAVAILABLE' | 'INVALID_DELIVERY_LOG'
+  | 'WALLET_ENVELOPE_MISMATCH' | 'WALLET_STATE_UNAVAILABLE';
 
 export interface PurchaseReceiptVerification {
   status: 'VERIFIED' | 'FAILED' | 'INDETERMINATE';
@@ -83,7 +102,12 @@ export interface PurchaseReceiptVerification {
   evidence: 'TRANSACTION_AND_TRANSFER_LOGS' | 'TRANSACTION_AND_BALANCE_DELTAS' | 'TRANSACTION_AND_DELIVERY_LOGS';
   balanceScope: PurchaseBalanceEvidence['scope'] | null;
   spentInputRaw: bigint | null;
-  transactionBinding: 'DIRECT' | 'CALL_TRACE' | null;
+  /** WALLET_BATCH_EXACT: a smart-account envelope bound exactly (smartAccountBinding 'EXACT'). */
+  transactionBinding: 'DIRECT' | 'CALL_TRACE' | 'WALLET_BATCH_EXACT' | null;
+  /** Set when smartAccountBinding 'EXACT' bound a smart-account envelope. */
+  walletEnvelope?: WalletEnvelopeKind;
+  /** Set when smartAccountBinding 'EXACT' refused or could not prove the envelope. */
+  walletBindingIssue?: WalletEnvelopeIssueCode;
   transactionHash: Hex;
   chainId: number;
   blockNumber: bigint | null;
@@ -125,6 +149,15 @@ export interface VerifyPurchaseReceiptOptions {
   verification?: 'BALANCE_DELTA' | 'TRANSFER_LOGS' | 'DELIVERY_LOG';
   /** DELIVERY_LOG only: contracts accepted as the log emitter. Default: the compiled executor (the signer's proxy). */
   deliveryLogEmitters?: readonly string[];
+  /**
+   * How a transaction that is not the direct compiled call is bound. Default 'OFF': unchanged behavior, a batch or
+   * delegated transaction needs a call trace, and other calls in it are not excluded (known gap T-1).
+   * 'EXACT' (wallet-envelope.ts): the wallet must send the transaction itself; a pinned smart-account envelope is
+   * accepted only when its executions are exactly the compiled call plus allowed approvals and the wallet's code is
+   * proven to be the pinned delegate (needs getCode/getTransactionCount at the previous block); any other envelope
+   * still needs a trace, whose wallet-originated calls must satisfy the same exactness. Never weaker than 'OFF'.
+   */
+  smartAccountBinding?: 'OFF' | 'EXACT';
 }
 
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
@@ -210,6 +243,9 @@ function minimumsFor(compiled: CompiledPurchase, options: VerifyPurchaseReceiptO
   const plan = compiled.quote.plan;
   if (options.verification !== undefined && !['BALANCE_DELTA', 'TRANSFER_LOGS', 'DELIVERY_LOG'].includes(options.verification)) {
     throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: unknown verification mode.');
+  }
+  if (options.smartAccountBinding !== undefined && options.smartAccountBinding !== 'OFF' && options.smartAccountBinding !== 'EXACT') {
+    throw new BagSdkError('INVALID_ARGUMENT', 'verifyPurchaseReceipt: smartAccountBinding must be OFF or EXACT.');
   }
   if (options.verification === 'DELIVERY_LOG') {
     const d = compiled.deliveryProof;
@@ -328,16 +364,64 @@ export async function verifyPurchaseReceipt(
       }
       result.transactionBinding = 'DIRECT';
     } else {
-      if (!client.tracePurchaseCall) return stop('INDETERMINATE', 'UNSUPPORTED_TRANSACTION_ENVELOPE', 'A batch or delegated transaction requires execution-trace evidence.');
-      let proof: PurchaseCallEvidence;
-      try { proof = await client.tracePurchaseCall(context); }
-      catch { return stop('INDETERMINATE', 'UNSUPPORTED_TRANSACTION_ENVELOPE', 'Execution tracing is unavailable on this chain reader.'); }
-      if (!proof || !same(proof.transactionHash, transactionHash) || !same(proof.blockHash, receipt.blockHash)) {
-        return stop('INDETERMINATE', 'INVALID_CALL_TRACE', 'Call-trace identity differs from the observed receipt.');
+      const exact = options.smartAccountBinding === 'EXACT';
+      const expectation: WalletCallExpectation = {
+        chainId: plan.chainId,
+        wallet: plan.signer,
+        call: { to: compiled.transaction.to, data: compiled.transaction.data, value: compiled.transaction.value },
+        approvals: compiled.approvals.map((a) => ({ token: a.token, spender: a.spender, maxAmountRaw: a.amountRaw })),
+      };
+      let bound: WalletEnvelopeBinding | null = null;
+      if (exact) {
+        bound = bindWalletEnvelope(tx, expectation);
+        // A recognized envelope that breaks a rule is final. An unrecognized one still needs a trace, as before.
+        if (!bound.ok && bound.code !== 'UNSUPPORTED_ENVELOPE') {
+          result.walletBindingIssue = bound.code;
+          return stop('FAILED', 'WALLET_ENVELOPE_MISMATCH', `${bound.code}: ${bound.detail}`);
+        }
+        if (bound.ok) {
+          if (!client.getCode || !client.getTransactionCount) {
+            result.walletBindingIssue = 'STATE_UNAVAILABLE';
+            return stop('INDETERMINATE', 'WALLET_STATE_UNAVAILABLE', 'Smart-account binding needs historical getCode and getTransactionCount reads.');
+          }
+          const getCode = client.getCode.bind(client);
+          const getTransactionCount = client.getTransactionCount.bind(client);
+          const reader: WalletStateReader = {
+            getCode: (a) => getCode(a),
+            getTransactionCount: (a) => getTransactionCount(a),
+            getBlock: (a) => client.getBlock(a) as Promise<{ transactions?: readonly unknown[] }>,
+          };
+          const state = await checkWalletExecutionState(reader, { ...tx, blockNumber: receipt.blockNumber }, bound);
+          if (!state.ok) {
+            result.walletBindingIssue = state.code;
+            return state.code === 'STATE_UNAVAILABLE'
+              ? stop('INDETERMINATE', 'WALLET_STATE_UNAVAILABLE', state.detail)
+              : stop('FAILED', 'WALLET_ENVELOPE_MISMATCH', `${state.code}: ${state.detail}`);
+          }
+          result.walletEnvelope = bound.envelope;
+        }
       }
-      const issue = checkCallTrace(tx, compiled, proof.call);
-      if (issue) return stop(issue === 'COMPILED_CALL_NOT_EXECUTED' ? 'FAILED' : 'INDETERMINATE', issue, 'Trace does not prove exactly one successful compiled call from the wallet.');
-      result.transactionBinding = 'CALL_TRACE';
+      // Legacy mode and unrecognized envelopes need the trace; a bound envelope uses it as a cross-check when present.
+      if (!bound?.ok || client.tracePurchaseCall) {
+        if (!client.tracePurchaseCall) return stop('INDETERMINATE', 'UNSUPPORTED_TRANSACTION_ENVELOPE', 'A batch or delegated transaction requires execution-trace evidence.');
+        let proof: PurchaseCallEvidence;
+        try { proof = await client.tracePurchaseCall(context); }
+        catch { return stop('INDETERMINATE', 'UNSUPPORTED_TRANSACTION_ENVELOPE', 'Execution tracing is unavailable on this chain reader.'); }
+        if (!proof || !same(proof.transactionHash, transactionHash) || !same(proof.blockHash, receipt.blockHash)) {
+          return stop('INDETERMINATE', 'INVALID_CALL_TRACE', 'Call-trace identity differs from the observed receipt.');
+        }
+        const issue = checkCallTrace(tx, compiled, proof.call);
+        if (issue) return stop(issue === 'COMPILED_CALL_NOT_EXECUTED' ? 'FAILED' : 'INDETERMINATE', issue, 'Trace does not prove exactly one successful compiled call from the wallet.');
+        if (exact) {
+          const frames = walletExecutionsFromTrace(proof.call, plan.signer);
+          const extra = frames.ok ? checkWalletExecutions(frames.executions, expectation) : frames;
+          if (!extra.ok) {
+            result.walletBindingIssue = extra.code;
+            return stop('FAILED', 'WALLET_ENVELOPE_MISMATCH', `${extra.code}: ${extra.detail}`);
+          }
+        }
+      }
+      result.transactionBinding = bound?.ok ? 'WALLET_BATCH_EXACT' : 'CALL_TRACE';
     }
 
     const counts = new Map([...minimums].map(([token]) => [token, { received: BigInt(0), sent: BigInt(0) }]));

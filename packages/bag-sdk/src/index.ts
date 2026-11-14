@@ -103,6 +103,28 @@ export {
 } from './execution-path';
 
 export {
+  bindWalletEnvelope,
+  checkWalletExecutions,
+  checkWalletExecutionState,
+  METAMASK_EIP7702_STATELESS_DELEGATOR,
+  SELF_AUTHORIZED_PERMISSION_CONTEXT,
+  TRUSTED_SMART_ACCOUNTS,
+  verifyWalletExecution,
+  WALLET_ENVELOPE_POLICY,
+  walletExecutionsFromTrace,
+  type DecodedWalletExecution,
+  type TrustedSmartAccount,
+  type WalletCallExpectation,
+  type WalletEnvelopeBinding,
+  type WalletEnvelopeIssueCode,
+  type WalletEnvelopeKind,
+  type WalletEnvelopeTransaction,
+  type WalletExecutionTransaction,
+  type WalletExecutionVerification,
+  type WalletStateReader,
+} from './wallet-envelope';
+
+export {
   verifyPurchaseReceipt,
   type PurchaseReceiptClient,
   type PurchaseReceiptLog,
