@@ -20,7 +20,7 @@ const client = {
   getBlock: vi.fn(),
 };
 vi.mock('@/lib/blockchain/rpc/clients', () => ({ hasRpcEndpoint: () => true, getChainPublicClient: () => client }));
-const { trackComposerTransaction } = await import('../composer-status');
+const { trackComposerTransaction, resetShadowLogForTests } = await import('../composer-status');
 
 const WALLET = '0x1111111111111111111111111111111111111111' as Hex;
 const COMPOSER = '0x4444444444444444444444444444444444444444' as Hex;
@@ -124,6 +124,7 @@ const ATTACKS: Record<Flow, [string, Exec, ReturnType<typeof transferLog>][]> = 
 
 let infoSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
+  resetShadowLogForTests();
   for (const f of Object.values(client)) f.mockReset();
   infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
 });
@@ -174,7 +175,7 @@ for (const flow of Object.keys(FLOWS) as Flow[]) {
         vi.stubEnv('BAG_WALLET_BATCH_BINDING', 'shadow');
         mine({ ...f.envelope([...f.legit, extra]), logs: [...f.logs, log] });
         expect((await track(flow)).kind).toBe('DONE');
-        expect(shadowLines()).toEqual([expect.objectContaining({ flow, legacy: 'ACCEPT', exact: 'REFUSED', code: 'UNEXPECTED_CALL', agree: false, txHash: TX_HASH })]);
+        expect(shadowLines()).toEqual([expect.objectContaining({ flow, legacy: 'ACCEPT', exact: 'REFUSED', code: 'UNEXPECTED_CALL', agree: false, txRef: TX_HASH.slice(0, 10) })]);
         expect(JSON.stringify(shadowLines())).not.toContain(WALLET.slice(2));
       });
     }
@@ -187,9 +188,9 @@ for (const flow of Object.keys(FLOWS) as Flow[]) {
       expect(outcome.kind === 'FAILED' && outcome.message).toMatch(/UNSUPPORTED_ENVELOPE/);
     });
 
-    it('off (default) still accepts that F-01 envelope (legacy), with no state reads', async () => {
+    it('off (default) refuses that F-01 envelope too since the legacy fix, still with no state reads', async () => {
       mine({ to: OTHER, input: viaManager([...f.legit]), logs: [...f.logs] });
-      expect((await track(flow)).kind).toBe('DONE');
+      expect(await track(flow)).toMatchObject({ kind: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
       expect(client.getCode).not.toHaveBeenCalled();
     });
 
@@ -285,20 +286,44 @@ describe('wallet state behind a smart-account envelope (enforce)', () => {
 });
 
 describe('modes and direct calls', () => {
-  it('a direct call to the built target binds in every mode without reading wallet state, and agreeing direct calls are not logged', async () => {
+  it('a direct call from a plain EOA binds in every mode; only shadow and enforce read the wallet state; agreeing direct calls are not logged', async () => {
     for (const mode of ['off', 'shadow', 'enforce']) {
       vi.stubEnv('BAG_WALLET_BATCH_BINDING', mode);
       client.getCode.mockClear();
-      mine({ to: COMPOSER, input: CALLDATA, logs: [...FLOWS.purchase.logs] });
+      mine({ to: COMPOSER, input: CALLDATA, logs: [...FLOWS.purchase.logs] }, { code: '0x' });
       expect((await track('purchase')).kind).toBe('DONE');
-      expect(client.getCode).not.toHaveBeenCalled();
+      if (mode === 'off') expect(client.getCode).not.toHaveBeenCalled();
+      else expect(client.getCode).toHaveBeenCalledWith({ address: WALLET, blockNumber: BigInt(99) });
     }
     expect(shadowLines()).toEqual([]);
   });
 
-  it('an unknown flag value is off', async () => {
+  // A direct call runs wallet code when it sends ETH back (a native sale, a refund): an unpinned EIP-7702 delegate could
+  // add transfers there. The exact binding requires a plain EOA or the pinned delegate for direct calls too.
+  it('enforce refuses a direct call from a wallet with an unpinned delegate; shadow keeps the legacy verdict and logs it', async () => {
+    vi.stubEnv('BAG_WALLET_BATCH_BINDING', 'enforce');
+    mine({ to: COMPOSER, input: CALLDATA, logs: [...FLOWS.purchase.logs] }, { code: designator(OTHER) });
+    expect(await track('purchase')).toMatchObject({ kind: 'FAILED', message: expect.stringMatching(/DELEGATE_NOT_TRUSTED/) });
+    vi.stubEnv('BAG_WALLET_BATCH_BINDING', 'shadow');
+    expect((await track('purchase')).kind).toBe('DONE');
+    expect(shadowLines()).toEqual([expect.objectContaining({ legacy: 'ACCEPT', exact: 'REFUSED', code: 'DELEGATE_NOT_TRUSTED', agree: false })]);
+  });
+
+  it('shadow logs a transaction once per verdict however often it is re-verified, and never the full hash or the wallet', async () => {
+    vi.stubEnv('BAG_WALLET_BATCH_BINDING', 'shadow');
+    const [, extra, log] = ATTACKS.purchase[0];
+    mine({ ...FLOWS.purchase.envelope([COMPILED, extra]), logs: [...FLOWS.purchase.logs, log] });
+    for (let i = 0; i < 5; i++) await trackComposerTransaction({ txHash: TX_HASH, chain: 'robinhood', recipient: WALLET, expectedTransaction: { to: COMPOSER, data: CALLDATA, value: '0' }, flow: 'purchase', intentId: 'intent_42' });
+    expect(shadowLines()).toEqual([expect.objectContaining({ intentId: 'intent_42', txRef: TX_HASH.slice(0, 10), agree: false })]);
+    const raw = infoSpy.mock.calls.map((c: unknown[]) => String(c[0])).join(' | ');
+    expect(raw).not.toContain(TX_HASH.slice(2));
+    expect(raw.toLowerCase()).not.toContain(WALLET.slice(2).toLowerCase());
+  });
+
+  it('an unknown flag value is off (legacy verdict: the T-1 sibling still passes there, no state read)', async () => {
     vi.stubEnv('BAG_WALLET_BATCH_BINDING', 'ENFORCE-ish');
-    mine({ to: OTHER, input: viaManager([COMPILED]), logs: [...FLOWS.purchase.logs] });
+    const [, extra, log] = ATTACKS.purchase[0];
+    mine({ ...FLOWS.purchase.envelope([COMPILED, extra]), logs: [...FLOWS.purchase.logs, log] });
     expect((await track('purchase')).kind).toBe('DONE');
     expect(client.getCode).not.toHaveBeenCalled();
   });

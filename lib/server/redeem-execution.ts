@@ -836,7 +836,7 @@ async function reopenIfTransactionNowMatches(admin: SupabaseClient, intent: Rede
   const swaps = intent.steps.filter((s) => s.action === 'SWAP');
   const txHash = swaps.find((s) => s.txHash)?.txHash;
   if (!txHash || !intent.composerTransaction) return null;
-  const outcome = await trackComposerTransaction({ txHash, chain: swaps[0].sourceChain, recipient: intent.walletAddress, expectedTransaction: intent.composerTransaction, expectedApprovals: intent.composerTransaction.approvals, flow: 'redeem' });
+  const outcome = await trackComposerTransaction({ txHash, chain: swaps[0].sourceChain, recipient: intent.walletAddress, expectedTransaction: intent.composerTransaction, expectedApprovals: intent.composerTransaction.approvals, flow: 'redeem', intentId: intent.id });
   if (outcome.kind !== 'DONE') return null;
   const steps = intent.steps.map((s) => (s.action === 'SWAP' ? { ...s, txHash: s.txHash ?? txHash, status: 'CONFIRMING' as const, failureCode: null } : s));
   return reopenUnmatchedComposerRedeem(admin, intent.id, steps);
@@ -893,7 +893,7 @@ async function verifyComposerRedeemSteps(
   const txHash = swaps.find((s) => s.txHash)?.txHash;
   if (!txHash) return intent.steps;
 
-  const outcome = await trackComposerTransaction({ txHash, chain: swaps[0].sourceChain, recipient: intent.walletAddress, expectedTransaction: composerTransaction, expectedApprovals: composerTransaction.approvals, flow: 'redeem' });
+  const outcome = await trackComposerTransaction({ txHash, chain: swaps[0].sourceChain, recipient: intent.walletAddress, expectedTransaction: composerTransaction, expectedApprovals: composerTransaction.approvals, flow: 'redeem', intentId: intent.id });
   const markSwaps = (patch: Partial<RedeemIntentStepRecord>) => intent.steps.map((s) => (s.action === 'SWAP' ? { ...s, txHash: s.txHash ?? txHash, ...patch } : s));
   if (outcome.kind === 'PENDING') return markSwaps({ status: 'CONFIRMING' });
   if (outcome.kind === 'FAILED') return markSwaps({ status: 'FAILED', failureCode: outcome.failureCode });

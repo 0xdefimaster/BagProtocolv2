@@ -6,8 +6,10 @@ import { ChainId } from '@/types/basket-protocol';
 import { PurchaseIntentFailureCode } from '@/types/purchase-intent';
 import {
   chainIdOf,
+  TRUSTED_SMART_ACCOUNTS,
   verifyWalletExecution,
   WALLET_ENVELOPE_POLICY,
+  type VerificationDecision,
   type WalletCallExpectation,
   type WalletExecutionVerification,
   type WalletStateReader,
@@ -79,6 +81,19 @@ export interface TrackComposerTransactionInput {
   expectedApprovals?: readonly { token: string; spender: string; amountRaw: string }[];
   /** Which flow is verifying, for the shadow log only. */
   flow?: 'purchase' | 'redeem' | 'rebalance';
+  /** The intent being verified, for the shadow log only (an internal id; the log never carries the full hash). */
+  intentId?: string;
+}
+
+/**
+ * The shared decision (@bagprotocol/sdk VerificationDecision) for this verifier's outcome: DONE is ACCEPTED at the
+ * transaction level (the flows then add their own evidence: deposit left, sold in full, minimums), PENDING and a
+ * missing RPC endpoint are INSUFFICIENT_EVIDENCE, every other failure is REJECTED.
+ */
+export function composerOutcomeDecision(outcome: ComposerTxOutcome): VerificationDecision {
+  if (outcome.kind === 'DONE') return 'ACCEPTED';
+  if (outcome.kind === 'PENDING' || outcome.failureCode === 'PROVIDER_ERROR') return 'INSUFFICIENT_EVIDENCE';
+  return 'REJECTED';
 }
 
 /** The exact binding's verdict, or ERROR when the stored expectation cannot even be evaluated. */
@@ -109,21 +124,32 @@ async function exactWalletBinding(
   }
 }
 
+/** Verdicts already logged by this process: a transaction re-verified on every poll is logged once. Bounded. */
+const SHADOW_SEEN_LIMIT = 1000;
+const shadowSeen = new Set<string>();
+
 /**
  * Shadow mode: records whether the exact binding agrees with the legacy verdict that still decides. One line per
- * disagreement or smart-account envelope (agreeing direct calls are not logged). No wallet address, no RPC URL.
+ * disagreement or smart-account envelope (agreeing direct calls are not logged), once per transaction and verdict
+ * per process. Privacy: no wallet address, no RPC URL, no full transaction hash (only a 10-character prefix, enough
+ * to tell lines apart); the intent id, an internal identifier, is what links a line to its transaction.
  */
 function logShadow(input: TrackComposerTransactionInput, receiptStatus: string, legacyBound: boolean, exact: ExactBinding): void {
   const exactBound = exact.status === 'BOUND';
   const agree = (exact.status === 'BOUND' || exact.status === 'REFUSED') && exactBound === legacyBound;
   const envelope = exact.status === 'BOUND' ? exact.envelope : undefined;
   if (agree && envelope === 'DIRECT') return;
+  const key = `${input.txHash.toLowerCase()}|${legacyBound}|${exact.status}|${exact.status === 'BOUND' ? envelope : exact.code}`;
+  if (shadowSeen.has(key)) return;
+  if (shadowSeen.size >= SHADOW_SEEN_LIMIT) shadowSeen.delete(shadowSeen.values().next().value as string);
+  shadowSeen.add(key);
   console.info(
     `[wallet-binding-shadow] ${JSON.stringify({
       policy: WALLET_ENVELOPE_POLICY,
       flow: input.flow ?? 'unknown',
+      intentId: input.intentId ?? null,
       chain: input.chain,
-      txHash: input.txHash,
+      txRef: input.txHash.slice(0, 10),
       receiptStatus,
       legacy: legacyBound ? 'ACCEPT' : 'REFUSE',
       exact: exact.status,
@@ -131,6 +157,11 @@ function logShadow(input: TrackComposerTransactionInput, receiptStatus: string, 
       agree,
     })}`
   );
+}
+
+/** Test hook: forget logged shadow verdicts. */
+export function resetShadowLogForTests(): void {
+  shadowSeen.clear();
 }
 
 const word = (hex: string) => hex.padStart(64, '0');
@@ -166,15 +197,36 @@ export function batchContainsCall(batchInput: string, call: { to: string; data: 
 export const REDEEM_DELEGATIONS_SELECTOR = '0xcef6d209';
 
 /**
- * A wallet-routed batch that carries the exact Composer call: either the wallet calling itself (EIP-5792 over
- * an EIP-7702 account) or the wallet calling a DelegationManager's `redeemDelegations` (MetaMask smart account),
- * whose execution calldata embeds the same ERC-7579 encodings `batchContainsCall` already reads. The caller
- * still requires `tx.from` to be the wallet, so only the wallet's own transaction can match.
+ * The DelegationManager contracts a `redeemDelegations` transaction may target on `chain`: the pinned MetaMask
+ * DelegationManager where its smart account was verified (@bagprotocol/sdk TRUSTED_SMART_ACCOUNTS), none elsewhere.
  */
-export function isWalletRoutedBatch(tx: { to?: string | null; input?: unknown }, wallet: string, call: { to: string; data: string; value: string }): boolean {
-  if (typeof tx.input !== 'string') return false;
-  const selfCall = typeof tx.to === 'string' && tx.to.toLowerCase() === wallet.toLowerCase();
-  const delegationRedeem = tx.input.toLowerCase().startsWith(REDEEM_DELEGATIONS_SELECTOR);
+export function trustedDelegationManagers(chain: ChainId): string[] {
+  if (!isBagChain(chain)) return [];
+  return (TRUSTED_SMART_ACCOUNTS[chainIdOf(chain)] ?? []).map((account) => account.delegationManager.toLowerCase());
+}
+
+/**
+ * A wallet-routed batch that carries the exact Composer call: either the wallet calling itself (EIP-5792 over
+ * an EIP-7702 account) or the wallet calling the chain's pinned DelegationManager's `redeemDelegations` (MetaMask
+ * smart account), whose execution calldata embeds the same ERC-7579 encodings `batchContainsCall` already reads.
+ * The caller still requires `tx.from` to be the wallet, so only the wallet's own transaction can match.
+ *
+ * F-01: the DelegationManager must be the pinned one. Any other contract can receive the same calldata and never
+ * run the call; containment of the call's bytes is not evidence that it executed. The purchase flow additionally
+ * requires the deposit to have left the wallet (purchase-execution.ts, composerDepositLeftWallet); a sale requires
+ * every sold token to have left it. Siblings and a wallet's own EIP-7702 code are covered only by the exact binding
+ * (BAG_WALLET_BATCH_BINDING=enforce).
+ */
+export function isWalletRoutedBatch(
+  tx: { to?: string | null; input?: unknown },
+  wallet: string,
+  call: { to: string; data: string; value: string },
+  chain: ChainId
+): boolean {
+  if (typeof tx.input !== 'string' || typeof tx.to !== 'string') return false;
+  const to = tx.to.toLowerCase();
+  const selfCall = to === wallet.toLowerCase();
+  const delegationRedeem = tx.input.toLowerCase().startsWith(REDEEM_DELEGATIONS_SELECTOR) && trustedDelegationManagers(chain).includes(to);
   return (selfCall || delegationRedeem) && batchContainsCall(tx.input, call);
 }
 
@@ -214,7 +266,7 @@ export async function trackComposerTransaction(input: TrackComposerTransactionIn
   // to itself or through a DelegationManager; the account's code then runs the approvals and the Composer call.
   // Accepted only when the wallet is the sender and the exact Composer call (target, value, calldata) is one of
   // the batched calls.
-  const walletBatch = isWalletRoutedBatch(tx, input.recipient, input.expectedTransaction);
+  const walletBatch = isWalletRoutedBatch(tx, input.recipient, input.expectedTransaction, input.chain);
   if (!walletBatch) {
     if (!same(tx.to, input.expectedTransaction.to)) mismatches.push('to');
     if (!same(tx.input, input.expectedTransaction.data)) mismatches.push('calldata');

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeAbiParameters, encodeEventTopics, encodeFunctionData, pad, parseAbi, parseAbiItem, type Hex } from 'viem';
 import { composeResponse, wireOut } from './composer-fixtures';
-import { compileBag, METAMASK_EIP7702_STATELESS_DELEGATOR as MM, parseBag, planPurchase, SELF_AUTHORIZED_PERMISSION_CONTEXT as EMPTY_CONTEXT, verifyPurchaseReceipt, type BagDocument, type CompiledPurchase } from '@/packages/bag-sdk/src';
+import { compileBag, METAMASK_EIP7702_STATELESS_DELEGATOR as MM, parseBag, planPurchase, purchaseReceiptDecision, SELF_AUTHORIZED_PERMISSION_CONTEXT as EMPTY_CONTEXT, verifyPurchaseReceipt, type BagDocument, type CompiledPurchase } from '@/packages/bag-sdk/src';
 import { lifiComposer } from '@/packages/bag-sdk/src/adapters/lifi';
 
 // -----------------------------------------------------------------------------
@@ -33,7 +33,7 @@ vi.mock('@/lib/blockchain/rpc/clients', () => ({
     getBlock: async () => ({ transactions: [] }),
   }),
 }));
-const { trackComposerTransaction } = await import('../composer-status');
+const { trackComposerTransaction, composerOutcomeDecision } = await import('../composer-status');
 const { buildComposerPurchase } = await import('../lifi-composer-adapter');
 
 const CHAIN_ID = 4663;
@@ -267,5 +267,107 @@ describe('with the exact binding on both sides (enforce / EXACT)', () => {
     expect(app).toMatchObject({ kind: 'FAILED', message: expect.stringMatching(/UNSUPPORTED_ENVELOPE/) });
     expect(sdk.status).toBe('INDETERMINATE');
     expect(sdk.issues[0].code).toBe('UNSUPPORTED_TRANSACTION_ENVELOPE');
+  });
+});
+
+// -----------------------------------------------------------------------------
+// The shared decision model (ACCEPTED / REJECTED / INSUFFICIENT_EVIDENCE): for every scenario the app's verifier
+// (enforce) and the SDK (EXACT) must agree on ACCEPTED, and on whether the evidence was insufficient (the app's
+// PENDING and the SDK's INDETERMINATE are the same decision; FAILED is REJECTED on both sides).
+// -----------------------------------------------------------------------------
+describe('decision parity matrix: app enforce ↔ SDK EXACT', () => {
+  const ERC20 = parseAbi(['function transferFrom(address from, address to, uint256 amount)']);
+  const EXEC = parseAbi(['function execute(bytes32 mode, bytes executionCalldata)']);
+  const REDEEM = parseAbi(['function redeemDelegations(bytes[] permissionContexts, bytes32[] modes, bytes[] executionCallDatas)']);
+  const OTHER = ('0x' + '9'.repeat(40)) as Hex;
+  const BATCH = pad('0x01', { dir: 'right', size: 32 });
+  const TRY = pad('0x0101', { dir: 'right', size: 32 });
+  type Call = readonly [Hex, bigint, Hex];
+  type Compiled = Awaited<ReturnType<typeof compileBoth>>;
+  const encodeBatch = (calls: Call[]) => encodeAbiParameters([{ type: 'tuple[]', components: [{ type: 'address' }, { type: 'uint256' }, { type: 'bytes' }] }], [calls]);
+  const viaManager = (calls: Call[], mode: Hex = BATCH, context: Hex = EMPTY_CONTEXT) =>
+    encodeFunctionData({ abi: REDEEM, functionName: 'redeemDelegations', args: [[context], [mode], [encodeBatch(calls)]] });
+  const selfBatch = (calls: Call[]) => encodeFunctionData({ abi: EXEC, functionName: 'execute', args: [BATCH, encodeBatch(calls)] });
+  const designator = (delegate: Hex) => ('0xef0100' + delegate.slice(2)) as Hex;
+  const DELEGATION = encodeAbiParameters(
+    [{ type: 'tuple[]', components: [{ type: 'address' }, { type: 'address' }, { type: 'bytes32' }, { type: 'tuple[]', components: [{ type: 'address' }, { type: 'bytes' }, { type: 'bytes' }] }, { type: 'uint256' }, { type: 'bytes' }] }],
+    [[[SIGNER, OTHER, `0x${'f'.repeat(64)}`, [], BigInt(1), '0x12']]],
+  );
+
+  interface Scenario { to: Hex; input: Hex; code?: Hex; type?: string; status?: 'success' | 'reverted'; unreadable?: boolean; notMined?: boolean; extraLog?: boolean }
+
+  /** One chain observation served to both verifiers, with the wallet state reads both need. */
+  function observeScenario(c: Compiled, s: Scenario) {
+    const logs = c.tokens.map((t, i) => transferLog(t, SIGNER, BigInt(1000 + i), i));
+    if (s.extraLog) logs.push(transferLog(c.tokens[0], SIGNER, BigInt(5000), 9, OTHER));
+    const transaction = { hash: TX_HASH, from: SIGNER, to: s.to, input: s.input, value: BigInt(0), chainId: CHAIN_ID, blockHash: BLOCK_HASH, blockNumber: BigInt(10), nonce: 7, type: s.type ?? 'eip1559' };
+    const receipt = { transactionHash: TX_HASH, blockHash: BLOCK_HASH, blockNumber: BigInt(10), from: SIGNER, to: s.to, status: s.status ?? 'success', logs };
+    const notFound = Object.assign(new Error('not found'), { name: 'TransactionReceiptNotFoundError' });
+    const code = async () => { if (s.unreadable) throw new Error('missing trie node'); return s.code ?? designator(MM.delegate); };
+    const nonce = async () => { if (s.unreadable) throw new Error('missing trie node'); return 7; };
+    getTransactionMock.mockResolvedValue(transaction);
+    if (s.notMined) getReceiptMock.mockRejectedValue(notFound);
+    else getReceiptMock.mockResolvedValue(receipt);
+    getCodeMock.mockImplementation(code);
+    getTransactionCountMock.mockImplementation(nonce);
+    return {
+      getChainId: vi.fn(async () => CHAIN_ID),
+      getTransaction: vi.fn(async () => transaction),
+      getTransactionReceipt: vi.fn(async () => { if (s.notMined) throw notFound; return receipt; }),
+      getBlock: vi.fn(async () => ({ hash: BLOCK_HASH })),
+      getBlockNumber: vi.fn(async () => BigInt(12)),
+      getCode: vi.fn(code),
+      getTransactionCount: vi.fn(nonce),
+    };
+  }
+
+  async function decide(scenario: (c: Compiled) => Scenario, mode: 'enforce' | 'off' = 'enforce') {
+    const c = await compileBoth([4000, 6000]);
+    const client = observeScenario(c, scenario(c));
+    vi.stubEnv('BAG_WALLET_BATCH_BINDING', mode);
+    try {
+      const app = await trackComposerTransaction({ txHash: TX_HASH, chain: 'robinhood', recipient: SIGNER, expectedTransaction: c.expected, expectedApprovals: [], flow: 'purchase' });
+      const sdk = await verifyPurchaseReceipt(c.sdk, {
+        client, transactionHash: TX_HASH, verification: 'TRANSFER_LOGS', smartAccountBinding: mode === 'enforce' ? 'EXACT' : 'OFF',
+        minimumReceived: c.tokens.map((t) => ({ token: t, amountRaw: BigInt(990) })),
+      });
+      return { app: composerOutcomeDecision(app), sdk: purchaseReceiptDecision(sdk) };
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  }
+
+  const built = (): Call => [ROUTER, BigInt(0), CALLDATA];
+  const sibling = (c: Compiled): Call => [c.tokens[0], BigInt(0), encodeFunctionData({ abi: ERC20, functionName: 'transferFrom', args: [OTHER, SIGNER, BigInt(5000)] })];
+  const matrix: [string, (c: Compiled) => Scenario, string][] = [
+    ['direct call from a plain EOA', () => ({ to: ROUTER, input: CALLDATA, code: '0x' }), 'ACCEPTED'],
+    ['MetaMask DelegationManager envelope', () => ({ to: MM.delegationManager, input: viaManager([built()]) }), 'ACCEPTED'],
+    ['MetaMask self-call batch (wallet_sendCalls)', () => ({ to: SIGNER, input: selfBatch([built()]) }), 'ACCEPTED'],
+    ['T-1: a sibling transfer in the envelope', (c) => ({ to: MM.delegationManager, input: viaManager([built(), sibling(c)]), extraLog: true }), 'REJECTED'],
+    ['the built call repeated', () => ({ to: MM.delegationManager, input: viaManager([built(), built()]) }), 'REJECTED'],
+    ['try mode', () => ({ to: MM.delegationManager, input: viaManager([built()], TRY) }), 'REJECTED'],
+    ['a redeemed delegation (another account executes)', () => ({ to: MM.delegationManager, input: viaManager([built()], BATCH, DELEGATION) }), 'REJECTED'],
+    ['an envelope from a wallet with an unpinned delegate', () => ({ to: MM.delegationManager, input: viaManager([built()]), code: designator(OTHER) }), 'REJECTED'],
+    ['a direct call from a wallet with an unpinned delegate', () => ({ to: ROUTER, input: CALLDATA, code: designator(OTHER) }), 'REJECTED'],
+    ['an EIP-7702 transaction', () => ({ to: MM.delegationManager, input: viaManager([built()]), type: 'eip7702' }), 'REJECTED'],
+    ['a reverted transaction', () => ({ to: MM.delegationManager, input: viaManager([built()]), status: 'reverted' }), 'REJECTED'],
+    ['historical wallet state unreadable', () => ({ to: MM.delegationManager, input: viaManager([built()]), unreadable: true }), 'INSUFFICIENT_EVIDENCE'],
+    ['not mined yet', () => ({ to: MM.delegationManager, input: viaManager([built()]), notMined: true }), 'INSUFFICIENT_EVIDENCE'],
+  ];
+  for (const [label, scenario, expected] of matrix) {
+    it(`${label}: both ${expected}`, async () => {
+      expect(await decide(scenario)).toEqual({ app: expected, sdk: expected });
+    });
+  }
+
+  it('F-01 forged target: neither side accepts (app REJECTED; the SDK without a trace cannot classify it: INSUFFICIENT_EVIDENCE)', async () => {
+    expect(await decide(() => ({ to: OTHER, input: viaManager([built()]) }))).toEqual({ app: 'REJECTED', sdk: 'INSUFFICIENT_EVIDENCE' });
+    // The default mode refuses it too since the F-01 fix.
+    expect(await decide(() => ({ to: OTHER, input: viaManager([built()]) }), 'off')).toEqual({ app: 'REJECTED', sdk: 'INSUFFICIENT_EVIDENCE' });
+  });
+
+  it('KNOWN GAP in the default mode (off): the legacy binding still ACCEPTS a T-1 sibling the SDK will not verify; enforce closes it', async () => {
+    expect(await decide((c) => ({ to: MM.delegationManager, input: viaManager([built(), sibling(c)]), extraLog: true }), 'off'))
+      .toEqual({ app: 'ACCEPTED', sdk: 'INSUFFICIENT_EVIDENCE' });
   });
 });

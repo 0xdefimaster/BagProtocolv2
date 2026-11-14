@@ -227,6 +227,7 @@ export async function verifyRebalanceExecution(
     expectedTransaction: intent.composerTransaction,
     expectedApprovals: intent.composerTransaction.approvals,
     flow: 'rebalance',
+    intentId: intent.id,
   });
   if (outcome.kind === 'PENDING') return { ok: true, intent };
   if (outcome.kind === 'FAILED') {

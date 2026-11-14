@@ -101,6 +101,19 @@ describe('findComposerTransactionFromWallet', () => {
     expect(await run(client)).toEqual({ kind: 'FOUND', txHash: h(7) });
   });
 
+  it('F-01: the same redeemDelegations calldata sent to a contract that is not the pinned DelegationManager is not the sale', async () => {
+    const data = encodeFunctionData({
+      abi: parseAbi(['function redeemDelegations(bytes[] permissionContexts, bytes32[] modes, bytes[] executionCallDatas)']),
+      functionName: 'redeemDelegations',
+      args: [['0x'], [pad('0x01', { dir: 'right', size: 32 })], [encodeAbiParameters([{ type: 'tuple[]', components: [{ type: 'address' }, { type: 'uint256' }, { type: 'bytes' }] }], [[[VM, BigInt(0), '0xdeadbeef']]])]],
+    });
+    const { client } = fakeClient({
+      logs: [{ block: BigInt(20_100), hash: h(8) }],
+      txs: { [h(8)]: { from: WALLET, to: '0xa77ac4e5a77ac4e5a77ac4e5a77ac4e5a77ac4e5', input: data, value: BigInt(0) } },
+    });
+    expect(await run(client)).toEqual({ kind: 'NOT_FOUND' });
+  });
+
   it('a wallet transaction still pending: UNKNOWN (it could be this sale), nothing searched', async () => {
     const { client, getLogs } = fakeClient({ pending: 6, mined: 5 });
     expect((await run(client)).kind).toBe('UNKNOWN');
