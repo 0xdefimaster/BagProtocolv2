@@ -17,6 +17,15 @@ Complexity: S.
 
 ## M2: shared exact wallet-batch binding (YELLOW: review, then live check)
 
+**Status 2026-11-14: IMPLEMENTED locally, default OFF, not deployed, not verified with a BAG user's live
+transaction.** SDK: `packages/bag-sdk/src/wallet-envelope.ts` (`bindWalletEnvelope`, `checkWalletExecutionState`,
+`verifyWalletExecution`) and `verifyPurchaseReceipt({ smartAccountBinding: 'EXACT' })`. App: `BAG_WALLET_BATCH_BINDING`
+= `off` | `shadow` | `enforce` in `trackComposerTransaction`, wired for purchase, redeem and rebalance. Pins verified
+on-chain for Robinhood, Base and Arbitrum; three real MetaMask EIP-5792 batches on Base bind
+(`evidence/smart-account/`). Next: the shadow runbook (`docs/runbooks/WALLET_BATCH_BINDING_SHADOW.md`). The original
+plan below differs in two places, both stricter: the wallet's pre-block code must be the pinned delegate, and
+`executeBatch(Call[])` is refused (not an entry point of the MetaMask account).
+
 - Scope: an SDK function that decodes the wallet envelopes the app already supports (ERC-7579 batch and single,
   `executeBatch(Call[])`, MetaMask `DelegationManager.redeemDelegations`) and accepts a batch only when its calls
   are exactly the expected set: the compiled call plus approvals to allowed spenders for at most the input amount.

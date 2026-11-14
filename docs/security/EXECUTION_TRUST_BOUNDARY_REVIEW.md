@@ -22,14 +22,52 @@ ranking, `BagExecutionRouter`. Internal review, not an audit.
   as 1500). The SDK has the same property in batched `BALANCE_DELTA` / `TRANSFER_LOGS` mode
   (`packages/bag-sdk/test/receipt.test.ts` "KNOWN GAP T-1"); its `DELIVERY_LOG` evidence is measured inside the
   Composer program and is not affected.
-- **Changed:** nothing in production code; both behaviors are pinned by tests.
-- **Fix:** exact-batch binding shared through the SDK (`../architecture/SDK_FIRST_MIGRATION_PLAN.md` M2), then
-  delivery-proof compilation in the app (M3). Shadow-run on a real MetaMask smart account before enforcing.
+- **Status (2026-11-14, M2 implemented locally):** fixed behind a default-off flag. With
+  `BAG_WALLET_BATCH_BINDING=enforce` (app) or `smartAccountBinding: 'EXACT'` (SDK) the shared binding
+  (`packages/bag-sdk/src/wallet-envelope.ts`) refuses any execution other than the built call and the built
+  approvals, so a sibling transfer can no longer reach execution accounting. In the default `off` the legacy
+  behavior, and this gap, are unchanged; both characterization tests still pass there. Shadow first:
+  `docs/runbooks/WALLET_BATCH_BINDING_SHADOW.md`.
 
-## D-1 (difference, by design today)
+## F-01 (MEDIUM): a wallet "batch" sent to any contract that carries the built calldata
 
-A batch carrying the exact call: app = DONE (containment); SDK = INDETERMINATE (`UNSUPPORTED_TRANSACTION_ENVELOPE`)
-unless the reader provides a call trace. Pinned in `sdk-app-purchase-verification-parity.test.ts`. Resolved by M2.
+- **Where:** `isWalletRoutedBatch` (`lib/blockchain/composer-status.ts`) accepts a transaction whose calldata starts
+  with the `redeemDelegations` selector **regardless of its target**, if the built call's bytes appear inside it.
+- **Scenario:** the wallet owner sends such calldata to a contract of their own that never runs the Composer call
+  and just transfers output tokens to the wallet; the purchase is booked at its full deposit although the deposit
+  never left. Same impact class as T-1 (ledger integrity, owner-crafted).
+- **History:** a fix exists on `origin/fix/f01-forged-batch` (`7a62dd0`, 2026-10-19: pin DelegationManager per chain,
+  require the input to leave the wallet) and was **never merged**; `main` is exposed.
+- **Status:** the exact binding refuses it (`UNSUPPORTED_ENVELOPE`, tested in app, SDK and parity suites); default
+  `off` still accepts it. Either enforce M2 or merge the F-01 commit on its own.
+
+## D-1 (resolved behind the flag)
+
+A batch carrying the exact call: legacy app = DONE (containment); SDK `OFF` = INDETERMINATE
+(`UNSUPPORTED_TRANSACTION_ENVELOPE`) without a call trace. With the shared exact binding on both sides the verdicts
+agree: a pinned MetaMask envelope binds (`WALLET_BATCH_EXACT`) with identical amounts, and the T-1 and F-01 shapes
+are refused or left unverified by both (`sdk-app-purchase-verification-parity.test.ts`, "enforce / EXACT").
+
+## M2 trust assumptions that remain
+
+1. **Pinned contract semantics.** MetaMask DelegationManager `0xdb9b…dB3` and EIP7702StatelessDeleGator `0x63c0…E32B`
+   behave as their verified source (Sourcify exact match on Base; identical code on Robinhood and Arbitrum after
+   masking the chain id and EIP-712 domain hash): executions run in order, default mode reverts on any failure,
+   empty permission contexts execute on the caller. Neither contract is a proxy. The DelegationManager owner can
+   pause it (redemptions then revert); that cannot make a wrong transaction pass.
+2. **Historical state honesty.** The wallet's code and nonce at the previous block come from the operator's RPC;
+   a lying RPC could fake them (the same RPC already supplies the receipt). Unreadable state never passes.
+3. **Nonce accounting.** A code change needs a valid EIP-7702 authorization, which always increments the authority's
+   nonce; the check relies on that consensus rule.
+4. **No callbacks into the wallet.** Within the built call, a token that calls back into the wallet (ERC-777-style
+   hooks) would run pinned wallet code, which only executes calls it is asked to; BAG's assets are plain ERC-20s.
+   A DIRECT transaction from a wallet with another delegate is not pinned (its code does not run unless called back).
+5. **Transfer-sum accounting itself.** With siblings excluded, the app still credits Transfer logs to the wallet
+   inside the built call; correctness of those amounts rests on the Composer program BAG built and on the token
+   contracts. `DELIVERY_LOG` (M3) moves that measurement inside the program.
+6. **Approvals.** Accepted approvals do not move tokens; they are limited to the built (token, spender, amount).
+7. **Compatibility, not security:** other EIP-7702 implementations, ERC-4337 bundles, try mode and user-raised
+   approval caps are refused (`docs/runbooks/WALLET_BATCH_BINDING_SHADOW.md`, known limits).
 
 ## Verified equal
 
