@@ -326,4 +326,18 @@ describe('purchase balance evidence and smart-account calls', () => {
     if (kind === 'wrong root') f.root.input = '0x12345678';
     expect((await f.run()).status).not.toBe('VERIFIED');
   });
+
+  // KNOWN GAP T-1 (docs/security/EXECUTION_TRUST_BOUNDARY_REVIEW.md), recorded so a fix changes it deliberately.
+  // The trace must prove exactly one successful compiled call, but other calls in the same batch are not excluded,
+  // and a transaction-scoped balance delta includes their transfers. DELIVERY_LOG measures inside the Composer
+  // program instead, so it is the evidence to use for batched wallets when the delta is booked anywhere.
+  it("KNOWN GAP T-1: a sibling call's inbound transfer is inside a batched balance delta", async () => {
+    const f = await batch();
+    f.root.calls.push({ type: 'CALL', from: SIGNER, to: f.minimumReceived[0].token as Hex, input: '0x23b872dd', value: '0x0' });
+    f.proof.balances[0] = { ...f.proof.balances[0], afterRaw: f.proof.balances[0].afterRaw + BigInt(1000) };
+    const result = await f.run();
+    expect(result.status).toBe('VERIFIED');
+    expect(result.outputs[0].balanceDeltaRaw).toBe(BigInt(1100));
+    expect(result.accounting).toBe('NOT_BAG_ACCOUNTED');
+  });
 });
