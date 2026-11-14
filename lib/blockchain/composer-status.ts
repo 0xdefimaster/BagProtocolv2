@@ -102,11 +102,38 @@ export const REDEEM_DELEGATIONS_SELECTOR = '0xcef6d209';
  * whose execution calldata embeds the same ERC-7579 encodings `batchContainsCall` already reads. The caller
  * still requires `tx.from` to be the wallet, so only the wallet's own transaction can match.
  */
-export function isWalletRoutedBatch(tx: { to?: string | null; input?: unknown }, wallet: string, call: { to: string; data: string; value: string }): boolean {
-  if (typeof tx.input !== 'string') return false;
-  const selfCall = typeof tx.to === 'string' && tx.to.toLowerCase() === wallet.toLowerCase();
-  const delegationRedeem = tx.input.toLowerCase().startsWith(REDEEM_DELEGATIONS_SELECTOR);
+export function isWalletRoutedBatch(
+  tx: { to?: string | null; input?: unknown },
+  wallet: string,
+  call: { to: string; data: string; value: string },
+  chain: ChainId
+): boolean {
+  if (typeof tx.input !== 'string' || typeof tx.to !== 'string') return false;
+  const to = tx.to.toLowerCase();
+  const selfCall = to === wallet.toLowerCase();
+  const delegationRedeem = tx.input.toLowerCase().startsWith(REDEEM_DELEGATIONS_SELECTOR) && trustedDelegationManagers(chain).includes(to);
   return (selfCall || delegationRedeem) && batchContainsCall(tx.input, call);
+}
+
+/**
+ * MetaMask Delegation Framework v1.3.0 DelegationManager. Its EIP7702StatelessDeleGator implementation
+ * (0x63c0c19a282a1b52b07dd5a65b58948a07dae32b) accepts executeFromExecutor only from this address, and both were read
+ * on-chain on 2026-11-14 with code identical to the Sourcify-verified Base build (chain id and EIP-712 domain hash
+ * masked). Chains not listed accept no redeemDelegations route.
+ */
+const METAMASK_DELEGATION_MANAGER = '0xdb9b1e94b5b69df7e401ddbede43491141047db3';
+const PINNED_DELEGATION_MANAGERS: Partial<Record<ChainId, readonly string[]>> = {
+  robinhood: [METAMASK_DELEGATION_MANAGER],
+  base: [METAMASK_DELEGATION_MANAGER],
+  arbitrum: [METAMASK_DELEGATION_MANAGER],
+};
+
+/**
+ * F-01: the DelegationManager a `redeemDelegations` transaction may target on `chain`. Any other contract can
+ * receive the same calldata and never run the built call: containing the call's bytes is not evidence it executed.
+ */
+export function trustedDelegationManagers(chain: ChainId): readonly string[] {
+  return PINNED_DELEGATION_MANAGERS[chain] ?? [];
 }
 
 /**
@@ -145,7 +172,7 @@ export async function trackComposerTransaction(input: TrackComposerTransactionIn
   // to itself or through a DelegationManager; the account's code then runs the approvals and the Composer call.
   // Accepted only when the wallet is the sender and the exact Composer call (target, value, calldata) is one of
   // the batched calls.
-  const walletBatch = isWalletRoutedBatch(tx, input.recipient, input.expectedTransaction);
+  const walletBatch = isWalletRoutedBatch(tx, input.recipient, input.expectedTransaction, input.chain);
   if (!walletBatch) {
     if (!same(tx.to, input.expectedTransaction.to)) mismatches.push('to');
     if (!same(tx.input, input.expectedTransaction.data)) mismatches.push('calldata');
