@@ -6,6 +6,7 @@ import { parseArgs, parseEnv } from 'node:util';
 import { resolve, join } from 'node:path';
 import { createPublicClient, encodeDeployData, getContractAddress, http, isAddress, keccak256 } from 'viem';
 
+try {
 const { values } = parseArgs({ options: { 'env-file': { type: 'string' }, deployer: { type: 'string' }, out: { type: 'string' } } });
 if (!values['env-file'] || !values.out || !isAddress(values.deployer ?? '')) throw Error('Provide --env-file, --deployer (public address), and --out');
 const env = parseEnv(readFileSync(resolve(values['env-file']), 'utf8'));
@@ -72,3 +73,9 @@ mkdirSync(resolve(values.out), { recursive: true });
 const destination = join(resolve(values.out), 'unsigned-deployments.json');
 writeFileSync(destination, JSON.stringify(report, null, 2) + '\n');
 console.log(JSON.stringify({ file: destination, unsignedOnly: true, chains: report.chains.map(c => ({ chain: c.chain, transactions: c.transactions.map(t => ({ contract: t.contract, nonce: t.transaction.nonce, predictedAddress: t.predictedAddress, gasEstimate: t.gasEstimate })) })) }, null, 2));
+} catch {
+  // RPC errors may embed authenticated URLs and provider credentials. Never print
+  // the upstream message, cause or stack, including failed argument/file reads.
+  console.error(JSON.stringify({ status: 'STOPPED', code: 'APP_ROLLOUT_PREPARATION_FAILED' }));
+  process.exitCode = 1;
+}

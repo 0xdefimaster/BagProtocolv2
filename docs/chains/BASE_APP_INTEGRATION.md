@@ -32,6 +32,11 @@ Robinhood-only, so **Base sales carry no performance fee** until a separate chan
   13 files, 231/231 pass (Windows), including the A4 guard that fails on `main` on Windows.
 - Full run 2026-11-14 (Windows): typecheck 0, lint 0, unit 279 files / 2673 tests all pass, Hardhat 195/195, SDK
   typecheck and build pass, Next.js production build pass, secret scan clean.
+- Release preparation follow-up: `prepare-app-rollout.mjs` now catches failures and emits only
+  `APP_ROLLOUT_PREPARATION_FAILED`, never the upstream RPC error, cause or stack. A local HTTP 401 negative
+  control placed a fake credential in both the URL and response: the RPC was called, exit status was 1,
+  and neither credential nor URL appeared in stdout/stderr. This prevents authenticated provider URLs from
+  leaking through an uncaught error; no network settings or on-chain state changed.
 
 ## 4. Independent end-to-end verification still required (each step signs; owner approval needed)
 
