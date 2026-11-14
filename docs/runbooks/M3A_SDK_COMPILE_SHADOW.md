@@ -31,22 +31,32 @@ only), sustained RPC load.
 ### 1b. Wider unsigned sample (2026-11-14)
 
 `--sample N --seed 20261114`: generated **unsigned quotes, not transactions** (Robinhood and Base alternating;
-stablecoin or native-ETH input; 1 to 4 legs; $1 to $50 or 0.0003 to 0.01 ETH; half with a fresh signer). Three runs
-(50 + 50 + 30 = **130 quotes**, `evidence/m3a-shadow/m3a-shadow-sample*`):
+stablecoin or native-ETH input; 1 to 4 legs; $1 to $50 or 0.0003 to 0.01 ETH; half with a fresh signer). Four runs
+(50 + 50 + 30 + 100 = **230 quotes**, `evidence/m3a-shadow/m3a-shadow-sample*`):
 
 | Outcome | Count |
 |---|---|
-| MATCH | 124 |
-| REFUSED `SLIPPAGE_EXCEEDED` (SDK) | 5 |
-| Composer simulation refusal before any check (legacy refuses too) | 1 |
+| MATCH | 221 |
+| REFUSED `SLIPPAGE_EXCEEDED` (SDK) | 6 |
+| Composer simulation refusal before any check (legacy refuses too) | 3 |
 | MISMATCH, UNAVAILABLE, extra Composer call | 0 |
 
-The refusals are intermittent (the same 30 configurations gave 30/30 MATCH in run 3). The one with leg detail: a
-cbBTC leg with a simulated estimate of 3768 raw units and an on-chain minimum of 3729, while the SDK requires
-`floor(3768 × 0.99) = 3730`: one raw unit, i.e. rounding or a quote-versus-simulation difference, not a looser floor.
-**Gate for `on` (not for shadow):** at about 4 % such purchases would fail under `on`. Decide before `on`: keep it
-(the buyer retries), or let the SDK check tolerate one raw unit below the floor; collect the shortfall per refusal in
-shadow first.
+Run 4 adds 97 MATCH, one SDK slippage refusal and two Composer simulation refusals. Its source SHA-256 is
+`6cbdcc180210d91a92eb655a99b1c3d9a704a0e0d1ea294a651251d9a853fe75`; the saved JSON was checked against
+configured secret values before inclusion. These samples are not executed purchases or an estimated user failure rate.
+
+The refusals are intermittent (the same 30 configurations gave 30/30 MATCH in run 3). Two cases have leg detail:
+
+| Case | Expected raw | Actual minimum raw | Required 100-bps floor | Shortfall raw |
+|---|---|---|---|---|
+| Run 2 cbBTC | 3768 | 3729 | 3730 | 1 |
+| Run 4 WETH, `sample-12-base-stable-2l-fresh` | 7007989542784914 | 6936552971520765 | 6937909647357064 | 1356675836299 |
+
+The latter is about 1.94 bps below the allowed floor, so a universal one-raw-unit rounding explanation is disproved.
+A difference between quoted and simulated estimates is a possible explanation; these observations do not prove the
+upstream cause. **Keep the SDK floor unchanged.** Do not clamp the minimum, widen slippage or ignore this refusal.
+The additional sample supports continued investigation in shadow; `on` stays gated until the refusal semantics are
+explained and the chosen policy is explicitly reviewed. No compile mode was enabled by this documentation update.
 
 ## 2. Staging configuration (owner applies; not applied by this work)
 
