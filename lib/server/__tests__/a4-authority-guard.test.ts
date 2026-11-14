@@ -32,7 +32,7 @@ const LEGACY_SHARE_SOURCES =
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
-    const rel = path.join(dir, e.name);
+    const rel = path.posix.join(dir, e.name);
     if (e.isDirectory()) {
       if (e.name === 'node_modules' || e.name === '__tests__' || e.name.startsWith('.')) continue;
       walk(rel, out);

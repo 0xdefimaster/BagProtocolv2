@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/auth/require-session';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase/server';
-import { getRobinhoodPublicClient } from '@/lib/blockchain/robinhood-public-client';
+import { getChainPublicClient } from '@/lib/blockchain/rpc/clients';
 import {
   RECONCILE_AFTER_TRADE_MIN_INTERVAL_MS,
   RECONCILE_ON_CONNECT_MIN_INTERVAL_MS,
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
   try {
     const outcome = await reconcileWalletOnConnect(
       supabaseAdmin(),
-      getRobinhoodPublicClient(),
+      getChainPublicClient,
       { userId: auth.session.userId, walletAddress: auth.session.walletAddress },
       Date.now(),
       minIntervalMs

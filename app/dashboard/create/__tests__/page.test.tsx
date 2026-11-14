@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 
 // -----------------------------------------------------------------------------
 // Production-hardening P0-1/P0-2 — regression tests for the Create Bag
@@ -86,6 +86,26 @@ afterEach(() => {
 });
 
 describe('Create Bag — single-chain network model', () => {
+  it('does not advertise a default deployable network while configuration cannot be loaded', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/deploy/chains') throw new Error('unavailable');
+      return { ok: true, json: async () => ({ assets: [] }) };
+    }));
+    render(<CreatePage />);
+    await goToAssetsStep();
+    expect(screen.getByRole('radio', { name: /robinhood/i })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /base/i })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /arbitrum/i })).toBeDisabled();
+  });
+
+  it('an empty deployment configuration cannot leave the selected network enabled', async () => {
+    deployable = [];
+    render(<CreatePage />);
+    await goToAssetsStep();
+    for (const radio of within(screen.getByRole('radiogroup', { name: 'Deploy network' })).getAllByRole('radio')) expect(radio).toBeDisabled();
+    expect(screen.getByTestId('create-deploy')).toBeDisabled();
+  });
+
   it('1. NetworkSelector is a true single-select — choosing a network deselects whatever was chosen before', async () => {
     render(<CreatePage />);
 
@@ -122,6 +142,37 @@ describe('Create Bag — single-chain network model', () => {
     // The allocation for the cleared USDC selection did not survive either: deploying asks for assets again.
     expect(screen.getByTestId('create-deploy')).toBeDisabled();
     expect(screen.getByTestId('create-deploy').textContent).toMatch(/pick at least one asset/i);
+  });
+
+  it('hides the old asset list while the new network request is pending, including when that request fails', async () => {
+    let finishBase!: (response: Response) => void;
+    const baseResponse = new Promise<Response>(resolve => { finishBase = resolve; });
+    const fetchMock = stubFetchForRegistry();
+    vi.stubGlobal('fetch', vi.fn((url: string) => url === '/api/assets?chain=base' ? baseResponse : fetchMock(url)));
+    render(<CreatePage />);
+    await goToAssetsStep();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'WETH Wrapped Ether' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('radio', { name: /base/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole('radio', { name: /base/i }));
+    expect(screen.queryByRole('button', { name: 'WETH Wrapped Ether' })).not.toBeInTheDocument();
+    expect(screen.getByText('Loading verified assets…')).toBeInTheDocument();
+    expect(screen.getByTestId('create-deploy')).toBeDisabled();
+    finishBase({ ok: false } as Response);
+    await waitFor(() => expect(screen.getByText(/no verified assets are currently available/i)).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'WETH Wrapped Ether' })).not.toBeInTheDocument();
+  });
+
+  it('does not offer assets returned with a different chain than the selected network', async () => {
+    const fetchMock = stubFetchForRegistry();
+    vi.stubGlobal('fetch', vi.fn((url: string) => url === '/api/assets?chain=base'
+      ? Promise.resolve({ ok: true, json: async () => ({ assets: registryAssetsFixture().robinhood }) } as Response)
+      : fetchMock(url)));
+    render(<CreatePage />);
+    await goToAssetsStep();
+    await waitFor(() => expect(screen.getByRole('radio', { name: /base/i })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole('radio', { name: /base/i }));
+    await waitFor(() => expect(screen.getByText(/no verified assets are currently available/i)).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'WETH Wrapped Ether' })).not.toBeInTheDocument();
   });
 
   it('4. the summary shows exactly one Network row/value, never a plural "Networks" list', async () => {

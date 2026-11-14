@@ -1,6 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { parseAbiItem, type PublicClient } from 'viem';
 import { reconcileWallet, type TrackedAsset } from '@/lib/server/wallet-reconciliation';
+import { BAG_CHAINS } from '@/lib/config/chains';
 
 // -----------------------------------------------------------------------------
 // Every wallet, every hour, without reading every balance.
@@ -19,7 +20,7 @@ import { reconcileWallet, type TrackedAsset } from '@/lib/server/wallet-reconcil
 //
 // A wallet never fully checked, or last checked beyond MAX_SCAN_BLOCKS, is not
 // covered here: the round-robin pass (reconcileDueWallets) checks it in full.
-// Only Robinhood Chain is reconciled today. Fails closed: a log read that
+// This log-scan optimization covers Robinhood-only wallets; the full pass reconciles all supported chains. Fails closed: a log read that
 // fails marks nothing.
 // -----------------------------------------------------------------------------
 
@@ -55,6 +56,8 @@ async function trackedUsers(admin: SupabaseClient): Promise<TrackedUser[]> {
   const { data, error } = await admin.rpc('wallet_reconciliation_due', { p_limit: 500 });
   if (error) throw new Error(error.message);
   const rows = ((data ?? []) as { user_id: string; wallet_address: string; assets: TrackedAsset[] }[])
+    // A global freshness marker cannot be advanced from just one of a user's chains.
+    .filter((r) => r.assets.every((a) => a.chain === CHAIN))
     .map((r) => ({ ...r, assets: r.assets.filter((a) => a.chain === CHAIN && /^0x[0-9a-fA-F]{40}$/.test(a.address)) }))
     .filter((r) => r.assets.length > 0);
   if (rows.length === 0) return [];
@@ -89,8 +92,9 @@ export async function scanTrackedWalletTransfers(
   const result: TransferScanResult = { wallets: users.length, covered: 0, scannedFrom: null, scannedTo: null, reconciled: 0, verified: 0, deferred: 0, failed: 0 };
   if (users.length === 0) return result;
 
+  if (await client.getChainId() !== BAG_CHAINS[CHAIN].chainId) throw new Error('Transfer scan RPC chain mismatch');
   const latest = await client.getBlockNumber();
-  const covered = users.filter((u) => u.lastBlock !== null && latest - u.lastBlock <= MAX_SCAN_BLOCKS);
+  const covered = users.filter((u) => u.lastBlock !== null && u.lastBlock <= latest && latest - u.lastBlock <= MAX_SCAN_BLOCKS);
   result.covered = covered.length;
   result.deferred = users.length - covered.length;
 

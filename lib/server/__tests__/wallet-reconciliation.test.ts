@@ -44,6 +44,33 @@ describe('readBalancesAtBlock', () => {
 });
 
 describe('reconcileWallet', () => {
+  it('reconciles all three networks with separate blocks and never puts a Base block in the Robinhood scan checkpoint', async () => {
+    const ids = { robinhood: 4663, base: 8453, arbitrum: 42161 };
+    const rpc = vi.fn(async () => ({ data: { status: 'OK' }, error: null }));
+    const r = await reconcileWallet({ rpc } as never, chain => ({
+      getChainId: async () => ids[chain as keyof typeof ids],
+      getBlockNumber: async () => BigInt(ids[chain as keyof typeof ids]),
+      multicall: async () => [{ status: 'success', result: BigInt(5) }],
+    }) as never, { userId: 'u1', walletAddress: WALLET, assets: Object.keys(ids).map(chain => ({ ...T1, chain })) });
+    expect(r.assets).toHaveLength(3);
+    expect(r.blockNumber).toBeNull();
+    for (const [chain, block] of Object.entries(ids)) {
+      expect(rpc).toHaveBeenCalledWith('apply_wallet_observation', expect.objectContaining({ p_chain: chain, p_block_number: block, p_observed_raw: '5' }));
+    }
+    expect(rpc).toHaveBeenCalledWith('mark_wallet_reconciled', { p_user_id: 'u1', p_block_number: null });
+  });
+
+  it('does not mark a partial cross-chain check fresh or turn an RPC failure into an outflow', async () => {
+    const rpc = vi.fn(async () => ({ data: { status: 'OK' }, error: null }));
+    const r = await reconcileWallet({ rpc } as never, chain => {
+      if (chain === 'robinhood') throw new Error('offline');
+      return { getChainId: async () => 8453, getBlockNumber: async () => BigInt(88), multicall: async () => [{ status: 'success', result: BigInt(5) }] } as never;
+    }, { userId: 'u1', walletAddress: WALLET, assets: [T1, { ...T1, chain: 'base' }] });
+    expect(r.assets.map(a => a.status)).toEqual(['UNREADABLE', 'OK']);
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith('apply_wallet_observation', expect.objectContaining({ p_chain: 'base', p_block_number: 88 }));
+  });
+
   it('settles pending executions first, then observes each readable asset at one block and marks the wallet', async () => {
     const order: string[] = [];
     settlePurchases.mockImplementation(async () => void order.push('settle-purchases'));
@@ -54,11 +81,11 @@ describe('reconcileWallet', () => {
       if (name === 'apply_wallet_observation') return { data: { status: args.p_address === T1.address ? 'DRIFT' : 'OK', shortfallRaw: '3' }, error: null };
       return { data: null, error: null };
     });
-    const client = { getBlockNumber: vi.fn(async () => BigInt(500)), multicall: vi.fn(async () => [{ status: 'success', result: BigInt(1) }, { status: 'failure' }]) };
+    const client = { getChainId: async () => 4663, getBlockNumber: vi.fn(async () => BigInt(500)), multicall: vi.fn(async () => [{ status: 'success', result: BigInt(1) }, { status: 'failure' }]) };
 
     const r = await reconcileWallet({ rpc } as never, client as never, { userId: 'u1', walletAddress: WALLET, assets: [T1, T2] });
 
-    expect(order).toEqual(['settle-purchases', 'verify-redeem', 'apply_wallet_observation', 'mark_wallet_reconciled']);
+    expect(order).toEqual(['settle-purchases', 'verify-redeem', 'apply_wallet_observation']);
     expect(r.blockNumber).toBe('500');
     expect(r.assets).toEqual([
       { chain: 'robinhood', address: T1.address, status: 'DRIFT', observedRaw: '1', shortfallRaw: '3' },
@@ -67,10 +94,10 @@ describe('reconcileWallet', () => {
     expect(rpc).toHaveBeenCalledWith('apply_wallet_observation', { p_user_id: 'u1', p_chain: 'robinhood', p_address: T1.address, p_block_number: 500, p_observed_raw: '1' });
   });
 
-  it('only Robinhood Chain assets; nothing tracked means no chain reads at all', async () => {
+  it('unsupported assets never trigger chain reads', async () => {
     const rpc = vi.fn();
-    const client = { getBlockNumber: vi.fn() };
-    const r = await reconcileWallet({ rpc } as never, client as never, { userId: 'u1', walletAddress: WALLET, assets: [{ chain: 'base', address: T1.address, decimals: 18 }] });
+    const client = { getChainId: async () => 4663, getBlockNumber: vi.fn() };
+    const r = await reconcileWallet({ rpc } as never, client as never, { userId: 'u1', walletAddress: WALLET, assets: [{ chain: 'solana', address: T1.address, decimals: 18 }] });
     expect(r).toEqual({ userId: 'u1', blockNumber: null, assets: [] });
     expect(client.getBlockNumber).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalled();
@@ -78,7 +105,7 @@ describe('reconcileWallet', () => {
 
   it('a database error is surfaced, not swallowed', async () => {
     const rpc = vi.fn(async () => ({ data: null, error: { message: 'boom' } }));
-    const client = { getBlockNumber: vi.fn(async () => BigInt(1)), multicall: vi.fn(async () => [{ status: 'success', result: BigInt(1) }]) };
+    const client = { getChainId: async () => 4663, getBlockNumber: vi.fn(async () => BigInt(1)), multicall: vi.fn(async () => [{ status: 'success', result: BigInt(1) }]) };
     await expect(reconcileWallet({ rpc } as never, client as never, { userId: 'u1', walletAddress: WALLET, assets: [T1] })).rejects.toThrow(/boom/);
   });
 
@@ -88,15 +115,15 @@ describe('reconcileWallet', () => {
     );
     const eq = vi.fn(async () => ({
       data: [
-        { bag_id: 'bag-a', address: T1.address.toUpperCase().replace('0X', '0x') },
-        { bag_id: 'bag-a', address: T2.address },
-        { bag_id: 'bag-b', address: T1.address },
-        { bag_id: 'bag-c', address: T2.address },
+        { chain: 'robinhood', bag_id: 'bag-a', address: T1.address.toUpperCase().replace('0X', '0x') },
+        { chain: 'robinhood', bag_id: 'bag-a', address: T2.address },
+        { chain: 'robinhood', bag_id: 'bag-b', address: T1.address },
+        { chain: 'robinhood', bag_id: 'bag-c', address: T2.address },
       ],
       error: null,
     }));
     const from = vi.fn(() => ({ select: () => ({ eq }) }));
-    const client = { getBlockNumber: vi.fn(async () => BigInt(9)), multicall: vi.fn(async () => [{ status: 'success', result: BigInt(0) }, { status: 'success', result: BigInt(1) }]) };
+    const client = { getChainId: async () => 4663, getBlockNumber: vi.fn(async () => BigInt(9)), multicall: vi.fn(async () => [{ status: 'success', result: BigInt(0) }, { status: 'success', result: BigInt(1) }]) };
 
     await reconcileWallet({ rpc, from } as never, client as never, { userId: 'u1', walletAddress: WALLET, assets: [T1, T2] });
 
@@ -111,13 +138,13 @@ describe('reconcileWallet', () => {
   it('no confirmed outflow → no extra pricing; a failed snapshot never fails the reconciliation', async () => {
     const rpc = vi.fn(async (name: string) => (name === 'apply_wallet_observation' ? { data: { status: 'DRIFT' }, error: null } : { data: null, error: null }));
     const from = vi.fn();
-    const client = { getBlockNumber: vi.fn(async () => BigInt(9)), multicall: vi.fn(async () => [{ status: 'success', result: BigInt(0) }]) };
+    const client = { getChainId: async () => 4663, getBlockNumber: vi.fn(async () => BigInt(9)), multicall: vi.fn(async () => [{ status: 'success', result: BigInt(0) }]) };
     await reconcileWallet({ rpc, from } as never, client as never, { userId: 'u1', walletAddress: WALLET, assets: [T1] });
     expect(from).not.toHaveBeenCalledWith('bag_investor_holdings');
     expect(recordSnapshot).not.toHaveBeenCalled();
 
     const confirmed = vi.fn(async (name: string) => (name === 'apply_wallet_observation' ? { data: { status: 'CONFIRMED_OUTFLOW' }, error: null } : { data: null, error: null }));
-    const from2 = vi.fn(() => ({ select: () => ({ eq: async () => ({ data: [{ bag_id: 'bag-a', address: T1.address }], error: null }) }) }));
+    const from2 = vi.fn(() => ({ select: () => ({ eq: async () => ({ data: [{ chain: 'robinhood', bag_id: 'bag-a', address: T1.address }], error: null }) }) }));
     recordSnapshot.mockRejectedValue(new Error('pricing down'));
     const r = await reconcileWallet({ rpc: confirmed, from: from2 } as never, client as never, { userId: 'u1', walletAddress: WALLET, assets: [T1] });
     expect(r.assets[0].status).toBe('CONFIRMED_OUTFLOW');

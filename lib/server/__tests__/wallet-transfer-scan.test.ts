@@ -37,6 +37,7 @@ function admin(o: { users: { user_id: string; wallet_address: string; assets: un
 
 function client(latest: bigint, logs: { from: string; token: string; block: bigint }[], fail = false) {
   return {
+    getChainId: async () => 4663,
     getBlockNumber: async () => latest,
     getLogs: vi.fn(async ({ args, fromBlock, toBlock, address }: { args: { from: string[] }; fromBlock: bigint; toBlock: bigint; address: string[] }) => {
       if (fail) throw new Error('rpc down');
@@ -53,6 +54,21 @@ beforeEach(() => {
 });
 
 describe('scanTrackedWalletTransfers', () => {
+  it('does not advance a checkpoint from an RPC serving another chain', async () => {
+    const db = admin({ users: [{ user_id: 'u1', wallet_address: W(1), assets: [asset()] }], state: { u1: 1000 } });
+    const wrong = { getChainId: async () => 8453 } as never;
+    await expect(scanTrackedWalletTransfers(db as never, wrong)).rejects.toThrow('chain mismatch');
+    expect(db.marked).toEqual([]);
+  });
+
+  it('cannot mark a multi-chain wallet fresh from a Robinhood-only transfer scan', async () => {
+    const db = admin({ users: [{ user_id: 'mixed', wallet_address: W(1), assets: [asset(), { ...asset(), chain: 'base' }] }], state: { mixed: 1000 } });
+    const c = client(BigInt(2000), []);
+    expect((await scanTrackedWalletTransfers(db as never, c)).wallets).toBe(0);
+    expect(db.marked).toEqual([]);
+    expect((c as { getLogs: ReturnType<typeof vi.fn> }).getLogs).not.toHaveBeenCalled();
+  });
+
   it('re-reads only wallets that sent a tracked token after their last check; marks the rest verified at the latest block', async () => {
     const db = admin({
       users: [

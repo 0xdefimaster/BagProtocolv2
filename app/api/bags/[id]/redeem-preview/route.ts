@@ -59,7 +59,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   // A sale that pays a performance fee settles in the settlement token only; a free one into any verified token.
   const paysFee = redemptionPaysFee(bag, await getCurrentBagVersion(admin, id), auth.session.userId);
   const outputAssets = redeemOutputAssetsFor(chainAssets.filter((a) => a.status === 'VERIFIED'), bag.chain, { paysFee });
-  const values = await valueUserPositions(admin, getChainPublicClient('robinhood'), priceProvider, auth.session, (c, a) => symbolByKey.get(assetKey(c, a)));
+  const values = await valueUserPositions(admin, getChainPublicClient, priceProvider, auth.session, (c, a) => symbolByKey.get(assetKey(c, a)));
   const value = values.get(id) ?? null;
 
   return NextResponse.json({
@@ -127,7 +127,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const outputAsset = outputAssets.find((a) => a.id === body.outputAssetId);
   if (!outputAsset) return NextResponse.json({ error: 'Unknown or unverified output asset.' }, { status: 400 });
 
-  const observed = await observeUserHoldings(admin, getChainPublicClient('robinhood'), auth.session);
+  const observed = await observeUserHoldings(admin, getChainPublicClient, auth.session);
   if (!observed.rows.some((r) => r.bagId === id)) return NextResponse.json({ error: 'You have no position in this Bag to sell.' }, { status: 409 });
   const sellable = sellableHoldingsForBag(observed, id);
   if (!sellable) return NextResponse.json({ error: 'Your wallet balances could not be read right now. Please try again shortly.' }, { status: 503 });

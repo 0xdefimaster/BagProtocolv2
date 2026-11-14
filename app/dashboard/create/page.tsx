@@ -109,13 +109,13 @@ export default function CreatePage() {
   // `NetworkSelector`/`handlePublish` actually do with it.
   // Robinhood Chain is where BAG's contracts live; other networks open up once a BagFactory is configured for them.
   const [selectedNetworkId, setSelectedNetworkId] = useState<string>('robinhood');
-  const [deployableChains, setDeployableChains] = useState<string[]>(['robinhood']);
+  const [deployableChains, setDeployableChains] = useState<string[]>([]);
   useEffect(() => {
     let cancelled = false;
     fetch('/api/deploy/chains')
       .then((res) => (res.ok ? res.json() : null))
       .then((body: { deployable?: string[] } | null) => {
-        if (!cancelled && Array.isArray(body?.deployable) && body.deployable.length > 0) setDeployableChains(body.deployable);
+        if (!cancelled && Array.isArray(body?.deployable)) setDeployableChains(body.deployable);
       })
       .catch(() => {});
     return () => {
@@ -205,7 +205,9 @@ export default function CreatePage() {
     };
   }, [selectedNetworkId]);
 
-  const assetPool = registryAssets;
+  // Do not expose the previous network's list while its replacement is loading,
+  // or accept an incorrectly scoped API response as selectable assets.
+  const assetPool = registryAssets.filter(asset => asset.chain === selectedNetworkId);
 
   // Switching the network invalidates every asset selection made against
   // the PREVIOUS chain's registry — a composition chosen against Ethereum's
@@ -216,6 +218,8 @@ export default function CreatePage() {
   // rather than discarding their work with no explanation.
   const handleNetworkChange = (networkId: string) => {
     if (networkId === selectedNetworkId) return;
+    setRegistryAssets([]);
+    setRegistryAssetsLoading(true);
     setSelectedNetworkId(networkId);
     if (!isNativePaymentChain(networkId) && launchPayment === 'native') {
       setLaunchPayment('settlement');
@@ -269,7 +273,7 @@ export default function CreatePage() {
   const noRouteAssetIds = new Set(noRouteAssets.map((a) => a!.id));
 
   const totalAllocation = selectedAssetIds.reduce((sum, id) => sum + (allocations[id] || 0), 0);
-  const isValid = totalAllocation === 100 && selectedAssetIds.length > 0 && !nameTaken;
+  const isValid = totalAllocation === 100 && selectedAssetIds.length > 0 && !nameTaken && deployableChains.includes(selectedNetworkId);
 
 
   const equalize = (ids: string[]) => {
@@ -410,7 +414,9 @@ export default function CreatePage() {
           ? 'Weights must total 100%'
           : noRouteAssets.length > 0 && !unroutablePolicyChosen
             ? 'Choose what happens to assets with no route'
-            : null;
+            : !deployableChains.includes(selectedNetworkId)
+              ? 'Choose an available network'
+              : null;
   const networkLabel = NETWORKS.find((n) => n.id === selectedNetworkId)?.label ?? selectedNetworkId;
   const feeAllowed = performanceFeeAllowedOn(selectedNetworkId);
   const donutRows = selectedAssets.map((asset, i) => ({ asset: asset!, weight: allocations[asset!.id] || 0, color: allocationColor(i) }));
@@ -726,8 +732,8 @@ export default function CreatePage() {
 const UNROUTABLE_POLICY_LABELS: Record<UnroutablePolicy, { short: string; long: string }> = {
   BLOCK: { short: 'pause buying', long: 'Pause buying — nobody can buy the Bag until every asset has liquidity.' },
   HOLD_INPUT: {
-    short: 'hold as USDG',
-    long: "Hold that share as USDG — the buyer's money still goes in; the missing asset's share waits as USDG until it can be bought.",
+    short: 'keep payment token',
+    long: "Keep that share in the payment token — the buyer's money still goes in; the missing asset's share stays in the payment token until it can be bought.",
   },
   REFUND: { short: 'refund that share', long: "Refund that share — the buyer only pays for the assets that can be bought." },
 };

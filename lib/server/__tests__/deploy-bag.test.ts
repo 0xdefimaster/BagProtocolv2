@@ -76,6 +76,16 @@ beforeEach(() => {
 });
 
 describe('prepareBagDeployment', () => {
+  it.each([['base', 8453], ['arbitrum', 42161]] as const)('prepares a user-owned Bag on %s using its saved network', async (chain, chainId) => {
+    getBagById.mockResolvedValue(bag({ chain }));
+    const assets = ASSETS.map(a => ({ ...a, chain }));
+    getCurrentBagVersion.mockResolvedValue({ ...version, recipe: { assets } });
+    const { deps } = makeAdapter({ prepareBagCreation: vi.fn(async () => ({ to: FACTORY, data: '0xdeadbeef' as const, chainId, value: '0' })) });
+    const r = await prepareBagDeployment(admin, session, BAG_ID, deps);
+    expect(r).toMatchObject({ ok: true, chain, wallet: WALLET.toLowerCase(), transaction: { chainId, to: FACTORY } });
+    expect(deps.resolveAdapter).toHaveBeenCalledWith(chain);
+  });
+
   it('owner: returns calldata for the Bag-derived chain, the adapter\'s factory, and the session wallet as the only valid sender', async () => {
     const { adapter, deps } = makeAdapter();
     const r = await prepareBagDeployment(admin, session, BAG_ID, deps);

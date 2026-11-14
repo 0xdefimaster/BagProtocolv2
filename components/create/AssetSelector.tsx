@@ -73,7 +73,7 @@ export function AssetSelector({ assets, selectedIds, onSelect, onDeselect, loadi
       )}
 
       {loadingRegistryAssets && (
-        <div style={{ marginTop: 10, fontSize: 13, color: 'var(--mute)' }}>Loading live stock tokens…</div>
+        <div style={{ marginTop: 10, fontSize: 13, color: 'var(--mute)' }}>Loading verified assets…</div>
       )}
 
       {selectedAssets.length > 0 && (

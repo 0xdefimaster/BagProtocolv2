@@ -30,7 +30,7 @@ export function NetworkSelector({ selected, onChange, deployable }: NetworkSelec
     <div className="network-grid" role="radiogroup" aria-label="Deploy network">
       {NETWORKS.map((net) => {
         const active = net.id === selected;
-        const available = !deployable || deployable.includes(net.id) || active;
+        const available = !deployable || deployable.includes(net.id);
         return (
           <button
             type="button"
