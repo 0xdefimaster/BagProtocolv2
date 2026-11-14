@@ -198,6 +198,15 @@ describe('verifyRedeemExecution — one-transaction (Composer) redemption', () =
     ]);
   });
 
+  // M2 wiring (BAG_WALLET_BATCH_BINDING): the sale's stored approvals (one per sold token) reach the verifier.
+  it('hands the built approvals and the redeem flow to the transaction verifier', async () => {
+    const approvals = [{ token: MSFT, spender: TX.to, amountRaw: '1000' }, { token: NVDA, spender: TX.to, amountRaw: '2000' }];
+    row = { ...row, composerTransaction: { ...TX, approvals } };
+    trackComposerMock.mockResolvedValue({ kind: 'DONE', receivedAmountsByAddress: { [USDG]: '9900000' }, sentAmountsByAddress: { [MSFT]: '1000', [NVDA]: '2000' } });
+    await verify();
+    expect(trackComposerMock.mock.calls[0][0]).toMatchObject({ expectedApprovals: approvals, flow: 'redeem' });
+  });
+
   it('a sale into native ETH whose amount cannot be measured is not verified; nothing is booked', async () => {
     const ETH = '0x0000000000000000000000000000000000000000';
     row = { ...intent(), outputAsset: { chain: 'robinhood', address: ETH }, outputDecimals: 18 };

@@ -1434,6 +1434,8 @@ export async function verifyExecution(
         chain: anySubmittedStep.sourceChain,
         recipient: intent.walletAddress,
         expectedTransaction: intent.composerTransaction,
+        expectedApprovals: intent.composerTransaction.approvals ?? [],
+        flow: 'purchase',
       });
     }
   }

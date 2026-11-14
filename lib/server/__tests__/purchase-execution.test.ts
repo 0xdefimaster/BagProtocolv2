@@ -2207,5 +2207,18 @@ describe('verifyExecution — providerEnforcedMinOutputRaw never changes the ver
     expect(without.steps.map((st) => st.status)).toEqual(['COMPLETED', 'COMPLETED']);
     expect(without.holdings).toHaveLength(2);
   });
+
+  // M2 wiring (BAG_WALLET_BATCH_BINDING): the exact binding can only accept a batched approval BAG built if the flow
+  // hands the intent's stored list to the verifier; an older intent without a list allows none.
+  it('hands the built approvals and the purchase flow to the transaction verifier', async () => {
+    const approvals = [{ token: '0xInputToken', spender: '0xComposerDiamond', amountRaw: '1000' }];
+    const withList = composerIntent(null);
+    withList.composerTransaction = { ...COMPOSER_TX, approvals };
+    await verify(withList, received);
+    expect(trackComposerTransactionMock.mock.calls[0][0]).toMatchObject({ expectedTransaction: withList.composerTransaction, expectedApprovals: approvals, flow: 'purchase' });
+
+    await verify(composerIntent(null), received);
+    expect(trackComposerTransactionMock.mock.calls[0][0]).toMatchObject({ expectedApprovals: [], flow: 'purchase' });
+  });
 });
 

@@ -225,6 +225,8 @@ export async function verifyRebalanceExecution(
     chain: 'robinhood',
     recipient: intent.walletAddress,
     expectedTransaction: intent.composerTransaction,
+    expectedApprovals: intent.composerTransaction.approvals,
+    flow: 'rebalance',
   });
   if (outcome.kind === 'PENDING') return { ok: true, intent };
   if (outcome.kind === 'FAILED') {

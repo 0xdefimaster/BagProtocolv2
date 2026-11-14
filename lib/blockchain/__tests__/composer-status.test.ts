@@ -171,12 +171,13 @@ describe('trackComposerTransaction: wallet batches', () => {
 });
 
 // KNOWN GAP, recorded so that a fix changes it deliberately (docs/security/EXECUTION_TRUST_BOUNDARY_REVIEW.md, T-1).
+// It holds in the default BAG_WALLET_BATCH_BINDING=off; 'enforce' refuses it (wallet-batch-binding.test.ts).
 // Containment proves the exact Composer call ran inside the wallet's batch; it does not exclude OTHER calls in the
 // same batch, and every Transfer of a token to the wallet in the transaction is credited. A wallet that adds its own
 // transferFrom(otherAccount → wallet) of an output token therefore inflates the credited purchase output (the
 // purchase path checks only the lower bound, minOutputRaw). The SDK's verifyPurchaseReceipt refuses this envelope
 // without an execution trace (INDETERMINATE, UNSUPPORTED_TRANSACTION_ENVELOPE).
-describe('trackComposerTransaction: wallet batches, KNOWN GAP T-1', () => {
+describe('trackComposerTransaction: wallet batches, KNOWN GAP T-1 (default off mode)', () => {
   it('credits a Transfer produced by another call in the same batch as Composer output', async () => {
     const OTHER = '0x7777777777777777777777777777777777777777';
     const extra = encodeFunctionData({ abi: parseAbi(['function transferFrom(address,address,uint256)']), args: [OTHER as Hex, WALLET as Hex, BigInt(1000)] });

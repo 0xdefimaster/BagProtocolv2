@@ -1,8 +1,17 @@
 import { decodeEventLog, parseAbiItem } from 'viem';
 import { getChainPublicClient, hasRpcEndpoint } from '@/lib/blockchain/rpc/clients';
 import { isBagChain } from '@/lib/config/chains';
+import { walletBatchBindingMode } from '@/lib/config/execution';
 import { ChainId } from '@/types/basket-protocol';
 import { PurchaseIntentFailureCode } from '@/types/purchase-intent';
+import {
+  chainIdOf,
+  verifyWalletExecution,
+  WALLET_ENVELOPE_POLICY,
+  type WalletCallExpectation,
+  type WalletExecutionVerification,
+  type WalletStateReader,
+} from '@/packages/bag-sdk/src';
 
 // -----------------------------------------------------------------------------
 // composer-status.ts — the Composer counterpart to lifi-status.ts.
@@ -62,6 +71,66 @@ export interface TrackComposerTransactionInput {
    * carries this exact call is the same transaction (`batchContainsCall`).
    */
   expectedTransaction: { to: string; data: string; value: string };
+  /**
+   * The ERC-20 approvals BAG built with the transaction (the intent's stored list; empty when none). Used only by
+   * the exact binding (BAG_WALLET_BATCH_BINDING shadow/enforce): a wallet batch may carry these approve calls next
+   * to the built call, and nothing else.
+   */
+  expectedApprovals?: readonly { token: string; spender: string; amountRaw: string }[];
+  /** Which flow is verifying, for the shadow log only. */
+  flow?: 'purchase' | 'redeem' | 'rebalance';
+}
+
+/** The exact binding's verdict, or ERROR when the stored expectation cannot even be evaluated. */
+type ExactBinding = WalletExecutionVerification | { status: 'ERROR'; code: string; detail: string };
+
+async function exactWalletBinding(
+  client: NonNullable<ReturnType<typeof chainClient>>,
+  tx: { from: string; to?: string | null; input: string; value: bigint; nonce?: number; type?: string; authorizationList?: readonly unknown[] | null },
+  blockNumber: bigint,
+  input: TrackComposerTransactionInput
+): Promise<ExactBinding> {
+  try {
+    if (!isBagChain(input.chain)) return { status: 'ERROR', code: 'UNKNOWN_CHAIN', detail: `Not a BAG chain: ${input.chain}.` };
+    const expectation: WalletCallExpectation = {
+      chainId: chainIdOf(input.chain),
+      wallet: input.recipient,
+      call: { to: input.expectedTransaction.to, data: input.expectedTransaction.data, value: BigInt(input.expectedTransaction.value || '0') },
+      approvals: (input.expectedApprovals ?? []).map((a) => ({ token: a.token, spender: a.spender, maxAmountRaw: BigInt(a.amountRaw) })),
+    };
+    return await verifyWalletExecution(
+      client as unknown as WalletStateReader,
+      { from: tx.from, to: tx.to ?? null, input: tx.input, value: tx.value, nonce: tx.nonce, type: tx.type, authorizationList: tx.authorizationList ?? null, blockNumber },
+      expectation
+    );
+  } catch (err) {
+    // A stored expectation the binder refuses to evaluate (malformed address or amount): never a pass.
+    return { status: 'ERROR', code: 'EXPECTATION_INVALID', detail: err instanceof Error ? err.name : 'Error' };
+  }
+}
+
+/**
+ * Shadow mode: records whether the exact binding agrees with the legacy verdict that still decides. One line per
+ * disagreement or smart-account envelope (agreeing direct calls are not logged). No wallet address, no RPC URL.
+ */
+function logShadow(input: TrackComposerTransactionInput, receiptStatus: string, legacyBound: boolean, exact: ExactBinding): void {
+  const exactBound = exact.status === 'BOUND';
+  const agree = (exact.status === 'BOUND' || exact.status === 'REFUSED') && exactBound === legacyBound;
+  const envelope = exact.status === 'BOUND' ? exact.envelope : undefined;
+  if (agree && envelope === 'DIRECT') return;
+  console.info(
+    `[wallet-binding-shadow] ${JSON.stringify({
+      policy: WALLET_ENVELOPE_POLICY,
+      flow: input.flow ?? 'unknown',
+      chain: input.chain,
+      txHash: input.txHash,
+      receiptStatus,
+      legacy: legacyBound ? 'ACCEPT' : 'REFUSE',
+      exact: exact.status,
+      ...(exact.status === 'BOUND' ? { envelope } : { code: exact.code }),
+      agree,
+    })}`
+  );
 }
 
 const word = (hex: string) => hex.padStart(64, '0');
@@ -151,12 +220,28 @@ export async function trackComposerTransaction(input: TrackComposerTransactionIn
     if (!same(tx.input, input.expectedTransaction.data)) mismatches.push('calldata');
     if (tx.value !== BigInt(input.expectedTransaction.value || '0')) mismatches.push('value');
   }
-  if (mismatches.length > 0) {
-    return {
-      kind: 'FAILED',
-      failureCode: 'VERIFICATION_FAILED',
-      message: `Reported transaction is not the Composer transaction built for this intent (mismatched: ${mismatches.join(', ')}).`,
-    };
+  const mode = walletBatchBindingMode();
+  if (mode === 'enforce') {
+    // The exact binding decides (BAG_WALLET_BATCH_BINDING=enforce): the transaction is the built call, or a pinned
+    // smart-account envelope whose executions are exactly that call plus the built approvals, run by pinned code.
+    const exact = await exactWalletBinding(client, tx, receipt.blockNumber, input);
+    if (exact.status === 'INDETERMINATE') return { kind: 'PENDING' };
+    if (exact.status !== 'BOUND') {
+      return {
+        kind: 'FAILED',
+        failureCode: 'VERIFICATION_FAILED',
+        message: `Reported transaction is not exactly the transaction built for this intent (${exact.code}): ${exact.detail}`,
+      };
+    }
+  } else {
+    if (mode === 'shadow') logShadow(input, String(receipt.status), mismatches.length === 0, await exactWalletBinding(client, tx, receipt.blockNumber, input));
+    if (mismatches.length > 0) {
+      return {
+        kind: 'FAILED',
+        failureCode: 'VERIFICATION_FAILED',
+        message: `Reported transaction is not the Composer transaction built for this intent (mismatched: ${mismatches.join(', ')}).`,
+      };
+    }
   }
 
   if (receipt.status !== 'success') {

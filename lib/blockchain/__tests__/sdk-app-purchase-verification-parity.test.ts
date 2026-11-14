@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { encodeAbiParameters, encodeEventTopics, encodeFunctionData, pad, parseAbi, parseAbiItem, type Hex } from 'viem';
 import { composeResponse, wireOut } from './composer-fixtures';
-import { compileBag, parseBag, planPurchase, verifyPurchaseReceipt, type BagDocument, type CompiledPurchase } from '@/packages/bag-sdk/src';
+import { compileBag, METAMASK_EIP7702_STATELESS_DELEGATOR as MM, parseBag, planPurchase, SELF_AUTHORIZED_PERMISSION_CONTEXT as EMPTY_CONTEXT, verifyPurchaseReceipt, type BagDocument, type CompiledPurchase } from '@/packages/bag-sdk/src';
 import { lifiComposer } from '@/packages/bag-sdk/src/adapters/lifi';
 
 // -----------------------------------------------------------------------------
@@ -21,11 +21,16 @@ import { lifiComposer } from '@/packages/bag-sdk/src/adapters/lifi';
 
 const getTransactionMock = vi.fn();
 const getReceiptMock = vi.fn();
+const getCodeMock = vi.fn();
+const getTransactionCountMock = vi.fn();
 vi.mock('@/lib/blockchain/rpc/clients', () => ({
   hasRpcEndpoint: () => true,
   getChainPublicClient: () => ({
     getTransaction: (...a: unknown[]) => getTransactionMock(...a),
     getTransactionReceipt: (...a: unknown[]) => getReceiptMock(...a),
+    getCode: (...a: unknown[]) => getCodeMock(...a),
+    getTransactionCount: (...a: unknown[]) => getTransactionCountMock(...a),
+    getBlock: async () => ({ transactions: [] }),
   }),
 }));
 const { trackComposerTransaction } = await import('../composer-status');
@@ -184,6 +189,82 @@ describe('SDK ↔ BAG app, one purchase end to end: same transaction to sign, sa
       c.tokens.map((t, i) => transferLog(t, SIGNER, BigInt(1000), i)));
     const { app, sdk } = await verifyBoth(c, client);
     expect(app.kind).toBe('DONE');
+    expect(sdk.status).toBe('INDETERMINATE');
+    expect(sdk.issues[0].code).toBe('UNSUPPORTED_TRANSACTION_ENVELOPE');
+  });
+});
+
+// -----------------------------------------------------------------------------
+// M2: the same shared exact binding on both sides (app BAG_WALLET_BATCH_BINDING=enforce, SDK smartAccountBinding
+// 'EXACT'). The app's verdict and the SDK's now agree on smart-account envelopes too: D-1 is resolved, and the
+// T-1 and F-01 envelopes are refused (or left unverified) by both.
+// -----------------------------------------------------------------------------
+describe('with the exact binding on both sides (enforce / EXACT)', () => {
+  const REDEEM = parseAbi(['function redeemDelegations(bytes[] permissionContexts, bytes32[] modes, bytes[] executionCallDatas)']);
+  const ERC20 = parseAbi(['function transferFrom(address from, address to, uint256 amount)']);
+  const OTHER = ('0x' + '9'.repeat(40)) as Hex;
+  const single = (target: Hex, data: Hex) => (target + pad('0x00', { size: 32 }).slice(2) + data.slice(2)) as Hex;
+  const redeem = (datas: Hex[], modes: Hex[]) => encodeFunctionData({ abi: REDEEM, functionName: 'redeemDelegations', args: [datas.map(() => EMPTY_CONTEXT), modes, datas] });
+  const MODE_SINGLE = pad('0x00', { size: 32 });
+
+  function observeExact(to: Hex, input: Hex, logs: ReturnType<typeof transferLog>[]) {
+    const transaction = { hash: TX_HASH, from: SIGNER, to, input, value: BigInt(0), chainId: CHAIN_ID, blockHash: BLOCK_HASH, blockNumber: BigInt(10), nonce: 7, type: 'eip1559' };
+    const receipt = { transactionHash: TX_HASH, blockHash: BLOCK_HASH, blockNumber: BigInt(10), from: SIGNER, to, status: 'success' as const, logs };
+    getTransactionMock.mockResolvedValue(transaction);
+    getReceiptMock.mockResolvedValue(receipt);
+    getCodeMock.mockResolvedValue(('0xef0100' + MM.delegate.slice(2)) as Hex);
+    getTransactionCountMock.mockResolvedValue(7);
+    return {
+      getChainId: vi.fn(async () => CHAIN_ID),
+      getTransaction: vi.fn(async () => transaction),
+      getTransactionReceipt: vi.fn(async () => receipt),
+      getBlock: vi.fn(async () => ({ hash: BLOCK_HASH })),
+      getBlockNumber: vi.fn(async () => BigInt(12)),
+      getCode: vi.fn(async () => ('0xef0100' + MM.delegate.slice(2)) as Hex),
+      getTransactionCount: vi.fn(async () => 7),
+    };
+  }
+
+  async function verifyExactBoth(c: Awaited<ReturnType<typeof compileBoth>>, client: ReturnType<typeof observeExact>) {
+    vi.stubEnv('BAG_WALLET_BATCH_BINDING', 'enforce');
+    try {
+      const app = await trackComposerTransaction({ txHash: TX_HASH, chain: 'robinhood', recipient: SIGNER, expectedTransaction: c.expected, expectedApprovals: [], flow: 'purchase' });
+      const sdk = await verifyPurchaseReceipt(c.sdk, {
+        client, transactionHash: TX_HASH, verification: 'TRANSFER_LOGS', smartAccountBinding: 'EXACT',
+        minimumReceived: c.tokens.map((t) => ({ token: t, amountRaw: BigInt(990) })),
+      });
+      return { app, sdk };
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  }
+
+  it('D-1 resolved: a MetaMask DelegationManager envelope carrying the call binds on both sides, with the same amounts', async () => {
+    const c = await compileBoth([4000, 6000]);
+    const client = observeExact(MM.delegationManager, redeem([single(ROUTER, CALLDATA)], [MODE_SINGLE]), c.tokens.map((t, i) => transferLog(t, SIGNER, BigInt(1000 + i), i)));
+    const { app, sdk } = await verifyExactBoth(c, client);
+    expect(app.kind).toBe('DONE');
+    expect(sdk.status).toBe('VERIFIED');
+    expect(sdk.transactionBinding).toBe('WALLET_BATCH_EXACT');
+    const appReceived = app.kind === 'DONE' ? app.receivedAmountsByAddress : {};
+    expect(appReceived).toEqual(Object.fromEntries(sdk.outputs.map((o) => [o.token.toLowerCase(), o.receivedRaw.toString()])));
+  });
+
+  it('T-1 refused on both sides: a sibling transfer next to the call', async () => {
+    const c = await compileBoth([4000, 6000]);
+    const sibling = encodeFunctionData({ abi: ERC20, functionName: 'transferFrom', args: [OTHER, SIGNER, BigInt(5000)] });
+    const input = redeem([single(ROUTER, CALLDATA), single(c.tokens[0], sibling)], [MODE_SINGLE, MODE_SINGLE]);
+    const logs = [...c.tokens.map((t, i) => transferLog(t, SIGNER, BigInt(1000), i)), transferLog(c.tokens[0], SIGNER, BigInt(5000), 9, OTHER)];
+    const { app, sdk } = await verifyExactBoth(c, observeExact(MM.delegationManager, input, logs));
+    expect(app).toMatchObject({ kind: 'FAILED', failureCode: 'VERIFICATION_FAILED', message: expect.stringMatching(/UNEXPECTED_CALL/) });
+    expect(sdk).toMatchObject({ status: 'FAILED', walletBindingIssue: 'UNEXPECTED_CALL' });
+  });
+
+  it('F-01 never passes on either side: the envelope sent to an unpinned contract', async () => {
+    const c = await compileBoth([4000, 6000]);
+    const client = observeExact(OTHER, redeem([single(ROUTER, CALLDATA)], [MODE_SINGLE]), c.tokens.map((t, i) => transferLog(t, SIGNER, BigInt(1000), i)));
+    const { app, sdk } = await verifyExactBoth(c, client);
+    expect(app).toMatchObject({ kind: 'FAILED', message: expect.stringMatching(/UNSUPPORTED_ENVELOPE/) });
     expect(sdk.status).toBe('INDETERMINATE');
     expect(sdk.issues[0].code).toBe('UNSUPPORTED_TRANSACTION_ENVELOPE');
   });
