@@ -358,19 +358,49 @@ export async function verifyPurchaseReceipt(
     const context: PurchaseEvidenceContext = {
       transactionHash, blockHash: receipt.blockHash, blockNumber: receipt.blockNumber, owner: plan.signer as Hex,
     };
+    const exact = options.smartAccountBinding === 'EXACT';
+    const expectation: WalletCallExpectation = {
+      chainId: plan.chainId,
+      wallet: plan.signer,
+      call: { to: compiled.transaction.to, data: compiled.transaction.data, value: compiled.transaction.value },
+      approvals: compiled.approvals.map((a) => ({ token: a.token, spender: a.spender, maxAmountRaw: a.amountRaw })),
+    };
+    /** 'EXACT' only: which code could run in the wallet (pinned delegate, or a plain EOA for DIRECT); null = proven. */
+    const walletState = async (bound: Extract<WalletEnvelopeBinding, { ok: true }>): Promise<PurchaseReceiptVerification | null> => {
+      if (!client.getCode || !client.getTransactionCount) {
+        result.walletBindingIssue = 'STATE_UNAVAILABLE';
+        return stop('INDETERMINATE', 'WALLET_STATE_UNAVAILABLE', 'Exact binding needs historical getCode and getTransactionCount reads.');
+      }
+      const getCode = client.getCode.bind(client);
+      const getTransactionCount = client.getTransactionCount.bind(client);
+      const reader: WalletStateReader = {
+        getCode: (a) => getCode(a),
+        getTransactionCount: (a) => getTransactionCount(a),
+        getBlock: (a) => client.getBlock(a) as Promise<{ transactions?: readonly unknown[] }>,
+      };
+      const state = await checkWalletExecutionState(reader, { ...tx, blockNumber: receipt.blockNumber }, bound);
+      if (state.ok) return null;
+      result.walletBindingIssue = state.code;
+      return state.code === 'STATE_UNAVAILABLE'
+        ? stop('INDETERMINATE', 'WALLET_STATE_UNAVAILABLE', state.detail)
+        : stop('FAILED', 'WALLET_ENVELOPE_MISMATCH', `${state.code}: ${state.detail}`);
+    };
     if (same(tx.to, compiled.transaction.to)) {
       if (!same(tx.from, plan.signer) || !same(tx.input, compiled.transaction.data) || tx.value !== compiled.transaction.value) {
         return stop('FAILED', 'TRANSACTION_MISMATCH', 'Mined sender, calldata or native value differs from the compiled direct call.');
       }
+      if (exact) {
+        const direct = bindWalletEnvelope(tx, expectation);
+        if (!direct.ok) {
+          result.walletBindingIssue = direct.code;
+          return stop('FAILED', 'WALLET_ENVELOPE_MISMATCH', `${direct.code}: ${direct.detail}`);
+        }
+        const refused = await walletState(direct);
+        if (refused) return refused;
+        result.walletEnvelope = direct.envelope;
+      }
       result.transactionBinding = 'DIRECT';
     } else {
-      const exact = options.smartAccountBinding === 'EXACT';
-      const expectation: WalletCallExpectation = {
-        chainId: plan.chainId,
-        wallet: plan.signer,
-        call: { to: compiled.transaction.to, data: compiled.transaction.data, value: compiled.transaction.value },
-        approvals: compiled.approvals.map((a) => ({ token: a.token, spender: a.spender, maxAmountRaw: a.amountRaw })),
-      };
       let bound: WalletEnvelopeBinding | null = null;
       if (exact) {
         bound = bindWalletEnvelope(tx, expectation);
@@ -380,24 +410,8 @@ export async function verifyPurchaseReceipt(
           return stop('FAILED', 'WALLET_ENVELOPE_MISMATCH', `${bound.code}: ${bound.detail}`);
         }
         if (bound.ok) {
-          if (!client.getCode || !client.getTransactionCount) {
-            result.walletBindingIssue = 'STATE_UNAVAILABLE';
-            return stop('INDETERMINATE', 'WALLET_STATE_UNAVAILABLE', 'Smart-account binding needs historical getCode and getTransactionCount reads.');
-          }
-          const getCode = client.getCode.bind(client);
-          const getTransactionCount = client.getTransactionCount.bind(client);
-          const reader: WalletStateReader = {
-            getCode: (a) => getCode(a),
-            getTransactionCount: (a) => getTransactionCount(a),
-            getBlock: (a) => client.getBlock(a) as Promise<{ transactions?: readonly unknown[] }>,
-          };
-          const state = await checkWalletExecutionState(reader, { ...tx, blockNumber: receipt.blockNumber }, bound);
-          if (!state.ok) {
-            result.walletBindingIssue = state.code;
-            return state.code === 'STATE_UNAVAILABLE'
-              ? stop('INDETERMINATE', 'WALLET_STATE_UNAVAILABLE', state.detail)
-              : stop('FAILED', 'WALLET_ENVELOPE_MISMATCH', `${state.code}: ${state.detail}`);
-          }
+          const refused = await walletState(bound);
+          if (refused) return refused;
           result.walletEnvelope = bound.envelope;
         }
       }

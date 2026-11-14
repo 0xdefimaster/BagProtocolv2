@@ -102,6 +102,8 @@ export {
   type ExecutionPathSelection,
 } from './execution-path';
 
+export { purchaseReceiptDecision, walletExecutionDecision, type VerificationDecision } from './decision';
+
 export {
   bindWalletEnvelope,
   checkWalletExecutions,

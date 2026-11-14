@@ -117,7 +117,10 @@ export type WalletEnvelopeBinding =
       ok: true;
       envelope: WalletEnvelopeKind;
       executions: DecodedWalletExecution[];
-      /** Smart accounts the wallet's code may be (empty for DIRECT, which runs no wallet code). */
+      /**
+       * Smart accounts the wallet's code may be. A DIRECT transaction may also come from a plain EOA: its own code
+       * does not run the call, but it would run if the call sent ETH back to the wallet (a native sale, a refund).
+       */
       candidates: readonly TrustedSmartAccount[];
     }
   | { ok: false; code: WalletEnvelopeIssueCode; detail: string };
@@ -286,7 +289,7 @@ export function bindWalletEnvelope(
   }
   if (same(tx.to, expectation.call.to)) {
     if (same(tx.input, expectation.call.data) && tx.value === expectation.call.value) {
-      return { ok: true, envelope: 'DIRECT', executions: [{ target: tx.to as Hex, value: tx.value, callData: tx.input as Hex }], candidates: [] };
+      return { ok: true, envelope: 'DIRECT', executions: [{ target: tx.to as Hex, value: tx.value, callData: tx.input as Hex }], candidates: trusted };
     }
     return issue('TRANSACTION_MISMATCH', 'A direct call to the built target with other calldata or value.');
   }
@@ -332,16 +335,18 @@ export function bindWalletEnvelope(
 const DESIGNATOR = /^0xef0100([0-9a-f]{40})$/;
 
 /**
- * Proves the code that executed the envelope was a pinned delegate: designator before the block, no authorization
- * in this transaction, and no nonce-changing event for the wallet earlier in the block (a valid EIP-7702
- * authorization always increments the authority's nonce). Any read failure is STATE_UNAVAILABLE, never a pass.
+ * Proves which code could run in the wallet during the transaction: for an envelope, a pinned delegate (it executes
+ * the calls); for a DIRECT call, a plain EOA or a pinned delegate (wallet code runs only if the call sends ETH back,
+ * and an unknown delegate could then add transfers of its own). Evidence: the code before the block, no
+ * authorization in this transaction, and no nonce-changing event for the wallet earlier in the block (a valid
+ * EIP-7702 authorization always increments the authority's nonce). Any read failure is STATE_UNAVAILABLE, never a
+ * pass.
  */
 export async function checkWalletExecutionState(
   reader: WalletStateReader,
   tx: WalletExecutionTransaction,
   binding: Extract<WalletEnvelopeBinding, { ok: true }>,
 ): Promise<{ ok: true; smartAccount: TrustedSmartAccount | null } | Issue> {
-  if (binding.envelope === 'DIRECT') return { ok: true, smartAccount: null };
   if (tx.type === undefined) return issue('STATE_UNAVAILABLE', 'Transaction type is unknown.');
   if (tx.type === 'eip7702' || (Array.isArray(tx.authorizationList) && tx.authorizationList.length > 0)) {
     return issue('DELEGATE_CHANGED_IN_TRANSACTION', 'The transaction carries an EIP-7702 authorization list.');
@@ -354,9 +359,13 @@ export async function checkWalletExecutionState(
   try {
     const code = ((await reader.getCode({ address: wallet, blockNumber: before })) ?? '0x').toLowerCase();
     const designated = DESIGNATOR.exec(code);
-    const smartAccount = designated ? binding.candidates.find((c) => same(c.delegate, `0x${designated[1]}`)) : undefined;
-    if (!smartAccount) {
-      return issue('DELEGATE_NOT_TRUSTED', designated ? `The wallet delegates to 0x${designated[1]}, which is not pinned.` : 'The wallet has no EIP-7702 delegation to a pinned smart account.');
+    const plainEoa = code === '0x';
+    const pinned = designated ? binding.candidates.find((c) => same(c.delegate, `0x${designated[1]}`)) : undefined;
+    const smartAccount: TrustedSmartAccount | null = pinned ?? null;
+    if (!pinned && !(binding.envelope === 'DIRECT' && plainEoa)) {
+      return issue('DELEGATE_NOT_TRUSTED', designated
+        ? `The wallet delegates to 0x${designated[1]}, which is not pinned.`
+        : plainEoa ? 'The wallet has no EIP-7702 delegation to a pinned smart account.' : 'The wallet is a contract, not an EOA or a pinned EIP-7702 account.');
     }
     const nonceBefore = await reader.getTransactionCount({ address: wallet, blockNumber: before });
     if (!Number.isSafeInteger(nonceBefore)) return issue('STATE_UNAVAILABLE', 'Nonce read failed.');

@@ -98,7 +98,7 @@ describe('bindWalletEnvelope: legitimate MetaMask EIP-7702 envelopes', () => {
       const r = bindWalletEnvelope(transaction, expectation);
       expect(r).toMatchObject({ ok: true, envelope });
       expect(r.ok && r.executions).toHaveLength(count);
-      expect(r.ok && r.candidates).toEqual(envelope === 'DIRECT' ? [] : [MM]);
+      expect(r.ok && r.candidates).toEqual([MM]);
     });
   }
 });
@@ -217,11 +217,29 @@ describe('checkWalletExecutionState: the code that ran must be the pinned delega
     expect(await checkWalletExecutionState(reader({ code: designator(foreign.delegate) }), mined({ input: viaManager([COMPILED]) }), b)).toMatchObject({ ok: false, code: 'DELEGATE_NOT_TRUSTED' });
   });
 
-  it('DIRECT runs no wallet code: no state is read', async () => {
-    const r = reader();
+  // A DIRECT call runs no wallet code unless it sends ETH back to the wallet (a native sale, a refund); then the
+  // wallet's code runs inside the transaction. So DIRECT also needs a plain EOA or a pinned delegate, unchanged.
+  describe('DIRECT: the wallet must be a plain EOA or a pinned delegate', () => {
     const b = bindWalletEnvelope(tx(ROUTER, CALLDATA), expectation) as Extract<WalletEnvelopeBinding, { ok: true }>;
-    expect(await checkWalletExecutionState(r, { ...tx(ROUTER, CALLDATA), nonce: 7, type: 'eip1559', blockNumber: BigInt(100) }, b)).toEqual({ ok: true, smartAccount: null });
-    expect(r.getCode).not.toHaveBeenCalled();
+    const direct = (over: Record<string, unknown> = {}) => ({ ...tx(ROUTER, CALLDATA), nonce: 7, type: 'eip1559', blockNumber: BigInt(100), ...over });
+    it('accepts a plain EOA (no wallet code can run), reading the previous block', async () => {
+      const r = reader({ code: '0x' });
+      expect(await checkWalletExecutionState(r, direct(), b)).toEqual({ ok: true, smartAccount: null });
+      expect(r.getCode).toHaveBeenCalledWith({ address: WALLET, blockNumber: BigInt(99) });
+    });
+    it('accepts a pinned MetaMask delegate', async () => {
+      expect(await checkWalletExecutionState(reader(), direct(), b)).toEqual({ ok: true, smartAccount: MM });
+    });
+    it('refuses an unpinned delegate (its receive() could add transfers when ETH comes back)', async () => {
+      expect(await checkWalletExecutionState(reader({ code: designator(hex('4', 40)) }), direct(), b)).toMatchObject({ ok: false, code: 'DELEGATE_NOT_TRUSTED' });
+    });
+    it('refuses a wallet that is a contract', async () => {
+      expect(await checkWalletExecutionState(reader({ code: '0x6080604052' }), direct(), b)).toMatchObject({ ok: false, code: 'DELEGATE_NOT_TRUSTED' });
+    });
+    it('refuses an EIP-7702 transaction and an unexplained nonce movement, as for envelopes', async () => {
+      expect(await checkWalletExecutionState(reader({ code: '0x' }), direct({ type: 'eip7702' }), b)).toMatchObject({ ok: false, code: 'DELEGATE_CHANGED_IN_TRANSACTION' });
+      expect(await checkWalletExecutionState(reader({ code: '0x', nonceBefore: 6, block: { transactions: [] } }), direct(), b)).toMatchObject({ ok: false, code: 'WALLET_STATE_CHANGED_IN_BLOCK' });
+    });
   });
 
   it('verifyWalletExecution: REFUSED is final, INDETERMINATE only for unreadable state', async () => {
@@ -336,6 +354,21 @@ describe("verifyPurchaseReceipt smartAccountBinding 'EXACT'", () => {
       const blind = await (await scenario(mode, [APPROVE, COMPILED], { noState: true })).run('EXACT');
       expect(blind.status).toBe('INDETERMINATE');
       expect(blind.issues[0].code).toBe('WALLET_STATE_UNAVAILABLE');
+    });
+  }
+
+  for (const mode of MODES) {
+    it(`${mode}: a DIRECT call under 'EXACT' needs a plain EOA or a pinned delegate; unreadable state is never a pass`, async () => {
+      const eoa = await (await scenario(mode, [COMPILED], { to: ROUTER, input: CALLDATA, code: '0x' })).run('EXACT');
+      expect(eoa).toMatchObject({ status: 'VERIFIED', transactionBinding: 'DIRECT', walletEnvelope: 'DIRECT' });
+      const pinned = await (await scenario(mode, [COMPILED], { to: ROUTER, input: CALLDATA })).run('EXACT');
+      expect(pinned.status).toBe('VERIFIED');
+      const unpinned = await (await scenario(mode, [COMPILED], { to: ROUTER, input: CALLDATA, code: designator(hex('4', 40)) })).run('EXACT');
+      expect(unpinned).toMatchObject({ status: 'FAILED', walletBindingIssue: 'DELEGATE_NOT_TRUSTED' });
+      const blind = await (await scenario(mode, [COMPILED], { to: ROUTER, input: CALLDATA, noState: true })).run('EXACT');
+      expect(blind).toMatchObject({ status: 'INDETERMINATE', walletBindingIssue: 'STATE_UNAVAILABLE' });
+      // 'OFF' keeps the direct path exactly as before: no state needed.
+      expect((await (await scenario(mode, [COMPILED], { to: ROUTER, input: CALLDATA, noState: true })).run('OFF')).status).toBe('VERIFIED');
     });
   }
 
