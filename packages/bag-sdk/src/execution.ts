@@ -1,6 +1,7 @@
 import { normalizeAddress } from './chains';
 import { BagSdkError, type BagSdkErrorCode } from './errors';
-import { planPurchase, type PurchasePlan, type PurchaseRequest } from './purchase';
+import { planPartition } from './partition';
+import { planPurchase, SDK_EXECUTION_ACCOUNTING, type PlannedLeg, type PurchasePlan, type PurchaseRequest } from './purchase';
 import type { BagDocument, Hex } from './types';
 import { decodeFunctionResult, encodeAbiParameters, encodeFunctionData, keccak256 } from 'viem';
 
@@ -230,7 +231,13 @@ function checked(plan: PurchasePlan, provider: string, r: ComposerCompileResult,
   const fail = (m: string, code: BagSdkErrorCode = 'PROVIDER_RESPONSE_INVALID'): never => {
     throw new ProviderResponseError(`${provider}: ${m}`, code);
   };
+  // Structure first: a provider (or adapter) that hands back something other than the result shape is refused as a
+  // provider error, never surfaced as a TypeError the caller might not treat as a refusal.
+  if (!r || typeof r !== 'object' || !r.transaction || typeof r.transaction !== 'object' || !Array.isArray(r.approvals) || !Array.isArray(r.legs) || r.approvals.some((a) => !a || typeof a !== 'object') || r.legs.some((l) => !l || typeof l !== 'object')) {
+    fail('malformed response.');
+  }
   const tx = r.transaction;
+  if (typeof tx.to !== 'string' || typeof tx.data !== 'string' || typeof tx.value !== 'string') fail('malformed transaction.');
   if (!ADDRESS_RE.test(tx.to) || !HEX_RE.test(tx.data) || tx.data.length < 10 || !VALUE_RE.test(tx.value)) fail('malformed transaction.');
   if (tx.chainId === null || tx.chainId !== plan.chainId) fail(`transaction chain ${tx.chainId ?? 'missing'} does not match plan chain ${plan.chainId}.`, 'CHAIN_MISMATCH');
   if (!trusted.targets.has(tx.to.toLowerCase())) fail(`transaction target ${tx.to} is not in the caller's trusted target allowlist.`, 'UNTRUSTED_TARGET');
@@ -372,7 +379,72 @@ export async function quoteBag(bag: BagDocument, req: PurchaseRequest, options: 
 
 /** Plans the purchase, compiles it with the provider, checks the answer and returns the unsigned transaction. */
 export async function compileBag(bag: BagDocument, req: PurchaseRequest, options: { provider: ComposerProvider; trust: ExecutionTrustPolicy }): Promise<CompiledPurchase> {
-  const plan = planPurchase(bag, req);
+  return compileChecked(planPurchase(bag, req), options);
+}
+
+/**
+ * A purchase planned by the caller rather than by `planPurchase` (an application with its own allocation, e.g. BAG
+ * App): the same provider call and the same response checks as `compileBag` (trusted target and approval spender,
+ * chain, value, per-leg tokens, minimums and slippage, price impact, quote timing, fees, warnings, delivery proof).
+ * `definitionHash` is the caller's strategy identity, or null when the plan does not come from a bag.json.
+ */
+export interface PlannedComposerPurchase {
+  chainId: number;
+  inputToken: string;
+  inputKind: 'native' | 'erc20';
+  signer: string;
+  /** Amount the program swaps (everything the legs share). */
+  swapAmountRaw: bigint;
+  /** In the order the caller wants the Composer legs; `legBps` sums to 10000. */
+  legs: PlannedLeg[];
+  slippageBps: number;
+  maxPriceImpactBps: number;
+  definitionHash: Hex | null;
+}
+
+/** The zero hash marks a plan that has no bag.json definition behind it. */
+const NO_DEFINITION_HASH = `0x${'0'.repeat(64)}` as Hex;
+
+export async function compilePlannedPurchase(planned: PlannedComposerPurchase, options: { provider: ComposerProvider; trust: ExecutionTrustPolicy }): Promise<CompiledPurchase> {
+  const bad = (m: string): never => { throw new BagSdkError('INVALID_ARGUMENT', `compilePlannedPurchase: ${m}`); };
+  if (!planned || !Number.isSafeInteger(planned.chainId) || planned.chainId < 1) bad('invalid chain id.');
+  if (!ADDRESS_RE.test(planned.signer)) bad('invalid signer.');
+  if (planned.inputKind !== 'native' && planned.inputKind !== 'erc20') bad('invalid input kind.');
+  if (planned.inputKind === 'erc20' && (!ADDRESS_RE.test(planned.inputToken) || planned.inputToken !== normalizeAddress(planned.inputToken))) bad('the ERC-20 input token must be a lowercase address.');
+  if (typeof planned.swapAmountRaw !== 'bigint' || planned.swapAmountRaw <= BigInt(0)) bad('swap amount must be positive.');
+  if (!Number.isSafeInteger(planned.slippageBps) || planned.slippageBps < 0 || planned.slippageBps >= 10_000) bad('invalid slippage.');
+  if (!Number.isSafeInteger(planned.maxPriceImpactBps) || planned.maxPriceImpactBps < 0 || planned.maxPriceImpactBps > 10_000) bad('invalid price-impact limit.');
+  if (planned.definitionHash !== null && !/^0x[0-9a-fA-F]{64}$/.test(planned.definitionHash)) bad('invalid definition hash.');
+  if (!Array.isArray(planned.legs) || planned.legs.length === 0) bad('no legs.');
+  const seen = new Set<string>();
+  let bps = 0;
+  for (const leg of planned.legs) {
+    if (!leg || !ADDRESS_RE.test(leg.token) || leg.token !== leg.token.toLowerCase() || seen.has(leg.token)) bad('leg tokens must be distinct lowercase addresses.');
+    if (!Number.isSafeInteger(leg.legBps) || leg.legBps < 1) bad('each leg needs a positive whole-bp share.');
+    if (typeof leg.targetInputRaw !== 'bigint' || leg.targetInputRaw <= BigInt(0)) bad('each leg needs a positive target input.');
+    seen.add(leg.token);
+    bps += leg.legBps;
+  }
+  if (bps !== 10_000) bad('leg shares must sum to 10000 bps.');
+  const plan: PurchasePlan = {
+    definitionHash: planned.definitionHash ?? NO_DEFINITION_HASH,
+    chainId: planned.chainId,
+    inputToken: planned.inputKind === 'native' ? planned.inputToken : normalizeAddress(planned.inputToken),
+    inputKind: planned.inputKind,
+    signer: planned.signer.toLowerCase(),
+    amountRaw: planned.swapAmountRaw,
+    kept: null,
+    swapAmountRaw: planned.swapAmountRaw,
+    legs: planned.legs.map((l) => ({ token: l.token, targetInputRaw: l.targetInputRaw, legBps: l.legBps })),
+    partition: planPartition(planned.legs.map((l) => l.legBps)),
+    slippageBps: planned.slippageBps,
+    maxPriceImpactBps: planned.maxPriceImpactBps,
+    accounting: SDK_EXECUTION_ACCOUNTING,
+  };
+  return compileChecked(plan, options);
+}
+
+async function compileChecked(plan: PurchasePlan, options: { provider: ComposerProvider; trust: ExecutionTrustPolicy }): Promise<CompiledPurchase> {
   const trusted = trustedContracts(plan, options.provider.name, options.trust);
   // The provider response is the first point where the compiled target and
   // approval spenders are available to compare with the caller's allowlists.
