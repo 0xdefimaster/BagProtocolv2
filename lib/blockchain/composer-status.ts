@@ -119,13 +119,15 @@ export function isWalletRoutedBatch(
  * MetaMask Delegation Framework v1.3.0 DelegationManager. Its EIP7702StatelessDeleGator implementation
  * (0x63c0c19a282a1b52b07dd5a65b58948a07dae32b) accepts executeFromExecutor only from this address, and both were read
  * on-chain on 2026-11-14 with code identical to the Sourcify-verified Base build (chain id and EIP-712 domain hash
- * masked). Chains not listed accept no redeemDelegations route.
+ * masked): Robinhood, Base, Arbitrum One and Ethereum mainnet (block 26413886). Chains not listed accept no
+ * redeemDelegations route.
  */
 const METAMASK_DELEGATION_MANAGER = '0xdb9b1e94b5b69df7e401ddbede43491141047db3';
 const PINNED_DELEGATION_MANAGERS: Partial<Record<ChainId, readonly string[]>> = {
   robinhood: [METAMASK_DELEGATION_MANAGER],
   base: [METAMASK_DELEGATION_MANAGER],
   arbitrum: [METAMASK_DELEGATION_MANAGER],
+  ethereum: [METAMASK_DELEGATION_MANAGER],
 };
 
 /**

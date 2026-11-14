@@ -39,7 +39,7 @@ function mine(to: Hex, input: Hex, logs: ReturnType<typeof log>[]) {
   client.getTransaction.mockResolvedValue({ hash: TX_HASH, from: WALLET, to, input, value: BigInt(0) });
   client.getTransactionReceipt.mockResolvedValue({ status: 'success', logs, blockNumber: BigInt(100) });
 }
-const track = (chain: 'robinhood' | 'ethereum' = 'robinhood') =>
+const track = (chain: 'robinhood' | 'ethereum' | 'solana' = 'robinhood') =>
   trackComposerTransaction({ txHash: TX_HASH, chain, recipient: WALLET, expectedTransaction: { to: COMPOSER, data: CALLDATA, value: '0' } });
 
 /** What the owner's contract does instead of the Composer call: hands over outputs it was funded with. */
@@ -57,8 +57,15 @@ describe('F-01: the redeemDelegations route needs the chain\'s pinned Delegation
 
   it('refuses the route on a chain where no DelegationManager is pinned', async () => {
     mine(DELEGATION_MANAGER, envelope, REAL_LOGS);
-    expect(await track('ethereum')).toMatchObject({ kind: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
-    expect(trustedDelegationManagers('ethereum')).toEqual([]);
+    // No BAG EVM chain is left unpinned; a chain without a pin (here the non-EVM one) never binds the route.
+    expect((await track('solana')).kind).toBe('FAILED');
+    expect(trustedDelegationManagers('solana')).toEqual([]);
+  });
+
+  it('every EVM chain BAG serves has the pin (Ethereum verified 2026-11-14 like the other three)', async () => {
+    for (const chain of ['robinhood', 'base', 'arbitrum', 'ethereum'] as const) expect(trustedDelegationManagers(chain)).toEqual([DELEGATION_MANAGER.toLowerCase()]);
+    mine(DELEGATION_MANAGER, envelope, REAL_LOGS);
+    expect((await track('ethereum')).kind).toBe('DONE');
   });
 
   it('keeps accepting the same envelope sent to the pinned DelegationManager (MetaMask EIP-7702)', async () => {
