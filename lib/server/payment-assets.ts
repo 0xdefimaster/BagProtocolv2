@@ -76,24 +76,37 @@ function otherVerifiedAssets(assets: CanonicalAsset[], chain: ChainId): Canonica
 }
 
 /**
+ * Chains whose Bags are bought with, and sold into, ONLY the settlement stablecoin and the native coin (Base:
+ * native USDC and ETH). Elsewhere any other verified token is offered too. Product policy, decided 2026-11-18;
+ * the Swap page's multi-buy / multi-sell already uses exactly these two on every chain.
+ */
+export const SETTLEMENT_AND_NATIVE_ONLY_CHAINS: ReadonlySet<ChainId> = new Set<ChainId>(['base']);
+
+function otherOptionsFor(assets: CanonicalAsset[], chain: ChainId): CanonicalAsset[] {
+  return SETTLEMENT_AND_NATIVE_ONLY_CHAINS.has(chain) ? [] : otherVerifiedAssets(assets, chain);
+}
+
+/**
  * What a buyer can pay with on `chain`: the settlement token first (so the default purchase stays exactly as
- * before), then the native token where it is enabled, then any other verified token. LI.FI Composer routes from
- * each into the Bag's assets; a token that is itself a Bag asset is kept as is (KEEP leg).
+ * before), then the native token where it is enabled, then any other verified token (not on
+ * SETTLEMENT_AND_NATIVE_ONLY_CHAINS). LI.FI Composer routes from each into the Bag's assets; a token that is itself
+ * a Bag asset is kept as is (KEEP leg).
  */
 export function purchaseInputAssetsFor(assets: CanonicalAsset[], chain: ChainId): CanonicalAsset[] {
   const native = nativePaymentAssetFor(chain);
   const settlement = paymentAssetsFor(assets, chain);
-  return [...settlement, ...(native ? [native] : []), ...otherVerifiedAssets(assets, chain)];
+  return [...settlement, ...(native ? [native] : []), ...otherOptionsFor(assets, chain)];
 }
 
 /**
  * What a seller can receive on `chain`. A sale that pays a performance fee settles in the settlement token only
  * (RedeemSettlement / RedeemFeeRouter pay the fee in it). A free sale may receive the settlement token, native ETH
- * where native payments are on (one Composer transaction only), or any other verified token.
+ * where native payments are on (one Composer transaction only), or any other verified token (not on
+ * SETTLEMENT_AND_NATIVE_ONLY_CHAINS).
  */
 export function redeemOutputAssetsFor(assets: CanonicalAsset[], chain: ChainId, opts: { paysFee: boolean }): CanonicalAsset[] {
   const settlement = paymentAssetsFor(assets, chain);
   if (opts.paysFee) return settlement;
   const native = nativePaymentAssetFor(chain);
-  return [...settlement, ...(native ? [native] : []), ...otherVerifiedAssets(assets, chain)];
+  return [...settlement, ...(native ? [native] : []), ...otherOptionsFor(assets, chain)];
 }

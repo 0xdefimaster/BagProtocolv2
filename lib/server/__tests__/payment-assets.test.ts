@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CanonicalAsset } from '@/types/basket-protocol';
-import { nativePaymentAssetFor, paymentAssetsFor, purchaseInputAssetsFor, redeemOutputAssetsFor } from '../payment-assets';
+import { SETTLEMENT_AND_NATIVE_ONLY_CHAINS, nativePaymentAssetFor, paymentAssetsFor, purchaseInputAssetsFor, redeemOutputAssetsFor } from '../payment-assets';
 import { NATIVE_ASSET_ADDRESS } from '@/lib/domain/basket-protocol/asset-identity';
 
 const USDG = '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168';
@@ -110,5 +110,37 @@ describe('any verified token as a purchase input or a free sale output', () => {
   it('a free sale may receive any verified token or native ETH; a sale that pays a fee settles in the settlement token only', () => {
     expect(redeemOutputAssetsFor(pool, 'robinhood', { paysFee: false }).map((a) => a.symbol)).toEqual(['USDG', 'ETH', 'PFE', 'WETH']);
     expect(redeemOutputAssetsFor(pool, 'robinhood', { paysFee: true }).map((a) => a.symbol)).toEqual(['USDG']);
+  });
+});
+
+describe('Base: Bags are bought with and sold into USDC and ETH only', () => {
+  const pool = [
+    asset('USDC', BASE_USDC, { chain: 'base' }),
+    asset('WETH', '0x4200000000000000000000000000000000000006', { chain: 'base', decimals: 18 }),
+    asset('cbBTC', '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', { chain: 'base', decimals: 8 }),
+    asset('USDG', USDG),
+  ];
+
+  it('purchase inputs are exactly USDC then ETH: no other verified Base token', () => {
+    expect(purchaseInputAssetsFor(pool, 'base').map((a) => [a.symbol, a.id])).toEqual([
+      ['USDC', `USDC-${BASE_USDC}`],
+      ['ETH', 'native:base'],
+    ]);
+  });
+
+  it('a free sale receives USDC or ETH only; a fee sale stays settlement-only', () => {
+    expect(redeemOutputAssetsFor(pool, 'base', { paysFee: false }).map((a) => a.symbol)).toEqual(['USDC', 'ETH']);
+    expect(redeemOutputAssetsFor(pool, 'base', { paysFee: true }).map((a) => a.symbol)).toEqual(['USDC']);
+  });
+
+  it('a Base token cannot be chosen by id even though it is VERIFIED (the server looks options up by id)', () => {
+    const ids = [...purchaseInputAssetsFor(pool, 'base'), ...redeemOutputAssetsFor(pool, 'base', { paysFee: false })].map((a) => a.id);
+    expect(ids.some((id) => id.startsWith('WETH-') || id.startsWith('cbBTC-'))).toBe(false);
+  });
+
+  it('applies to Base only: Robinhood, Ethereum and Arbitrum keep every verified token', () => {
+    expect([...SETTLEMENT_AND_NATIVE_ONLY_CHAINS]).toEqual(['base']);
+    const arb = [asset('USDC', '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', { chain: 'arbitrum' }), asset('ARB', '0x912CE59144191C1204E64559FE8253a0e49E6548', { chain: 'arbitrum', decimals: 18 })];
+    expect(purchaseInputAssetsFor(arb, 'arbitrum').map((a) => a.symbol)).toEqual(['USDC', 'ETH', 'ARB']);
   });
 });
