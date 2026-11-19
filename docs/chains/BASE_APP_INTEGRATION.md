@@ -27,6 +27,11 @@ and the send-capable rollout executor; the evidence belongs with the audit/docs 
 review), the SDK pilot files of `1ac0520`. No SQL migration. No settlement change: the attested fee settlement stays
 Robinhood-only, so **Base sales carry no performance fee** until a separate change.
 
+**Payment policy (2026-11-18, owner decision):** a Base Bag is bought with **USDC or ETH only** and sold into
+**USDC or ETH only** (`SETTLEMENT_AND_NATIVE_ONLY_CHAINS` in `lib/server/payment-assets.ts`). Other verified Base
+tokens are not offered as purchase inputs or sale outputs, and the server refuses them by id. The Swap page's
+multi-buy and multi-sell already use exactly these two. Robinhood, Ethereum and Arbitrum are unchanged.
+
 ## 3. Local verification on this branch
 
 - Typecheck: pass. Base-flow test files touched by the two commits plus purchase-execution and Composer quote tests:

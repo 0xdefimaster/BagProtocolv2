@@ -59,7 +59,10 @@ so shadow log output is not a Base exit criterion. Never enable enforcement just
    rounding dust; pre-existing or unrelated WETH/cbBTC holdings must remain. Do not use a zero whole-wallet
    token balance as the success criterion.
 
-Also check (read-only): a sale preview whose legs would mix chains is refused.
+Also check (read-only):
+- a sale preview whose legs would mix chains is refused;
+- the purchase preview offers exactly USDC and ETH, and the sale preview offers exactly USDC and ETH (no WETH,
+  cbBTC or other Base token).
 
 ## 5. Portfolio and reconciliation
 
