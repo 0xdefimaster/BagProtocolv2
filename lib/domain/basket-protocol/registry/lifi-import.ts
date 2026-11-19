@@ -314,7 +314,7 @@ export interface LiFiStockCandidate extends RegisterAssetInput {
   signal: LiFiStockSignal;
 }
 
-export const LIFI_STOCK_SIGNALS = ['rwa', 'backed', 'xstock', 'ondo'] as const;
+export const LIFI_STOCK_SIGNALS = ['rwa', 'backed', 'xstock', 'ondo', 'coinbase'] as const;
 export type LiFiStockSignal = (typeof LIFI_STOCK_SIGNALS)[number];
 
 /**
@@ -324,7 +324,7 @@ export type LiFiStockSignal = (typeof LIFI_STOCK_SIGNALS)[number];
  * token must still be LI.FI-verified, unambiguous, and named by the owner
  * in `--only` before anything is written.
  */
-const ISSUER_STOCK_PATTERNS: { signal: Exclude<LiFiStockSignal, 'rwa'>; name: RegExp; symbol: RegExp }[] = [
+const ISSUER_STOCK_PATTERNS: { signal: Exclude<LiFiStockSignal, 'rwa' | 'coinbase'>; name: RegExp; symbol: RegExp }[] = [
   { signal: 'backed', name: /^Backed\s/i, symbol: /^b[A-Z0-9.]+$/ },
   { signal: 'xstock', name: /\bxStock$/i, symbol: /^[A-Z0-9.]+x$/ },
   { signal: 'ondo', name: /\bOndo Tokenized\b/i, symbol: /^[A-Z0-9.]+on$/ },
@@ -337,8 +337,26 @@ const ISSUER_STOCK_PATTERNS: { signal: Exclude<LiFiStockSignal, 'rwa'>; name: Re
  */
 const LEVERAGED_PRODUCT_NAME = /\b\d+(?:\.\d+)?x\b|\bleveraged\b|\binverse\b|\bshort\b|\bdaily\b/i;
 
-function stockSignal(token: LiFiRawToken): LiFiStockSignal | null {
+/**
+ * Coinbase Tokenized Stocks on Base (B20 precompile tokens, issued by Coinbase).
+ * LI.FI names them plainly ("NVIDIA Corporation"), so no naming scheme identifies
+ * the issuer: the contract address is the only signal, pinned here. Source:
+ * Base's Tokenized Stocks list (docs.base.org/sdks/tokenized-stocks). Re-check
+ * against `GET https://api.coinbase.com/v1/tokenized-stocks` before adding one
+ * (`node scripts/check-lifi-routes.mjs --coinbase`). Derivatives wrapping these
+ * tokens (aBNVDAc, PT-/YT-NVDAc, ...) are different contracts and never match.
+ * Keys are lower-case addresses; values are the symbol LI.FI must report.
+ */
+const COINBASE_TOKENIZED_STOCKS_BASE: ReadonlyMap<string, string> = new Map([
+  ['0xb20000000000000000000078ee7ce2fe4908108c', 'NVDAc'],
+  ['0xb200000000000000000000c2e324d24d7eecd1fb', 'AAPLc'],
+  ['0xb2000000000000000000002d0ba3164cc74f58b7', 'GOOGLc'],
+  ['0xb2000000000000000000008bc8786b856e61707c', 'METAc'],
+]);
+
+function stockSignal(token: LiFiRawToken, chain?: LiFiStockImportChain): LiFiStockSignal | null {
   if (classifyLiFiToken(token) === 'stock') return 'rwa';
+  if (chain === 'base' && COINBASE_TOKENIZED_STOCKS_BASE.get((token.address ?? '').toLowerCase()) === token.symbol) return 'coinbase';
   const name = token.name ?? '';
   const symbol = token.symbol ?? '';
   return ISSUER_STOCK_PATTERNS.find((p) => p.name.test(name) && p.symbol.test(symbol))?.signal ?? null;
@@ -373,7 +391,7 @@ export async function fetchLiFiStockCandidatesForChain(
   const skipped: SkippedLiFiToken[] = [];
   const bySymbol = new Map<string, (LiFiRawToken & { priceUSD?: string })[]>();
   for (const token of rawTokens) {
-    const signal = stockSignal(token);
+    const signal = stockSignal(token, targetChain);
     if (signal === null || (issuers && !issuers.has(signal))) continue;
     if (typeof token.decimals !== 'number' || !token.address || !token.symbol) continue; // never fabricate a missing field
     const skip = (reason: SkippedLiFiTokenReason) => skipped.push({ symbol: token.symbol, address: token.address, name: token.name, reason });
@@ -418,7 +436,7 @@ export async function fetchLiFiStockCandidatesForChain(
       logoUrl: sanitizeLogoUrl(t.logoURI),
       marketCapUSD: typeof t.marketCapUSD === 'number' ? t.marketCapUSD : null,
       priceUSD: typeof t.priceUSD === 'string' ? t.priceUSD : null,
-      signal: stockSignal(t) ?? 'rwa',
+      signal: stockSignal(t, targetChain) ?? 'rwa',
     });
   }
   candidates.sort((a, b) => a.symbol.localeCompare(b.symbol));
