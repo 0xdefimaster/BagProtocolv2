@@ -1,11 +1,13 @@
 /**
- * Deploys contracts/RedeemSettlement.sol to Robinhood Chain (4663) or Base (8453), then reads it back and checks every
- * value. The settlement token is the chain's (lib/config/settlement.ts): USDG on Robinhood Chain, Circle USDC on Base.
+ * Deploys contracts/RedeemSettlement.sol to Robinhood Chain (4663), Base (8453) or Arbitrum (42161), then reads it back
+ * and checks every value. The settlement token is the chain's (lib/config/settlement.ts): USDG on Robinhood Chain,
+ * Circle USDC on Base and Arbitrum.
  * Runbook: docs/REDEEM_SETTLEMENT_DEPLOYMENT.md (Base: docs/chains/BASE_FEE_SETTLEMENT.md).
  *
  *   npx hardhat compile
  *   npx tsx scripts/deploy-redeem-settlement.ts                              # Robinhood Chain: deploy + verify
  *   npx tsx scripts/deploy-redeem-settlement.ts --chain=base                 # Base: deploy + verify
+ *   npx tsx scripts/deploy-redeem-settlement.ts --chain=arbitrum             # Arbitrum: deploy + verify
  *   npx tsx scripts/deploy-redeem-settlement.ts [--chain=base] --verify 0x…  # verify an existing deployment (no key needed)
  *
  * Deploy refuses unless ALL are set (on your own machine, in .env.local, never committed):
@@ -13,7 +15,8 @@
  *   REDEEM_SETTLEMENT_OWNER_ADDRESS          admin (setAttestor / setOwner) — an address, never a key
  *   REDEEM_SETTLEMENT_ATTESTOR_ADDRESS       the backend signer's ADDRESS — never its key
  *   REDEEM_SETTLEMENT_DEPLOY_CONFIRM         must equal I_UNDERSTAND_THIS_DEPLOYS_TO_ROBINHOOD_CHAIN
- *                                            (Base: I_UNDERSTAND_THIS_DEPLOYS_TO_BASE)
+ *                                            (Base: I_UNDERSTAND_THIS_DEPLOYS_TO_BASE,
+ *                                             Arbitrum: I_UNDERSTAND_THIS_DEPLOYS_TO_ARBITRUM)
  * Owner and attestor go straight into the constructor: the deployer keeps no power after the deploy.
  * Operational guards (not contract rules): deployer, owner and attestor must be three different addresses, and both
  * must be accounts (an EOA, or an EOA with an EIP-7702 delegation such as a MetaMask smart account). A contract owner
@@ -24,7 +27,7 @@
  * then checks that the key the backend will sign with belongs to the on-chain attestor. Only the match is printed.
  *
  * Writes no files. Prints addresses and transaction hashes only; never a key or the RPC URL.
- * Env: the chain's RPC (ROBINHOOD_RPC_URL / BASE_RPC_URL, or ALCHEMY_API_KEY; never printed).
+ * Env: the chain's RPC (ROBINHOOD_RPC_URL / BASE_RPC_URL / ARBITRUM_RPC_URL, or ALCHEMY_API_KEY; never printed).
  */
 import './load-env';
 import { readFileSync } from 'node:fs';
@@ -44,7 +47,7 @@ function refuse(message: string): never {
 }
 
 const chainArg = process.argv.find((a) => a.startsWith('--chain='))?.slice('--chain='.length) ?? 'robinhood';
-if (!isBagChain(chainArg) || !settlementTokenFor(chainArg)) refuse(`--chain=${chainArg}: fee settlement is supported on robinhood and base only.`);
+if (!isBagChain(chainArg) || !settlementTokenFor(chainArg)) refuse(`--chain=${chainArg}: fee settlement is supported on robinhood, base and arbitrum only.`);
 const target: BagChain = chainArg;
 const TOKEN = settlementTokenFor(target)!;
 const CHAIN_ID = BAG_CHAINS[target].chainId;
@@ -62,7 +65,7 @@ function printChecks(checks: DeploymentCheck[]): boolean {
   return checks.every((c) => c.ok);
 }
 
-const rpcUrl = target === 'robinhood' ? ROBINHOOD_RPC_URL : resolveRpcEndpoints(target)[0]?.url ?? refuse(`no RPC for ${target} (BASE_RPC_URL or ALCHEMY_API_KEY).`);
+const rpcUrl = target === 'robinhood' ? ROBINHOOD_RPC_URL : resolveRpcEndpoints(target)[0]?.url ?? refuse(`no RPC for ${target} (${target.toUpperCase()}_RPC_URL or ALCHEMY_API_KEY).`);
 const chain = defineChain({
   id: CHAIN_ID,
   name: BAG_CHAINS[target].viemChain.name,

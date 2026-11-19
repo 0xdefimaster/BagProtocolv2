@@ -6,13 +6,13 @@ import { COMPOSER_ELIGIBLE_CHAINS } from '@/lib/blockchain/lifi-composer-adapter
 // Where a holder can rebalance a position from their wallet (R2/R3: one LI.FI
 // Composer transaction, sells → hub stablecoin → buys, verified from the
 // receipt). The hub is the chain's settlement/payment stablecoin: USDG on
-// Robinhood Chain, Circle USDC on Base.
+// Robinhood Chain, Circle USDC on Base and Arbitrum.
 //
 // Listed explicitly rather than "every Composer chain": a chain is added here
 // once its rebalance has been run end to end, not because it could compile.
 // -----------------------------------------------------------------------------
 
-export const REBALANCE_CHAINS: readonly BagChain[] = ['robinhood', 'base'];
+export const REBALANCE_CHAINS: readonly BagChain[] = ['robinhood', 'base', 'arbitrum'];
 
 export function rebalanceSupportedOn(chain: string): chain is BagChain {
   return (

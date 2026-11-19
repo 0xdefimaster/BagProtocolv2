@@ -138,9 +138,13 @@ describe('Base: Bags are bought with and sold into USDC and ETH only', () => {
     expect(ids.some((id) => id.startsWith('WETH-') || id.startsWith('cbBTC-'))).toBe(false);
   });
 
-  it('applies to Base only: Robinhood, Ethereum and Arbitrum keep every verified token', () => {
-    expect([...SETTLEMENT_AND_NATIVE_ONLY_CHAINS]).toEqual(['base']);
+  it('applies to Base and Arbitrum: Robinhood and Ethereum keep every verified token', () => {
+    expect([...SETTLEMENT_AND_NATIVE_ONLY_CHAINS]).toEqual(['base', 'arbitrum']);
     const arb = [asset('USDC', '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', { chain: 'arbitrum' }), asset('ARB', '0x912CE59144191C1204E64559FE8253a0e49E6548', { chain: 'arbitrum', decimals: 18 })];
-    expect(purchaseInputAssetsFor(arb, 'arbitrum').map((a) => a.symbol)).toEqual(['USDC', 'ETH', 'ARB']);
+    // Arbitrum follows Base (2026-11-19): only the settlement stablecoin and ETH.
+    expect(purchaseInputAssetsFor(arb, 'arbitrum').map((a) => a.symbol)).toEqual(['USDC', 'ETH']);
+    expect(redeemOutputAssetsFor(arb, 'arbitrum', { paysFee: false }).map((a) => a.symbol)).toEqual(['USDC', 'ETH']);
+    const eth = [asset('USDC', '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', { chain: 'ethereum' }), asset('LINK', '0x514910771AF9Ca656af840dff83E8264EcF986CA', { chain: 'ethereum', decimals: 18 })];
+    expect(purchaseInputAssetsFor(eth, 'ethereum').map((a) => a.symbol)).toEqual(['USDC', 'ETH', 'LINK']);
   });
 });

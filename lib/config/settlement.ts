@@ -12,8 +12,9 @@ import { DEPLOYED_CONTRACTS, ROBINHOOD_REWARD_TOKEN } from '@/lib/config/robinho
 // another chain even with the same attestor key.
 //
 //   robinhood  REDEEM_SETTLEMENT_ADDRESS        (unchanged)
-//   base       REDEEM_SETTLEMENT_ADDRESS_BASE   (unset until deployed; until then
-//                                                a Base Bag must charge 0%)
+//   base       REDEEM_SETTLEMENT_ADDRESS_BASE      (unset until deployed; until then
+//                                                   a Base Bag must charge 0%)
+//   arbitrum   REDEEM_SETTLEMENT_ADDRESS_ARBITRUM  (same rule)
 //
 // The older RedeemFeeRouter / CreatorRewardsVault path stays Robinhood-only.
 // Read at call time, never cached (Next.js may load this before env is set).
@@ -34,11 +35,14 @@ const SETTLEMENT_TOKENS: Partial<Record<BagChain, SettlementToken>> = {
   robinhood: { address: ROBINHOOD_REWARD_TOKEN.address, symbol: ROBINHOOD_REWARD_TOKEN.symbol, decimals: ROBINHOOD_REWARD_TOKEN.decimals, freezeCheck: { fn: 'isFrozen' } },
   // Circle native USDC on Base (FiatTokenV2): isBlacklisted(address). Same address as PAYMENT_TOKEN_BY_CHAIN.base.
   base: { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', decimals: 6, freezeCheck: { fn: 'isBlacklisted' } },
+  // Circle native USDC on Arbitrum One (FiatTokenV2). Same address as PAYMENT_TOKEN_BY_CHAIN.arbitrum.
+  arbitrum: { address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', symbol: 'USDC', decimals: 6, freezeCheck: { fn: 'isBlacklisted' } },
 };
 
 const SETTLEMENT_ADDRESS_ENV: Partial<Record<BagChain, string>> = {
   robinhood: 'REDEEM_SETTLEMENT_ADDRESS',
   base: 'REDEEM_SETTLEMENT_ADDRESS_BASE',
+  arbitrum: 'REDEEM_SETTLEMENT_ADDRESS_ARBITRUM',
 };
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;

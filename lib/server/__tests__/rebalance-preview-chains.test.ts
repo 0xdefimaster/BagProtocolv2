@@ -52,7 +52,7 @@ beforeEach(() => {
 });
 
 describe('allocation preview across chains', () => {
-  it.each([['base', 8453, true], ['arbitrum', 42161, false]] as const)('reads %s balances and its block, without mixing a same-address Robinhood holding', async (chain, chainId, executionSupported) => {
+  it.each([['base', 8453, true], ['arbitrum', 42161, true]] as const)('reads %s balances and its block, without mixing a same-address Robinhood holding', async (chain, chainId, executionSupported) => {
     m.chain = chain;
     m.rpc.mockImplementation((requested: string) => requested === chain ? client(chainId, 88) : client(4663, 77, [90, 10]));
     const body = await call();

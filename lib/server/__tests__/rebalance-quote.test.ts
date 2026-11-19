@@ -58,30 +58,32 @@ describe('weightsFromValues', () => {
 });
 
 describe('quoteRebalance', () => {
-  it.each(['arbitrum', 'ethereum'])('keeps %s execution unavailable even when its allocation is readable', async (chain) => {
+  it.each(['ethereum'])('keeps %s execution unavailable even when its allocation is readable', async (chain) => {
     load.mockResolvedValue(loaded([], { bag: { id: 'b', chain } }));
     const f = composer({});
     expect(await run(f)).toMatchObject({ ok: false, status: 422, error: `Rebalancing is not available on ${chain} yet.` });
     expect(f).not.toHaveBeenCalled();
   });
 
-  it('Base: compiles on chain 8453 and routes a many-to-many rebalance through Circle USDC, never USDG', async () => {
-    const USDC_BASE = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
-    const baseOrder = (address: string, side: 'BUY' | 'SELL', value: string, quantityRaw: string | null) => ({ ...order(address, side, value, quantityRaw), asset: { chain: 'base', address } });
-    const holdings = [TSLA, NVDA].map((address) => ({ chain: 'base', address, decimals: 18, quantityRaw: (BigInt(60) * E18).toString(), sellableRaw: (BigInt(60) * E18).toString() }));
+  it.each([
+    ['base', 8453, '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'],
+    ['arbitrum', 42161, '0xaf88d065e77c8cc2239327c5edb3a432268e5831'],
+  ] as const)('%s: compiles on chain %s and routes a many-to-many rebalance through Circle USDC, never USDG', async (chain, chainId, USDC_BASE) => {
+    const baseOrder = (address: string, side: 'BUY' | 'SELL', value: string, quantityRaw: string | null) => ({ ...order(address, side, value, quantityRaw), asset: { chain, address } });
+    const holdings = [TSLA, NVDA].map((address) => ({ chain, address, decimals: 18, quantityRaw: (BigInt(60) * E18).toString(), sellableRaw: (BigInt(60) * E18).toString() }));
     load.mockResolvedValue(
       loaded([baseOrder(TSLA, 'SELL', '10', (BigInt(10) * E18).toString()), baseOrder(NVDA, 'SELL', '10', (BigInt(10) * E18).toString()), baseOrder(AMKR, 'BUY', '10', null), baseOrder(SIGNER, 'BUY', '10', null)], {
-        bag: { id: 'b', chain: 'base' },
+        bag: { id: 'b', chain },
         holdings,
-        symbols: { [`base:${TSLA}`]: 'TSLA', [`base:${NVDA}`]: 'NVDA', [`base:${AMKR}`]: 'AMKR', [`base:${SIGNER}`]: 'X' },
+        symbols: { [`${chain}:${TSLA}`]: 'TSLA', [`${chain}:${NVDA}`]: 'NVDA', [`${chain}:${AMKR}`]: 'AMKR', [`${chain}:${SIGNER}`]: 'X' },
       })
     );
-    const f = composer({ 'rb_buy_0.amountOut': { amountOut: '1', amountOutMin: '1' }, 'rb_buy_1.amountOut': { amountOut: '1', amountOutMin: '1' } }, 8453);
+    const f = composer({ 'rb_buy_0.amountOut': { amountOut: '1', amountOutMin: '1' }, 'rb_buy_1.amountOut': { amountOut: '1', amountOutMin: '1' } }, chainId);
     const r = await run(f);
     expect(r).toMatchObject({ ok: true, shape: 'HUB' });
     const sent = String((f as unknown as { mock: { calls: [unknown, RequestInit][] } }).mock.calls[0][1].body).toLowerCase();
     expect(sent).toContain(USDC_BASE);
-    expect(sent).toContain('8453');
+    expect(sent).toContain(String(chainId));
     expect(sent).not.toContain('0x5fc5360d0400a0fd4f2af552add042d716f1d168'); // USDG
   });
 

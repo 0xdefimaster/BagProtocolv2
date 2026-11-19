@@ -76,11 +76,12 @@ function otherVerifiedAssets(assets: CanonicalAsset[], chain: ChainId): Canonica
 }
 
 /**
- * Chains whose Bags are bought with, and sold into, ONLY the settlement stablecoin and the native coin (Base:
- * native USDC and ETH). Elsewhere any other verified token is offered too. Product policy, decided 2026-11-18;
- * the Swap page's multi-buy / multi-sell already uses exactly these two on every chain.
+ * Chains whose Bags are bought with, and sold into, ONLY the settlement stablecoin and the native coin (Base and
+ * Arbitrum: native USDC and ETH). Elsewhere any other verified token is offered too. Product policy, decided
+ * 2026-11-18 for Base and extended to Arbitrum on 2026-11-19; the Swap page's multi-buy / multi-sell already uses
+ * exactly these two on every chain.
  */
-export const SETTLEMENT_AND_NATIVE_ONLY_CHAINS: ReadonlySet<ChainId> = new Set<ChainId>(['base']);
+export const SETTLEMENT_AND_NATIVE_ONLY_CHAINS: ReadonlySet<ChainId> = new Set<ChainId>(['base', 'arbitrum']);
 
 function otherOptionsFor(assets: CanonicalAsset[], chain: ChainId): CanonicalAsset[] {
   return SETTLEMENT_AND_NATIVE_ONLY_CHAINS.has(chain) ? [] : otherVerifiedAssets(assets, chain);

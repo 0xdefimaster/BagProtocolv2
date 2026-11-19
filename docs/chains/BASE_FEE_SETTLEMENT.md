@@ -14,7 +14,8 @@ receipt, booked with `apply_rebalance_execution`); only the chain and the hub st
 | Verification and settle pass | Robinhood RPC | Base RPC (chain taken from the intent's legs and checked against the recorded transaction's chain id) |
 
 No migration, no contract, no new variable. `GET /api/deploy/chains` now also returns `rebalance` and
-`performanceFee` lists. Ethereum and Arbitrum stay disabled until each has been run end to end.
+`performanceFee` lists. Arbitrum follows the same rules (hub USDC); its rollout is `docs/chains/ARBITRUM_ROLLOUT.md`.
+Ethereum stays disabled.
 
 ## 2. Creator performance fee on Base (needs one deployment)
 
