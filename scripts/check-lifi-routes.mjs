@@ -6,7 +6,11 @@
 //   node scripts/check-lifi-routes.mjs --file=cas.txt          # one address per line
 //   node scripts/check-lifi-routes.mjs --usd=100,1000 0xADDR   # test sizes (default 100,1000)
 //   node scripts/check-lifi-routes.mjs --chain=arbitrum 0xADDR # Arbitrum One or ethereum (default: base)
-// Optional: set LIFI_API_KEY in the environment for a higher rate limit.
+//   node scripts/check-lifi-routes.mjs --from=0xYOURWALLET 0xADDR # quote for your real wallet (some issuers check it)
+// Optional: LIFI_API_KEY (higher rate limit) and LIFI_INTEGRATOR (default bag-protocol) from the environment,
+// e.g. node --env-file=.env.local scripts/check-lifi-routes.mjs ...
+// Tokenized stocks may be quoted by LI.FI Intents market makers instead of a DEX; those quote mainly during US
+// market hours, so a NO ROUTE overnight is not final. The route's tool is printed ("via ...").
 
 import { readFileSync } from 'node:fs';
 
@@ -23,7 +27,9 @@ if (!CHAINS[chainName]) {
 const CHAIN = CHAINS[chainName].id;
 const USDC = CHAINS[chainName].usdc;
 // Quotes need a sender; this one is only used for simulation, nothing is sent.
-const FROM = process.env.QUOTE_FROM || '0x000000000000000000000000000000000000dEaD';
+const fromArg = process.argv.find((a) => a.startsWith('--from='))?.slice(7);
+const FROM = fromArg || process.env.QUOTE_FROM || '0x000000000000000000000000000000000000dEaD';
+const INTEGRATOR = process.env.LIFI_INTEGRATOR || 'bag-protocol';
 const API = 'https://li.quest/v1';
 const HEADERS = process.env.LIFI_API_KEY ? { 'x-lifi-api-key': process.env.LIFI_API_KEY } : {};
 
@@ -35,7 +41,7 @@ for (const a of args) {
   if (a.startsWith('--usd=')) sizes = a.slice(6).split(',').map(Number).filter((n) => n > 0);
   else if (a.startsWith('--file=')) addrs.push(...readFileSync(a.slice(7), 'utf8').split(/\s+/));
   else if (a === '--coinbase') coinbase = true;
-  else if (a.startsWith('--chain=')) continue;
+  else if (a.startsWith('--chain=') || a.startsWith('--from=')) continue;
   else addrs.push(a);
 }
 
@@ -86,9 +92,12 @@ async function get(path, params) {
 async function quote(fromToken, toToken, fromAmount) {
   const r = await get('/quote', {
     fromChain: CHAIN, toChain: CHAIN, fromToken, toToken, fromAmount,
-    fromAddress: FROM, slippage: '0.03', order: 'CHEAPEST',
+    fromAddress: FROM, slippage: '0.03', order: 'CHEAPEST', integrator: INTEGRATOR,
   });
-  if (!r.ok) return { error: r.body?.message || `HTTP ${r.status}` };
+  if (!r.ok) {
+    const filtered = r.body?.errors?.filteredOut;
+    return { error: (r.body?.message || `HTTP ${r.status}`) + (filtered ? ` [filtered: ${JSON.stringify(filtered).slice(0, 200)}]` : '') };
+  }
   const e = r.body.estimate || {};
   const fromUSD = Number(e.fromAmountUSD), toUSD = Number(e.toAmountUSD);
   const gasUSD = (e.gasCosts || []).reduce((s, g) => s + Number(g.amountUSD || 0), 0);
