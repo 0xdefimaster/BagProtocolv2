@@ -1,4 +1,4 @@
-import { getTokens } from '@lifi/sdk';
+import { getToken, getTokens } from '@lifi/sdk';
 import { TokenTag } from '@lifi/types';
 import { ChainId, CanonicalAsset } from '@/types/basket-protocol';
 import { assetIdentityKey } from '../asset-identity';
@@ -339,6 +339,19 @@ const ISSUER_STOCK_PATTERNS: { signal: Exclude<LiFiStockSignal, 'rwa' | 'coinbas
 const LEVERAGED_PRODUCT_NAME = /\b\d+(?:\.\d+)?x\b|\bleveraged\b|\binverse\b|\bshort\b|\bdaily\b/i;
 
 
+/**
+ * LI.FI's full per-chain list (getTokens) can lag behind its single-token lookup: on 2026-11-19 MUc, PLTRc and SKHYc
+ * were verified via GET /v1/token but absent from the list. Each pinned Coinbase stock the list lacks is looked up
+ * by address; LI.FI's own answer (verification, symbol, decimals) still decides, exactly as for listed tokens. A
+ * lookup that fails is left out, never guessed.
+ */
+async function missingCoinbaseStocks(chainId: number, listed: LiFiRawToken[]): Promise<(LiFiRawToken & { priceUSD?: string })[]> {
+  const have = new Set(listed.map((t) => (t.address ?? '').toLowerCase()));
+  const missing = [...COINBASE_TOKENIZED_STOCKS_BASE.keys()].filter((a) => !have.has(a));
+  const found = await Promise.all(missing.map((a) => getToken(getLiFiClient(), chainId, a).catch(() => null)));
+  return found.filter((t): t is NonNullable<typeof t> => t !== null) as unknown as (LiFiRawToken & { priceUSD?: string })[];
+}
+
 function stockSignal(token: LiFiRawToken, chain?: LiFiStockImportChain): LiFiStockSignal | null {
   if (classifyLiFiToken(token) === 'stock') return 'rwa';
   if (chain === 'base' && COINBASE_TOKENIZED_STOCKS_BASE.get((token.address ?? '').toLowerCase()) === token.symbol) return 'coinbase';
@@ -367,6 +380,7 @@ export async function fetchLiFiStockCandidatesForChain(
     const numericChainId = toLiFiChainId(targetChain);
     const response = await getTokens(getLiFiClient(), { chains: [numericChainId], extended: true });
     rawTokens = (response.tokens[numericChainId] ?? []) as unknown as (LiFiRawToken & { priceUSD?: string })[];
+    if (targetChain === 'base') rawTokens = [...rawTokens, ...(await missingCoinbaseStocks(numericChainId, rawTokens))];
   } catch (err) {
     return { candidates: [], skipped: [], fetchError: err instanceof Error ? err.message : String(err) };
   }
