@@ -52,11 +52,11 @@ beforeEach(() => {
 });
 
 describe('allocation preview across chains', () => {
-  it.each([['base', 8453], ['arbitrum', 42161]])('reads %s balances and its block, without mixing a same-address Robinhood holding', async (chain, chainId) => {
+  it.each([['base', 8453, true], ['arbitrum', 42161, true]] as const)('reads %s balances and its block, without mixing a same-address Robinhood holding', async (chain, chainId, executionSupported) => {
     m.chain = chain;
     m.rpc.mockImplementation((requested: string) => requested === chain ? client(chainId, 88) : client(4663, 77, [90, 10]));
     const body = await call();
-    expect(body).toMatchObject({ blockNumber: '88', executionSupported: false, preview: { status: 'OK', navQuote: '100.000000000000000000', maxAbsDriftBps: 1000 } });
+    expect(body).toMatchObject({ blockNumber: '88', executionSupported, preview: { status: 'OK', navQuote: '100.000000000000000000', maxAbsDriftBps: 1000 } });
     expect(body.preview.allocations.map((a: { currentWeightBps: number }) => a.currentWeightBps)).toEqual([6000, 4000]);
   });
 
@@ -70,6 +70,7 @@ describe('allocation preview across chains', () => {
 
   it('does not display a false balance when the Base RPC serves the wrong chain', async () => {
     m.rpc.mockReturnValue(client(4663, 77));
-    expect(await call()).toMatchObject({ blockNumber: null, executionSupported: false, preview: { status: 'UNREADABLE_BALANCES' } });
+    // Base itself supports rebalancing; the unreadable balances keep the preview from offering one.
+    expect(await call()).toMatchObject({ blockNumber: null, executionSupported: true, preview: { status: 'UNREADABLE_BALANCES' } });
   });
 });

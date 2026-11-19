@@ -1,4 +1,5 @@
 import { DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
+import { redeemSettlementAddressFor } from '@/lib/config/settlement';
 
 // -----------------------------------------------------------------------------
 // The ONE place that decides how a sale with a performance fee is executed
@@ -10,12 +11,16 @@ import { DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
 //               (/execute) always refuse a fee (FEE_ROUTER_REQUIRED).
 //   fee = 0  →  the existing free path (/execute), unchanged.
 //
-// RedeemFeeRouter is only a path while RedeemSettlement is not configured.
+// RedeemFeeRouter is only a path while RedeemSettlement is not configured, and
+// only on Robinhood Chain (its vault and router exist nowhere else). Elsewhere
+// (Base) a fee-paying sale has exactly one path: that chain's RedeemSettlement
+// (lib/config/settlement.ts), or none at all.
 // -----------------------------------------------------------------------------
 
 export type FeeRedemptionPath = 'SETTLEMENT' | 'FEE_ROUTER' | 'NONE';
 
-export function feeRedemptionPath(): FeeRedemptionPath {
+export function feeRedemptionPath(chain: string = 'robinhood'): FeeRedemptionPath {
+  if (chain !== 'robinhood') return redeemSettlementAddressFor(chain) ? 'SETTLEMENT' : 'NONE';
   if (DEPLOYED_CONTRACTS.redeemSettlement) return 'SETTLEMENT';
   if (DEPLOYED_CONTRACTS.redeemFeeRouter && DEPLOYED_CONTRACTS.creatorRewardsVault) return 'FEE_ROUTER';
   return 'NONE';

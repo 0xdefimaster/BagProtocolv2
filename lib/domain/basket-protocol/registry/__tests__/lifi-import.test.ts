@@ -8,11 +8,14 @@ import { CanonicalAsset } from '@/types/basket-protocol';
 // -----------------------------------------------------------------------------
 
 const getTokensMock = vi.fn();
+// Single-token lookup (pinned Coinbase stocks missing from the full list). Rejects unless a test says otherwise.
+const getTokenMock = vi.fn(async (..._args: unknown[]): Promise<unknown> => { throw new Error('not found'); });
 vi.mock('@lifi/sdk', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@lifi/sdk')>();
   return {
     ...actual,
     getTokens: (...args: unknown[]) => getTokensMock(...args),
+    getToken: (...args: unknown[]) => getTokenMock(...args),
   };
 });
 
@@ -470,6 +473,44 @@ describe('fetchLiFiStockCandidatesForChain (tokenized stocks on ethereum / base 
     const r = await fetchLiFiStockCandidatesForChain('ethereum', { issuers: ['backed'] });
     expect(r.candidates.map((c) => c.symbol)).toEqual(['bNVDA']);
     expect(r.skipped).toEqual([]);
+  });
+
+  it('recognises Coinbase Tokenized Stocks on Base by pinned address only; derivatives and look-alikes never match', async () => {
+    const plain = (o: Record<string, unknown>) => ({ decimals: 18, tags: [], verificationStatus: 'verified', ...o });
+    const coinbaseNvda = {
+      tokens: {
+        8453: [
+          plain({ address: '0xb20000000000000000000078ee7ce2fE4908108C', symbol: 'NVDAc', name: 'NVIDIA Corporation' }),
+          plain({ address: '0xb200000000000000000000C2e324d24d7eEcd1fb', symbol: 'AAPLc', name: 'Apple Inc.' }),
+          plain({ address: '0xd01', symbol: 'aBNVDAc', name: 'Ample NVDAc' }), // derivative, other contract
+          plain({ address: '0xd02', symbol: 'PT-NVDAc', name: 'PT NVDAc' }),
+          plain({ address: '0xd03', symbol: 'NVDAc', name: 'NVIDIA Corporation' }), // same symbol, unpinned address
+          plain({ address: '0xb2000000000000000000002D0BA3164cc74f58B7', symbol: 'GOOG', name: 'Alphabet' }), // pinned address, wrong symbol
+        ],
+      },
+    };
+    getTokensMock.mockResolvedValue(coinbaseNvda);
+    const r = await fetchLiFiStockCandidatesForChain('base');
+    expect(r.candidates.map((c) => [c.symbol, c.signal, c.assetType])).toEqual([
+      ['AAPLc', 'coinbase', 'stock'],
+      ['NVDAc', 'coinbase', 'stock'],
+    ]);
+
+    // A pinned stock missing from LI.FI's full list is looked up by address; LI.FI's answer still decides.
+    getTokenMock.mockImplementation(async (...args: unknown[]) => {
+      const address = args[2];
+      if (address === '0xb200000000000000000000fd2f87532b90095211') return plain({ address: '0xb200000000000000000000Fd2f87532B90095211', symbol: 'MUc', name: 'Micron Technology Inc.' });
+      if (address === '0xb2000000000000000000007d16372840df4dabbe') return plain({ address: '0xb2000000000000000000007d16372840dF4dAbbe', symbol: 'PLTRc', name: 'Palantir', verificationStatus: 'unverified' });
+      throw new Error('not found');
+    });
+    const withLookup = await fetchLiFiStockCandidatesForChain('base');
+    expect(withLookup.candidates.map((c) => c.symbol)).toEqual(['AAPLc', 'MUc', 'NVDAc']);
+    expect(withLookup.skipped).toContainEqual(expect.objectContaining({ symbol: 'PLTRc', reason: 'UNVERIFIED_BY_LIFI' }));
+    getTokenMock.mockReset().mockImplementation(async (): Promise<unknown> => { throw new Error('not found'); });
+
+    // The pin is Base-only: the same address on another chain is not a Coinbase stock.
+    getTokensMock.mockResolvedValue({ tokens: { 1: coinbaseNvda.tokens[8453] } });
+    expect((await fetchLiFiStockCandidatesForChain('ethereum')).candidates).toEqual([]);
   });
 
   it('--only keeps just the requested symbols (case-insensitive); the rest are NOT_REQUESTED', async () => {

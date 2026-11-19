@@ -31,11 +31,11 @@ function loaded(orders: ReturnType<typeof order>[], over: Record<string, unknown
   };
 }
 
-function composer(produced: Record<string, { amountOut: string; amountOutMin: string }>) {
+function composer(produced: Record<string, { amountOut: string; amountOutMin: string }>, chainId = 4663) {
   const body = {
     data: {
       outputs: Object.fromEntries(Object.entries(produced).map(([k, v]) => [k, wireOut(v.amountOut, v.amountOutMin)])),
-      transactionRequest: { to: '0x0a6baefc776477c494ab8b0a288881a7b72196f7', chainId: 4663, data: '0xdeadbeef', value: '0' },
+      transactionRequest: { to: '0x0a6baefc776477c494ab8b0a288881a7b72196f7', chainId, data: '0xdeadbeef', value: '0' },
       userProxy: '0x0a6baefc776477c494ab8b0a288881a7b72196f7',
       priceImpact: { inputValueUsd: 10, outputValueUsd: 9.97, impactBps: 30, unpricedInputs: [], unpricedOutputs: [] },
       approvals: [{ token: TSLA, spender: '0x0a6baefc776477c494ab8b0a288881a7b72196f7', amount: (BigInt(10) * E18).toString() }],
@@ -58,11 +58,33 @@ describe('weightsFromValues', () => {
 });
 
 describe('quoteRebalance', () => {
-  it.each(['base', 'arbitrum'])('keeps %s execution unavailable even when its allocation is readable', async (chain) => {
+  it.each(['ethereum'])('keeps %s execution unavailable even when its allocation is readable', async (chain) => {
     load.mockResolvedValue(loaded([], { bag: { id: 'b', chain } }));
     const f = composer({});
-    expect(await run(f)).toMatchObject({ ok: false, status: 422, error: 'Rebalancing runs on Robinhood Chain only for now.' });
+    expect(await run(f)).toMatchObject({ ok: false, status: 422, error: `Rebalancing is not available on ${chain} yet.` });
     expect(f).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['base', 8453, '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'],
+    ['arbitrum', 42161, '0xaf88d065e77c8cc2239327c5edb3a432268e5831'],
+  ] as const)('%s: compiles on chain %s and routes a many-to-many rebalance through Circle USDC, never USDG', async (chain, chainId, USDC_BASE) => {
+    const baseOrder = (address: string, side: 'BUY' | 'SELL', value: string, quantityRaw: string | null) => ({ ...order(address, side, value, quantityRaw), asset: { chain, address } });
+    const holdings = [TSLA, NVDA].map((address) => ({ chain, address, decimals: 18, quantityRaw: (BigInt(60) * E18).toString(), sellableRaw: (BigInt(60) * E18).toString() }));
+    load.mockResolvedValue(
+      loaded([baseOrder(TSLA, 'SELL', '10', (BigInt(10) * E18).toString()), baseOrder(NVDA, 'SELL', '10', (BigInt(10) * E18).toString()), baseOrder(AMKR, 'BUY', '10', null), baseOrder(SIGNER, 'BUY', '10', null)], {
+        bag: { id: 'b', chain },
+        holdings,
+        symbols: { [`${chain}:${TSLA}`]: 'TSLA', [`${chain}:${NVDA}`]: 'NVDA', [`${chain}:${AMKR}`]: 'AMKR', [`${chain}:${SIGNER}`]: 'X' },
+      })
+    );
+    const f = composer({ 'rb_buy_0.amountOut': { amountOut: '1', amountOutMin: '1' }, 'rb_buy_1.amountOut': { amountOut: '1', amountOutMin: '1' } }, chainId);
+    const r = await run(f);
+    expect(r).toMatchObject({ ok: true, shape: 'HUB' });
+    const sent = String((f as unknown as { mock: { calls: [unknown, RequestInit][] } }).mock.calls[0][1].body).toLowerCase();
+    expect(sent).toContain(USDC_BASE);
+    expect(sent).toContain(String(chainId));
+    expect(sent).not.toContain('0x5fc5360d0400a0fd4f2af552add042d716f1d168'); // USDG
   });
 
   it('one sell, one buy: sells exactly the planned amount and reports the buy’s expected and minimum output, never the transaction', async () => {

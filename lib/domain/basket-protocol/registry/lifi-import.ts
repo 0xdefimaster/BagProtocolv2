@@ -1,4 +1,4 @@
-import { getTokens } from '@lifi/sdk';
+import { getToken, getTokens } from '@lifi/sdk';
 import { TokenTag } from '@lifi/types';
 import { ChainId, CanonicalAsset } from '@/types/basket-protocol';
 import { assetIdentityKey } from '../asset-identity';
@@ -8,6 +8,7 @@ import { toLiFiChainId } from '@/lib/blockchain/lifi-config';
 import { LOCAL_COIN_CANDIDATES } from './coingecko-import';
 import { ROBINHOOD_REWARD_TOKEN, ROBINHOOD_WETH_ADDRESS } from '@/lib/config/robinhood-chain';
 import { LogoUpdate, planLogoUpdates, sanitizeLogoUrl } from './logo-url';
+import { COINBASE_TOKENIZED_STOCKS_BASE } from '@/lib/config/coinbase-stocks';
 
 // -----------------------------------------------------------------------------
 // "Which coins/stocks exist on which network, per LI.FI" — same plan/apply
@@ -314,7 +315,7 @@ export interface LiFiStockCandidate extends RegisterAssetInput {
   signal: LiFiStockSignal;
 }
 
-export const LIFI_STOCK_SIGNALS = ['rwa', 'backed', 'xstock', 'ondo'] as const;
+export const LIFI_STOCK_SIGNALS = ['rwa', 'backed', 'xstock', 'ondo', 'coinbase'] as const;
 export type LiFiStockSignal = (typeof LIFI_STOCK_SIGNALS)[number];
 
 /**
@@ -324,7 +325,7 @@ export type LiFiStockSignal = (typeof LIFI_STOCK_SIGNALS)[number];
  * token must still be LI.FI-verified, unambiguous, and named by the owner
  * in `--only` before anything is written.
  */
-const ISSUER_STOCK_PATTERNS: { signal: Exclude<LiFiStockSignal, 'rwa'>; name: RegExp; symbol: RegExp }[] = [
+const ISSUER_STOCK_PATTERNS: { signal: Exclude<LiFiStockSignal, 'rwa' | 'coinbase'>; name: RegExp; symbol: RegExp }[] = [
   { signal: 'backed', name: /^Backed\s/i, symbol: /^b[A-Z0-9.]+$/ },
   { signal: 'xstock', name: /\bxStock$/i, symbol: /^[A-Z0-9.]+x$/ },
   { signal: 'ondo', name: /\bOndo Tokenized\b/i, symbol: /^[A-Z0-9.]+on$/ },
@@ -337,8 +338,23 @@ const ISSUER_STOCK_PATTERNS: { signal: Exclude<LiFiStockSignal, 'rwa'>; name: Re
  */
 const LEVERAGED_PRODUCT_NAME = /\b\d+(?:\.\d+)?x\b|\bleveraged\b|\binverse\b|\bshort\b|\bdaily\b/i;
 
-function stockSignal(token: LiFiRawToken): LiFiStockSignal | null {
+
+/**
+ * LI.FI's full per-chain list (getTokens) can lag behind its single-token lookup: on 2026-11-19 MUc, PLTRc and SKHYc
+ * were verified via GET /v1/token but absent from the list. Each pinned Coinbase stock the list lacks is looked up
+ * by address; LI.FI's own answer (verification, symbol, decimals) still decides, exactly as for listed tokens. A
+ * lookup that fails is left out, never guessed.
+ */
+async function missingCoinbaseStocks(chainId: number, listed: LiFiRawToken[]): Promise<(LiFiRawToken & { priceUSD?: string })[]> {
+  const have = new Set(listed.map((t) => (t.address ?? '').toLowerCase()));
+  const missing = [...COINBASE_TOKENIZED_STOCKS_BASE.keys()].filter((a) => !have.has(a));
+  const found = await Promise.all(missing.map((a) => getToken(getLiFiClient(), chainId, a).catch(() => null)));
+  return found.filter((t): t is NonNullable<typeof t> => t !== null) as unknown as (LiFiRawToken & { priceUSD?: string })[];
+}
+
+function stockSignal(token: LiFiRawToken, chain?: LiFiStockImportChain): LiFiStockSignal | null {
   if (classifyLiFiToken(token) === 'stock') return 'rwa';
+  if (chain === 'base' && COINBASE_TOKENIZED_STOCKS_BASE.get((token.address ?? '').toLowerCase()) === token.symbol) return 'coinbase';
   const name = token.name ?? '';
   const symbol = token.symbol ?? '';
   return ISSUER_STOCK_PATTERNS.find((p) => p.name.test(name) && p.symbol.test(symbol))?.signal ?? null;
@@ -364,6 +380,7 @@ export async function fetchLiFiStockCandidatesForChain(
     const numericChainId = toLiFiChainId(targetChain);
     const response = await getTokens(getLiFiClient(), { chains: [numericChainId], extended: true });
     rawTokens = (response.tokens[numericChainId] ?? []) as unknown as (LiFiRawToken & { priceUSD?: string })[];
+    if (targetChain === 'base') rawTokens = [...rawTokens, ...(await missingCoinbaseStocks(numericChainId, rawTokens))];
   } catch (err) {
     return { candidates: [], skipped: [], fetchError: err instanceof Error ? err.message : String(err) };
   }
@@ -373,7 +390,7 @@ export async function fetchLiFiStockCandidatesForChain(
   const skipped: SkippedLiFiToken[] = [];
   const bySymbol = new Map<string, (LiFiRawToken & { priceUSD?: string })[]>();
   for (const token of rawTokens) {
-    const signal = stockSignal(token);
+    const signal = stockSignal(token, targetChain);
     if (signal === null || (issuers && !issuers.has(signal))) continue;
     if (typeof token.decimals !== 'number' || !token.address || !token.symbol) continue; // never fabricate a missing field
     const skip = (reason: SkippedLiFiTokenReason) => skipped.push({ symbol: token.symbol, address: token.address, name: token.name, reason });
@@ -418,7 +435,7 @@ export async function fetchLiFiStockCandidatesForChain(
       logoUrl: sanitizeLogoUrl(t.logoURI),
       marketCapUSD: typeof t.marketCapUSD === 'number' ? t.marketCapUSD : null,
       priceUSD: typeof t.priceUSD === 'string' ? t.priceUSD : null,
-      signal: stockSignal(t) ?? 'rwa',
+      signal: stockSignal(t, targetChain) ?? 'rwa',
     });
   }
   candidates.sort((a, b) => a.symbol.localeCompare(b.symbol));

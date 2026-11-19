@@ -7,6 +7,7 @@ import type { PositionRebalancePreview } from '@/lib/domain/basket-protocol/reba
 import { useWallet } from '@/lib/wallet-context';
 import { executeWalletSweep, type SweepProgress } from '@/lib/blockchain/wallet-sweep-client';
 import { describeWalletError } from '@/lib/blockchain/wallet-error';
+import { TokenizedStockNotice } from '@/components/app/TokenizedStockNotice';
 
 // -----------------------------------------------------------------------------
 // The signed-in investor's allocation in this strategy against its current
@@ -259,6 +260,12 @@ export function RebalancePreviewCard({
       <p className="text-sm text-white/60 mb-4">
         What your wallet holds for this strategy, at verified prices, against the current version&apos;s target weights.
       </p>
+      {preview.requiresRebalance && data.executionSupported && (
+        <TokenizedStockNotice
+          chain={preview.orders[0]?.asset.chain}
+          symbols={preview.orders.map((o) => label(o.asset.chain, o.asset.address, o.symbol))}
+        />
+      )}
       <table className="w-full text-sm mb-4">
         <thead>
           <tr className="text-white/40 text-xs text-left">

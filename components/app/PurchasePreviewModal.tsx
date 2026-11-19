@@ -1,5 +1,6 @@
 'use client';
 
+import { TokenizedStockNotice } from '@/components/app/TokenizedStockNotice';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, ArrowRight, Loader2, CheckCircle2, AlertTriangle, Wallet } from 'lucide-react';
 import { MAX_ACCEPTABLE_PRICE_IMPACT_BPS, type ComposerFallbackNotice } from '@/types/purchase-intent';
@@ -736,6 +737,7 @@ export function PurchasePreviewModal({ bagId, bagName, initialAmount, preferNati
 
         {preview && !previewError && (
           <>
+            <TokenizedStockNotice chain={selectedAsset?.chain} symbols={preview.depositPlan.allocations.map((a) => a.targetSymbol)} />
             <div style={{ marginBottom: 6, fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--ink-soft, #B4AEA2)' }}>
               Allocation
             </div>

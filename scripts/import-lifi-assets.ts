@@ -46,7 +46,10 @@
 // Read-only lookup when a stock does not show up (prints LI.FI's name,
 // verification status and tags for every symbol/name containing the term):
 //   npx tsx scripts/import-lifi-assets.ts --search=NVDA --chain=arbitrum
-// --issuer=backed (or rwa, xstock, ondo; comma-separated) keeps only that
+// Coinbase Tokenized Stocks on Base (NVDAc, AAPLc, ...) are matched by their
+// pinned B20 addresses in lifi-import.ts, never by name:
+//   npx tsx scripts/import-lifi-assets.ts --stocks --issuer=coinbase --chain=base
+// --issuer=backed (or rwa, xstock, ondo, coinbase; comma-separated) keeps only that
 // issuer's tokens, e.g. Backed's bTokens:
 //   npx tsx scripts/import-lifi-assets.ts --stocks --issuer=backed --chain=arbitrum
 // --apply in stock mode requires --only: the owner names, from the dry run,

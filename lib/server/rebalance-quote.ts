@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { HoldingsClients } from '@/lib/server/position-valuation';
-import { ROBINHOOD_REWARD_TOKEN } from '@/lib/config/robinhood-chain';
+import { rebalanceHubToken, rebalanceSupportedOn } from '@/lib/server/rebalance-support';
 import { buildComposerRebalance, composerPortAmounts, rebalanceBuyNodeId, rebalanceSellNodeId, type RebalanceShape } from '@/lib/blockchain/lifi-composer-adapter';
 import { DEFAULT_COMPOSER_SLIPPAGE_BPS, composerFallbackFrom } from '@/lib/blockchain/lifi-purchase-quote';
 import { PRICE_IMPACT_ACCEPT_BUFFER_BPS, type ComposerFallbackNotice } from '@/types/purchase-intent';
@@ -139,7 +139,8 @@ export async function planRebalance(
   const loaded = await loadRebalancePreview(admin, client, priceProvider, session, bagId);
   if (!loaded.ok) return loaded;
   const { bag, recipe, holdings, symbols, preview } = loaded;
-  if (bag.chain !== 'robinhood') return { ok: false, status: 422, error: 'Rebalancing runs on Robinhood Chain only for now.' };
+  const chain = bag.chain;
+  if (!rebalanceSupportedOn(chain)) return { ok: false, status: 422, error: `Rebalancing is not available on ${chain} yet.` };
   if (preview.status !== 'OK') return { ok: false, status: 409, error: `No rebalance can be planned right now (${preview.status}).` };
   if (!preview.requiresRebalance) return { ok: false, status: 409, error: 'Your position is within the strategy’s drift threshold; there is nothing to rebalance.' };
 
@@ -160,10 +161,10 @@ export async function planRebalance(
   let compiled;
   try {
     compiled = await buildComposerRebalance({
-      chain: 'robinhood',
+      chain,
       sells: sells.map((o) => ({ address: o.asset.address, amountRaw: o.quantityRaw as string, symbol: label(o.asset.address) })),
       buys: buys.map((b) => ({ address: b.order.asset.address, weightBps: b.weightBps, symbol: label(b.order.asset.address) })),
-      hubTokenAddress: ROBINHOOD_REWARD_TOKEN.address,
+      hubTokenAddress: rebalanceHubToken(chain).address,
       signerAddress: session.walletAddress,
       slippageBps,
       maxPriceImpactBps,

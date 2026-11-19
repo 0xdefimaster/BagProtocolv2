@@ -10,7 +10,7 @@ import { useNotifications } from '@/lib/notifications-store';
 import { useWallet } from '@/lib/wallet-context';
 import { NETWORKS } from '@/lib/constants';
 import { Bag } from '@/types';
-import { MAX_PERFORMANCE_FEE_BPS, MAX_UNROUTABLE_WEIGHT_BPS, performanceFeeAllowedOn, UNROUTABLE_POLICIES, type UnroutablePolicy } from '@/types/basket-protocol';
+import { MAX_PERFORMANCE_FEE_BPS, MAX_UNROUTABLE_WEIGHT_BPS, PERFORMANCE_FEE_CHAINS, UNROUTABLE_POLICIES, type UnroutablePolicy } from '@/types/basket-protocol';
 import { Save, Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -110,12 +110,17 @@ export default function CreatePage() {
   // Robinhood Chain is where BAG's contracts live; other networks open up once a BagFactory is configured for them.
   const [selectedNetworkId, setSelectedNetworkId] = useState<string>('robinhood');
   const [deployableChains, setDeployableChains] = useState<string[]>([]);
+  // Networks where this deployment can settle a creator fee (server-side: lib/config/settlement.ts). Until the
+  // answer arrives, only the built-in list (Robinhood Chain).
+  const [feeChains, setFeeChains] = useState<readonly string[]>(PERFORMANCE_FEE_CHAINS);
+  const performanceFeeAllowedOn = (chain: string) => feeChains.includes(chain);
   useEffect(() => {
     let cancelled = false;
     fetch('/api/deploy/chains')
       .then((res) => (res.ok ? res.json() : null))
-      .then((body: { deployable?: string[] } | null) => {
+      .then((body: { deployable?: string[]; performanceFee?: string[] } | null) => {
         if (!cancelled && Array.isArray(body?.deployable)) setDeployableChains(body.deployable);
+        if (!cancelled && Array.isArray(body?.performanceFee)) setFeeChains(body.performanceFee);
       })
       .catch(() => {});
     return () => {
@@ -131,10 +136,10 @@ export default function CreatePage() {
   // 0 = no fee, which is a fully valid choice, not a placeholder — the
   // creator opts INTO a fee, never has one silently applied.
   const [performanceFeeBps, setPerformanceFeeBps] = useState(0);
-  // A fee can only be settled on Robinhood Chain for now (types/basket-protocol.ts PERFORMANCE_FEE_CHAINS).
+  // A fee can only be settled where this deployment has a settlement contract (GET /api/deploy/chains).
   useEffect(() => {
-    if (!performanceFeeAllowedOn(selectedNetworkId)) setPerformanceFeeBps(0);
-  }, [selectedNetworkId]);
+    if (!feeChains.includes(selectedNetworkId)) setPerformanceFeeBps(0);
+  }, [selectedNetworkId, feeChains]);
   // Bag rules chosen by the creator. Nothing rebalances by itself: "Drift" (default) shows holders a Rebalance
   // prompt once their position drifts 5% from the targets; slippage and minimum are enforced on purchase.
   const [rebalanceChoice, setRebalanceChoice] = useState<'Manual' | 'Weekly' | 'Monthly' | 'Drift'>('Drift');
@@ -572,7 +577,7 @@ export default function CreatePage() {
                 onChange={(e) => setPerformanceFeeBps(e.target.checked ? 1000 : 0)}
               />
             </label>
-            {!feeAllowed && <p className="create3-note" style={{ color: 'var(--gold)' }}>Performance fees are available on Robinhood Chain only for now; Bags on this network charge 0%.</p>}
+            {!feeAllowed && <p className="create3-note" style={{ color: 'var(--gold)' }}>Performance fees are not available on this network yet; Bags here charge 0%.</p>}
             {performanceFeeBps > 0 && (
               <>
                 <div className="alloc-slider-row">

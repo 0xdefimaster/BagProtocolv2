@@ -198,6 +198,8 @@ export async function signFeeAttestation(admin: SupabaseClient, userId: string, 
   if (!intentResult.ok) {
     throw new Error(`Redeem intent not accessible: ${intentResult.error}`);
   }
+  // RedeemFeeRouter and CreatorRewardsVault exist on Robinhood Chain only: never sign for a sale elsewhere.
+  if (intentResult.intent.outputAsset.chain !== 'robinhood') throw new RouterNotConfiguredError();
   const intent = intentResult.intent;
 
   const assetSteps = intent.steps.filter((s) => (s.action === 'SWAP' || s.action === 'KEEP') && BigInt(s.inputAmountRaw) > BigInt(0));

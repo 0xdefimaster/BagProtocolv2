@@ -26,6 +26,7 @@ const intent = {
     { action: 'SWAP', inputAsset: { chain: 'robinhood', address: AMKR }, inputAmountRaw: '1000' },
     { action: 'SWAP', inputAsset: { chain: 'robinhood', address: SOXX }, inputAmountRaw: '1000' },
   ],
+  outputAsset: { chain: 'robinhood', address: USDG },
 };
 let bag = { id: 'bag_1', creatorId: 'creator', performanceFeeBpsLocked: 1000 as number | null };
 let ledgerEvents: unknown[] = [];
@@ -74,7 +75,7 @@ vi.mock('@/lib/blockchain/robinhood-swap-builder', () => ({
   buildRobinhoodSwapLeg: (i: { inputToken: string }) => ({ swapTarget: '0x00000000000000000000000000000000000000e1', swapCallData: `0x${i.inputToken.slice(2, 10)}` }),
 }));
 
-const { signFeeAttestation, PositionBusyError, FeeBasisUnavailableError, SaleQuoteExpiredError, ExecutionPriceTooLowError, PriceUnavailableForSaleError } = await import(
+const { signFeeAttestation, RouterNotConfiguredError, PositionBusyError, FeeBasisUnavailableError, SaleQuoteExpiredError, ExecutionPriceTooLowError, PriceUnavailableForSaleError } = await import(
   '../redeem-fee-attestation'
 );
 
@@ -112,6 +113,16 @@ beforeEach(() => {
 });
 
 describe('signFeeAttestation — B0 floor-based fee', () => {
+  it('a sale on another chain (Base) is never signed for the Robinhood-only fee router', async () => {
+    const original = intent.outputAsset;
+    (intent as { outputAsset: { chain: string; address: string } }).outputAsset = { chain: 'base', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' };
+    try {
+      await expect(signFeeAttestation(admin, 'investor', intent.id)).rejects.toBeInstanceOf(RouterNotConfiguredError);
+    } finally {
+      (intent as { outputAsset: { chain: string; address: string } }).outputAsset = original;
+    }
+  });
+
   it('§4 case: floor 118.80, basis 100, 10% → fee 1.88, minUserProceeds 116.92 (the NAV value 125 plays no part)', async () => {
     const a = await signFeeAttestation(admin, 'investor', intent.id);
     expect(a.feeAmount).toBe('1880000');

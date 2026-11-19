@@ -41,7 +41,7 @@ import { trackComposerTransaction } from '@/lib/blockchain/composer-status';
 import { findComposerTransactionFromWallet, findTokenSaleTransactionFromWallet } from '@/lib/blockchain/composer-tx-search';
 import { classifyOutflowsForSale, recoveryGate, type SoldLeg } from '@/lib/server/outflow-classification';
 import { isBagChain } from '@/lib/config/chains';
-import { DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
+import { redeemSettlementAddressFor } from '@/lib/config/settlement';
 import { feeRedemptionPath } from '@/lib/server/fee-redemption-path';
 import { hasOpenRebalance } from '@/lib/server/rebalance-execution';
 import { readSettlementResult } from '@/lib/blockchain/redeem-settlement-event';
@@ -251,7 +251,7 @@ export async function createRedeemIntentForUser(params: CreateRedeemIntentParams
   // Either way it is never realized P&L: that comes only from verified receipts (accounting/position-pnl.ts).
   let redeemValueQuote: string;
   let sharePriceAtQuote: string;
-  if (feeBps > 0 && feeRedemptionPath() !== 'SETTLEMENT') {
+  if (feeBps > 0 && feeRedemptionPath(bag.chain) !== 'SETTLEMENT') {
     if (sharesBurnRaw === '0') return { ok: false, error: { kind: 'NO_POSITION' } };
     const [navOutcome, shareSupply] = await Promise.all([getBagNavSafe(admin, bagId, priceProvider), getShareSupply(admin, bagId)]);
     if (!navOutcome.ok) return { ok: false, error: { kind: 'PRICE_UNAVAILABLE', message: navOutcome.message } };
@@ -926,11 +926,13 @@ async function verifyComposerRedeemSteps(
     // Every one of these must hold: the transaction succeeded; the event came from the deployed RedeemSettlement
     // (the plan's address, which must still be the configured one); exactly one event for THIS redemption id; and
     // it settled what was attested — this wallet, this creator, this context.
-    // Settlement and royalty contracts are currently qualified only on Robinhood.
-    if (intent.outputAsset.chain !== 'robinhood') return markSwaps({ status: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
-    const deployed = DEPLOYED_CONTRACTS.redeemSettlement;
+    // The sale's chain must have its own RedeemSettlement configured (lib/config/settlement.ts); the event is read
+    // from that chain's receipt, never another's.
+    const settlementChain = intent.outputAsset.chain;
+    if (!isBagChain(settlementChain)) return markSwaps({ status: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
+    const deployed = redeemSettlementAddressFor(settlementChain);
     if (!deployed || deployed.toLowerCase() !== plan.settlement.toLowerCase()) return markSwaps({ status: 'FAILED', failureCode: 'VERIFICATION_FAILED' });
-    const settled = await readSettlementResult(txHash as `0x${string}`, plan.settlement, computeOnChainBagId(intent.id));
+    const settled = await readSettlementResult(txHash as `0x${string}`, plan.settlement, computeOnChainBagId(intent.id), settlementChain);
     const matches =
       settled !== null &&
       settled.user.toLowerCase() === intent.walletAddress.toLowerCase() &&

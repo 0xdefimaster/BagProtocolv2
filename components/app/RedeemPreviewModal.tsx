@@ -1,5 +1,6 @@
 'use client';
 
+import { TokenizedStockNotice } from '@/components/app/TokenizedStockNotice';
 import { useEffect, useMemo, useState } from 'react';
 import { X, Loader2, CheckCircle2, AlertTriangle, Wallet } from 'lucide-react';
 import { formatDecimalStringUsd, formatRawAmount } from '@/lib/format';
@@ -284,6 +285,8 @@ export function RedeemPreviewModal({ bagId, bagName, onClose, onCompleted }: Red
             ? 'This redemption sells your own holdings via a real, on-chain LI.FI route signed by your wallet.'
             : 'Redeeming sells the underlying assets your deposits actually hold, then sends the proceeds to your wallet.'}
         </p>
+
+        {position && <TokenizedStockNotice chain={outputAssets?.[0]?.chain} symbols={position.assets.map((a) => a.symbol)} />}
 
         {loadingPosition && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ink-soft, #B4AEA2)', fontSize: 12.5, marginBottom: 14 }}>

@@ -29,6 +29,8 @@ let ledger: { seq: string }[];
 let wallets: { id: string; wallet_address: string }[];
 let purchaseInFlight: unknown;
 let frozen: boolean | Error;
+// Which chain and freeze function the preflight read last.
+const freezeReads: { chain: string; fn: string }[] = [];
 let finalProxy: string;
 let legOutputs: Record<number, { amountOut: string; amountOutMin: string }>;
 const savedPlans: Plan[] = [];
@@ -100,9 +102,10 @@ vi.mock('@/lib/server/asset-repo', () => ({
 vi.mock('@/lib/server/price-provider', () => ({
   getPriceProvider: () => ({ getPrice: async ({ address }: { address: string }) => ({ price: address.toLowerCase() === AMKR ? '56.5' : '770' }) }),
 }));
-vi.mock('@/lib/blockchain/robinhood-public-client', () => ({
-  getRobinhoodPublicClient: () => ({
-    readContract: async () => {
+vi.mock('@/lib/blockchain/rpc/clients', () => ({
+  getChainPublicClient: (chain: string) => ({
+    readContract: async ({ functionName }: { functionName: string }) => {
+      freezeReads.push({ chain, fn: functionName });
       if (frozen instanceof Error) throw frozen;
       return frozen;
     },
@@ -123,7 +126,7 @@ vi.mock('@/lib/blockchain/lifi-composer-adapter', async (orig) => ({
     return {
       userProxy: finalProxy,
       approvals: [{ token: AMKR, spender: finalProxy, amountRaw: '20000000000000000' }],
-      transactionRequest: { to: finalProxy, data: `0xdeadbeef${SETTLEMENT.slice(2)}`, value: '0', chainId: 4663 },
+      transactionRequest: { to: finalProxy, data: `0xdeadbeef${String(req.settlementAddress ?? SETTLEMENT).slice(2)}`, value: '0', chainId: req.chain === 'base' ? 8453 : 4663 },
       outputs: {},
     };
   },
@@ -155,8 +158,11 @@ beforeEach(() => {
       { action: 'SWAP', inputAsset: { chain: 'robinhood', address: SPY }, inputAmountRaw: '1700000000000000' },
     ],
     settlementPlan: null,
+    outputAsset: { chain: 'robinhood', address: USDG },
   };
-  bag = { id: intent.bagId, creatorId: 'creator', performanceFeeBpsLocked: 1000, contractAddress: '0x00000000000000000000000000000000000000b1' };
+  bag = { id: intent.bagId, chain: 'robinhood', creatorId: 'creator', performanceFeeBpsLocked: 1000, contractAddress: '0x00000000000000000000000000000000000000b1' };
+  freezeReads.length = 0;
+  delete process.env.REDEEM_SETTLEMENT_ADDRESS_BASE;
   rootBag = null;
   version = { version: 3, compositionHash: 'c0ffee12', recipe: { performanceFeeBps: 1000 } };
   ledger = [{ seq: '810' }, { seq: '812' }];
@@ -431,5 +437,64 @@ describe('phase 2 — attestSettlement: re-check, sign, final transaction', () =
     expect(callOrder.indexOf('claim')).toBeGreaterThan(-1);
     expect(callOrder.lastIndexOf('checkOthers')).toBeGreaterThan(callOrder.indexOf('claim'));
     expect(callOrder).not.toContain('signedAndBuilt');
+  });
+
+  describe('per chain (lib/config/settlement.ts)', () => {
+    const USDC_BASE = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+    const SETTLEMENT_BASE = '0x00000000000000000000000000000000000005e2';
+    const asBase = () => {
+      intent = {
+        ...intent,
+        outputAsset: { chain: 'base', address: USDC_BASE },
+        steps: (intent.steps as { inputAsset: { chain: string } }[]).map((st) => ({ ...st, inputAsset: { ...st.inputAsset, chain: 'base' } })),
+      };
+      bag = { ...bag, chain: 'base' };
+    };
+
+    it('Robinhood keeps USDG, isFrozen and chain 4663', async () => {
+      await quoteSettlement(admin, 'user', intent.id as string);
+      await attestSettlement(admin, 'user', intent.id as string);
+      expect(finalBuilds[0]).toMatchObject({ chain: 'robinhood', outputTokenAddress: USDG, settlementAddress: getAddress(SETTLEMENT) });
+      expect(freezeReads).toContainEqual({ chain: 'robinhood', fn: 'isFrozen' });
+    });
+
+    it('Base without REDEEM_SETTLEMENT_ADDRESS_BASE: nothing quoted or signed (a Base Bag never uses the Robinhood contract)', async () => {
+      asBase();
+      await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(svc.SettlementNotConfiguredError);
+      await expect(attestSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(svc.SettlementNotConfiguredError);
+      expect(savedPlans).toHaveLength(0);
+      expect(finalBuilds).toHaveLength(0);
+    });
+
+    it('Base with its own RedeemSettlement: USDC, isBlacklisted, the Base contract and an EIP-712 domain on chain 8453', async () => {
+      asBase();
+      process.env.REDEEM_SETTLEMENT_ADDRESS_BASE = SETTLEMENT_BASE;
+      await quoteSettlement(admin, 'user', intent.id as string);
+      expect((savedPlans[0] as Record<string, string>).settlement).toBe(getAddress(SETTLEMENT_BASE));
+      const a = await attestSettlement(admin, 'user', intent.id as string);
+      expect(finalBuilds[0]).toMatchObject({ chain: 'base', outputTokenAddress: USDC_BASE, settlementAddress: getAddress(SETTLEMENT_BASE) });
+      expect(freezeReads).toContainEqual({ chain: 'base', fn: 'isBlacklisted' });
+      const message = {
+        ...a.message,
+        consumedBasis: BigInt(a.message.consumedBasis),
+        lossCarry: BigInt(a.message.lossCarry),
+        feeRateBps: BigInt(a.message.feeRateBps),
+        minUserProceeds: BigInt(a.message.minUserProceeds),
+        deadline: BigInt(a.message.deadline),
+      } as never;
+      const attestor = privateKeyToAccount(ATTESTOR_KEY).address;
+      const onBase = await recoverTypedDataAddress({ domain: settlementDomain(8453, getAddress(SETTLEMENT_BASE)), types: SETTLEMENT_TYPES, primaryType: 'Settlement', message, signature: a.signature });
+      expect(onBase).toBe(attestor);
+      // The same signature is worthless on Robinhood Chain: the domain binds the chain.
+      const onRobinhood = await recoverTypedDataAddress({ domain: settlementDomain(4663, getAddress(SETTLEMENT_BASE)), types: SETTLEMENT_TYPES, primaryType: 'Settlement', message, signature: a.signature });
+      expect(onRobinhood).not.toBe(attestor);
+    });
+
+    it('a sale whose output chain differs from the Bag\'s chain is refused', async () => {
+      process.env.REDEEM_SETTLEMENT_ADDRESS_BASE = SETTLEMENT_BASE;
+      intent = { ...intent, outputAsset: { chain: 'base', address: USDC_BASE } }; // the Bag stays on Robinhood
+      await expect(quoteSettlement(admin, 'user', intent.id as string)).rejects.toBeInstanceOf(svc.SettlementNotConfiguredError);
+      expect(savedPlans).toHaveLength(0);
+    });
   });
 });

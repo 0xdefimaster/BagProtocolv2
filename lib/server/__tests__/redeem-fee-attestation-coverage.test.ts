@@ -16,6 +16,7 @@ const intent = {
   sharesRaw: '100',
   redeemValueQuote: '100',
   steps: [{ action: 'SWAP', inputAsset: { chain: 'robinhood', address: '0xa' }, inputAmountRaw: '100' }],
+  outputAsset: { chain: 'robinhood', address: '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168' },
 };
 
 vi.mock('@/lib/config/robinhood-chain', async (orig) => ({
