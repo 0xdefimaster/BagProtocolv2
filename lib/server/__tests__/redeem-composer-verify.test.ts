@@ -289,7 +289,7 @@ describe('verifyRedeemExecution — fee-paying sale settled through RedeemSettle
     const outcome = await verify();
     expect(outcome.ok && outcome.value.status).toBe('COMPLETED');
     const { computeOnChainBagId } = await import('@/lib/domain/basket-protocol/onchain');
-    expect(readSettlementResultMock).toHaveBeenCalledWith(HASH, SETTLEMENT, computeOnChainBagId(ID));
+    expect(readSettlementResultMock).toHaveBeenCalledWith(HASH, SETTLEMENT, computeOnChainBagId(ID), 'robinhood');
     expect(row.steps.map((s) => s.outputAmountRaw)).toEqual(['6000000', '4000000']);
     expect(recordRedeemSettlementResultMock).toHaveBeenCalledTimes(1);
     const accountingAt = rpc.mock.invocationCallOrder[rpc.mock.calls.findIndex(([n]) => n === 'apply_redeem_execution')];

@@ -416,9 +416,11 @@ export function useRedeemExecution() {
       setState((s) => ({ ...s, phase: 'creating' }));
 
       let createdIntentId: string | null = null;
+      let routerAddress: `0x${string}` | null = null;
       // Routing invariant (lib/server/fee-redemption-path.ts): with RedeemSettlement configured, the older router is
       // never used; a fee-paying sale takes the settlement path below, a free one the existing path.
-      const routerAddress = isRedeemSettlementConfigured() ? null : getConfiguredRedeemFeeRouterAddress();
+      // RedeemFeeRouter exists on Robinhood Chain only; a sale elsewhere (Base) never takes it.
+      const routerAddressFor = (chain: string) => (chain === 'robinhood' && !isRedeemSettlementConfigured() ? getConfiguredRedeemFeeRouterAddress() : null);
 
       try {
         const { intent: created } = await postJson<{ intent: RedeemIntent }>(`/api/bags/${bagId}/redeem-intent`, {
@@ -427,6 +429,10 @@ export function useRedeemExecution() {
         });
         createdIntentId = created.id;
         setState((s) => ({ ...s, intent: created }));
+        // The server always returns the output asset; an older response without it is treated as Robinhood Chain (the only
+        // chain fee sales existed on before Base).
+        const saleChain = created.outputAsset?.chain ?? 'robinhood';
+        routerAddress = routerAddressFor(saleChain);
 
         if (routerAddress) {
           await runRouterFlow(created.id, walletAddress, routerAddress);
@@ -443,7 +449,10 @@ export function useRedeemExecution() {
         try {
           ({ intent: prepared } = await postJson<{ intent: RedeemIntent }>(`/api/redeem-intent/${created.id}/execute`));
         } catch (err) {
-          if (!(err instanceof RedeemExecutionHttpError && err.code === 'FEE_ROUTER_REQUIRED' && isRedeemSettlementConfigured())) throw err;
+          // Robinhood Chain: only when its settlement is configured for the browser. Any other chain has exactly one fee
+          // path, its own RedeemSettlement; the server refuses clearly (SettlementNotConfigured) when it is not deployed.
+          const settlementPath = saleChain === 'robinhood' ? isRedeemSettlementConfigured() : true;
+          if (!(err instanceof RedeemExecutionHttpError && err.code === 'FEE_ROUTER_REQUIRED' && settlementPath)) throw err;
           // A fee-paying sale: phase 1 quotes and plans (signs nothing), phase 2 re-checks, signs and compiles the
           // final settlement transaction. Either refusing is a server answer, reported as is.
           await postJson(`/api/redeem-intent/${created.id}/settlement-quote`);

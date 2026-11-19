@@ -7,6 +7,19 @@ import { findActiveRedeemIntentForBag } from '@/lib/server/redeem-intent-repo';
 import { TX_HASH_RE } from '@/lib/server/intent-tx-claims';
 import { trackComposerTransaction } from '@/lib/blockchain/composer-status';
 import { findComposerTransactionFromWallet, type FindComposerTransactionInput } from '@/lib/blockchain/composer-tx-search';
+import { BAG_CHAINS, isBagChain, type BagChain } from '@/lib/config/chains';
+
+/**
+ * The chain a rebalance runs on: every leg's chain, which must be one chain and agree with the recorded transaction's
+ * chain id. Null when they disagree — such an intent is never verified against any chain.
+ */
+export function rebalanceIntentChain(intent: Pick<RebalanceIntent, 'sells' | 'buys' | 'composerTransaction'>): BagChain | null {
+  const chains = new Set([...intent.sells, ...intent.buys].map((l) => l.chain));
+  if (chains.size !== 1) return null;
+  const [chain] = [...chains];
+  if (!isBagChain(chain)) return null;
+  return BAG_CHAINS[chain].chainId === Number(intent.composerTransaction.chainId) ? chain : null;
+}
 
 // -----------------------------------------------------------------------------
 // R3 — a user-signed rebalance of one position (migration 0056).
@@ -220,9 +233,15 @@ export async function verifyRebalanceExecution(
   }
   if (intent.status !== 'SUBMITTED' || !intent.txHash) return { ok: true, intent };
 
+  const chain = rebalanceIntentChain(intent);
+  if (!chain) {
+    const message = 'The rebalance legs and its transaction do not agree on one chain.';
+    await update(admin, intent.id, { status: 'FAILED', failure_code: 'VERIFICATION_FAILED', failure_message: message });
+    return { ok: true, intent: { ...intent, status: 'FAILED', failureCode: 'VERIFICATION_FAILED', failureMessage: message } };
+  }
   const outcome = await trackComposerTransaction({
     txHash: intent.txHash,
-    chain: 'robinhood',
+    chain,
     recipient: intent.walletAddress,
     expectedTransaction: intent.composerTransaction,
   });
@@ -287,8 +306,14 @@ export async function settleOpenRebalances(
       if (intent.status === 'READY') {
         if (Date.parse(intent.expiresAt) + REBALANCE_SEARCH_GRACE_MS > now.getTime()) continue; // still signable
         summary.checked++;
+        const chain = rebalanceIntentChain(intent);
+        if (!chain) {
+          await update(admin, intent.id, { status: 'EXPIRED' });
+          summary.expired++;
+          continue;
+        }
         const found = await search({
-          chain: 'robinhood',
+          chain,
           wallet: intent.walletAddress,
           soldTokens: intent.sells.map((s) => s.address),
           expected: intent.composerTransaction,

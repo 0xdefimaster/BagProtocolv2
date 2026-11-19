@@ -1,5 +1,6 @@
 import { getAddress, parseEventLogs, type Hex } from 'viem';
 import { getChainPublicClient } from '@/lib/blockchain/rpc/clients';
+import type { BagChain } from '@/lib/config/chains';
 
 // -----------------------------------------------------------------------------
 // The on-chain record of a settlement: RedeemSettlement's `Settled` event. It is the source of truth for what a
@@ -97,8 +98,8 @@ export function settlementResultFromLogs(
  * Reads a transaction's receipt and returns its settlement result for `redemptionId`, or null when there is none.
  * Null too when the transaction did not succeed: a reverted transaction settled nothing, whatever its logs say.
  */
-export async function readSettlementResult(txHash: Hex, settlement: string, redemptionId: Hex): Promise<SettlementResult | null> {
-  const receipt = await getChainPublicClient('robinhood').getTransactionReceipt({ hash: txHash });
+export async function readSettlementResult(txHash: Hex, settlement: string, redemptionId: Hex, chain: BagChain = 'robinhood'): Promise<SettlementResult | null> {
+  const receipt = await getChainPublicClient(chain).getTransactionReceipt({ hash: txHash });
   if (receipt.status !== 'success') return null;
   return settlementResultFromLogs(receipt.logs, settlement, redemptionId);
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { coinbaseStocksInCalldata } from '@/lib/config/coinbase-stocks';
 import { getEthereumProvider } from '@/lib/wallet/eth-provider';
 import { createClient, SDKClient } from '@lifi/sdk';
 import { EthereumProvider, EthereumSDKProvider } from '@lifi/sdk-provider-ethereum';
@@ -256,6 +257,16 @@ export async function ensureErc20AllowanceOnChain(
  * the wallet's address) so a transaction that would revert is caught before
  * the user signs it and pays gas. Throws with the node's revert reason.
  */
+/**
+ * Coinbase tokenized stocks (B20) can be paused or blocked by their issuer, e.g. during a corporate action; a transfer
+ * of one then reverts. Said only when the failed transaction moves one of them — a hint, not a diagnosis.
+ */
+export function coinbaseStockFailureHint(calldata: string): string {
+  const stocks = coinbaseStocksInCalldata(calldata);
+  if (stocks.length === 0) return '';
+  return ` This transaction moves ${stocks.join(', ')} (Coinbase tokenized stock${stocks.length > 1 ? 's' : ''}). Coinbase can temporarily pause these tokens, for example during a corporate action such as a split or dividend; if so, nothing is wrong with your position — try again later.`;
+}
+
 export async function simulateTransactionOnChain(
   walletAddress: string,
   numericChainId: number,
@@ -273,6 +284,8 @@ export async function simulateTransactionOnChain(
     });
   } catch (err) {
     const short = err && typeof err === 'object' && 'shortMessage' in err ? String((err as { shortMessage: unknown }).shortMessage) : null;
-    throw new Error(`This ${what} would fail on-chain, so it was not sent (no gas spent). ${short ?? (err instanceof Error ? err.message : String(err))}`);
+    throw new Error(
+      `This ${what} would fail on-chain, so it was not sent (no gas spent). ${short ?? (err instanceof Error ? err.message : String(err))}${coinbaseStockFailureHint(tx.data)}`
+    );
   }
 }

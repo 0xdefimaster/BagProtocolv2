@@ -4,6 +4,7 @@ import { requireSession } from '@/lib/auth/require-session';
 import { getDisplayPriceProvider } from '@/lib/server/price-provider';
 import { getChainPublicClient } from '@/lib/blockchain/rpc/clients';
 import { loadRebalancePreview } from '@/lib/server/rebalance-preview';
+import { rebalanceSupportedOn } from '@/lib/server/rebalance-support';
 import { checkRateLimit, rateLimitedResponseBody } from '@/lib/server/rate-limit';
 
 // -----------------------------------------------------------------------------
@@ -33,5 +34,5 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const loaded = await loadRebalancePreview(admin, getChainPublicClient, priceProvider, auth.session, id);
   if (!loaded.ok) return NextResponse.json({ error: loaded.error }, { status: loaded.status });
   const { bag, blockNumber, symbols, preview } = loaded;
-  return NextResponse.json({ bag: { id: bag.id, name: bag.name, symbol: bag.symbol }, blockNumber, symbols, preview, executionSupported: bag.chain === 'robinhood' });
+  return NextResponse.json({ bag: { id: bag.id, name: bag.name, symbol: bag.symbol }, blockNumber, symbols, preview, executionSupported: rebalanceSupportedOn(bag.chain) });
 }

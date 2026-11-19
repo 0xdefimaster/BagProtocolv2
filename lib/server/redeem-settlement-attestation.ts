@@ -8,10 +8,11 @@ import { computePositionPnl } from '@/lib/domain/basket-protocol/accounting/posi
 import { assetIdentityKey } from '@/lib/domain/basket-protocol/asset-identity';
 import { getAssetsByIdentities } from '@/lib/server/asset-repo';
 import { getPriceProvider } from '@/lib/server/price-provider';
-import { ROBINHOOD_CHAIN_ID, ROBINHOOD_REWARD_TOKEN, DEPLOYED_CONTRACTS } from '@/lib/config/robinhood-chain';
+import { redeemSettlementAddressFor, redeemSettlementEnvVar, settlementChainId, settlementTokenFor, type SettlementToken } from '@/lib/config/settlement';
+import { isBagChain, type BagChain } from '@/lib/config/chains';
 import { DEFAULT_COMPOSER_SLIPPAGE_BPS } from '@/lib/blockchain/lifi-purchase-quote';
 import { buildComposerSettlementRedeem, buildComposerSweep, composerPortAmounts, sweepNodeId } from '@/lib/blockchain/lifi-composer-adapter';
-import { getRobinhoodPublicClient } from '@/lib/blockchain/robinhood-public-client';
+import { getChainPublicClient } from '@/lib/blockchain/rpc/clients';
 import {
   SETTLEMENT_TYPES,
   computeSettlementContextHash,
@@ -97,7 +98,7 @@ export function attestorKeyFromEnv(raw: string): `0x${string}` {
 /** The redemption has nothing to swap (only USDG holdings): there is no Composer quote to check, so nothing is planned. */
 export class NothingToSettleError extends Error {
   constructor() {
-    super('This sale has no tokens to sell into USDG.');
+    super('This sale has no tokens to sell into the settlement stablecoin.');
     this.name = 'NothingToSettleError';
   }
 }
@@ -128,7 +129,7 @@ export class AnotherSaleOpenError extends Error {
 /** Phase 2 preflight: USDG reports the creator's address as frozen; the fee transfer would revert. */
 export class CreatorFrozenError extends Error {
   constructor() {
-    super("The Bag creator's address cannot receive USDG right now, so a fee-paying sale cannot settle. Nothing was signed.");
+    super("The Bag creator's address cannot receive the settlement stablecoin (USDG or USDC) right now, so a fee-paying sale cannot settle. Nothing was signed.");
     this.name = 'CreatorFrozenError';
   }
 }
@@ -142,6 +143,9 @@ export class ExecutorMismatchError extends Error {
 
 interface SettlementState {
   intent: RedeemIntent;
+  /** The Bag's chain: where the sale, the settlement contract and the settlement token all live. */
+  chain: BagChain;
+  token: SettlementToken;
   context: SettlementContext;
   contextHash: `0x${string}`;
   redeemer: `0x${string}`;
@@ -155,10 +159,25 @@ interface SettlementState {
   legs: { token: `0x${string}`; amountRaw: bigint; chain: RedeemIntent['outputAsset']['chain'] }[];
 }
 
-function settlementAddress(): `0x${string}` {
-  const a = DEPLOYED_CONTRACTS.redeemSettlement;
-  if (!a) throw new SettlementNotConfiguredError('REDEEM_SETTLEMENT_ADDRESS');
+/** The sale's chain and its settlement token, from the intent's output asset (fail closed elsewhere). */
+function settlementChainOf(intent: Pick<RedeemIntent, 'outputAsset'>): { chain: BagChain; token: SettlementToken } {
+  const chain = intent.outputAsset.chain;
+  const token = isBagChain(chain) ? settlementTokenFor(chain) : null;
+  if (!isBagChain(chain) || !token) throw new SettlementNotConfiguredError(`fee settlement on ${chain}`);
+  return { chain, token };
+}
+
+function settlementAddress(chain: BagChain): `0x${string}` {
+  const a = redeemSettlementAddressFor(chain);
+  if (!a) throw new SettlementNotConfiguredError(redeemSettlementEnvVar(chain) ?? 'REDEEM_SETTLEMENT_ADDRESS');
   return getAddress(a);
+}
+
+/** The intent's chain, read before anything else so the right settlement contract is used. */
+async function intentChain(admin: SupabaseClient, userId: string, intentId: string): Promise<{ chain: BagChain; token: SettlementToken }> {
+  const r = await getRedeemIntentForUser(admin, intentId, userId);
+  if (!r.ok) throw new Error(`Redeem intent not accessible: ${r.error}`);
+  return settlementChainOf(r.intent);
 }
 
 /** Refuses while any OTHER intent of the position is open or holds a live settlement attestation (§9). */
@@ -177,6 +196,7 @@ async function loadSettlementState(admin: SupabaseClient, userId: string, intent
   const r = await getRedeemIntentForUser(admin, intentId, userId);
   if (!r.ok) throw new Error(`Redeem intent not accessible: ${r.error}`);
   const intent = r.intent;
+  const { chain, token } = settlementChainOf(intent);
   if (intent.status !== 'READY') throw new SaleQuoteExpiredError();
   if (!(new Date(intent.expiresAt).getTime() > Date.now())) throw new SaleQuoteExpiredError();
 
@@ -185,6 +205,8 @@ async function loadSettlementState(admin: SupabaseClient, userId: string, intent
 
   const bag = await getBagById(admin, intent.bagId);
   if (!bag) throw new Error(`Bag ${intent.bagId} not found.`);
+  // The sale settles on the Bag's own chain, never another.
+  if (bag.chain !== chain) throw new SettlementNotConfiguredError(`a ${bag.chain} Bag sold on ${chain}`);
   const version = await getCurrentBagVersion(admin, intent.bagId);
   if (!version) throw new Error(`Bag ${intent.bagId} has no current version.`);
   // The LOCKED rate once an external investor exists (migration 0033).
@@ -230,14 +252,14 @@ async function loadSettlementState(admin: SupabaseClient, userId: string, intent
     );
     if (!basis.ok) throw new FeeBasisUnavailableError(basis.reason);
     // Rounded UP: a smaller fee base, in the user's favour (§5.7).
-    consumedBasisRaw = decimalToRawCeil(basis.consumedBasisQuote, ROBINHOOD_REWARD_TOKEN.decimals);
-    lossCarryRaw = decimalToRawCeil(basis.lossCarryQuote, ROBINHOOD_REWARD_TOKEN.decimals);
+    consumedBasisRaw = decimalToRawCeil(basis.consumedBasisQuote, token.decimals);
+    lossCarryRaw = decimalToRawCeil(basis.lossCarryQuote, token.decimals);
   }
   const head = ledger.length > 0 ? ledger[ledger.length - 1].seq : '0';
 
   const legs = assetSteps.map((s) => ({ token: getAddress(s.inputAsset.address), amountRaw: BigInt(s.inputAmountRaw), chain: s.inputAsset.chain }));
   const context: SettlementContext = {
-    chainId: ROBINHOOD_CHAIN_ID,
+    chainId: settlementChainId(chain),
     settlement,
     bagId: bag.id,
     bagContract: bag.contractAddress,
@@ -257,6 +279,8 @@ async function loadSettlementState(admin: SupabaseClient, userId: string, intent
   };
   return {
     intent,
+    chain,
+    token,
     context,
     contextHash: computeSettlementContextHash(context),
     redeemer: getAddress(redeemerWallet),
@@ -278,21 +302,21 @@ export interface SettlementQuote {
 
 /** Phase 1. Signs nothing. */
 export async function quoteSettlement(admin: SupabaseClient, userId: string, intentId: string): Promise<SettlementQuote> {
-  const settlement = settlementAddress();
+  const settlement = settlementAddress((await intentChain(admin, userId, intentId)).chain);
   const apiKey = process.env.LIFI_API_KEY;
   if (!apiKey) throw new SettlementNotConfiguredError('LIFI_API_KEY');
   const state = await loadSettlementState(admin, userId, intentId, settlement);
 
-  const usdg = ROBINHOOD_REWARD_TOKEN.address.toLowerCase();
+  const usdg = state.token.address.toLowerCase();
   const swapLegs = state.legs.filter((l) => l.token.toLowerCase() !== usdg);
   if (swapLegs.length === 0) throw new NothingToSettleError();
 
   // A quote of the same sales (sold back to the wallet): per-leg simulated output and provider-enforced minimum,
   // and the user's Composer proxy — the executor.
   const quote = await buildComposerSweep({
-    chain: 'robinhood',
+    chain: state.chain,
     inputs: swapLegs.map((l) => ({ address: l.token, amountRaw: l.amountRaw.toString(), symbol: l.token })),
-    outputTokenAddress: ROBINHOOD_REWARD_TOKEN.address,
+    outputTokenAddress: state.token.address,
     signerAddress: state.redeemer,
     slippageBps: DEFAULT_COMPOSER_SLIPPAGE_BPS,
     apiKey,
@@ -315,7 +339,7 @@ export async function quoteSettlement(admin: SupabaseClient, userId: string, int
     } catch (e) {
       throw new PriceUnavailableForSaleError(leg.token, (e as Error).message);
     }
-    const reference = referenceValueRaw(leg.amountRaw, decimals, priceUsd, ROBINHOOD_REWARD_TOKEN.decimals);
+    const reference = referenceValueRaw(leg.amountRaw, decimals, priceUsd, state.token.decimals);
     if (reference <= BigInt(0)) throw new PriceUnavailableForSaleError(leg.token, 'amount too small to value');
     const selection = selectRedeemLegQuote(out === null ? [] : [{ feeTier: 0, amountOut: out }], reference, FEE_REDEEM_MAX_PRICE_DEVIATION_BPS);
     if (!selection.ok && selection.reason === 'NO_QUOTE') throw new PriceUnavailableForSaleError(leg.token, 'no Composer quote for this leg');
@@ -368,13 +392,17 @@ export interface SettlementAttestation {
   deadline: number;
 }
 
-/** USDG is a Paxos token. Best-effort freeze read — a preflight only; the contract's revert is the guarantee. */
-async function creatorFrozen(creator: `0x${string}`): Promise<boolean | null> {
+/**
+ * USDG (Paxos) can freeze an address (`isFrozen`), USDC (Circle) can blacklist one (`isBlacklisted`). Best-effort
+ * read — a preflight only; the contract's revert is the guarantee.
+ */
+async function creatorFrozen(chain: BagChain, token: SettlementToken, creator: `0x${string}`): Promise<boolean | null> {
   try {
-    return (await getRobinhoodPublicClient().readContract({
-      address: ROBINHOOD_REWARD_TOKEN.address as `0x${string}`,
-      abi: [{ type: 'function', name: 'isFrozen', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'bool' }] }] as const,
-      functionName: 'isFrozen',
+    const fn = token.freezeCheck.fn;
+    return (await getChainPublicClient(chain).readContract({
+      address: token.address,
+      abi: [{ type: 'function', name: fn, stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'bool' }] }] as const,
+      functionName: fn,
       args: [creator],
     })) as boolean;
   } catch {
@@ -384,7 +412,7 @@ async function creatorFrozen(creator: `0x${string}`): Promise<boolean | null> {
 
 /** Phase 2. */
 export async function attestSettlement(admin: SupabaseClient, userId: string, intentId: string): Promise<SettlementAttestation> {
-  const settlement = settlementAddress();
+  const settlement = settlementAddress((await intentChain(admin, userId, intentId)).chain);
   const privateKey = process.env.REDEEM_SETTLEMENT_ATTESTOR_PRIVATE_KEY;
   if (!privateKey) throw new SettlementNotConfiguredError('REDEEM_SETTLEMENT_ATTESTOR_PRIVATE_KEY');
   const apiKey = process.env.LIFI_API_KEY;
@@ -409,8 +437,8 @@ export async function attestSettlement(admin: SupabaseClient, userId: string, in
     throw new SettlementStateChangedError();
   }
 
-  if (state.feeRateBps > 0 && (await creatorFrozen(state.creator)) === true) throw new CreatorFrozenError();
-  if (state.feeRateBps > 0 && state.rootCreator && (await creatorFrozen(state.rootCreator)) === true) throw new CreatorFrozenError();
+  if (state.feeRateBps > 0 && (await creatorFrozen(state.chain, state.token, state.creator)) === true) throw new CreatorFrozenError();
+  if (state.feeRateBps > 0 && state.rootCreator && (await creatorFrozen(state.chain, state.token, state.rootCreator)) === true) throw new CreatorFrozenError();
 
   // Never valid past the intent's expiry (the purchase lock is released then) nor the plan's.
   const deadlineMs = Math.min(Date.now() + ATTESTATION_TTL_MS, new Date(state.intent.expiresAt).getTime(), new Date(plan.expiresAt).getTime());
@@ -439,7 +467,7 @@ export async function attestSettlement(admin: SupabaseClient, userId: string, in
     deadline: BigInt(deadline),
   };
   const signature = await privateKeyToAccount(attestorKeyFromEnv(privateKey)).signTypedData({
-    domain: settlementDomain(ROBINHOOD_CHAIN_ID, settlement),
+    domain: settlementDomain(settlementChainId(state.chain), settlement),
     types: SETTLEMENT_TYPES,
     primaryType: 'Settlement',
     message,
@@ -447,9 +475,9 @@ export async function attestSettlement(admin: SupabaseClient, userId: string, in
   const { r, vs } = toCompactSignature(signature);
 
   const final = await buildComposerSettlementRedeem({
-    chain: 'robinhood',
+    chain: state.chain,
     inputs: state.legs.map((l) => ({ address: l.token, amountRaw: l.amountRaw.toString(), symbol: l.token })),
-    outputTokenAddress: ROBINHOOD_REWARD_TOKEN.address,
+    outputTokenAddress: state.token.address,
     settlementAddress: settlement,
     settle: { ...message, r, vs },
     signerAddress: state.redeemer,
@@ -466,7 +494,7 @@ export async function attestSettlement(admin: SupabaseClient, userId: string, in
     to: final.transactionRequest.to,
     data: final.transactionRequest.data,
     value: final.transactionRequest.value,
-    chainId: final.transactionRequest.chainId ?? ROBINHOOD_CHAIN_ID,
+    chainId: final.transactionRequest.chainId ?? settlementChainId(state.chain),
     approvals: final.approvals,
   };
   const saved = await setRedeemSettlementAttested(

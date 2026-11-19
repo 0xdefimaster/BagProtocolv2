@@ -8,6 +8,7 @@ import { toLiFiChainId } from '@/lib/blockchain/lifi-config';
 import { LOCAL_COIN_CANDIDATES } from './coingecko-import';
 import { ROBINHOOD_REWARD_TOKEN, ROBINHOOD_WETH_ADDRESS } from '@/lib/config/robinhood-chain';
 import { LogoUpdate, planLogoUpdates, sanitizeLogoUrl } from './logo-url';
+import { COINBASE_TOKENIZED_STOCKS_BASE } from '@/lib/config/coinbase-stocks';
 
 // -----------------------------------------------------------------------------
 // "Which coins/stocks exist on which network, per LI.FI" — same plan/apply
@@ -337,22 +338,6 @@ const ISSUER_STOCK_PATTERNS: { signal: Exclude<LiFiStockSignal, 'rwa' | 'coinbas
  */
 const LEVERAGED_PRODUCT_NAME = /\b\d+(?:\.\d+)?x\b|\bleveraged\b|\binverse\b|\bshort\b|\bdaily\b/i;
 
-/**
- * Coinbase Tokenized Stocks on Base (B20 precompile tokens, issued by Coinbase).
- * LI.FI names them plainly ("NVIDIA Corporation"), so no naming scheme identifies
- * the issuer: the contract address is the only signal, pinned here. Source:
- * Base's Tokenized Stocks list (docs.base.org/sdks/tokenized-stocks). Re-check
- * against `GET https://api.coinbase.com/v1/tokenized-stocks` before adding one
- * (`node scripts/check-lifi-routes.mjs --coinbase`). Derivatives wrapping these
- * tokens (aBNVDAc, PT-/YT-NVDAc, ...) are different contracts and never match.
- * Keys are lower-case addresses; values are the symbol LI.FI must report.
- */
-const COINBASE_TOKENIZED_STOCKS_BASE: ReadonlyMap<string, string> = new Map([
-  ['0xb20000000000000000000078ee7ce2fe4908108c', 'NVDAc'],
-  ['0xb200000000000000000000c2e324d24d7eecd1fb', 'AAPLc'],
-  ['0xb2000000000000000000002d0ba3164cc74f58b7', 'GOOGLc'],
-  ['0xb2000000000000000000008bc8786b856e61707c', 'METAc'],
-]);
 
 function stockSignal(token: LiFiRawToken, chain?: LiFiStockImportChain): LiFiStockSignal | null {
   if (classifyLiFiToken(token) === 'stock') return 'rwa';

@@ -128,6 +128,34 @@ describe('useRedeemExecution — fee-paying sale through RedeemSettlement', () =
     expect(executeWalletSweepMock.mock.calls[0][1]).toEqual({ transaction: LEGACY_TX, approvals: [] });
   });
 
+  describe('a Base sale (its own RedeemSettlement on Base)', () => {
+    const baseHandler = (): Handler => {
+      const fee = feeBagHandler();
+      const onBase = () => ({ ...intent(), outputAsset: { chain: 'base', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' } });
+      return (url) => (url.endsWith('/redeem-intent') && url.startsWith('/api/bags/') ? { status: 200, body: { intent: onBase() } } : fee(url));
+    };
+
+    it('takes the settlement path even when only the Robinhood router is configured for the browser', async () => {
+      vi.stubEnv('NEXT_PUBLIC_REDEEM_SETTLEMENT_ADDRESS', '');
+      vi.stubEnv('NEXT_PUBLIC_REDEEM_FEE_ROUTER_ADDRESS', '0x6666666666666666666666666666666666666666');
+      handler = baseHandler();
+      const result = await run();
+      expect(calls.some((u) => u.endsWith('/attest-fee') || u.endsWith('/confirm-router-tx'))).toBe(false);
+      expect(sendRedeemTransactionMock).not.toHaveBeenCalled();
+      expect(calls).toContain('/api/redeem-intent/redeem_1/settlement-attest');
+      expect(result.current.state.phase).toBe('completed');
+    });
+
+    it('Base settlement not deployed: the server\'s refusal is the outcome, nothing is signed', async () => {
+      vi.stubEnv('NEXT_PUBLIC_REDEEM_SETTLEMENT_ADDRESS', '');
+      const base = baseHandler();
+      handler = (url) => (url.endsWith('/settlement-quote') ? { status: 503, body: { error: 'Fee settlement is not configured.', code: 'SETTLEMENT_NOT_CONFIGURED' } } : base(url));
+      const result = await run();
+      expect(executeWalletSweepMock).not.toHaveBeenCalled();
+      expect(result.current.state.phase).toBe('failed');
+    });
+  });
+
   describe('routing invariant: with RedeemSettlement configured, the old RedeemFeeRouter is never used', () => {
     beforeEach(() => vi.stubEnv('NEXT_PUBLIC_REDEEM_FEE_ROUTER_ADDRESS', '0x6666666666666666666666666666666666666666'));
 

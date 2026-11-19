@@ -1,4 +1,5 @@
-import { BasketRecipe, ChainId, MAX_PERFORMANCE_FEE_BPS, performanceFeeAllowedOn, RebalanceFrequency, RecipeAsset, STRATEGY_TYPES, SUPPORTED_CHAINS, ValidationIssue, isStrategyType } from '@/types/basket-protocol';
+import { performanceFeeEnabledOn } from '@/lib/config/settlement';
+import { BasketRecipe, ChainId, MAX_PERFORMANCE_FEE_BPS, RebalanceFrequency, RecipeAsset, STRATEGY_TYPES, SUPPORTED_CHAINS, ValidationIssue, isStrategyType } from '@/types/basket-protocol';
 import { VALIDATION_CODES } from './codes';
 
 // -----------------------------------------------------------------------------
@@ -439,12 +440,12 @@ export function validateEconomics(recipe: BasketRecipe): ValidationIssue[] {
     );
   }
 
-  if ((recipe.performanceFeeBps ?? 0) > 0 && !performanceFeeAllowedOn(recipe.chain)) {
+  if ((recipe.performanceFeeBps ?? 0) > 0 && !performanceFeeEnabledOn(recipe.chain)) {
     issues.push(
       issue(
         VALIDATION_CODES.PERFORMANCE_FEE_UNSUPPORTED_CHAIN,
         'ERROR',
-        `A performance fee is only available on Robinhood Chain for now. Set it to 0% on ${recipe.chain}.`,
+        `A performance fee is not available on ${recipe.chain} yet (no fee settlement contract there). Set it to 0%.`,
         'performanceFeeBps'
       )
     );
