@@ -1,11 +1,11 @@
-// Checks, read-only, whether LI.FI knows a token on Base or Arbitrum and can
+// Checks, read-only, whether LI.FI knows a token on Base, Arbitrum or Ethereum and can
 // route a USDC buy and sell for it. Sends no transaction and needs no key.
 //
 // Usage (PowerShell, from the repo root):
 //   node scripts/check-lifi-routes.mjs 0xADDR1 0xADDR2 ...
 //   node scripts/check-lifi-routes.mjs --file=cas.txt          # one address per line
 //   node scripts/check-lifi-routes.mjs --usd=100,1000 0xADDR   # test sizes (default 100,1000)
-//   node scripts/check-lifi-routes.mjs --chain=arbitrum 0xADDR # Arbitrum One (default: base)
+//   node scripts/check-lifi-routes.mjs --chain=arbitrum 0xADDR # Arbitrum One or ethereum (default: base)
 // Optional: set LIFI_API_KEY in the environment for a higher rate limit.
 
 import { readFileSync } from 'node:fs';
@@ -13,10 +13,11 @@ import { readFileSync } from 'node:fs';
 const CHAINS = {
   base: { id: 8453, usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' },
   arbitrum: { id: 42161, usdc: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' },
+  ethereum: { id: 1, usdc: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' },
 };
 const chainName = (process.argv.find((a) => a.startsWith('--chain=')) || '--chain=base').slice(8);
 if (!CHAINS[chainName]) {
-  console.error(`Unknown --chain=${chainName}. Use base or arbitrum.`);
+  console.error(`Unknown --chain=${chainName}. Use base, arbitrum or ethereum.`);
   process.exit(1);
 }
 const CHAIN = CHAINS[chainName].id;
